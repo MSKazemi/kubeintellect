@@ -1,0 +1,13 @@
+# terraform.tfvars.example
+
+resource_group_name = "rg-kubeintellect"
+cluster_name        = "aks-kubeintellect"
+dns_prefix          = "kubeintellect"
+location            = "westeurope"
+node_count          = 3
+node_vm_size        = "Standard_DS3_v2"
+environment         = "production"
+
+# Replace with your actual values (DO NOT COMMIT REAL ONES)
+subscription_id     = "your-subscription-id-here"
+tenant_id           = "your-tenant-id-here"

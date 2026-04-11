@@ -1,0 +1,43 @@
+cff-version: 1.2.0
+message: "If you use KubeIntellect in your research or build on it, please cite both the software and the paper below."
+type: software
+title: "KubeIntellect: AI-Powered Multi-Agent Kubernetes Management"
+authors:
+  - family-names: Seyedkazemi Ardebili
+    given-names: Mohsen
+    alias: MSKazemi
+  - family-names: Bartolini
+    given-names: Andrea
+version: 1.0.0
+date-released: 2026-04-11
+license: AGPL-3.0
+repository-code: https://github.com/MSKazemi/kubeintellect
+abstract: >
+  KubeIntellect is an AI-powered Kubernetes management platform built on a
+  LangGraph multi-agent system. Users interact via natural language; a supervisor
+  LLM routes requests to specialized worker agents that execute Kubernetes
+  operations via the official Python client, with mandatory human-in-the-loop
+  approval for all write operations.
+keywords:
+  - kubernetes
+  - multi-agent
+  - LLM
+  - LangGraph
+  - site reliability engineering
+  - AI operations
+  - AIOps
+
+preferred-citation:
+  type: article
+  authors:
+    - family-names: Seyedkazemi Ardebili
+      given-names: Mohsen
+    - family-names: Bartolini
+      given-names: Andrea
+  title: "KubeIntellect: A Modular LLM-Orchestrated Agent Framework for End-to-End Kubernetes Management"
+  journal: "arXiv preprint"
+  year: 2025
+  url: "https://arxiv.org/abs/2509.02449"
+  identifiers:
+    - type: other
+      value: "arXiv:2509.02449"
