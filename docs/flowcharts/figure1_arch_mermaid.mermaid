@@ -1,0 +1,160 @@
+---
+config:
+  flowchart:
+    curve: basis
+    rankSpacing: 55
+    nodeSpacing: 28
+---
+graph LR
+
+%% ═══════════════════════════════════════════════════════════════
+%%  EXTERNAL
+%% ═══════════════════════════════════════════════════════════════
+USER(["👤 User"]):::ext
+K8S(["⎈ Kubernetes\nCluster(s)"]):::k8s
+
+%% ═══════════════════════════════════════════════════════════════
+%%  CORE SYSTEM  (left column, top → bottom)
+%% ═══════════════════════════════════════════════════════════════
+subgraph CORE["Core System"]
+  direction TB
+
+  UIL["🖥️ User Interaction Layer\nLibreChat · REST /chat/completions"]:::layer
+
+  QPM["🔍 Query Processing Module\nLLM scope filter · OOS rejection\nambiguity clarification"]:::layer
+
+  subgraph ORCH["Task Orchestration Layer"]
+    direction TB
+    MO["🧠 Memory Orchestrator\n4-tier parallel assembly ≤550 tokens\nReflections · Failure Hints · Prefs · Dyn.Tools"]:::mem
+    SUP{{"🎛️ Supervisor LLM\nLangGraph StateGraph\nStateGraph routing"}}:::sup
+    HITL["🔒 HITL Gates\ninterrupt_before:\nCodeGenerator · Apply"]:::hitl
+  end
+
+  subgraph AGENTS["Agent & Tool Execution Layer  (ReAct loops)"]
+    direction LR
+    subgraph RAGENTS["Read / Inspect Agents"]
+      direction TB
+      A_LOG["Logs"]:::agent
+      A_CMS["ConfigMapsSecrets"]:::agent
+      A_RBC["RBAC"]:::agent
+      A_MET["Metrics"]:::agent
+      A_SEC["Security"]:::agent
+    end
+    subgraph WAGENTS["Write / Exec Agents"]
+      direction TB
+      A_LC["Lifecycle"]:::agent
+      A_EX["Execution"]:::agent
+      A_DEL["Deletion\n(conv. confirm)"]:::agent
+      A_INF["Infrastructure"]:::agent
+      A_AP["Apply"]:::agent
+    end
+    subgraph SYNTH["Synthesis Agents"]
+      direction TB
+      A_DTE["DynamicToolsExecutor"]:::dyn
+      A_CG["CodeGenerator\n(generate→test→register)"]:::codegen
+    end
+    subgraph DIAORCH["DiagnosticsOrchestrator  (fan-out)"]
+      direction LR
+      DO["Dispatch"]:::diag
+      DL["Logs\nsignal"]:::diag
+      DM["Metrics\nsignal"]:::diag
+      DE["Events\nsignal"]:::diag
+      DC["Collect\n(barrier)"]:::diag
+      DO -->|"Send"| DL
+      DO -->|"Send"| DM
+      DO -->|"Send"| DE
+      DL --> DC
+      DM --> DC
+      DE --> DC
+    end
+  end
+
+  KIL["⎈ Kubernetes Interaction Layer\nK8s Python Client · SSH tunnel"]:::layer
+end
+
+%% ═══════════════════════════════════════════════════════════════
+%%  SUPPORTING INFRASTRUCTURE  (right column)
+%% ═══════════════════════════════════════════════════════════════
+subgraph SUPP["Supporting Infrastructure"]
+  direction TB
+
+  LLMGW["🔁 LLM Gateway\n7 providers: Azure · OpenAI · Anthropic\nGoogle · Bedrock · Ollama · LiteLLM"]:::sup
+
+  subgraph PERSIST["Persistence Layer  (PostgreSQL)"]
+    direction TB
+    PG_CHK["LangGraph Checkpoints\n(HITL resume · workflow state)"]:::pgbox
+    PG_CTX["Conversation Context\n(sticky ns · resource · tool)"]:::pgbox
+    PG_FP["Failure Patterns  ×30\n(keyword match → hint injection)"]:::pgbox
+    PG_PREF["User Preferences\n(verbosity · format · ns · cluster)"]:::pgbox
+    PG_TR["Tool Registry\n+ PVC /mnt/runtime-tools"]:::pgbox
+    PG_AUD["Audit Log\n(user · query · agents · latency)"]:::pgbox
+  end
+
+  subgraph OBS["Observability Stack"]
+    direction TB
+    OB_LF["🔭 Langfuse\nSelf-hosted · per-conv. traces\ntoken · cost · latency"]:::obs
+    OB_PR["📊 Prometheus + Grafana\n11 custom metrics\nagent_invocations · tool_calls · HITL"]:::obs
+    OB_LK["📜 Loki + Promtail\nStructured JSON logs\nkube-event-exporter"]:::obs
+  end
+
+  subgraph SEC_GOV["Security & Governance"]
+    direction TB
+    SG_RB["K8s RBAC (Helm)\nget/list/watch default\nwrite ops feature-flagged"]:::sec
+    SG_SB["CodeGenerator Sandbox\nAST filter · exec timeout\nSHA-256 hash"]:::sec
+  end
+
+  TOS["✂️ Tool Output Summarizer\nToken-budget truncation\nlogs · YAML · list-type (top-k)"]:::mem
+end
+
+%% ═══════════════════════════════════════════════════════════════
+%%  FLOW EDGES
+%% ═══════════════════════════════════════════════════════════════
+USER -->|"NL query"| UIL
+UIL -->|"response"| USER
+
+UIL --> QPM
+QPM --> MO
+MO --> SUP
+
+%% Supervisor → agents (collapsed for readability)
+SUP -->|"route"| RAGENTS
+SUP -->|"route"| WAGENTS
+SUP -->|"HITL"| HITL
+HITL -->|"approve"| SYNTH
+SUP -->|"diagnose"| DO
+DC -->|"aggregated evidence"| SUP
+
+RAGENTS --> SUP
+WAGENTS --> SUP
+SYNTH --> SUP
+
+SUP -->|"FINISH"| UIL
+
+KIL -->|"API calls"| K8S
+AGENTS --> KIL
+K8S -->|"cluster data"| KIL
+
+%% Supporting connections
+SUP -.->|"LLM calls"| LLMGW
+LLMGW -.-> OB_LF
+SUP -.-> PERSIST
+HITL -.-> PG_CHK
+A_CG -.-> PG_TR
+SUP -.-> OB_PR
+
+%% ═══════════════════════════════════════════════════════════════
+%%  STYLES
+%% ═══════════════════════════════════════════════════════════════
+classDef ext fill:#dfe6e9,stroke:#636e72,color:#2d3436,font-weight:bold
+classDef k8s fill:#d5f5e3,stroke:#27ae60,color:#1a5e32,font-weight:bold
+classDef layer fill:#ebf5fb,stroke:#2e86c1,color:#1a5276,font-weight:bold
+classDef sup fill:#e8daef,stroke:#8e44ad,color:#4a235a,font-weight:bold
+classDef mem fill:#e8d5f5,stroke:#7d3c98,color:#4a235a
+classDef hitl fill:#fde8d8,stroke:#d35400,color:#6e2c00,font-weight:bold
+classDef agent fill:#d6eaf8,stroke:#2e86c1,color:#1a5276
+classDef dyn fill:#d5f5e3,stroke:#1e8449,color:#1a5e32
+classDef codegen fill:#fae5d3,stroke:#ca6f1e,color:#6e2c00,font-weight:bold
+classDef diag fill:#d1f2eb,stroke:#148f77,color:#0e6655
+classDef obs fill:#fef9e7,stroke:#d4ac0d,color:#7d6608
+classDef pgbox fill:#f4ecf7,stroke:#7d3c98,color:#4a235a
+classDef sec fill:#fdedec,stroke:#c0392b,color:#78281f

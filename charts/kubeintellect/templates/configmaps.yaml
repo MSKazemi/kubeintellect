@@ -1,0 +1,34 @@
+{{- $ns := .Values.namespace | default .Release.Namespace -}}
+{{- range $i, $cm := (.Values.configMaps | default (list)) }}
+{{- if ($cm.enabled | default true) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ required (printf "configMaps[%d].name is required" $i) $cm.name | quote }}
+  namespace: {{ (or $cm.namespace $ns) | quote }}
+{{- with $cm.annotations }}
+  annotations:
+{{ toYaml . | nindent 4 }}
+{{- end }}
+{{- if $cm.data }}
+data:
+{{- range $k, $v := $cm.data }}
+  {{- if not (eq $v nil) }}
+  {{- $raw := (kindIs "string" $v) | ternary $v (toJson $v) -}}
+  {{- $s := toString $raw -}}
+  {{- if or (contains "\n" $s) (hasPrefix " " $s) (hasSuffix " " $s) }}
+  {{ $k }}: |
+{{ $s | nindent 4 }}
+  {{- else }}
+  {{ $k }}: {{ $s | quote }}
+  {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- if $cm.binaryData }}
+binaryData:
+{{ toYaml $cm.binaryData | nindent 2 }}
+{{- end }}
+---
+{{- end }}
+{{- end }}

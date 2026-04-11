@@ -1,0 +1,64 @@
+{{/* templates/ingress.yaml */}}
+{{- $ns := .Values.namespace | default .Release.Namespace -}}
+
+{{/* Normalize: support either .Values.ingress (single) or .Values.ingresses (list) */}}
+{{- $items := list -}}
+{{- if .Values.ingresses }}
+  {{- $items = .Values.ingresses -}}
+{{- else if .Values.ingress }}
+  {{- $items = list .Values.ingress -}}
+{{- end -}}
+
+{{- range $i, $ing := ($items | default (list)) }}
+{{- if ($ing.enabled | default false) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ required "ingress.name is required" $ing.name }}
+  namespace: {{ $ing.namespace | default $ns }}
+  {{- $hasClass := (hasKey $ing "className") }}
+  {{- $hasAnn := (hasKey $ing "annotations") }}
+  {{- if or (and $hasClass $ing.className) $hasAnn }}
+  annotations:
+    {{- if and $hasClass $ing.className }}
+    kubernetes.io/ingress.class: {{ $ing.className }}
+    {{- end }}
+    {{- with $ing.annotations }}
+{{ toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+spec:
+  {{- with $ing.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with $ing.tls }}
+  tls:
+{{ toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+  {{- range $ing.rules }}
+    - host: {{ .host }}
+      http:
+        paths:
+        {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType | default "Prefix" }}
+            backend:
+              service:
+                name: {{ .service.name }}
+                port:
+                  {{- $p := .service.port -}}
+                  {{- if kindIs "int" $p }}
+                  number: {{ $p }}
+                  {{- else if regexMatch "^[0-9]+$" (toString $p) }}
+                  number: {{ (toString $p) | int }}
+                  {{- else }}
+                  name: {{ $p | quote }}
+                  {{- end }}
+        {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}
+
+

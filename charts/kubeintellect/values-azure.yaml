@@ -1,0 +1,983 @@
+# values-azure.yaml
+# NEW Version the PVCs and PVs are now static, 1:1 with the PVCs
+
+namespace: kubeintellect
+createNamespace: false
+
+# ---------- cert-manager / TLS ----------
+certManager:
+  createClusterIssuer: true
+  email: support@talktokube.com
+
+# ---------- HPA ----------
+# AsyncPostgresSaver migration verified; HPA enabled for production scaling.
+# Monitor scale-out via: kubectl get hpa -n kubeintellect
+# and Prometheus metric: kube_horizontalpodautoscaler_status_current_replicas
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 8
+  cpuTargetPercent: 70
+
+# ---------- GDPR / Chat Log Retention ----------
+gdprRetention:
+  enabled: true
+  retentionDays: 365
+  schedule: "0 2 * * *"   # 02:00 UTC daily
+  # mongoUri injected at runtime from librechat-secret (MONGO_URI key) — see templates/gdpr-retention.yaml
+
+rbac:
+  # Always create the namespaced Role/RoleBinding (read-only)
+  createNamespaced: true
+
+  # Create a read-only ClusterRole/Binding (for nodes, PVs, other namespaces)
+  createClusterReadOnly: true   # set to false if you don’t need cluster-scope reads
+
+  # Enable minimal privileges for namespace/pod management by kubeintellect-sa (off by default)
+  enableNamespaceManagement: true
+
+  # Dangerous: grant cluster-admin. Keep false; enable only temporarily for break-glass.
+  # SECURITY: set to false — kubeintellect-sa must not have cluster-admin in production.
+  # enableNamespaceManagement + createClusterReadOnly already cover all documented agent capabilities.
+  createClusterAdmin: false
+
+# This section builds out the service account more information can be found here: https://kubernetes.io/docs/concepts/security/service-accounts/
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Automatically mount a ServiceAccount's API credentials?
+  automount: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: kubeintellect-sa
+
+
+
+
+
+# ---------------------------------------------------
+# PersistentVolumeClaims (PVCs) - all static, 1:1 bound
+
+pvcs:
+  - name: librechat-pvc
+    accessModes:
+      - ReadWriteOnce
+    storage: 10Gi
+    storageClassName: managed-csi-retain    # Azure managed disk with Retain policy
+
+  - name: meili-pvc
+    accessModes:
+      - ReadWriteOnce
+    storage: 10Gi
+    storageClassName: managed-csi-retain    # Azure managed disk with Retain policy
+
+  - name: mongo-pvc
+    accessModes:
+      - ReadWriteOnce
+    storage: 10Gi
+    storageClassName: managed-csi-retain    # Azure managed disk with Retain policy
+
+  # - name: pgvector-pvc
+  #   accessModes:
+  #     - ReadWriteOnce
+  #   storage: 10Gi
+  #   storageClassName: managed-csi-retain
+
+  - name: postgres-pvc
+    accessModes:
+      - ReadWriteOnce
+    storage: 10Gi
+    storageClassName: managed-csi-retain    # Azure managed disk with Retain policy
+
+  - name: kubeintellect-runtime-tools-pvc
+    accessModes:
+      - ReadWriteMany    # Azure Files (SMB) — required for replicas > 1
+    storage: 5Gi
+    storageClassName: azurefile-csi-retain
+
+  - name: postgres-backup-pvc
+    accessModes:
+      - ReadWriteOnce
+    storage: 20Gi
+    storageClassName: managed-csi-retain
+
+
+# ---------------------------------------------------
+# PersistentVolumes (PVs) - DISABLED: Using dynamic provisioning with Azure StorageClasses
+# Static PVs with hostPath are not recommended for AKS - Azure will automatically provision disks
+# ---------------------------------------------------
+persistentVolumes:
+  - name: librechat-pv
+    enabled: false                  # Disabled - using dynamic provisioning
+    component: librechat
+    storage: 10Gi
+    accessModes:
+      - ReadWriteOnce
+    reclaimPolicy: Retain
+    storageClassName: ""
+    hostPath: /mnt/data/librechat
+    labels:
+      volume: librechat-data
+
+  - name: meili-pv
+    enabled: false                  # Disabled - using dynamic provisioning
+    component: meili
+    storage: 10Gi                   
+    accessModes:
+      - ReadWriteOnce
+    reclaimPolicy: Retain
+    storageClassName: ""
+    hostPath: /mnt/data/meili
+    labels:
+      volume: meili-data
+
+  - name: mongo-pv
+    enabled: false                  # Disabled - using dynamic provisioning
+    component: mongo
+    storage: 10Gi                   
+    accessModes:
+      - ReadWriteOnce
+    reclaimPolicy: Retain
+    storageClassName: ""
+    hostPath: /mnt/data/mongo
+    labels:
+      volume: mongo-data
+
+  # - name: pgvector-pv
+  #   enabled: false
+  #   component: pgvector
+  #   storage: 10Gi                   
+  #   accessModes:
+  #     - ReadWriteOnce
+  #   reclaimPolicy: Retain
+  #   storageClassName: ""
+  #   hostPath: /mnt/data/pgvector
+  #   labels:
+  #     volume: pgvector-data
+
+  - name: postgres-pv
+    enabled: false                  # Disabled - using dynamic provisioning
+    component: postgres
+    storage: 10Gi
+    accessModes:
+      - ReadWriteOnce
+    reclaimPolicy: Retain
+    storageClassName: ""
+    hostPath: /mnt/data/postgres
+    labels:
+      volume: postgres-data
+
+  - name: kubeintellect-runtime-tools-pv
+    enabled: false                  # Disabled - using dynamic provisioning
+    component: kubeintellect-core
+    storage: 5Gi                    
+    accessModes:
+      - ReadWriteOnce
+    reclaimPolicy: Retain
+    storageClassName: ""
+    hostPath: /mnt/data/kubeintellect-runtime-tools
+    labels:
+      volume: kubeintellect-runtime-tools-data
+
+  
+
+
+# ---------- Apps (Deployments) ----------
+apps:
+  - name: kubeintellect-core
+    enabled: true
+    replicas: 1
+    labels: { app: kubeintellect-core }
+    image: ghcr.io/mskazemi/kubeintellect-release:latest
+    imagePullSecrets: []  # GHCR images are public
+    imagePullPolicy: Always
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1001
+      capabilities: { drop: ["ALL"] }
+    ports:
+      - name: http
+        containerPort: 8000
+    initContainers:
+      - name: fix-runtime-tools-perms
+        image: busybox:1.36
+        securityContext:
+          runAsUser: 0
+          runAsGroup: 0
+        command: ["sh", "-c"]
+        args:
+          - |
+            set -eux
+            mkdir -p /mnt/runtime-tools/tools
+            chown 1001:1001 /mnt/runtime-tools/tools
+            chmod 755 /mnt/runtime-tools/tools
+        volumeMounts:
+          - name: runtime-tools-storage
+            mountPath: /mnt/runtime-tools
+    env:
+      - name: POSTGRES_HOST
+        value: "postgres"
+    envFrom:
+      - configMapRef:
+          name: kubeintellect-core-config
+      - secretRef:
+          name: kubeintellect-core-secret
+    volumeMounts:
+      - name: runtime-tools-storage
+        mountPath: /mnt/runtime-tools
+    volumes:
+      - name: runtime-tools-storage
+        pvc: kubeintellect-runtime-tools-pvc
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+    livenessProbe:
+      enabled: true
+      httpGet:
+        path: /healthz
+        port: http
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      failureThreshold: 3
+    readinessProbe:
+      enabled: true
+      httpGet:
+        path: /health
+        port: http
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      failureThreshold: 3
+
+  - name: mongodb
+    enabled: true
+    replicas: 1
+    labels: { app: mongodb }
+    image: mongo:6
+    # SECURITY: Do NOT add --noauth. Default entrypoint starts mongod with --auth
+    # automatically when MONGO_INITDB_ROOT_* env vars are set.
+    # PRE-REQUISITE: add secret MONGO-ROOT-PASSWORD to Azure Key Vault before deploy.
+    env:
+      - name: MONGO_INITDB_ROOT_USERNAME
+        value: mongouser
+      - name: MONGO_INITDB_ROOT_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: mongodb-secret
+            key: password
+    ports:
+      - name: mongo
+        containerPort: 27017
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+    volumeMounts:
+      - name: mongo-data
+        mountPath: /data/db
+    volumes:
+      - name: mongo-data
+        pvc: mongo-pvc
+
+  - name: meilisearch
+    enabled: true
+    replicas: 1
+    labels: { app: meilisearch }
+    image: getmeili/meilisearch:v1.12.3
+    envFrom:
+      - configMapRef:
+          name: librechat-env
+    ports:
+      - name: http
+        containerPort: 7700
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    volumeMounts:
+      - name: meili-data
+        mountPath: /meili_data
+    volumes:
+      - name: meili-data
+        pvc: meili-pvc
+
+  # - name: vectordb
+  #   enabled: true
+  #   replicas: 1
+  #   labels: { app: vectordb }
+  #   image: ankane/pgvector:latest
+  #   env:
+  #     - name: POSTGRES_DB
+  #       value: mydatabase
+  #     - name: POSTGRES_USER
+  #       value: myuser
+  #     - name: POSTGRES_PASSWORD
+  #       value: mypassword
+  #   ports:
+  #     - name: pg
+  #       containerPort: 5432
+  #   volumeMounts:
+  #     - name: pgvector-data
+  #       mountPath: /var/lib/postgresql/data
+  #   volumes:
+  #     - name: pgvector-data
+  #       pvc: pgvector-pvc
+
+  # - name: rag-api
+  #   enabled: true
+  #   replicas: 1
+  #   labels: { app: rag-api }
+  #   image: ghcr.io/danny-avila/librechat-rag-api-dev-lite:latest
+  #   envFrom:
+  #     - configMapRef: 
+  #         name: librechat-env
+  #   ports:
+  #     - name: http
+  #       containerPort: 8000
+
+  - name: librechat
+    enabled: true
+    replicas: 1
+    labels: { app: librechat }
+    image: ghcr.io/mskazemi/kubeintellect-frontend:latest
+    imagePullSecrets: []  # GHCR images are public
+    imagePullPolicy: Always
+
+    podSecurityContext:
+      fsGroup: 1000
+      fsGroupChangePolicy: OnRootMismatch
+
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      allowPrivilegeEscalation: false
+      capabilities: { drop: ["ALL"] }
+
+    envFrom:
+      - configMapRef: { name: librechat-env }
+      - configMapRef: { name: librechat-config }
+      - secretRef:    { name: librechat-secret }
+
+    env:
+      - { name: PASS_CONVERSATION_ID,   value: "true" }
+      - { name: DEBUG_CUSTOM_ENDPOINTS, value: "true" }
+
+    ports:
+      - { name: http, containerPort: 3080 }
+
+    # Create subdirs on fresh Azure Disk
+    initContainers:
+      - name: ensure-libchat-subdirs
+        image: busybox:1.36
+        securityContext:
+          runAsUser: 0
+          runAsGroup: 0
+        command: ["sh","-c"]
+        args:
+          - |
+            set -eux
+            echo "== PVC root =="
+            ls -la /mnt || true
+            for d in images uploads shared; do
+              mkdir -p "/mnt/$d"
+              chown 1000:1000 "/mnt/$d"
+              chmod 755 "/mnt/$d"
+            done
+            ls -la /mnt && ls -la /mnt/images /mnt/uploads /mnt/shared
+        volumeMounts:
+          - name: librechat-data
+            mountPath: /mnt
+        terminationMessagePolicy: FallbackToLogsOnError
+
+    volumeMounts:
+      - name: librechat-data
+        mountPath: /app/client/public/images
+        subPath: images
+      - name: librechat-data
+        mountPath: /app/client/public/uploads
+        subPath: uploads
+      - name: librechat-data
+        mountPath: /app/client/public/shared
+        subPath: shared
+      - name: librechat-config
+        mountPath: /app/config/config.yaml
+        subPath: config.yaml
+      - name: librechat-config
+        mountPath: /app/librechat.yaml
+        subPath: librechat.yaml
+
+    volumes:
+      - name: librechat-data
+        pvc: librechat-pvc
+      - name: librechat-config
+        configMap:
+          name: librechat-config
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  # KubeIntellect checkpoints: Create a PostgreSQL deployment with persistent storage in Kubernetes for KubeIntellect checkpoints
+  - name: postgres
+    enabled: true
+    replicas: 1
+    labels: { app: postgres }
+    image: postgres:15
+    ports:
+      - name: postgres
+        containerPort: 5432
+    env:
+      - name: POSTGRES_DB
+        value: kubeintellectdb
+      - name: POSTGRES_USER
+        value: kubeuser
+      - name: POSTGRES_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: postgres-secret
+            key: password
+    # Init container to clean lost+found directory created by filesystem
+    initContainers:
+      - name: init-postgres-data
+        image: busybox:1.36
+        securityContext:
+          runAsUser: 0
+          runAsGroup: 0
+        command: ["sh","-c"]
+        args:
+          - |
+            set -eux
+            echo "== Cleaning postgres data directory =="
+            ls -la /mnt || true
+            # Remove lost+found if it exists (created by filesystem)
+            rm -rf /mnt/lost+found || true
+            # Ensure directory is empty or contains valid postgres data
+            if [ "$(ls -A /mnt 2>/dev/null)" ]; then
+              echo "Directory contains data, checking if it's valid postgres data..."
+              if [ ! -f /mnt/PG_VERSION ]; then
+                echo "No PG_VERSION found, cleaning directory..."
+                rm -rf /mnt/* /mnt/..?* /mnt/.[!.]* || true
+              fi
+            fi
+            ls -la /mnt
+        volumeMounts:
+          - name: postgres-data
+            mountPath: /mnt
+        terminationMessagePolicy: FallbackToLogsOnError
+    volumeMounts:
+      - name: postgres-data
+        mountPath: /var/lib/postgresql/data
+    volumes:
+      - name: postgres-data
+        pvc: postgres-pvc
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+
+# ---------- Services ----------
+
+services:
+  # Core web service (defaults shown)
+  - name: kubeintellect-core-service
+    enabled: true
+    type: ClusterIP
+    selector:
+      app: kubeintellect-core
+    ports:
+      - name: http
+        port: 80
+        targetPort: 8000        # or 8000; must match container
+        protocol: TCP
+
+  # LibreChat UI
+  - name: librechat
+    enabled: true
+    type: ClusterIP
+    selector:
+      app: librechat
+    ports:
+      - name: http
+        port: 3080
+        targetPort: 3080
+
+  - name: meilisearch
+    enabled: true
+    type: ClusterIP
+    selector: { app: meilisearch }
+    ports:
+      - name: http
+        port: 7700
+        targetPort: 7700
+
+  - name: postgres # this is for the postgres for the checkpoints and the protrol TCP
+    enabled: true
+    type: ClusterIP
+    selector: { app: postgres }
+    ports:
+      - name: postgres
+        port: 5432
+        targetPort: 5432
+
+  # MongoDB
+  - name: mongodb
+    enabled: true
+    type: ClusterIP
+    selector:
+      app: mongodb
+    ports:
+      - name: mongo
+        port: 27017
+        targetPort: 27017
+
+
+# ---------- Ingress ----------
+ingresses:
+  # --- LibreChat UI in kubeintellect namespace ---
+  - name: librechat
+    enabled: true
+    namespace: kubeintellect
+    className: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/rewrite-target: /
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    rules:
+      - host: chat.kubeintellect.com
+        paths:
+          - path: /
+            pathType: Prefix
+            service:
+              name: librechat
+              port: 3080
+    tls:
+      - secretName: chat-kubeintellect-tls
+        hosts:
+          - chat.kubeintellect.com
+  
+  # --- Monitoring (Prometheus + Grafana) in the prometheus namespace ---
+  - name: monitoring-ingress
+    enabled: true
+    namespace: kubeintellect
+    className: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/rewrite-target: /
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    rules:
+      - host: prometheus.kubeintellect.com
+        paths:
+          - path: /
+            pathType: Prefix
+            service:
+              name: prometheus-kube-prometheus-prometheus
+              port: 9090        # numeric
+      - host: grafana.kubeintellect.com
+        paths:
+          - path: /
+            pathType: Prefix
+            service:
+              name: prometheus-grafana
+              port: 80
+    tls:
+      - secretName: monitoring-kubeintellect-tls
+        hosts:
+          - prometheus.kubeintellect.com
+          - grafana.kubeintellect.com
+
+  # --- KubeIntellect API in kubeintellect namespace ---
+  - name: kubeintellect-ingress
+    enabled: true
+    namespace: kubeintellect
+    className: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/rewrite-target: /
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+      nginx.ingress.kubernetes.io/proxy-connect-timeout: "300"
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    rules:
+      - host: api.kubeintellect.com
+        paths:
+          - path: /
+            pathType: Prefix
+            service:
+              name: kubeintellect-core-service
+              port: 80
+    tls:
+      - secretName: api-kubeintellect-tls
+        hosts:
+          - api.kubeintellect.com
+
+
+
+# ---------- ConfigMaps ----------
+configMaps:
+  - name: librechat-config
+    data:
+      # Two keys; your deployment mounts both as subPaths
+      config.yaml: |
+        # put any app config here if needed
+      librechat.yaml: |
+        version: 1.2.6
+        # cache: true
+        # interface:
+        #   modelSelect: true  # Required for addedEndpoints to work
+        #   # ... your other interface settings
+        endpoints:
+          custom:
+            - name: "KubeIntellect"
+              apiKey: "${KUBEINTELLECT_API_KEY}"
+              baseURL: "http://kubeintellect-core-service.kubeintellect.svc.cluster.local/v1"
+              models:
+                default: ["kubeintellect-pipeline"]
+                available: ["kubeintellect-pipeline"]
+                fetch: false
+              titleConvo: true
+              titleModel: "kubeintellect-pipeline"
+              summarize: false
+              summaryModel: "current_model"
+              forcePrompt: false
+              modelDisplayLabel: "KubeIntellect"
+              provider: "custom"
+              streaming: true
+              dynamicHeaders:
+                - header: "X-Conversation-Id"
+                  value: "${conversationId}"
+                - header: "X-User-Id"
+                  value: "${userId}"
+        # # Filter to only show KubeIntellect endpoint in the UI
+        # modelSpecs:
+        #   addedEndpoints:
+        #     - kubeintellect  # Must match the normalized name (lowercase of "KubeIntellect")
+  - name: kubeintellect-core-config
+    enabled: true
+    data:
+      LLM_PROVIDER: "azure"
+      API_V1_STR: "/v1"
+      AZURE_OPENAI_ENDPOINT: "https://<your-resource-name>.openai.azure.com/"
+      AZURE_OPENAI_API_VERSION: "2024-08-01-preview"
+      AZURE_PRIMARY_LLM_DEPLOYMENT_NAME: "gpt-4o"
+      SUPERVISOR_AZURE_DEPLOYMENT_NAME: "gpt-4o"
+      KUBEINTELLECT_LANGSMITH_TRACING_ENABLED: "true"
+      LANGCHAIN_PROJECT: "kubeintellect"
+
+  - name: librechat-env
+    enabled: true
+    data:
+      HOST: "0.0.0.0"
+      PORT: "3080"
+      # MONGO_URI is intentionally omitted here — it comes from librechat-secret (ESO)
+      # so it can include the MongoDB password without it appearing in a ConfigMap.
+      # Key Vault secret: MONGO-URI  →  mongodb://mongouser:<pass>@mongodb:27017/LibreChat?authSource=admin
+      DOMAIN_SERVER: "http://chat.local"
+      DOMAIN_CLIENT: "http://chat.local"
+      NO_INDEX: "true"
+      TRUST_PROXY: "1"
+      CONSOLE_JSON: "false"
+      DEBUG_LOGGING: "true"
+      DEBUG_CONSOLE: "false"
+      # OPENAI_MODELS: "gpt-3.5-turbo-16k"
+      DEBUG_OPENAI: "false"
+      # DEBUG_PLUGINS: "true"
+      # Disable default endpoints to show only KubeIntellect
+      DISABLE_OPENAI: "true"
+      DISABLE_AGENTS: "true"
+      DISABLE_PLUGINS: "true"
+      SEARCH: "true"
+      MEILI_NO_ANALYTICS: "true"
+      MEILI_HOST: "http://meilisearch:7700"
+      APP_TITLE: "LibreChat"
+      HELP_AND_FAQ_URL: "https://librechat.ai"
+      ALLOW_SHARED_LINKS: "true"
+      ALLOW_SHARED_LINKS_PUBLIC: "true"
+      ALLOW_EMAIL_LOGIN: "true"
+      ALLOW_REGISTRATION: "true"
+      ALLOW_SOCIAL_LOGIN: "false"
+      ALLOW_SOCIAL_REGISTRATION: "false"
+      ALLOW_PASSWORD_RESET: "false"
+      ALLOW_UNVERIFIED_EMAIL_LOGIN: "true"
+      KUBECONFIG_PATH: "/home/cloud/.kube/config"
+      # Conversation tracking flags
+      PASS_CONVERSATION_ID: "true"
+      INCLUDE_CONVERSATION_ID: "true"
+      CUSTOM_ENDPOINT_PASS_HEADERS: "true"
+      CUSTOM_ENDPOINT_CONVERSATION_TRACKING: "true"
+
+
+# --- Azure Key Vault + External Secrets Operator ---
+# All secret values live in AKV. ESO syncs them into K8s Secrets automatically.
+# Run docs/setup-azure-keyvault-secrets.md to provision AKV and the managed identity.
+azureKeyVault:
+  url: "https://<your-keyvault-name>.vault.azure.net/"
+  clientId: "<managed-identity-client-id>"
+  tenantId: "<azure-tenant-id>"
+
+externalSecrets:
+  enabled: true
+  refreshInterval: "1h"   # how often ESO re-syncs from AKV
+
+# Legacy inline secrets block — disabled when ESO is active (enabled: false per secret).
+# Re-enable only for local/kind clusters without AKV.
+secrets:
+  # --- 1. KubeIntellect core app secret (disabled — managed by ESO)
+  - name: kubeintellect-core-secret
+    enabled: false
+    type: Opaque
+    data: {}
+
+  # --- 2. Docker registry credentials (disabled — managed by ESO)
+  - name: ghcr-creds
+    enabled: false
+    type: kubernetes.io/dockerconfigjson
+    data: {}
+
+  # --- 3. PostgreSQL DB secret (disabled — managed by ESO)
+  - name: postgres-secret
+    enabled: false
+    type: Opaque
+    data: {}
+
+  # --- 4. LibreChat secret (disabled — managed by ESO)
+  - name: librechat-secret
+    enabled: false
+    type: Opaque
+    stringData: {}
+
+
+postgres:
+  host: postgres.kubeintellect.svc.cluster.local
+  port: "5432"
+  db: kubeintellectdb
+  user: kubeuser
+  secretName: postgres-secret
+  secretKey: password
+  imageTag: "15"
+
+# ---------- PostgreSQL Automated Backup ----------
+# Runs pg_dump daily and stores backups in postgres-backup-pvc.
+# Retention: delete dumps older than retentionDays (default: 30).
+pgBackup:
+  enabled: true
+  schedule: "0 3 * * *"   # 03:00 UTC daily (offset from MongoDB backup at 02:00)
+  retentionDays: 30
+
+
+# =====================================================
+
+
+
+
+# image:
+#   repository: ghcr.io/mskazemi/kubeintellect-release
+#   tag: latest
+#   pullPolicy: Always
+#   pullSecrets: ghcr-creds
+
+# postgres:
+#   enabledInitWait: true
+#   hostname: postgres
+#   port: 5432
+
+# volume:
+#   enabled: true
+#   type: hostPath
+#   hostPath: /mnt/code/KubeIntellect
+#   pvc:
+#     claimName: ""
+#   mountPath: /app
+
+# core:
+#   replicaCount: 1
+#   revisionHistoryLimit: 10
+#   progressDeadlineSeconds: 600
+#   ports:
+#     http: 8000
+#   env:
+#     KI_TOOLSET: "all"
+
+
+# Probes are configured per-app above (livenessProbe / readinessProbe under each apps entry).
+
+
+
+# volumeMounts:
+#   - name: librechat-config
+#     mountPath: /app/config/config.yaml
+#     subPath: config.yaml
+#   - name: librechat-config
+#     mountPath: /app/librechat.yaml
+#     subPath: librechat.yaml
+# volumes:
+#   - name: librechat-config
+#     configMap:
+#       name: librechat-config
+
+
+
+
+
+  # librechat.yaml: |
+  #   version: 1.2.6 # Ensure this version is compatible with the features you're using
+  #   endpoints:
+  #     custom:
+  #       - name: "OpenRouter"
+  #         apiKey: "${OPENROUTER_KEY}" # Ensure OPENROUTER_KEY is available as an environment variable to the LibreChat pod
+  #         baseURL: "https://openrouter.ai/api/v1"
+  #         models:
+  #           default: ["gpt-3.5-turbo"]
+  #           fetch: true
+  #         titleConvo: true
+  #         titleModel: "current_model"
+  #         summarize: false
+  #         summaryModel: "current_model"
+  #         forcePrompt: false
+  #         modelDisplayLabel: "OpenRouter"
+
+  #       - name: "Ollama"
+  #         apiKey: "ollama" # This is often a placeholder for Ollama as it doesn't require an API key by default
+  #         # In Kubernetes, 'host.docker.internal' will not resolve.
+  #         # You should use the Kubernetes service name for Ollama.
+  #         # e.g., baseURL: "http://ollama-service.kubeintellect.svc.cluster.local:11434/v1/"
+  #         # if your Ollama service is named 'ollama-service' in the 'kubeintellect' namespace.
+  #         baseURL: "http://host.docker.internal:11434/v1/" # <<< REVIEW THIS FOR KUBERNETES
+  #         models:
+  #           default: [
+  #             "llama3:latest",
+  #             "command-r",
+  #             "mixtral",
+  #             "phi3"
+  #             ]
+  #           fetch: false # Ollama fetch:true might not always list models perfectly, false is safer if you define them.
+  #                        # If true, ensure the API endpoint for models is reachable and returns expected format.
+  #         titleConvo: true
+  #         titleModel: "current_model"
+
+  #       - name: "KubeIntellect"
+  #         apiKey: "your_api_key_or_dummy" # Replace with your actual API key if KubeIntellect requires one, or remove if not.
+  #         baseURL: "http://kubeintellect-core-service.kubeintellect.svc.cluster.local/v1"
+  #         models:
+  #           default: ["kubeintellect-pipeline"]
+  #           available: ["kubeintellect-pipeline"] # 'available' is often used interchangeably or instead of 'default' for the list.
+  #           fetch: false # Set to true if your KubeIntellect /models endpoint can provide a list. Otherwise, define 'available' manually.
+  #         titleConvo: true
+  #         titleModel: "kubeintellect-pipeline" # Model used for generating titles
+  #         summarize: false
+  #         forcePrompt: false # Set to true if KubeIntellect requires a specific system prompt prepended.
+  #         modelDisplayLabel: "KubeIntellect"
+  #         provider: "custom" # Important: Identifies this as a custom endpoint type.
+  #         streaming: true    # Ensure your KubeIntellect backend supports streaming responses if true.
+  #         #  MY (MOHSEN) TESTING BELOW FOR CONVERSATION ID PASSING NOT WORKING
+  #         # addParams:
+  #         #   conversation_id: "{{conversationId}}"
+  #         #   messageId: "{{messageId}}"
+  #         #   userId: "{{userId}}"
+  #         # headers: # <<< Mohsen add this for testing TODO: TEST THIS
+  #           # X-Conversation-Id: "${conversationId}"
+  #           # X-User-Id: "${userId}"
+  #         dynamicHeaders:
+  #         - header: "X-Conversation-Id"
+  #           value: "${conversationId}"
+  #         - header: "X-User-Id"
+  #           value: "${userId}"
+  #         # headers:
+  #           # - header: "XX-Conversation-Id"
+  #         #     value: "conversationId"
+  #         #   - header: "XX-Message-Id"
+  #         #     value: "messageId"
+  #         #   - header: "XX-User-Id"
+  #         #     value: "userId"
+  #         # Corrected way to pass conversationId (and potentially userId) as a header:
+  #         # dynamicHeaders:
+  #           # - header: "X-Conversation-Id" # The header name your KubeIntellect API expects
+  #             # value: "conversationId"    # LibreChat's internal variable name for conversation ID.
+  #         #   - header: "X-Message-Id"
+  #         #     value: "messageId"
+  #           # - header: "X-User-Id"
+  #             # value: "userId" 
+  #         #   # If you also need the user ID, you can add it similarly:
+  #         #   # - header: "X-User-Id"
+  #         #   #   value: "userId"
+  #         # dynamicHeaders:
+  #           # X-Conversation-Id": "{{conversationId}}"    # LibreChat's internal variable name for conversation ID.
+  #           # X-Message-Id": "{{messageId}}"
+  #           # X-User-Id": "{{userId}}"
+  #           # 
+  #             # value: "userId" 
+  #           # If you also need the user ID, you can add it similarly:
+  #           # - header: "X-User-Id"
+  #           #   value: "userId"
+  #         # Regarding 'additionalParameters' for sending IDs in the request body:
+  #         # As you've experienced, direct interpolation like '{{conversationId}}' in 'additionalParameters'
+  #         # often doesn't work for custom endpoints or might not be supported for dynamic values.
+  #         # LibreChat might automatically include 'conversationId' or similar fields in the
+  #         # main request body if the endpoint is recognized as stateful, or it might not.
+  #         #
+  #         # If you absolutely need the ID in the body and it's not there by default:
+  #         # 1. First, check your KubeIntellect logs to see the full request body LibreChat sends
+  #         #    WITHOUT 'additionalParameters' for the ID. It might already be there under some name.
+  #         # 2. If not, relying on the header (via 'dynamicHeaders') is usually more reliable.
+  #         # 3. Advanced: Some configurations might require 'overrideBody: true' and a full custom
+  #         #    body template, but the syntax for injecting variables there needs to be specific
+  #         #    to LibreChat's templating engine for that context.
+  #         #
+  #         # For now, this 'additionalParameters' block is commented out as it was problematic.
+  #         # additionalParameters:
+  #         #   thread_id: "{{conversationId}}" # This is unlikely to work as desired
+  #         #   conversation_id: "{{conversationId}}" # This is unlikely to work as desired
+
+  #         # If your LibreChat version requires it for dynamic values to be available,
+  #         # you might also need a 'passthrough' section, though 'dynamicHeaders' is often sufficient.
+  #         # passthrough: ["conversationId", "userId"] # Uncomment if testing shows it's needed.
+
+
+
+
+# I dont have pv for the following, in the old version.
+  # - name: meili-data-pv
+  #   enabled: true
+  #   component: meilisearch
+  #   storage: 10Gi
+  #   accessModes: [ReadWriteOnce]
+  #   reclaimPolicy: Retain
+  #   storageClassName: default
+  #   hostPath: /mnt/data/meili
+
+  # - name: mongo-data-pv
+  #   enabled: true
+  #   component: mongodb
+  #   storage: 10Gi
+  #   accessModes: [ReadWriteOnce]
+  #   reclaimPolicy: Retain
+  #   storageClassName: default
+  #   hostPath: /mnt/data/mongodb
+
+  # - name: vectordb-data-pv
+  #   enabled: true
+  #   component: vectordb
+  #   storage: 10Gi
+  #   accessModes: [ReadWriteOnce]
+  #   reclaimPolicy: Retain
+  #   storageClassName: default
+  #   hostPath: /mnt/data/vectordb
+langfuse:
+  enabled: false

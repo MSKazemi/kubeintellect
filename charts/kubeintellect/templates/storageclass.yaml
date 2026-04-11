@@ -1,0 +1,41 @@
+{{- /*
+StorageClass for Azure managed disks with Retain reclaim policy.
+This ensures PVs persist even after PVC deletion.
+*/ -}}
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: managed-csi-retain
+  labels:
+    app.kubernetes.io/name: {{ include "kubeintellect.name" . }}
+provisioner: disk.csi.azure.com
+parameters:
+  skuName: Standard_LRS
+  cachingMode: ReadOnly
+reclaimPolicy: Retain
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
+---
+{{- /*
+StorageClass for Azure Files (SMB) — supports ReadWriteMany.
+Required for the runtime-tools PVC when replicas > 1.
+*/ -}}
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: azurefile-csi-retain
+  labels:
+    app.kubernetes.io/name: {{ include "kubeintellect.name" . }}
+provisioner: file.csi.azure.com
+parameters:
+  skuName: Standard_LRS
+reclaimPolicy: Retain
+allowVolumeExpansion: true
+volumeBindingMode: Immediate
+mountOptions:
+  - dir_mode=0755
+  - file_mode=0644
+  - uid=1000
+  - gid=1000
+

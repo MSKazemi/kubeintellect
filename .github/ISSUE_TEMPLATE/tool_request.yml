@@ -1,0 +1,41 @@
+name: Tool Request
+description: Request a new static Kubernetes tool
+labels: ["tool-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Static tools are Python functions that call the Kubernetes API and return structured results.
+        See [`docs/architecture.md`](../../docs/architecture.md) and the [contributing guide](../../CONTRIBUTING.md) for how tools are structured.
+
+  - type: input
+    id: resource
+    attributes:
+      label: Kubernetes resource type
+      placeholder: "e.g. HorizontalPodAutoscaler, NetworkPolicy, PodDisruptionBudget"
+    validations:
+      required: true
+
+  - type: input
+    id: operation
+    attributes:
+      label: Operation
+      placeholder: "e.g. list with status, describe, get events for"
+    validations:
+      required: true
+
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use case
+      description: What query would a user ask that needs this tool?
+      placeholder: "e.g. 'Why is my HPA not scaling?' or 'Show me all NetworkPolicies blocking ingress to my pod'"
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Expected output schema
+      description: What fields should the tool return? (structured, not raw YAML)
+      placeholder: "e.g. { name, namespace, current_replicas, desired_replicas, conditions[] }"

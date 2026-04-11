@@ -1,0 +1,78 @@
+{{/* templates/pg-backup-cronjob.yaml */}}
+{{- $ns := .Values.namespace | default .Release.Namespace -}}
+{{- with .Values.pgBackup }}
+{{- if .enabled }}
+{{- $pg := $.Values.postgres | default dict }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: {{ $ns | quote }}
+  labels:
+    app: postgres-backup
+spec:
+  schedule: {{ .schedule | default "0 3 * * *" | quote }}   # 03:00 UTC daily
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999   # postgres uid
+            fsGroup: 999
+          containers:
+            - name: pg-dump
+              image: postgres:{{ $pg.imageTag | default "15" }}
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ $pg.secretName | default "postgres-secret" | quote }}
+                      key: {{ $pg.secretKey | default "password" | quote }}
+                - name: PGHOST
+                  value: {{ $pg.host | default "postgres.kubeintellect.svc.cluster.local" | quote }}
+                - name: PGPORT
+                  value: {{ $pg.port | default "5432" | quote }}
+                - name: PGUSER
+                  value: {{ $pg.user | default "kubeuser" | quote }}
+                - name: PGDATABASE
+                  value: {{ $pg.db | default "kubeintellectdb" | quote }}
+                - name: RETENTION_DAYS
+                  value: {{ .retentionDays | default 30 | quote }}
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  BACKUP_DIR=/backups
+                  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                  BACKUP_FILE="${BACKUP_DIR}/pg-${PGDATABASE}-${TIMESTAMP}.dump"
+
+                  echo "Starting pg_dump → ${BACKUP_FILE}"
+                  pg_dump --format=custom --compress=9 --file="${BACKUP_FILE}"
+                  echo "Backup complete: $(du -sh ${BACKUP_FILE} | cut -f1)"
+
+                  echo "Removing backups older than ${RETENTION_DAYS} days …"
+                  find "${BACKUP_DIR}" -name "pg-*.dump" -mtime "+${RETENTION_DAYS}" -delete
+                  echo "Retention cleanup done."
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backups
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: postgres-backup-pvc
+{{- end }}
+{{- end }}
