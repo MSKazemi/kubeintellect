@@ -1,0 +1,48 @@
+[project]
+name = "kubeintellect"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.6",
+    "openai>=1.57",
+    "python-dotenv>=1.0",
+    "langchain>=0.3",
+    "langchain-openai>=0.2",
+    "langchain-community>=0.3",
+    "langchain-experimental>=0.3",
+    "langgraph>=0.2",
+    "langsmith>=0.2",
+    "httpx>=0.28",
+    "kubernetes>=31",
+    "pyppeteer>=2.0",
+    "psycopg2-binary>=2.9",
+    "psycopg[binary,pool]>=3.1",
+    "langgraph-checkpoint-postgres>=2.0",
+    "pymongo>=4.10",
+    "requests>=2.32",
+    "langfuse>=2.0",
+    "opentelemetry-api>=1.0",
+    "prometheus-fastapi-instrumentator>=7.1.0",
+    "pygithub>=2.9.0",
+    "mcp[cli]>=1.26.0",
+    "rich>=14.3.3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-mock>=3.14",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
