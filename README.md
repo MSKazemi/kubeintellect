@@ -4,7 +4,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-2496ED?logo=docker&logoColor=white)](https://github.com/MSKazemi/kubeintellect/pkgs/container/kubeintellect-release)
 [![Build](https://github.com/MSKazemi/kubeintellect/actions/workflows/docker-ghcr.yml/badge.svg)](https://github.com/MSKazemi/kubeintellect/actions/workflows/docker-ghcr.yml)
-[![Docs](https://img.shields.io/badge/docs-mskazemi.github.io-0075C4?logo=materialformkdocs&logoColor=white)](https://mskazemi.github.io/kubeintellect/)
+[![Docs](https://img.shields.io/badge/docs-kubeintellect.com-0075C4?logo=materialformkdocs&logoColor=white)](https://kubeintellect.com/)
 
 **Chat with your Kubernetes cluster in plain English. Get root cause analysis, not just log dumps.**
 
@@ -98,7 +98,7 @@ Access summary is printed at the end of every deploy. Run `make help` for all av
 make azure-deploy-all    # login → provision AKS → push secrets to Key Vault → deploy
 ```
 
-Full step-by-step: [docs/installation](https://mskazemi.github.io/kubeintellect/installation/)
+Full step-by-step: [docs/installation](https://kubeintellect.com/installation/)
 
 ---
 
@@ -150,7 +150,7 @@ DEV_USER_EMAIL=you@example.com
 DEV_USER_PASSWORD=yourpassword
 ```
 
-Full credential flow, Azure Key Vault setup, and troubleshooting: [docs/development](https://mskazemi.github.io/kubeintellect/development/)
+Full credential flow, Azure Key Vault setup, and troubleshooting: [docs/development](https://kubeintellect.com/development/)
 
 ---
 
@@ -197,7 +197,7 @@ graph TD
   SUP --> OBS
 ```
 
-Full architecture with detailed diagrams: [docs/architecture](https://mskazemi.github.io/kubeintellect/architecture/)
+Full architecture with detailed diagrams: [docs/architecture](https://kubeintellect.com/architecture/)
 
 ---
 
@@ -291,27 +291,27 @@ Provides 37 tools, 7 resources, and 5 prompts covering the full Kubernetes opera
 }
 ```
 
-See [docs/architecture](https://mskazemi.github.io/kubeintellect/architecture/) → *Client Interfaces* for VS Code config and full tool list.
+See [docs/architecture](https://kubeintellect.com/architecture/) → *Client Interfaces* for VS Code config and full tool list.
 
 ---
 
 ## Documentation
 
-**Full documentation:** [mskazemi.github.io/kubeintellect](https://mskazemi.github.io/kubeintellect/)
+**Full documentation:** [kubeintellect.com](https://kubeintellect.com/)
 
 | Topic | Link |
 |---|---|
-| Local development (Kind), hot-reload, full credential setup | [docs/development](https://mskazemi.github.io/kubeintellect/development/) |
-| Production deployment (Azure AKS) | [docs/installation](https://mskazemi.github.io/kubeintellect/installation/) |
-| System design and detailed diagrams | [docs/architecture](https://mskazemi.github.io/kubeintellect/architecture/) |
-| Interactive flowcharts (Mermaid) | [docs/flowcharts](https://mskazemi.github.io/kubeintellect/flowcharts/) |
-| HITL approval flow | [docs/hitl](https://mskazemi.github.io/kubeintellect/hitl/) |
-| CodeGenerator security model | [docs/security-model](https://mskazemi.github.io/kubeintellect/security-model/) |
-| Secret management (Azure KV + ESO) | [docs/secret-management](https://mskazemi.github.io/kubeintellect/secret-management/) |
-| Observability stack (Langfuse, Prometheus, Loki) | [docs/observability](https://mskazemi.github.io/kubeintellect/observability/) |
-| Runbook and known issues | [docs/runbook](https://mskazemi.github.io/kubeintellect/runbook/) |
-| Multi-user concurrency | [docs/concurrency](https://mskazemi.github.io/kubeintellect/concurrency/) |
-| GDPR and data retention | [docs/gdpr](https://mskazemi.github.io/kubeintellect/gdpr/) |
+| Local development (Kind), hot-reload, full credential setup | [docs/development](https://kubeintellect.com/development/) |
+| Production deployment (Azure AKS) | [docs/installation](https://kubeintellect.com/installation/) |
+| System design and detailed diagrams | [docs/architecture](https://kubeintellect.com/architecture/) |
+| Interactive flowcharts (Mermaid) | [docs/flowcharts](https://kubeintellect.com/flowcharts/) |
+| HITL approval flow | [docs/hitl](https://kubeintellect.com/hitl/) |
+| CodeGenerator security model | [docs/security-model](https://kubeintellect.com/security-model/) |
+| Secret management (Azure KV + ESO) | [docs/secret-management](https://kubeintellect.com/secret-management/) |
+| Observability stack (Langfuse, Prometheus, Loki) | [docs/observability](https://kubeintellect.com/observability/) |
+| Runbook and known issues | [docs/runbook](https://kubeintellect.com/runbook/) |
+| Multi-user concurrency | [docs/concurrency](https://kubeintellect.com/concurrency/) |
+| GDPR and data retention | [docs/gdpr](https://kubeintellect.com/gdpr/) |
 
 ---
 
