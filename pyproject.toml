@@ -49,6 +49,12 @@ testpaths = ["tests"]
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
 
+[project.urls]
+Homepage = "https://kubeintellect.com/"
+Documentation = "https://kubeintellect.com/"
+Repository = "https://github.com/MSKazemi/kubeintellect"
+Issues = "https://github.com/MSKazemi/kubeintellect/issues"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

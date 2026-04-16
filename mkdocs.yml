@@ -1,6 +1,6 @@
 site_name: KubeIntellect
 site_description: AI-powered Kubernetes management — chat with your cluster in plain English
-site_url: https://mskazemi.github.io/kubeintellect/
+site_url: https://kubeintellect.com/
 site_author: Mohsen Seyedkazemi Ardebili
 repo_name: MSKazemi/kubeintellect
 repo_url: https://github.com/MSKazemi/kubeintellect
@@ -12,6 +12,7 @@ copyright: >
 # ─── Theme ────────────────────────────────────────────────────────────────────
 theme:
   name: material
+  custom_dir: overrides
   logo: assets/logo.svg
   favicon: assets/logo.svg
 
@@ -149,6 +150,7 @@ extra:
 # ─── Navigation ───────────────────────────────────────────────────────────────
 nav:
   - Home: index.md
+  - AI Kubernetes Debugging: kubernetes-ai-debugging.md
 
   - Getting Started:
     - Installation & Deployment: installation.md
