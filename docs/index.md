@@ -129,7 +129,7 @@ You (kq CLI or any OpenAI-compatible client)
 │  └──────────┘  └────────────┘  └───────────────┘  │
 │                                                   │
 │  Complex issues → fan out to 4 parallel agents:   │
-│  pod │ metrics │ logs │ events → synthesise        │
+│  pod │ metrics │ logs │ events → synthesise       │
 └───────────────────────────────────────────────────┘
      │  HITL interrupt on every destructive command
      ▼
