@@ -1,0 +1,85 @@
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║     KubeIntellect — Managed Kubernetes (AKS / EKS / GKE) Values            ║
+# ║                                                                              ║
+# ║  1. Copy: cp deploy/helm/kubeintellect/values-cloud.yaml.example \          ║
+# ║              deploy/helm/kubeintellect/values-cloud.yaml                    ║
+# ║  2. Fill in the blanks below                                                 ║
+# ║  3. Deploy: make aks-deploy                                                  ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+# ── Image ─────────────────────────────────────────────────────────────────────
+image:
+  repository: ghcr.io/mskazemi/kubeintellect-v2
+  tag: dev-latest
+  pullPolicy: Always     # cloud deployments always pull to pick up new tags
+
+replicaCount: 2          # multiple replicas for HA on managed clusters
+
+# ── Ingress ───────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: nginx        # AKS: nginx | azure/application-gateway
+                          # EKS: alb
+                          # GKE: gce | nginx
+  host: api.your-domain.com
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls:
+    - secretName: kubeintellect-tls
+      hosts:
+        - api.your-domain.com
+
+# ── LLM Provider ──────────────────────────────────────────────────────────────
+config:
+  llmProvider: azure    # azure | openai
+
+# ── Observability — bring your own ────────────────────────────────────────────
+# On managed clusters Prometheus/Loki are often already installed.
+# Point KubeIntellect at your existing services.
+  prometheusUrl: ""   # e.g. http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+  lokiUrl: ""         # e.g. http://loki.monitoring.svc.cluster.local:3100
+
+# ── Database ──────────────────────────────────────────────────────────────────
+# On managed clusters, use a managed database service instead of in-cluster Postgres.
+# AKS: Azure Database for PostgreSQL (Flexible Server)
+# EKS: Amazon RDS for PostgreSQL
+# GKE: Cloud SQL for PostgreSQL
+#
+# Set DATABASE_URL in .env and enable external mode:
+postgres:
+  external:
+    enabled: true
+    url: ""    # postgresql://user:password@host:5432/kubeintellect
+               # (or set DATABASE_URL in .env — the Makefile passes it via --set)
+# To use in-cluster postgres instead, comment out external and uncomment:
+# postgres:
+#   external:
+#     enabled: false
+#   storage: 50Gi
+#   storageClass: managed-premium   # AKS: managed-premium | EKS: gp2 | GKE: pd-ssd
+#   password: ""
+
+# ── RBAC ──────────────────────────────────────────────────────────────────────
+rbac:
+  clusterAdmin: false
+  createClusterReadOnly: true
+  createClusterOps: true
+  allowExec: false
+  enableNamespaceManagement: false
+
+# ── Resources ─────────────────────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+# ── LLM Tracing — Langfuse (optional) ────────────────────────────────────────
+# On cloud clusters, managed Langfuse Cloud is often simpler than self-hosting.
+langfuse:
+  enabled: false
+  selfHosted: false
+  # host: https://cloud.langfuse.com
+  # publicKey and secretKey go in .env as LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY

@@ -1,457 +1,213 @@
-# app/core/config.py
+from __future__ import annotations
 
-import os
-from typing import Optional, Any # Added Dict for root_validator
-from dotenv import load_dotenv
-from pydantic import HttpUrl, Field, ValidationError, model_validator # model_validator for Pydantic v2 root validation
+import logging
+from pathlib import Path
+from typing import Optional
+
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-try:
-    from app.utils.logger_config import setup_logging
-    logger = setup_logging(app_name="kubeintellect")
-except ImportError:
-    # Fallback basic logger if the custom setup is not available
-    import logging
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s')
-    logger = logging.getLogger("kubeintellect.config.fallback")
-    logger.warning("Custom logger from 'app.utils.logger_config' not found. Using fallback basicConfig.")
-
-
-load_dotenv()
-
+# ~/.kubeintellect/.env is written by `kubeintellect init` for laptop installs.
+# The project-local .env (CWD) overrides it so developers can still override
+# settings per-project without touching the global config.
+_HOME_ENV = Path.home() / ".kubeintellect" / ".env"
 
 
 class Settings(BaseSettings):
-
-    # API Configuration
-    API_V1_STR: str = Field(default="/v1", description="API version string.")
-
-    # General LLM Provider Configuration
-    LLM_PROVIDER: str = Field(default="azure", description="The primary LLM provider: 'azure', 'openai', or 'litellm'.")
-
-    # --- Azure OpenAI General Configuration ---
-    # These are critical if LLM_PROVIDER is 'azure'
-    AZURE_OPENAI_API_KEY: Optional[str] = Field(default=None, description="Azure OpenAI API Key.")
-    AZURE_OPENAI_ENDPOINT: str = Field(default=None, description="Azure OpenAI Endpoint URL (e.g., 'https://your-resource-name.openai.azure.com/').")
-    AZURE_OPENAI_API_VERSION: str = Field(default="2024-02-01", description="Azure OpenAI API version.")
-
-    # --- Primary LLM Configuration (using Azure) ---
-    AZURE_PRIMARY_LLM_DEPLOYMENT_NAME: Optional[str] = Field(default=None, description="Azure deployment name for the primary LLM (e.g., gpt-3.5-turbo model).")
-    AZURE_PRIMARY_LLM_TEMPERATURE: float = Field(default=0.0, ge=0.0, le=2.0, description="Temperature for the primary LLM.")
-    AZURE_PRIMARY_LLM_TOP_P: float = Field(default=1.0, ge=0.0, le=1.0, description="Top P for the primary LLM.")
-    AZURE_PRIMARY_LLM_MAX_TOKENS: int = Field(default=4096, gt=0, description="Max tokens for the primary LLM response.")
-
-    # --- Supervisor LLM Configuration ---
-    SUPERVISOR_LLM_MODEL: str = Field(default="gpt-4o", description="Generic model identifier for the supervisor LLM.")
-    SUPERVISOR_AZURE_DEPLOYMENT_NAME: str = Field(default="gpt-4o", description="Azure deployment name for the supervisor LLM. Used if LLM_PROVIDER is 'azure'.")
-    SUPERVISOR_LLM_TEMPERATURE: float = Field(default=0.0, ge=0.0, le=2.0, description="Temperature for the supervisor LLM.")
-    SUPERVISOR_LLM_TOP_P: float = Field(default=1.0, ge=0.0, le=1.0, description="Top P for the supervisor LLM.")
-    SUPERVISOR_LLM_MAX_TOKENS: int = Field(default=1024, gt=0, description="Max tokens for the supervisor LLM response.")
-
-    # --- Code Generator LLM Configuration ---
-    CODE_GEN_LLM_MAX_TOKENS: int = Field(default=4000, gt=0, description="Max tokens for the code generator LLM response. Must be large enough for full function bodies.")
-
-    # --- OpenAI Direct Configuration ---
-    OPENAI_API_KEY: Optional[str] = Field(default=None, description="OpenAI API Key. Required if LLM_PROVIDER is 'openai'.")
-    PRIMARY_LLM_MODEL: str = Field(default="gpt-4o", description="OpenAI model for worker agents.")
-
-    # --- Anthropic (Claude) Configuration ---
-    # Install: uv add langchain-anthropic
-    ANTHROPIC_API_KEY: Optional[str] = Field(default=None, description="Anthropic API Key. Required if LLM_PROVIDER is 'anthropic'.")
-    ANTHROPIC_MODEL: str = Field(default="claude-opus-4-6", description="Anthropic model for the supervisor agent.")
-    ANTHROPIC_WORKER_MODEL: str = Field(default="claude-haiku-4-5-20251001", description="Anthropic model for worker agents (use a smaller/cheaper model).")
-
-    # --- Google Gemini Configuration ---
-    # Install: uv add langchain-google-genai
-    GOOGLE_API_KEY: Optional[str] = Field(default=None, description="Google AI API Key. Required if LLM_PROVIDER is 'google'.")
-    GOOGLE_MODEL: str = Field(default="gemini-1.5-pro", description="Google Gemini model for the supervisor agent.")
-    GOOGLE_WORKER_MODEL: str = Field(default="gemini-1.5-flash", description="Google Gemini model for worker agents.")
-
-    # --- AWS Bedrock Configuration ---
-    # Install: uv add langchain-aws  (uses boto3 credential chain — no API key needed)
-    BEDROCK_REGION: str = Field(default="us-east-1", description="AWS region for Bedrock. Credentials come from the boto3 chain (env, ~/.aws, IAM role).")
-    BEDROCK_MODEL: str = Field(default="anthropic.claude-3-5-sonnet-20241022-v2:0", description="Bedrock model ID for the supervisor agent.")
-    BEDROCK_WORKER_MODEL: str = Field(default="anthropic.claude-3-haiku-20240307-v1:0", description="Bedrock model ID for worker agents.")
-
-    # --- Ollama (local, direct) Configuration ---
-    # No extra package needed — uses langchain-community.
-    OLLAMA_BASE_URL: str = Field(default="http://localhost:11434", description="Ollama server URL. Used when LLM_PROVIDER is 'ollama'.")
-    OLLAMA_MODEL: str = Field(default="llama3", description="Ollama model name (e.g. 'llama3', 'mistral', 'codellama').")
-
-    # --- LiteLLM (universal proxy) Configuration ---
-    # Any backend exposed via a LiteLLM proxy: https://docs.litellm.ai/docs/proxy/quick_start
-    LITELLM_BASE_URL: str = Field(default="http://localhost:11434/v1", description="Base URL for the LiteLLM proxy (OpenAI-compatible). Used when LLM_PROVIDER is 'litellm'.")
-    LITELLM_MODEL: str = Field(default="ollama/llama3", description="Model identifier passed to the LiteLLM proxy (e.g. 'ollama/llama3', 'ollama/mistral').")
-
-    # --- NLU LLM Configuration (Optional) ---
-    # If not set, might fall back to primary LLM or have specific logic.
-    AZURE_NLU_LLM_DEPLOYMENT_NAME: Optional[str] = Field(default=None, description="Optional Azure deployment name for a specialized NLU LLM.")
-    # NLU_LLM_TEMPERATURE: Optional[float] = Field(default=0.0, ge=0.0, le=2.0) # Example if NLU params are needed
-    # NLU_LLM_TOP_P: Optional[float] = Field(default=1.0, ge=0.0, le=1.0)       # Example if NLU params are needed
-    # NLU_LLM_MAX_TOKENS: Optional[int] = Field(default=100, gt=0)              # Example if NLU params are needed
-
-    # --- System Prompts ---
-    KUBEINTELLECT_SYSTEM_PROMPT: str = Field(
-        default=(
-            "You are KubeIntellect, a helpful AI assistant specializing in Kubernetes operations. "
-            "Your primary focus is on Kubernetes-related queries, commands, and operations.\n\n"
-            "**Scope Guidelines:**\n"
-            "- If the query is about Kubernetes operations, commands, or cluster management, provide detailed assistance.\n"
-            "- If the query is related to Kubernetes but requires clarification, ask for the missing information.\n"
-            "- If the query is completely unrelated to Kubernetes (e.g., general programming, unrelated system administration, personal questions), "
-            "politely inform the user that this is outside the scope of KubeIntellect and that you specialize in Kubernetes operations.\n"
-            "- Always be helpful and professional, even when declining out-of-scope requests."
-        ),
-        description="System prompt for the main KubeIntellect assistant."
-    )
-    KUBEINTELLECT_NLU_SYSTEM_PROMPT: str = Field(
-        default=(
-            "You are an expert Natural Language Understanding (NLU) engine for Kubernetes operations. "
-            "Your task is to analyze the user's query and classify it into one of the predefined intents, "
-            "extracting all relevant parameters for that intent. Respond ONLY with the requested JSON object."
-        ),
-        description="System prompt for the NLU classification task."
-    )
-
-    # --- Concurrency Configuration ---
-    MAX_CONCURRENT_WORKFLOWS: int = Field(
-        default=20,
-        gt=0,
-        description="Maximum number of in-flight workflow executions. Requests beyond this limit receive an immediate error rather than queuing indefinitely.",
-    )
-
-    # --- Memory Configuration ---
-    CONVERSATION_CONTEXT_ENABLED: bool = Field(
-        default=True,
-        description=(
-            "When True, the Conversation Context Service persists active namespace + resource "
-            "across agent hops in PostgreSQL and injects them as a pinned SystemMessage before "
-            "each supervisor call. Set to False for the memory ablation experiment (Condition B)."
-        ),
-    )
-    SHORT_TERM_MEMORY_WINDOW: int = Field(
-        default=3,
-        gt=0,
-        description="""
-        Number of recent message turns to keep in short-term memory for LLM context.
-        Higher values provide more context but use more tokens.
-        """
-    )
-    CONVERSATION_SUMMARY_ENABLED: bool = Field(
-        default=True,
-        description="When True, conversations longer than CONVERSATION_SUMMARY_THRESHOLD messages will have their older history summarized and prepended as a SystemMessage so the supervisor retains context across the full conversation.",
-    )
-    CONVERSATION_SUMMARY_THRESHOLD: int = Field(
-        default=10,
-        gt=0,
-        description="Total message count that triggers summarization. Conversations with more messages than this value will have their older portion (beyond SHORT_TERM_MEMORY_WINDOW) summarized. Set to a high number to disable effectively.",
-    )
-
-    # --- Kubernetes API Timeout ---
-    K8S_API_TIMEOUT_SECONDS: int = Field(
-        default=15,
-        description="Timeout in seconds for all Kubernetes API list/read/watch calls. Tune per environment."
-    )
-
-    # --- Tool Output Summarization ---
-    SUMMARIZE_TOOL_OUTPUTS: bool = Field(
-        default=True,
-        description=(
-            "When True, heuristic token-budget summarization is applied to tool outputs before "
-            "they enter agent message state. Structured fields (pod, namespace, status, etc.) "
-            "always pass through; only free-text fields (logs, events, raw_output) are truncated. "
-            "Set to False to bypass entirely for debugging — raw tool outputs will be passed as-is."
-        ),
-    )
-
-    # --- SSH Tunnel Configuration (for Kubernetes API access) ---
-    SSH_TUNNEL_ENABLED: bool = Field(default=False, description="Enable SSH tunnel for Kubernetes API access.")
-    SSH_TUNNEL_LOCAL_PORT: int = Field(default=6443, description="Local port for the SSH tunnel.")
-    SSH_TUNNEL_K8S_API_HOST: str = Field(default="127.0.0.1", description="Target Kubernetes API host from the bastion's perspective (e.g. '192.168.56.11' or '127.0.0.1' if K8s API is local to bastion).")
-    SSH_TUNNEL_K8S_API_PORT: int = Field(default=6443, description="Target Kubernetes API port.")
-    SSH_TUNNEL_SERVER_HOST: Optional[str] = Field(default=None, description="Hostname or IP of the SSH bastion/server.")
-    SSH_TUNNEL_USER: Optional[str] = Field(default=None, description="SSH username for the bastion/server. Can often default to current user if key is specific.") # os.getlogin() could be a dynamic default if run locally.
-    SSH_TUNNEL_KEY_PATH: Optional[str] = Field(default="~/.ssh/id_rsa", description="Path to SSH private key for bastion/server. Use a specific key if id_rsa is not desired.")
-    SSH_TUNNEL_SETUP_WAIT: int = Field(default=7, gt=0, description="Time in seconds to wait for SSH tunnel setup.")
-    SSH_TUNNEL_KEEP_ALIVE_INTERVAL: int = Field(default=30, gt=0, description="SSH keep-alive interval in seconds.")
-
-    # --- Observability query endpoints (Prometheus + Loki) ---
-    # Used by metrics_agent (PromQL) and logs_agent (LogQL) to query the observability stack.
-    # Defaults point to kube-prometheus-stack and loki-stack services in the kubeintellect namespace.
-    PROMETHEUS_URL: str = Field(
-        default="http://prometheus-kube-prometheus-prometheus.kubeintellect.svc.cluster.local:9090",
-        description="Prometheus HTTP API base URL. Used by query_prometheus tool.",
-    )
-    LOKI_URL: str = Field(
-        default="http://loki.kubeintellect.svc.cluster.local:3100",
-        description="Loki HTTP API base URL. Used by query_loki_logs tool.",
-    )
-
-    # --- Langfuse LLM Observability (self-hosted, optional) ---
-    LANGFUSE_ENABLED: bool = Field(
-        default=False,
-        description="Enable Langfuse LLM tracing. Requires LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST."
-    )
-    LANGFUSE_PUBLIC_KEY: Optional[str] = Field(default=None, description="Langfuse project public key.")
-    LANGFUSE_SECRET_KEY: Optional[str] = Field(default=None, description="Langfuse project secret key.")
-    LANGFUSE_HOST: str = Field(
-        default="http://langfuse-web.kubeintellect.svc.cluster.local:3000",
-        description="Langfuse server URL. In-cluster default points to the langfuse-web Service."
-    )
-
-    # --- LangSmith Tracing Configuration ---
-    KUBEINTELLECT_LANGSMITH_TRACING_ENABLED: bool = Field(
-        default=False,
-        description="Master toggle to enable LangSmith tracing. If true, related LANGCHAIN_* variables will be set."
-    )
-    LANGCHAIN_API_KEY: Optional[str] = Field(default=None, description="LangSmith API Key. Required if KUBEINTELLECT_LANGSMITH_TRACING_ENABLED is true.")
-    LANGCHAIN_PROJECT: Optional[str] = Field(default=None, description="LangSmith Project Name. Required if KUBEINTELLECT_LANGSMITH_TRACING_ENABLED is true.")
-    LANGSMITH_ENDPOINT: HttpUrl = Field(
-        default="https://api.smith.langchain.com", # Pydantic will cast string from .env to HttpUrl
-        description="LangSmith API endpoint. Defaults to public LangSmith."
-    )
-
-    # Pydantic Model Configuration
     model_config = SettingsConfigDict(
-        env_file=".env",                # Load from .env file
-        env_file_encoding='utf-8',
-        extra="ignore",                 # Ignore extra fields from environment variables or .env
-        case_sensitive=False,           # Environment variable names are case-insensitive
-        # env_prefix='KUBEINTELLECT_'   # Optional: prefix for all environment variables
+        # Later files in the tuple have higher priority.
+        # Home env is loaded first; the CWD .env wins if both define the same key.
+        env_file=(str(_HOME_ENV), ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+        case_sensitive=False,
     )
 
-    # Debug mode — enables verbose request logging middleware (never enable in production)
-    DEBUG: bool = Field(default=False, description="Enable debug middleware. Off by default; set DEBUG=true for local dev only.")
-    UNSAFE_LOG_REQUEST_BODIES: bool = Field(
-        default=False,
-        description=(
-            "Log full HTTP request bodies in the debug middleware. "
-            "NEVER enable in production — request bodies contain user queries and may include sensitive data. "
-            "Requires DEBUG=true to have any effect."
-        ),
-    )
+    # ── API ───────────────────────────────────────────────────────────────────
+    API_V1_STR: str = "/v1"
 
-    # Logging configuration
-    LOG_LEVEL: str = Field(
-        default="INFO",
-        description="Minimum log severity: DEBUG / INFO / WARNING / ERROR / CRITICAL.",
-    )
-    LOG_FORMAT: str = Field(
-        default="text",
-        description="Log output format: 'text' for human-readable, 'json' for structured JSON (recommended in production).",
-    )
+    # ── LLM provider ─────────────────────────────────────────────────────────
+    LLM_PROVIDER: str = Field(default="azure")
 
-    # CORS — restrict to your frontend. Comma-separated list, e.g. "http://librechat.local,http://localhost:3080"
-    ALLOWED_ORIGINS: str = Field(
-        default="http://localhost:3080",
-        description="Comma-separated list of allowed CORS origins."
-    )
+    # Azure OpenAI
+    AZURE_OPENAI_API_KEY: Optional[str] = None
+    AZURE_OPENAI_ENDPOINT: Optional[str] = None
+    AZURE_OPENAI_API_VERSION: str = "2024-02-01"
+    AZURE_COORDINATOR_DEPLOYMENT: str = "gpt-4o"
+    AZURE_SUBAGENT_DEPLOYMENT: str = "gpt-4o-mini"
 
-    POSTGRES_HOST: str = 'localhost'  # Override via POSTGRES_HOST env var; in-cluster default: postgres.kubeintellect.svc.cluster.local
-    POSTGRES_DB: str = 'kubeintellectdb'
-    POSTGRES_USER: str = 'kubeuser'
-    POSTGRES_PASSWORD: str = 'password'
-    POSTGRES_POOL_MIN_CONN: int = Field(default=1, gt=0, description="Minimum connections in the Postgres pool.")
-    POSTGRES_POOL_MAX_CONN: int = Field(default=10, gt=0, description="Maximum connections in the Postgres pool.")
+    # OpenAI direct
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_COORDINATOR_MODEL: str = "gpt-4o"
+    OPENAI_SUBAGENT_MODEL: str = "gpt-4o-mini"
+
+    # ── PostgreSQL ────────────────────────────────────────────────────────────
+    # When DATABASE_URL is set (e.g. external managed DB), it takes precedence
+    # over the individual POSTGRES_* vars below.
+    DATABASE_URL: Optional[str] = None
+    POSTGRES_HOST: str = "localhost"
+    POSTGRES_PORT: str = "5432"
+    POSTGRES_DB: str = "kubeintellect"
+    POSTGRES_USER: str = "kubeintellect"
+    POSTGRES_PASSWORD: str = "password"
+    POSTGRES_POOL_MIN_CONN: int = Field(default=1, gt=0)
+    POSTGRES_POOL_MAX_CONN: int = Field(default=10, gt=0)
 
     @property
-    def POSTGRES_DSN(self) -> str:
-        """psycopg3-compatible DSN assembled from individual POSTGRES_* settings."""
-        return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}/{self.POSTGRES_DB}"
+    def POSTGRES_DSN(self) -> Optional[str]:
+        if self.USE_SQLITE:
+            return None
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+        return (
+            f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        )
 
-    # Tool Registry Configuration
-    RUNTIME_TOOLS_PVC_PATH: str = Field(
-        default="/mnt/runtime-tools",
-        description="Path where runtime tools PVC is mounted"
-    )
-    TOOL_NAMING_PREFIX: str = Field(
-        default="gen_",
-        description="Prefix for runtime-generated tool names"
-    )
+    # ── SQLite fallback (local / no-Docker mode) ──────────────────────────────
+    # Set USE_SQLITE=true in .env or auto-detected by `kubeintellect serve`.
+    # Not used in Helm deployments — DATABASE_URL is always set there.
+    USE_SQLITE: bool = False
+    SQLITE_PATH: str = "~/.kubeintellect/kubeintellect.db"
 
-    # --- GitHub PR Automation [SECRET + CONFIG] ---
-    GITHUB_PR_ENABLED: bool = Field(
-        default=False,
-        description="Master toggle for GitHub PR creation on tool registration.",
-    )
-    GITHUB_TOKEN: Optional[str] = Field(
-        default=None,
-        description="GitHub Personal Access Token with repo scope. Required when GITHUB_PR_ENABLED=true.",
-    )
-    GITHUB_REPO: Optional[str] = Field(
-        default=None,
-        description="Target GitHub repository in owner/repo format (e.g. 'myorg/kubeintellect').",
-    )
-    GITHUB_PR_TARGET_BRANCH: str = Field(
-        default="main",
-        description="Base branch for generated PRs.",
-    )
-    GITHUB_PR_AUTO_CREATE: bool = Field(
-        default=False,
-        description="Auto-create PR immediately after tool registration. If false, use POST /tools/{tool_id}/create-pr.",
-    )
-    GITHUB_PR_LABELS: str = Field(
-        default="ai-generated,tool,needs-review",
-        description="Comma-separated labels to apply to generated PRs (labels must exist in the repo).",
+    # ── Kubernetes ────────────────────────────────────────────────────────────
+    KUBECONFIG_PATH: str = "~/.kube/config"
+    KUBECTL_TIMEOUT_SECONDS: int = 30
+    KUBECTL_DESTRUCTIVE_TIMEOUT_SECONDS: int = 300
+
+    # Namespaces the kubectl tool will never touch, regardless of user role.
+    # In Helm deployments this is set via config.blockedNamespaces in values.yaml
+    # (injected as KUBECTL_BLOCKED_NAMESPACES env var by the ConfigMap).
+    # For local dev, override in .env or ~/.kubeintellect/.env.
+    KUBECTL_BLOCKED_NAMESPACES: str = Field(
+        default="kubeintellect,monitoring,kube-system,kube-public,kube-node-lease,ingress-nginx,cert-manager"
     )
 
-    @model_validator(mode='after')
-    def _check_conditional_configs(self) -> 'Settings':
-        valid_providers = {"azure", "openai", "anthropic", "google", "bedrock", "ollama", "litellm"}
-        if self.LLM_PROVIDER not in valid_providers:
+    # Resource types the kubectl tool will never access, regardless of user role.
+    # In Helm deployments set via config.blockedResources in values.yaml.
+    KUBECTL_BLOCKED_RESOURCES: str = Field(
+        default="secret,secrets,serviceaccount,serviceaccounts"
+    )
+
+    @property
+    def kubectl_blocked_namespaces(self) -> frozenset[str]:
+        return frozenset(
+            ns.strip()
+            for ns in self.KUBECTL_BLOCKED_NAMESPACES.split(",")
+            if ns.strip()
+        )
+
+    @property
+    def kubectl_blocked_resources(self) -> frozenset[str]:
+        return frozenset(
+            r.strip()
+            for r in self.KUBECTL_BLOCKED_RESOURCES.split(",")
+            if r.strip()
+        )
+
+    # ── Observability ─────────────────────────────────────────────────────────
+    # URLs of Prometheus and Loki running in the target cluster.
+    # Empty = not configured; metric/log queries will return a "no data source" error
+    # rather than crashing — the app remains fully functional for kubectl-based queries.
+    PROMETHEUS_URL: str = ""
+    LOKI_URL: str = ""
+
+    LANGFUSE_ENABLED: bool = False
+    LANGFUSE_PUBLIC_KEY: Optional[str] = None
+    LANGFUSE_SECRET_KEY: Optional[str] = None
+    # Set by each deployment method: localhost:3001 (compose), in-cluster DNS (Helm).
+    # Empty default keeps Langfuse disabled until a host is explicitly configured.
+    LANGFUSE_HOST: str = ""
+
+    # ── App ───────────────────────────────────────────────────────────────────
+    LOG_LEVEL: str = "INFO"
+    LOG_FORMAT: str = "text"
+    DEBUG: bool = False
+    ALLOWED_ORIGINS: str = "http://localhost:3080"
+
+    # ── Auth / RBAC ───────────────────────────────────────────────────────────
+    # Three-tier role model (all comma-separated; empty = auth disabled):
+    #   admin    — high + medium risk ops, always HITL-gated
+    #   operator — medium risk ops only (create, apply, scale, exec…), HITL-gated; high-risk blocked
+    #   readonly — read-only ops only; all writes rejected before reaching the agent
+    KUBEINTELLECT_ADMIN_KEYS: str = Field(default="")
+    KUBEINTELLECT_OPERATOR_KEYS: str = Field(default="")
+    KUBEINTELLECT_READONLY_KEYS: str = Field(default="")
+
+    @property
+    def admin_keys(self) -> set[str]:
+        return {k.strip() for k in self.KUBEINTELLECT_ADMIN_KEYS.split(",") if k.strip()}
+
+    @property
+    def operator_keys(self) -> set[str]:
+        return {k.strip() for k in self.KUBEINTELLECT_OPERATOR_KEYS.split(",") if k.strip()}
+
+    @property
+    def readonly_keys(self) -> set[str]:
+        return {k.strip() for k in self.KUBEINTELLECT_READONLY_KEYS.split(",") if k.strip()}
+
+    @property
+    def auth_enabled(self) -> bool:
+        return bool(self.admin_keys or self.operator_keys or self.readonly_keys)
+
+    @model_validator(mode="after")
+    def _validate_provider(self) -> Settings:
+        valid = {"azure", "openai"}
+        if self.LLM_PROVIDER not in valid:
             raise ValueError(
-                f"LLM_PROVIDER must be one of {sorted(valid_providers)}, got {self.LLM_PROVIDER!r}."
+                f"LLM_PROVIDER must be 'openai' or 'azure', got {self.LLM_PROVIDER!r}.\n"
+                f"  Fix: set LLM_PROVIDER=openai (or azure) in ~/.kubeintellect/.env"
             )
-
         if self.LLM_PROVIDER == "azure":
-            missing = [k for k, v in {
-                "AZURE_OPENAI_API_KEY": self.AZURE_OPENAI_API_KEY,
-                "AZURE_OPENAI_ENDPOINT": self.AZURE_OPENAI_ENDPOINT,
-                "AZURE_PRIMARY_LLM_DEPLOYMENT_NAME": self.AZURE_PRIMARY_LLM_DEPLOYMENT_NAME,
-            }.items() if not v]
+            missing = [
+                k for k, v in {
+                    "AZURE_OPENAI_API_KEY": self.AZURE_OPENAI_API_KEY,
+                    "AZURE_OPENAI_ENDPOINT": self.AZURE_OPENAI_ENDPOINT,
+                }.items() if not v
+            ]
             if missing:
-                logger.warning(f"LLM_PROVIDER='azure' but missing: {', '.join(missing)}")
-
-        elif self.LLM_PROVIDER == "openai":
-            if not self.OPENAI_API_KEY:
-                logger.warning("LLM_PROVIDER='openai' but OPENAI_API_KEY is not set.")
-
-        elif self.LLM_PROVIDER == "anthropic":
-            if not self.ANTHROPIC_API_KEY:
-                logger.warning("LLM_PROVIDER='anthropic' but ANTHROPIC_API_KEY is not set.")
-
-        elif self.LLM_PROVIDER == "google":
-            if not self.GOOGLE_API_KEY:
-                logger.warning("LLM_PROVIDER='google' but GOOGLE_API_KEY is not set.")
-
-        elif self.LLM_PROVIDER == "bedrock":
-            logger.info(
-                f"LLM_PROVIDER='bedrock', region={self.BEDROCK_REGION}. "
-                "Credentials are resolved via the boto3 chain (env vars / ~/.aws / IAM role)."
+                logging.warning(
+                    f"LLM_PROVIDER=azure but missing: {', '.join(missing)}. "
+                    f"LLM calls will fail until these are set in ~/.kubeintellect/.env"
+                )
+        elif self.LLM_PROVIDER == "openai" and not self.OPENAI_API_KEY:
+            logging.warning(
+                "LLM_PROVIDER=openai but OPENAI_API_KEY is not set. "
+                "Get your key at https://platform.openai.com/api-keys "
+                "and add OPENAI_API_KEY=sk-... to ~/.kubeintellect/.env"
             )
-
-        elif self.LLM_PROVIDER == "ollama":
-            logger.info(f"LLM_PROVIDER='ollama', base_url={self.OLLAMA_BASE_URL}, model={self.OLLAMA_MODEL}")
-
-        elif self.LLM_PROVIDER == "litellm":
-            if not self.LITELLM_BASE_URL:
-                logger.warning("LLM_PROVIDER='litellm' but LITELLM_BASE_URL is not set.")
-
-        # GitHub PR Automation Configuration Check
-        if self.GITHUB_PR_ENABLED:
-            missing_gh = [k for k, v in {
-                "GITHUB_TOKEN": self.GITHUB_TOKEN,
-                "GITHUB_REPO": self.GITHUB_REPO,
-            }.items() if not v]
-            if missing_gh:
-                logger.warning(
-                    f"GITHUB_PR_ENABLED=true but missing: {', '.join(missing_gh)}. "
-                    "PR creation will fail until these are set."
-                )
-
-        # SSH Tunnel Configuration Check
-        if self.SSH_TUNNEL_ENABLED:
-            missing_ssh_configs = []
-            if not self.SSH_TUNNEL_SERVER_HOST:
-                missing_ssh_configs.append("SSH_TUNNEL_SERVER_HOST")
-            if not self.SSH_TUNNEL_USER:
-                missing_ssh_configs.append("SSH_TUNNEL_USER")
-            # SSH_TUNNEL_KEY_PATH has a default, so it might not need to be mandatory here unless default is invalid
-            # if not self.SSH_TUNNEL_KEY_PATH:
-            #     missing_ssh_configs.append("SSH_TUNNEL_KEY_PATH")
-
-            if missing_ssh_configs:
-                # Log as warning. Service using the tunnel should handle failure.
-                # Or raise ValueError for critical failure.
-                logger.warning(
-                    f"SSH_TUNNEL_ENABLED is true, but essential SSH tunnel configurations are missing: {', '.join(missing_ssh_configs)}. Tunnel setup may fail."
-                )
         return self
 
-    def model_post_init(self, __context: Any) -> None:
-        """
-        Called after the model is initialized and validated.
-        Use this to set up LangSmith environment variables based on settings.
-        """
-        # super().model_post_init(__context) # Not needed for BaseSettings unless it has custom logic.
 
-        if self.KUBEINTELLECT_LANGSMITH_TRACING_ENABLED:
-            missing_langsmith_configs = []
-            if not self.LANGCHAIN_API_KEY:
-                missing_langsmith_configs.append("LANGCHAIN_API_KEY")
-            if not self.LANGCHAIN_PROJECT:
-                missing_langsmith_configs.append("LANGCHAIN_PROJECT")
-
-            if missing_langsmith_configs:
-                logger.warning(
-                    f"KUBEINTELLECT_LANGSMITH_TRACING_ENABLED is true, but required LangSmith configurations are missing: {', '.join(missing_langsmith_configs)}. Tracing will be disabled."
-                )
-                os.environ["LANGCHAIN_TRACING_V2"] = "false"
-            else:
-                os.environ["LANGCHAIN_TRACING_V2"] = "true"
-                os.environ["LANGCHAIN_API_KEY"] = self.LANGCHAIN_API_KEY
-                os.environ["LANGCHAIN_PROJECT"] = self.LANGCHAIN_PROJECT
-                os.environ["LANGCHAIN_ENDPOINT"] = str(self.LANGSMITH_ENDPOINT) # Ensure it's a string
-                logger.info(
-                    f"LangSmith tracing enabled. Project: '{self.LANGCHAIN_PROJECT}', "
-                    f"Endpoint: '{str(self.LANGSMITH_ENDPOINT)}'."
-                )
+def _load_settings() -> "Settings":
+    """Load Settings, converting Pydantic validation errors into readable messages."""
+    import sys as _sys
+    try:
+        return Settings()
+    except Exception as exc:
+        cfg_file = Path.home() / ".kubeintellect" / ".env"
+        # Strip the raw Pydantic traceback and show something actionable
+        raw = str(exc)
+        print(f"\nConfiguration error: {raw.splitlines()[0]}", file=_sys.stderr)
+        if "llm_provider" in raw.lower():
+            print(
+                f"  LLM_PROVIDER must be 'openai' or 'azure'.\n"
+                f"  Edit {cfg_file} and set: LLM_PROVIDER=openai",
+                file=_sys.stderr,
+            )
+        elif "pool" in raw.lower() or "postgres_pool" in raw.lower():
+            print(
+                f"  POSTGRES_POOL_MIN_CONN and POSTGRES_POOL_MAX_CONN must be positive integers.\n"
+                f"  Edit {cfg_file} to fix these values.",
+                file=_sys.stderr,
+            )
         else:
-            os.environ["LANGCHAIN_TRACING_V2"] = "false"
-            logger.info("LangSmith tracing disabled via KUBEINTELLECT_LANGSMITH_TRACING_ENABLED setting.")
+            print(
+                f"  Config file: {cfg_file}\n"
+                f"  Run 'kubeintellect init' to reconfigure.",
+                file=_sys.stderr,
+            )
+        raise
 
 
-try:
-    settings = Settings()
-    logger.info("Configuration loaded successfully.")
-
-    # Log key configuration details (be careful with secrets in production logs)
-    logger.debug(f"API Version: {settings.API_V1_STR}")
-    logger.info(f"LLM Provider: {settings.LLM_PROVIDER}")
-
-    if settings.LLM_PROVIDER == "azure":
-        if settings.AZURE_OPENAI_ENDPOINT: # Check if endpoint is set before logging
-            logger.info(f"Azure OpenAI Endpoint: {settings.AZURE_OPENAI_ENDPOINT}")
-        else:
-            logger.warning("Azure OpenAI Endpoint is not configured.")
-
-        if settings.AZURE_PRIMARY_LLM_DEPLOYMENT_NAME:
-            logger.info(f"Azure Primary LLM Deployment: {settings.AZURE_PRIMARY_LLM_DEPLOYMENT_NAME}")
-        else:
-            logger.warning("Azure Primary LLM Deployment Name is not configured.")
-
-        if settings.AZURE_NLU_LLM_DEPLOYMENT_NAME:
-            logger.info(f"Azure NLU LLM Deployment: {settings.AZURE_NLU_LLM_DEPLOYMENT_NAME}")
-        if settings.SUPERVISOR_AZURE_DEPLOYMENT_NAME: # This one has a default, so should always be present
-            logger.info(f"Azure Supervisor LLM Deployment: {settings.SUPERVISOR_AZURE_DEPLOYMENT_NAME}")
-
-    if settings.SSH_TUNNEL_ENABLED:
-        logger.info(
-            f"SSH Tunneling enabled: Local Port {settings.SSH_TUNNEL_LOCAL_PORT} -> "
-            f"K8s API {settings.SSH_TUNNEL_K8S_API_HOST}:{settings.SSH_TUNNEL_K8S_API_PORT} "
-            f"via {settings.SSH_TUNNEL_USER or '[User not set]'}@{settings.SSH_TUNNEL_SERVER_HOST or '[Server host not set]'}"
-        )
-        # Specific warnings for SSH are now handled by the model_validator,
-        # but an additional info log here confirms the enabled status.
-
-except ValidationError as e:
-    # Log detailed validation errors
-    error_messages = []
-    for error in e.errors():
-        field_path = " -> ".join(str(loc) for loc in error['loc']) if error['loc'] else "General"
-        message = error['msg']
-        error_messages.append(f"Field '{field_path}': {message}")
-    detailed_errors = "\n".join(error_messages)
-    logger.error(f"Critical configuration error: Failed to load settings due to validation issues.\nDetails:\n{detailed_errors}")
-    # Re-raise to prevent application from starting with invalid config
-    raise ValueError(f"Critical configuration error. Please check logs. Summary: {e}") from e
-
-except Exception as e:
-    logger.error(f"An unexpected error occurred during configuration loading: {e}", exc_info=True)
-    # Re-raise for critical failure
-    raise ValueError(f"Critical unexpected configuration error: {e}") from e
-
-
-# Example usage (typically in other modules after importing settings):
-# from app.core.config import settings
-# print(f"Using Azure Key: {settings.AZURE_OPENAI_API_KEY[:5]}...") # Be careful logging secrets
+settings = _load_settings()

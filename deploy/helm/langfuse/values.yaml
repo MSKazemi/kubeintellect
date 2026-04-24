@@ -1,0 +1,47 @@
+# Namespace to deploy all Langfuse resources into.
+# Should match the monitoring namespace used for Prometheus/Grafana/Loki.
+namespace: "monitoring"
+
+postgres:
+  storage: "10Gi"
+  password: ""
+
+clickhouse:
+  storage: "30Gi"
+  password: ""
+
+redis:
+  storage: "2Gi"
+
+minio:
+  storage: "50Gi"
+  rootUser: "langfuse"
+  rootPassword: ""
+
+# Generate: openssl rand -base64 32
+nextauthUrl: "http://langfuse.local"
+nextauthSecret: ""
+salt: ""
+# Generate: openssl rand -hex 32
+encryptionKey: ""
+
+# Seed: auto-creates org / project / user on first start (idempotent).
+# publicKey + secretKey MUST match secrets.langfusePublicKey / langfuseSecretKey
+# in the KubeIntellect chart so tracing works immediately after deploy.
+initUser:
+  email: ""
+  name: "Admin"
+  password: ""
+initOrg:
+  id: "kubeintellect-org"
+  name: "KubeIntellect"
+initProject:
+  id: "kubeintellect-project"
+  name: "KubeIntellect"
+  publicKey: ""
+  secretKey: ""
+
+ingress:
+  enabled: false
+  className: nginx
+  host: "langfuse.local"

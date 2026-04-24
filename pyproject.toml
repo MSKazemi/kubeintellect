@@ -1,59 +1,102 @@
 [project]
 name = "kubeintellect"
-version = "0.1.0"
+version = "2.0.0a4"
+description = "AI-powered Kubernetes management — local server and CLI"
+readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.12"
+keywords = ["kubernetes", "llm", "ai", "devops", "k8s", "kubectl"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Systems Administration",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+]
 dependencies = [
+    # API
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "pydantic>=2.10",
     "pydantic-settings>=2.6",
-    "openai>=1.57",
     "python-dotenv>=1.0",
+    # LLM + Agent
     "langchain>=0.3",
     "langchain-openai>=0.2",
-    "langchain-community>=0.3",
-    "langchain-experimental>=0.3",
     "langgraph>=0.2",
     "langsmith>=0.2",
-    "httpx>=0.28",
-    "kubernetes>=31",
-    "pyppeteer>=2.0",
-    "psycopg2-binary>=2.9",
+    # Database
+    "asyncpg>=0.29",
     "psycopg[binary,pool]>=3.1",
     "langgraph-checkpoint-postgres>=2.0",
-    "pymongo>=4.10",
-    "requests>=2.32",
+    "langgraph-checkpoint-sqlite>=2.0",
+    # YAML validation
+    "pyyaml>=6.0",
+    # HTTP (Prometheus + Loki queries)
+    "httpx>=0.28",
+    # CLI client — bundled so pip install kubeintellect gives both server and kq
+    "kube-q>=1.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/mskazemi/kubeintellect"
+Documentation = "https://github.com/mskazemi/kubeintellect#readme"
+Issues = "https://github.com/mskazemi/kubeintellect/issues"
+
+[project.optional-dependencies]
+tracing = [
     "langfuse>=2.0",
     "opentelemetry-api>=1.0",
+]
+metrics = [
     "prometheus-fastapi-instrumentator>=7.1.0",
-    "pygithub>=2.9.0",
-    "mcp[cli]>=1.26.0",
-    "rich>=14.3.3",
+]
+all = [
+    "kubeintellect[tracing,metrics]",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8",
+    "pytest-asyncio>=0.24",
     "pytest-mock>=3.14",
-]
-docs = [
-    "mkdocs>=1.6",
     "mkdocs-material>=9.5",
-    "mkdocs-minify-plugin>=0.8",
-    "pymdown-extensions>=10.7",
+    "mkdocstrings[python]>=0.26",
 ]
+
+[tool.uv.sources]
+kube-q = { path = "../../kube_q", editable = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[project.scripts]
+kubeintellect = "app.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
+artifacts = ["app/db/schema.sql"]
 
-[project.urls]
-Homepage = "https://kubeintellect.com/"
-Documentation = "https://kubeintellect.com/"
-Repository = "https://github.com/MSKazemi/kubeintellect"
-Issues = "https://github.com/MSKazemi/kubeintellect/issues"
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "deploy/",
+    "docs/",
+    "scripts/",
+    "tests/",
+    "site/",
+    ".github/",
+    ".local-data/",
+    ".claude/",
+    "CLAUDE.md",
+    "Makefile",
+    "mkdocs.yml",
+    "docker-compose.yaml",
+    "Dockerfile",
+    ".dockerignore",
+    "uv.lock",
+]
 
 [build-system]
 requires = ["hatchling"]

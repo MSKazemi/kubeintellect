@@ -1,0 +1,53 @@
+# ── AKS — production values ───────────────────────────────────────────────────
+# Copy to values-aks.yaml (gitignored) and fill in.
+# Deploy with: make aks-deploy
+
+image:
+  repository: ghcr.io/mskazemi/kubeintellect-v2
+  tag: dev-latest
+  pullPolicy: Always
+
+replicaCount: 2                  # AKS can run multiple replicas
+
+ingress:
+  enabled: true
+  className: nginx               # or azure/application-gateway
+  host: api.kubeintellect.com
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls:
+    - secretName: kubeintellect-tls
+      hosts:
+        - api.kubeintellect.com
+
+hotReload:
+  enabled: false
+
+rbac:
+  clusterAdmin: false
+  createNamespaced: true
+  createClusterReadOnly: true
+  createClusterOps: true
+  allowExec: false
+  enableNamespaceManagement: false
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+postgres:
+  # On AKS, consider Azure Database for PostgreSQL (Flexible Server) instead of in-cluster.
+  # Set secrets.dbUrl to the external connection string and disable in-cluster postgres.
+  storage: 50Gi
+  storageClass: managed-premium  # AKS default premium storage class
+  password: ""
+
+config:
+  logLevel: info
+
+langfuse:
+  enabled: false                 # On AKS, consider managed services or a dedicated deployment

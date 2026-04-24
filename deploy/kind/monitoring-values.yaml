@@ -1,0 +1,30 @@
+# kube-prometheus-stack — lightweight settings for Kind dev cluster
+# Grafana UI: make port-forward-grafana  →  http://localhost:3000  (admin / admin)
+# Prometheus:  make port-forward-prometheus → http://localhost:9090
+
+grafana:
+  adminPassword: admin
+  # Loki datasource is provisioned by the loki-stack chart (loki-loki-stack ConfigMap).
+  # No additionalDataSources needed here — adding it would create a duplicate.
+
+prometheus:
+  prometheusSpec:
+    retention: 12h
+    resources:
+      requests:
+        memory: 200Mi
+      limits:
+        memory: 500Mi
+
+# Alertmanager not needed in local dev.
+alertmanager:
+  enabled: false
+
+# These component scrapers try to reach control-plane processes that Kind exposes
+# on non-standard ports or behind TLS — disable them to avoid noisy scrape errors.
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false

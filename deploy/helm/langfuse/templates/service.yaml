@@ -1,0 +1,79 @@
+{{- $ns := include "langfuse.namespace" . }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: langfuse-postgres
+  namespace: {{ $ns | quote }}
+  labels:
+    component: langfuse
+spec:
+  selector:
+    app: langfuse-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: langfuse-clickhouse
+  namespace: {{ $ns | quote }}
+  labels:
+    component: langfuse
+spec:
+  selector:
+    app: langfuse-clickhouse
+  ports:
+    - name: http
+      port: 8123
+      targetPort: 8123
+    - name: native
+      port: 9000
+      targetPort: 9000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: langfuse-redis
+  namespace: {{ $ns | quote }}
+  labels:
+    component: langfuse
+spec:
+  selector:
+    app: langfuse-redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: langfuse-minio
+  namespace: {{ $ns | quote }}
+  labels:
+    component: langfuse
+spec:
+  selector:
+    app: langfuse-minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: langfuse-web
+  namespace: {{ $ns | quote }}
+  labels:
+    component: langfuse
+spec:
+  selector:
+    app: langfuse-web
+  ports:
+    - port: 3000
+      targetPort: 3000
