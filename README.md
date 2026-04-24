@@ -3,11 +3,11 @@
 [![PyPI](https://img.shields.io/pypi/v/kubeintellect.svg)](https://pypi.org/project/kubeintellect/)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
-[![Docs](https://img.shields.io/badge/docs-kubeintellect.com-0075C4?logo=materialformkdocs&logoColor=white)](https://kubeintellect.com/)
+[![Docs](https://img.shields.io/badge/docs-mskazemi.github.io-0075C4?logo=materialformkdocs&logoColor=white)](https://mskazemi.github.io/kubeintellect/)
 
 AI-powered Kubernetes management. Natural-language interface to diagnose faults, query cluster state, and execute remediation — with human approval gating all destructive actions.
 
-**[Website](https://kubeintellect.com/)** · **[Live Demo](https://kubeintellect.com/demo)** · **[Docs](https://kubeintellect.com/)** · **[v1 (LibreChat backend)](https://github.com/MSKazemi/kubeintellect/tree/v1-legacy)**
+**[Website](https://kubeintellect.com/)** · **[Live Demo](https://kubeintellect.com/demo)** · **[Docs](https://mskazemi.github.io/kubeintellect/)** · **[v1 (LibreChat backend)](https://github.com/MSKazemi/kubeintellect/tree/v1-legacy)**
 
 ---
 
