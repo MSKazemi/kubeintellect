@@ -161,15 +161,15 @@ Full guide: [kubeintellect.com/quickstart](https://kubeintellect.com/quickstart/
 
 | Topic | Link |
 |-------|------|
-| All install options | [kubeintellect.com/quickstart](https://kubeintellect.com/quickstart/) |
-| pip — no cluster (quick try) | [install-pip-no-cluster](https://kubeintellect.com/install-pip-no-cluster/) |
-| pip — existing cluster | [install-pip-existing-cluster](https://kubeintellect.com/install-pip-existing-cluster/) |
-| pip — local Kind cluster | [install-pip-kind](https://kubeintellect.com/install-pip-kind/) |
-| Docker Compose | [deploy-docker-compose](https://kubeintellect.com/deploy-docker-compose/) |
-| Kind dev environment (repo) | [deploy-kind](https://kubeintellect.com/deploy-kind/) |
-| VM / AKS / cloud (Helm) | [deploy-cloud](https://kubeintellect.com/deploy-cloud/) |
-| All config options | [configuration](https://kubeintellect.com/configuration/) |
-| Security model | [security](https://kubeintellect.com/security/) |
+| All install options | [Quickstart](https://mskazemi.github.io/kubeintellect/quickstart/) |
+| pip — no cluster (quick try) | [Install: no cluster](https://mskazemi.github.io/kubeintellect/install/no-cluster/) |
+| pip — existing cluster | [Install: existing cluster](https://mskazemi.github.io/kubeintellect/install/existing-cluster/) |
+| pip — local Kind cluster | [Install: Kind](https://mskazemi.github.io/kubeintellect/install/kind/) |
+| Docker Compose | [Deploy: Docker Compose](https://mskazemi.github.io/kubeintellect/deploy/docker-compose/) |
+| Kind dev environment (repo) | [Deploy: Kind](https://mskazemi.github.io/kubeintellect/deploy/kind/) |
+| VM / AKS / cloud (Helm) | [Deploy: cloud / Helm](https://mskazemi.github.io/kubeintellect/deploy/cloud/) |
+| All config options | [Configuration reference](https://mskazemi.github.io/kubeintellect/configuration/) |
+| Security model | [Security](https://mskazemi.github.io/kubeintellect/security/) |
 
 ---
 
