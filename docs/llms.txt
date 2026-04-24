@@ -1,0 +1,34 @@
+# KubeIntellect
+
+> AI-powered Kubernetes management platform. Describe a problem in plain English — KubeIntellect diagnoses it with parallel AI agents, proposes a fix, shows a dry-run diff, and waits for your approval before touching anything.
+
+KubeIntellect is an open-source Python backend (FastAPI + LangGraph) that connects to any Kubernetes cluster. A coordinator LLM routes queries to specialist subagents for pods, metrics (Prometheus), logs (Loki), and events. Destructive operations always pause for human approval (HITL — Human-in-the-Loop). Three-tier auth (admin / operator / readonly). OpenAI-compatible API — any SSE client or the `kq` CLI works out of the box.
+
+Supports: OpenAI, Azure OpenAI, Anthropic Claude, Google Gemini, AWS Bedrock, Ollama (local).
+Install: `pip install kubeintellect` or Docker Compose or Helm.
+
+## Documentation
+
+- [Quickstart](https://kubeintellect.com/quickstart/): Choose your install path — pip, Docker Compose, or Helm.
+- [Install: No cluster](https://kubeintellect.com/install/no-cluster/): Run locally with SQLite, no Kubernetes required.
+- [Install: Existing cluster](https://kubeintellect.com/install/existing-cluster/): Connect to AKS, EKS, GKE, or any kubeconfig.
+- [Install: Kind cluster](https://kubeintellect.com/install/kind/): Create a local Kubernetes cluster for development and testing.
+- [Deploy: Docker Compose](https://kubeintellect.com/deploy/docker-compose/): Full local stack with PostgreSQL, Prometheus, Grafana, Loki, and optional Langfuse LLM tracing.
+- [Deploy: Kind dev environment](https://kubeintellect.com/deploy/kind/): 2-node cluster with hot-reload, monitoring, and LLM tracing for contributors.
+- [Deploy: Cloud / Helm](https://kubeintellect.com/deploy/cloud/): Production deployment on AKS, EKS, GKE, or any Kubernetes cluster using Helm.
+- [Configuration reference](https://kubeintellect.com/configuration/): All environment variables — LLM provider, auth keys, database, kubectl, observability.
+- [Security model](https://kubeintellect.com/security/): HITL gates, three-tier RBAC, shell injection blocking, kubectl blocklists, REPL sandbox.
+
+## v1 Legacy (LibreChat backend)
+
+- [v1 Overview](https://kubeintellect.com/v1/): Original multi-agent system with LibreChat frontend, 14 specialized agents, dynamic tool generation.
+- [v1 Architecture](https://kubeintellect.com/v1/architecture/): LangGraph Supervisor routing, CodeGenerator pipeline, DiagnosticsOrchestrator fan-out.
+- [v1 HITL](https://kubeintellect.com/v1/hitl/): Checkpoint/resume approval flow, SSE event schema, PostgreSQL state persistence.
+- [v1 Security Model](https://kubeintellect.com/v1/security-model/): AST hallucination check, safeguard review, REPL timeout, SHA-256 integrity.
+
+## Source Code & Packages
+
+- [GitHub — kubeintellect](https://github.com/MSKazemi/kubeintellect): Full source (AGPL-3.0). Backend + Helm charts + Docker Compose.
+- [PyPI — kubeintellect](https://pypi.org/project/kubeintellect/): `pip install kubeintellect` — server backend + CLI wizard.
+- [PyPI — kube-q](https://pypi.org/project/kube-q/): `pip install kube-q` — terminal REPL client (`kq`).
+- [GitHub — kube-q](https://github.com/MSKazemi/kube_q): kube-q CLI source code.

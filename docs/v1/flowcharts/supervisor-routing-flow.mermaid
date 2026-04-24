@@ -1,0 +1,144 @@
+---
+config:
+  flowchart:
+    curve: linear
+    rankSpacing: 60
+    nodeSpacing: 40
+---
+%%{init: {"flowchart": {"htmlLabels": true}} }%%
+graph TD
+
+%% ── Entry ───────────────────────────────────────────────────────────────────
+START([User Query]):::io
+
+%% ── Pre-call: Memory Assembly ────────────────────────────────────────────────
+subgraph MEM["Memory Orchestrator  (parallel fetch ≤ 550 tokens)"]
+  direction LR
+  M1[Reflection Memory]:::mem
+  M2[Failure Pattern Hints]:::mem
+  M3[User Preferences]:::mem
+  M4[Registered Dynamic Tools]:::mem
+end
+
+%% ── Core Supervisor ──────────────────────────────────────────────────────────
+SUP{{"Supervisor LLM\n(routing decision)"}}:::supervisor
+
+%% ── HITL gates ───────────────────────────────────────────────────────────────
+HITL_CG{{"HITL Gate\n(interrupt_before)"}}:::hitl
+HITL_AP{{"HITL Gate\n(interrupt_before)"}}:::hitl
+
+%% ── Agents ───────────────────────────────────────────────────────────────────
+LOGS["Logs Agent\n(ReAct)"]:::agent
+CMS["ConfigMapsSecrets Agent\n(ReAct)"]:::agent
+RBAC["RBAC Agent\n(ReAct)"]:::agent
+MET["Metrics Agent\n(ReAct)"]:::agent
+SEC["Security Agent\n(ReAct)"]:::agent
+LC["Lifecycle Agent\n(ReAct)"]:::agent
+EX["Execution Agent\n(ReAct)"]:::agent
+DEL["Deletion Agent\n(ReAct — conv. confirm)"]:::agent
+INF["Infrastructure Agent\n(ReAct)"]:::agent
+DTE["DynamicToolsExecutor\n(ReAct)"]:::agent
+CG["CodeGenerator\n(synthesis subgraph)"]:::codegen
+AP["Apply Agent\n(YAML apply)"]:::agent
+
+%% ── DiagnosticsOrchestrator subgraph ──────────────────────────────────────────
+subgraph DIAG["DiagnosticsOrchestrator  (LangGraph Send API fan-out)"]
+  direction TB
+  DO["DiagnosticsOrchestrator\n(dispatch node)"]:::diag
+  DL["DiagnosticsLogs"]:::diag
+  DM["DiagnosticsMetrics"]:::diag
+  DE["DiagnosticsEvents"]:::diag
+  DC["DiagnosticsCollect\n(barrier sync)"]:::diag
+  DO -->|"Send (parallel)"| DL
+  DO -->|"Send (parallel)"| DM
+  DO -->|"Send (parallel)"| DE
+  DL --> DC
+  DM --> DC
+  DE --> DC
+end
+
+%% ── CodeGenerator synthesis subgraph ──────────────────────────────────────────
+subgraph CGSUB["CodeGenerator Synthesis Pipeline"]
+  direction TB
+  GC[generate_code]:::cgnode
+  TC[test_code]:::cgnode
+  ET{evaluate_test_results}:::cgnode
+  GM[generate_metadata]:::cgnode
+  RT[register_tool]:::cgnode
+  HF[handle_failure]:::cgnode
+  FN([finish]):::cgnode
+  GC --> TC --> ET
+  ET -->|pass| GM
+  ET -->|retry ≤ 3| GC
+  ET -->|max retries| HF
+  GM -->|ok| RT
+  GM -->|error| HF
+  RT --> FN
+  HF --> FN
+end
+
+%% ── Terminal ──────────────────────────────────────────────────────────────────
+FINISH([FINISH — stream response]):::io
+OOS([FINISH — out of scope / clarification]):::io
+
+%% ── Observability side-channel ────────────────────────────────────────────────
+LF[("Langfuse\n(span per LLM call)")]:::obs
+PROM[("Prometheus\n/metrics")]:::obs
+
+%% ── Flow ──────────────────────────────────────────────────────────────────────
+START --> MEM
+MEM --> SUP
+
+%% Supervisor → agents
+SUP -->|"route"| LOGS
+SUP -->|"route"| CMS
+SUP -->|"route"| RBAC
+SUP -->|"route"| MET
+SUP -->|"route"| SEC
+SUP -->|"route"| LC
+SUP -->|"route"| EX
+SUP -->|"route"| DEL
+SUP -->|"route"| INF
+SUP -->|"route"| DTE
+SUP -->|"route"| DIAG
+SUP -->|"FINISH\n(task done / OOS / clarification)"| FINISH
+SUP -->|"non-K8s query"| OOS
+
+%% HITL gates
+SUP -->|"synthesize tool"| HITL_CG
+HITL_CG -->|approve| CG
+HITL_CG -->|deny| FINISH
+SUP -->|"apply YAML"| HITL_AP
+HITL_AP -->|approve| AP
+HITL_AP -->|deny| FINISH
+
+%% Agents → Supervisor
+LOGS --> SUP
+CMS --> SUP
+RBAC --> SUP
+MET --> SUP
+SEC --> SUP
+LC --> SUP
+EX --> SUP
+DEL --> SUP
+INF --> SUP
+DTE --> SUP
+AP --> SUP
+DC --> SUP
+CG --> SUP
+
+%% Observability
+SUP -.->|"LLM span"| LF
+CG -.->|"LLM span"| LF
+SUP -.->|"agent_invocations_total\ntool_calls_total"| PROM
+
+%% ── Styles ───────────────────────────────────────────────────────────────────
+classDef io fill:#dfe6e9,stroke:#636e72,color:#2d3436,font-weight:bold,rx:20
+classDef supervisor fill:#6c5ce7,stroke:#4834d4,color:#fff,font-weight:bold,font-size:13px
+classDef agent fill:#0984e3,stroke:#0652dd,color:#fff,font-size:11px
+classDef codegen fill:#e17055,stroke:#c0392b,color:#fff,font-weight:bold,font-size:11px
+classDef cgnode fill:#fdcb6e,stroke:#e17055,color:#2d3436,font-size:10px
+classDef diag fill:#00b894,stroke:#00cec9,color:#fff,font-size:11px
+classDef hitl fill:#fd79a8,stroke:#e84393,color:#fff,font-weight:bold
+classDef mem fill:#a29bfe,stroke:#6c5ce7,color:#fff,font-size:10px
+classDef obs fill:#fff3e0,stroke:#e65100,color:#bf360c,font-size:10px

@@ -1,6 +1,13 @@
-# KubeIntellect V2
+# KubeIntellect
+
+[![PyPI](https://img.shields.io/pypi/v/kubeintellect.svg)](https://pypi.org/project/kubeintellect/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-kubeintellect.com-0075C4?logo=materialformkdocs&logoColor=white)](https://kubeintellect.com/)
 
 AI-powered Kubernetes management. Natural-language interface to diagnose faults, query cluster state, and execute remediation — with human approval gating all destructive actions.
+
+**[Website](https://kubeintellect.com/)** · **[Live Demo](https://kubeintellect.com/demo)** · **[Docs](https://kubeintellect.com/)** · **[v1 (LibreChat backend)](https://github.com/MSKazemi/kubeintellect/tree/v1-legacy)**
 
 ---
 
@@ -74,15 +81,17 @@ That's it. No manual server start, no copy-pasting API keys.
 
 ---
 
-### Other deployment options
+## kube-q — Terminal Client
 
-| Option | When to use |
-|--------|-------------|
-| [Docker Compose](docs/deploy-docker-compose.md) | Laptop, no K8s cluster, full stack via Docker |
-| [Kind cluster](docs/deploy-kind.md) | Local K8s dev with monitoring + Langfuse |
-| [Cloud / VM (Helm)](docs/deploy-cloud.md) | Production, AKS, or company cluster |
+**[kube-q](https://github.com/MSKazemi/kube_q)** is the CLI that talks to KubeIntellect. Install it separately and point it at any running instance.
 
-Full guide: [docs/quickstart.md](docs/quickstart.md)
+```bash
+pip install kube-q
+kq "why is my pod crashlooping?"
+```
+
+[![PyPI](https://img.shields.io/pypi/v/kube-q.svg)](https://pypi.org/project/kube-q/)
+[![GitHub](https://img.shields.io/badge/github-MSKazemi%2Fkube__q-blue)](https://github.com/MSKazemi/kube_q)
 
 ---
 
@@ -122,38 +131,15 @@ Generate keys: `openssl rand -hex 20`
 
 ---
 
-## Repo layout
+## Other deployment options
 
-```
-app/                        # core Python source (shared by all deployments)
-deploy/
-  docker-compose/           # monitoring configs (prometheus.yml, loki-config.yml, grafana)
-  helm/
-    kubeintellect/          # Helm chart + values for all environments
-    langfuse/               # Langfuse LLM tracing chart
-  kind/                     # Kind cluster configs
-docker-compose.yaml         # laptop deployment entry point
-scripts/
-  kind/create-kind-cluster.sh
-  vm/setup-nginx.sh, setup-tls.sh
-tests/
-docs/
-```
+| Option | When to use |
+|--------|-------------|
+| [Docker Compose](docs/deploy-docker-compose.md) | Laptop, no K8s cluster, full stack via Docker |
+| [Kind cluster](docs/deploy-kind.md) | Local K8s dev with monitoring + Langfuse |
+| [Cloud / VM (Helm)](docs/deploy-cloud.md) | Production, AKS, or company cluster |
 
----
-
-## `kubeintellect kind-setup` vs `make kind-cluster-create`
-
-Two ways to get a local Kind cluster — pick based on who you are:
-
-| | `kubeintellect kind-setup` | `make kind-cluster-create` |
-|---|---|---|
-| Requires repo clone | No | Yes |
-| Cluster config | Single-node | 2-node, hot-reload mounts |
-| Ingress | Basic nginx | Tuned for Kind dev |
-| Cluster DNS auto-config | Yes — `svc.cluster.local` works from host | No |
-| Monitoring / Langfuse | Via `make` targets (after cloning) | `make monitoring-install` / `make langfuse-install` |
-| Who it's for | End users, ops teams | KubeIntellect developers |
+Full guide: [kubeintellect.com/quickstart](https://kubeintellect.com/quickstart/)
 
 ---
 
@@ -173,13 +159,44 @@ Two ways to get a local Kind cluster — pick based on who you are:
 
 ## Docs
 
-| Topic | File |
-|---|---|
-| All install options | [docs/quickstart.md](docs/quickstart.md) |
-| pip — no cluster (quick try) | [docs/install-pip-no-cluster.md](docs/install-pip-no-cluster.md) |
-| pip — existing cluster | [docs/install-pip-existing-cluster.md](docs/install-pip-existing-cluster.md) |
-| pip — local Kind cluster | [docs/install-pip-kind.md](docs/install-pip-kind.md) |
-| Docker Compose | [docs/deploy-docker-compose.md](docs/deploy-docker-compose.md) |
-| Kind dev environment (repo) | [docs/deploy-kind.md](docs/deploy-kind.md) |
-| VM / AKS / cloud (Helm) | [docs/deploy-cloud.md](docs/deploy-cloud.md) |
-| All config options | [docs/configuration.md](docs/configuration.md) |
+| Topic | Link |
+|-------|------|
+| All install options | [kubeintellect.com/quickstart](https://kubeintellect.com/quickstart/) |
+| pip — no cluster (quick try) | [install-pip-no-cluster](https://kubeintellect.com/install-pip-no-cluster/) |
+| pip — existing cluster | [install-pip-existing-cluster](https://kubeintellect.com/install-pip-existing-cluster/) |
+| pip — local Kind cluster | [install-pip-kind](https://kubeintellect.com/install-pip-kind/) |
+| Docker Compose | [deploy-docker-compose](https://kubeintellect.com/deploy-docker-compose/) |
+| Kind dev environment (repo) | [deploy-kind](https://kubeintellect.com/deploy-kind/) |
+| VM / AKS / cloud (Helm) | [deploy-cloud](https://kubeintellect.com/deploy-cloud/) |
+| All config options | [configuration](https://kubeintellect.com/configuration/) |
+| Security model | [security](https://kubeintellect.com/security/) |
+
+---
+
+## Repo layout
+
+```
+app/                        # core Python source (shared by all deployments)
+deploy/
+  docker-compose/           # monitoring configs (prometheus.yml, loki-config.yml, grafana)
+  helm/
+    kubeintellect/          # Helm chart + values for all environments
+    langfuse/               # Langfuse LLM tracing chart
+  kind/                     # Kind cluster configs
+docker-compose.yaml         # laptop deployment entry point
+scripts/
+docs/
+tests/
+```
+
+---
+
+## v1 (LibreChat backend)
+
+The original KubeIntellect used a LibreChat frontend with a LangGraph multi-agent backend (Supervisor → specialized worker agents, HITL checkpoints, dynamic tool generation). It is preserved on the [`v1-legacy`](https://github.com/MSKazemi/kubeintellect/tree/v1-legacy) branch.
+
+---
+
+## License
+
+AGPL-3.0. Commercial licenses available — see [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md).
