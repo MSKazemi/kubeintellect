@@ -2,8 +2,7 @@
 title: KubeIntellect – Natural Language Kubernetes Management with AI Agents
 description: >-
   KubeIntellect is an LLM-orchestrated multi-agent framework for end-to-end
-  Kubernetes management. 100% reliability across 200 queries, 93% tool synthesis
-  success rate. Read, write, RBAC, exec, lifecycle — all in plain English.
+  Kubernetes management.
 hide:
   - navigation
   - toc
