@@ -135,11 +135,11 @@ Generate keys: `openssl rand -hex 20`
 
 | Option | When to use |
 |--------|-------------|
-| [Docker Compose](docs/deploy-docker-compose.md) | Laptop, no K8s cluster, full stack via Docker |
-| [Kind cluster](docs/deploy-kind.md) | Local K8s dev with monitoring + Langfuse |
-| [Cloud / VM (Helm)](docs/deploy-cloud.md) | Production, AKS, or company cluster |
+| [Docker Compose](https://mskazemi.github.io/kubeintellect/deploy/docker-compose/) | Laptop, no K8s cluster, full stack via Docker |
+| [Kind cluster](https://mskazemi.github.io/kubeintellect/deploy/kind/) | Local K8s dev with monitoring + Langfuse |
+| [Cloud / VM (Helm)](https://mskazemi.github.io/kubeintellect/deploy/cloud/) | Production, AKS, or company cluster |
 
-Full guide: [kubeintellect.com/quickstart](https://kubeintellect.com/quickstart/)
+Full guide: [Quickstart](https://mskazemi.github.io/kubeintellect/quickstart/)
 
 ---
 
