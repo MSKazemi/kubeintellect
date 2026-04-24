@@ -2,15 +2,14 @@
 title: AI-Powered Kubernetes Debugging & Management – How KubeIntellect Works
 description: >-
   KubeIntellect is an LLM-orchestrated agent framework for end-to-end Kubernetes
-  management. 100% reliability across 200 queries, 93% dynamic tool synthesis
-  success rate. Covers the full Kubernetes API surface in plain English.
+  management.
 ---
 
 # AI-Powered Kubernetes Debugging & Management
 
 Kubernetes failures are hard to debug manually — not because the data is unavailable, but because it lives in too many places at once. Logs, events, resource configs, metrics, and RBAC bindings all tell part of the story. KubeIntellect correlates them automatically, surfaces the root cause, and proposes a fix — with a dry-run diff and your approval before anything changes.
 
-KubeIntellect is a peer-reviewed, open-source system evaluated at **100% reliability across 200 natural-language queries** with a **93% dynamic tool synthesis success rate**. It covers the full Kubernetes API surface: read, write, delete, exec, access control, lifecycle, and advanced verbs.
+KubeIntellect is a peer-reviewed, open-source system. It covers the full Kubernetes API surface: read, write, delete, exec, access control, lifecycle, and advanced verbs.
 
 ---
 
