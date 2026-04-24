@@ -120,5 +120,5 @@ Changes take effect immediately — if the service is running it restarts automa
 ## Next step
 
 Once you have a cluster, add kubectl and connect:
-- [Connect to an existing cluster →](install-pip-existing-cluster.md)
-- [Create a local Kind cluster →](install-pip-kind.md)
+- [Connect to an existing cluster →](existing-cluster.md)
+- [Create a local Kind cluster →](kind.md)
