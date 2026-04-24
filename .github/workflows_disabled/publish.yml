@@ -1,0 +1,61 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"         # triggers on v2.0.0, v2.1.0, etc.
+
+jobs:
+  build-and-publish:
+    name: Build and publish to PyPI
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # required for PyPI trusted publishing
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so hatch-vcs can read tags
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build wheel and sdist
+        run: uv build
+
+      - name: Verify wheel contains only app/ code
+        run: |
+          python3 -c "
+          import zipfile, sys, glob
+          whl = glob.glob('dist/*.whl')[0]
+          names = zipfile.ZipFile(whl).namelist()
+          prefix = whl.split('/')[-1].split('-py')[0] + '-'
+          bad = [n for n in names if not n.startswith('app/') and '.dist-info/' not in n]
+          if bad:
+              print('FAIL — unexpected files in wheel:')
+              print('\n'.join(bad))
+              sys.exit(1)
+          print(f'OK — {len(names)} files, all in app/ or dist-info')
+          "
+
+      - name: Scan for hardcoded secrets
+        run: |
+          if grep -rn --include="*.py" \
+               -E '(sk-proj-[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{16}|ghp_[A-Za-z0-9]{36}|sk-lf-[a-f0-9-]{30,})' \
+               app/; then
+            echo "FAIL — hardcoded secret pattern found in app/"
+            exit 1
+          fi
+          echo "OK — no secrets found"
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # Uses PyPI Trusted Publishing — no PYPI_API_TOKEN needed.
+        # Configure at: https://pypi.org/manage/account/publishing/
+        # Publisher settings:
+        #   Repository owner: mskazemi
+        #   Repository name:  kubeintellect-v2
+        #   Workflow name:    publish.yml
+        #   Environment name: (leave blank)

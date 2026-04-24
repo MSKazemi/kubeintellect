@@ -1,0 +1,57 @@
+# Kind (local dev) overrides
+rbac:
+  clusterAdmin: true
+  createNamespaced: false            # cluster-admin binding supersedes the namespaced role
+  createClusterReadOnly: false       # cluster-admin binding supersedes this too
+  createClusterOps: false            # cluster-admin binding supersedes this too
+  allowExec: true                    # local dev: exec allowed (no real secrets at risk)
+  enableNamespaceManagement: false   # cluster-admin binding supersedes this too
+
+
+# Access the API at: http://api.kubeintellect.local
+# Add to /etc/hosts: 127.0.0.1 api.kubeintellect.local
+
+ingress:
+  enabled: true
+  host: api.kubeintellect.local
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+postgres:
+  storage: 2Gi
+  storageClass: standard   # Kind default storage class
+  password: changeme       # dev-only default; override with POSTGRES_PASSWORD env var via make kind-deploy
+
+# Live code mount — maps host app/ into the pod so uvicorn --reload picks up edits immediately.
+# The Kind node receives the host directory via extraMounts in kind-config.yaml.
+# Must run on the control-plane node where the extraMount is configured.
+hotReload:
+  enabled: true
+  hostPath: /mnt/code/app
+
+config:
+  logLevel: DEBUG
+  prometheusUrl: "http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090"
+  lokiUrl: "http://loki.monitoring.svc.cluster.local:3100"
+  langfuseEnabled: true
+  langfuseHost: "http://langfuse-web.monitoring.svc.cluster.local:3000"
+
+nodeSelector:
+  kubernetes.io/hostname: testbed-v2-control-plane
+
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+
+# ── Langfuse API keys — must match initProject keys seeded in charts/langfuse/values-kind.yaml
+# Langfuse is deployed as a separate chart; see make langfuse-install / kind-deploy
+secrets:
+  langfusePublicKey: "pk-lf-6492d57f-1f9a-4cb7-ba41-32aa25b5912c"
+  langfuseSecretKey: "sk-lf-change-me"

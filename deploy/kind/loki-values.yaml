@@ -1,0 +1,15 @@
+# loki-stack — no persistence for local Kind dev
+# Loki API: make port-forward-loki → http://localhost:3100
+
+# Grafana already installed via kube-prometheus-stack — don't deploy a second one.
+grafana:
+  enabled: false
+
+loki:
+  isDefault: false   # Prometheus is default in kube-prometheus-stack; avoid two defaults
+  persistence:
+    enabled: false
+
+# Promtail ships pod logs to Loki automatically.
+promtail:
+  enabled: true

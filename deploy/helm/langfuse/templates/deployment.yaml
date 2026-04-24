@@ -1,0 +1,314 @@
+{{- $ns       := include "langfuse.namespace" . }}
+{{- $pgPass    := .Values.postgres.password   | default "langfuse" }}
+{{- $chPass    := .Values.clickhouse.password | default "langfuse" }}
+{{- $minioUser := .Values.minio.rootUser      | default "langfuse" }}
+{{- $minioPwd  := .Values.minio.rootPassword  | default "langfuse123" }}
+
+# --- PostgreSQL (Langfuse metadata) ---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langfuse-postgres
+  namespace: {{ $ns | quote }}
+  labels:
+    app: langfuse-postgres
+    component: langfuse
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: langfuse-postgres
+  template:
+    metadata:
+      labels:
+        app: langfuse-postgres
+        component: langfuse
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - name: POSTGRES_USER
+              value: langfuse
+            - name: POSTGRES_PASSWORD
+              value: {{ $pgPass | quote }}
+            - name: POSTGRES_DB
+              value: langfuse
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "langfuse", "-d", "langfuse"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: langfuse-postgres-pvc
+
+# --- ClickHouse (trace/observation store) ---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langfuse-clickhouse
+  namespace: {{ $ns | quote }}
+  labels:
+    app: langfuse-clickhouse
+    component: langfuse
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: langfuse-clickhouse
+  template:
+    metadata:
+      labels:
+        app: langfuse-clickhouse
+        component: langfuse
+    spec:
+      containers:
+        - name: clickhouse
+          image: clickhouse/clickhouse-server:24.12
+          env:
+            - name: CLICKHOUSE_DB
+              value: langfuse
+            - name: CLICKHOUSE_USER
+              value: default
+            - name: CLICKHOUSE_PASSWORD
+              value: {{ $chPass | quote }}
+          ports:
+            - name: http
+              containerPort: 8123
+            - name: native
+              containerPort: 9000
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: 8123
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+            - name: config
+              mountPath: /etc/clickhouse-server/config.d/langfuse.xml
+              subPath: langfuse.xml
+              readOnly: true
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: langfuse-clickhouse-pvc
+        - name: config
+          configMap:
+            name: langfuse-clickhouse-config
+
+# --- Redis (task queue) ---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langfuse-redis
+  namespace: {{ $ns | quote }}
+  labels:
+    app: langfuse-redis
+    component: langfuse
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: langfuse-redis
+  template:
+    metadata:
+      labels:
+        app: langfuse-redis
+        component: langfuse
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: langfuse-redis-pvc
+
+# --- MinIO (S3-compatible blob store) ---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langfuse-minio
+  namespace: {{ $ns | quote }}
+  labels:
+    app: langfuse-minio
+    component: langfuse
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: langfuse-minio
+  template:
+    metadata:
+      labels:
+        app: langfuse-minio
+        component: langfuse
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:latest
+          args: ["server", "/data", "--console-address", ":9001"]
+          env:
+            - name: MINIO_ROOT_USER
+              value: {{ $minioUser | quote }}
+            - name: MINIO_ROOT_PASSWORD
+              value: {{ $minioPwd | quote }}
+          ports:
+            - name: api
+              containerPort: 9000
+            - name: console
+              containerPort: 9001
+          readinessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: 9000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: langfuse-minio-pvc
+
+# --- Langfuse Web (UI + API) ---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langfuse-web
+  namespace: {{ $ns | quote }}
+  labels:
+    app: langfuse-web
+    component: langfuse
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: langfuse-web
+  template:
+    metadata:
+      labels:
+        app: langfuse-web
+        component: langfuse
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:latest
+          command: ["sh", "-c", "until nc -z langfuse-postgres 5432; do echo waiting for postgres; sleep 2; done"]
+        - name: wait-for-clickhouse
+          image: busybox:latest
+          command: ["sh", "-c", "until nc -z langfuse-clickhouse 8123; do echo waiting for clickhouse; sleep 2; done"]
+        - name: wait-for-redis
+          image: busybox:latest
+          command: ["sh", "-c", "until nc -z langfuse-redis 6379; do echo waiting for redis; sleep 2; done"]
+        - name: wait-for-minio
+          image: busybox:latest
+          command: ["sh", "-c", "until nc -z langfuse-minio 9000; do echo waiting for minio; sleep 2; done"]
+      containers:
+        - name: langfuse-web
+          image: langfuse/langfuse:latest
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - secretRef:
+                name: langfuse-secret
+          env:
+            - name: CLICKHOUSE_URL
+              value: "http://langfuse-clickhouse:8123"
+            - name: CLICKHOUSE_MIGRATION_URL
+              value: "clickhouse://langfuse-clickhouse:9000"
+            - name: TELEMETRY_ENABLED
+              value: "false"
+            - name: LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES
+              value: "false"
+            - name: LANGFUSE_RETENTION_DAYS
+              value: "365"
+          readinessProbe:
+            httpGet:
+              path: /api/public/health
+              port: 3000
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /api/public/health
+              port: 3000
+            initialDelaySeconds: 90
+            periodSeconds: 20
+            failureThreshold: 3
+
+# --- Langfuse Worker (background jobs) ---
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langfuse-worker
+  namespace: {{ $ns | quote }}
+  labels:
+    app: langfuse-worker
+    component: langfuse
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: langfuse-worker
+  template:
+    metadata:
+      labels:
+        app: langfuse-worker
+        component: langfuse
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:latest
+          command: ["sh", "-c", "until nc -z langfuse-postgres 5432; do echo waiting for postgres; sleep 2; done"]
+        - name: wait-for-clickhouse
+          image: busybox:latest
+          command: ["sh", "-c", "until nc -z langfuse-clickhouse 8123; do echo waiting for clickhouse; sleep 2; done"]
+        - name: wait-for-redis
+          image: busybox:latest
+          command: ["sh", "-c", "until nc -z langfuse-redis 6379; do echo waiting for redis; sleep 2; done"]
+        - name: wait-for-minio
+          image: busybox:latest
+          command: ["sh", "-c", "until nc -z langfuse-minio 9000; do echo waiting for minio; sleep 2; done"]
+      containers:
+        - name: langfuse-worker
+          image: langfuse/langfuse-worker:latest
+          envFrom:
+            - secretRef:
+                name: langfuse-secret
+          env:
+            - name: CLICKHOUSE_URL
+              value: "http://langfuse-clickhouse:8123"
+            - name: CLICKHOUSE_MIGRATION_URL
+              value: "clickhouse://langfuse-clickhouse:9000"
+            - name: LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES
+              value: "false"
+            - name: LANGFUSE_RETENTION_DAYS
+              value: "365"

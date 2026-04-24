@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}-config
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "kubeintellect.labels" . | nindent 4 }}
+data:
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  LLM_PROVIDER: {{ .Values.config.llmProvider | quote }}
+  AZURE_OPENAI_API_VERSION: {{ .Values.config.azureApiVersion | quote }}
+  {{- if not .Values.postgres.external.enabled }}
+  # PostgreSQL — in-cluster StatefulSet connection
+  POSTGRES_HOST: {{ printf "%s-postgres" (include "kubeintellect.fullname" .) | quote }}
+  POSTGRES_DB: {{ .Values.postgres.database | quote }}
+  POSTGRES_USER: {{ .Values.postgres.user | quote }}
+  {{- end }}
+  # Observability — URLs of Prometheus and Loki in the target cluster (empty = not configured).
+  PROMETHEUS_URL: {{ .Values.config.prometheusUrl | default "" | quote }}
+  LOKI_URL: {{ .Values.config.lokiUrl | default "" | quote }}
+  # Langfuse — KubeIntellect's internal LLM tracing.
+  # Install charts/langfuse/ separately and set config.langfuseHost to its service URL.
+  LANGFUSE_ENABLED: {{ .Values.config.langfuseEnabled | default false | toString | quote }}
+  LANGFUSE_HOST: {{ .Values.config.langfuseHost | default "" | quote }}
+  # Agent kubectl guardrails — namespaces and resource types the agent cannot touch.
+  # Edit config.blockedNamespaces / config.blockedResources in values.yaml to adjust.
+  KUBECTL_BLOCKED_NAMESPACES: {{ .Values.config.blockedNamespaces | join "," | quote }}
+  KUBECTL_BLOCKED_RESOURCES: {{ .Values.config.blockedResources | join "," | quote }}

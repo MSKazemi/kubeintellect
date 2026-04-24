@@ -1,0 +1,136 @@
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║        KubeIntellect — Production Installation Values                       ║
+# ║                                                                              ║
+# ║  1. Copy: cp deploy/helm/kubeintellect/values-production.yaml.example \     ║
+# ║              deploy/helm/kubeintellect/values-production.yaml               ║
+# ║  2. Fill in the blanks below                                                 ║
+# ║  3. Deploy: make vm-deploy                                                   ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+# ── Image ─────────────────────────────────────────────────────────────────────
+image:
+  repository: ghcr.io/mskazemi/kubeintellect-v2
+  tag: dev-latest       # pin to a specific version in production, e.g. v2.1.0
+  pullPolicy: IfNotPresent
+
+replicaCount: 1         # increase to 2+ for HA (requires external postgres)
+
+# ── Ingress ───────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: nginx      # or: azure/application-gateway, alb, traefik
+  host: api.your-domain.com
+  tls: []
+  # For cert-manager automatic TLS:
+  # annotations:
+  #   cert-manager.io/cluster-issuer: letsencrypt-prod
+  # tls:
+  #   - secretName: kubeintellect-tls
+  #     hosts: [api.your-domain.com]
+
+# ── LLM Provider ──────────────────────────────────────────────────────────────
+# Secrets (API keys) are passed via --set in the Makefile, sourced from .env.
+# Set the provider here so the ConfigMap is correct.
+config:
+  llmProvider: azure    # azure | openai
+
+# ── Observability — bring your own ────────────────────────────────────────────
+# KubeIntellect queries Prometheus and Loki to answer metric/log questions.
+# These are services already running in your cluster — KubeIntellect does NOT
+# install them. Leave empty to disable metric/log queries (kubectl still works).
+#
+# Typical service names (adjust to your actual deployment):
+#   prometheusUrl: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+#   lokiUrl: http://loki.monitoring.svc.cluster.local:3100
+  prometheusUrl: ""
+  lokiUrl: ""
+
+# ── Database ──────────────────────────────────────────────────────────────────
+# Option A (default): In-cluster PostgreSQL StatefulSet.
+# The postgres password is passed via --set in the Makefile, sourced from .env.
+postgres:
+  storage: 10Gi
+  storageClass: ""      # leave empty to use cluster default StorageClass
+  external:
+    enabled: false
+
+# Option B: External managed database (Azure DB for PostgreSQL, RDS, CloudSQL…)
+# Uncomment these and comment out the above block. The StatefulSet will not be created.
+# Provide DATABASE_URL in .env instead of POSTGRES_PASSWORD.
+# postgres:
+#   external:
+#     enabled: true
+#     url: "postgresql://user:password@host:5432/kubeintellect"
+
+# ── RBAC ──────────────────────────────────────────────────────────────────────
+# createClusterOps: true allows write operations (scale, apply, patch, delete).
+# allowExec: NEVER enable in production — protects secrets from exec+env extraction.
+rbac:
+  clusterAdmin: false
+  createClusterReadOnly: true
+  createClusterOps: true
+  allowExec: false
+  enableNamespaceManagement: false
+
+# ── Resources ─────────────────────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+# ── LLM Tracing — Langfuse (optional) ────────────────────────────────────────
+# Langfuse records every LLM call KubeIntellect makes (cost, latency, quality).
+# This is KubeIntellect's own observability — NOT the cluster monitoring stack.
+#
+# Option A: Deploy self-hosted Langfuse alongside KubeIntellect (selfHosted: true).
+# Option B: Use managed Langfuse Cloud or your own server (selfHosted: false).
+# Option C: Disable entirely (langfuse.enabled: false).
+langfuse:
+  enabled: false
+
+  # ── Option A: Self-hosted ────────────────────────────────────────────────
+  selfHosted: true
+  namespace: monitoring
+
+  postgres:
+    storage: "10Gi"
+    password: ""          # fill in — keep in sync with .env or use --set
+  clickhouse:
+    storage: "20Gi"
+    password: ""
+  redis:
+    storage: "2Gi"
+  minio:
+    storage: "20Gi"
+    rootUser: "langfuse"
+    rootPassword: ""
+
+  nextauthUrl: "https://api.your-domain.com"   # your domain
+  nextauthSecret: ""      # openssl rand -base64 32
+  salt: ""                # openssl rand -base64 32
+  encryptionKey: ""       # openssl rand -hex 32
+
+  initUser:
+    email: ""             # your admin email
+    name: "Admin"
+    password: ""
+  initOrg:
+    id: "kubeintellect-org"
+    name: "KubeIntellect"
+  initProject:
+    id: "kubeintellect-project"
+    name: "KubeIntellect"
+    publicKey: ""         # pk-lf-... (must match LANGFUSE_PUBLIC_KEY in .env)
+    secretKey: ""         # sk-lf-... (must match LANGFUSE_SECRET_KEY in .env)
+
+  ingress:
+    enabled: false        # expose Langfuse UI (optional — can use SSH tunnel instead)
+    host: "langfuse.your-domain.com"
+
+  # ── Option B: Managed / external Langfuse ────────────────────────────────
+  # selfHosted: false
+  # host: https://cloud.langfuse.com   # or your self-hosted URL
+  # publicKey and secretKey go in .env as LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY

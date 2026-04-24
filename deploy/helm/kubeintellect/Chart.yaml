@@ -1,0 +1,6 @@
+apiVersion: v2
+name: kubeintellect
+description: AI-powered Kubernetes operations assistant — V2
+type: application
+version: 2.0.0
+appVersion: "2.0.0"

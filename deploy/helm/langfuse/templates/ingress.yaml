@@ -1,0 +1,27 @@
+{{- if .Values.ingress.enabled }}
+{{- $ns := include "langfuse.namespace" . }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: langfuse
+  namespace: {{ $ns | quote }}
+  labels:
+    component: langfuse
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: {{ .Values.ingress.className | default "nginx" }}
+  rules:
+    - host: {{ .Values.ingress.host | default "langfuse.local" | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: langfuse-web
+                port:
+                  number: 3000
+  tls: []
+{{- end }}

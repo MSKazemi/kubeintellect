@@ -1,0 +1,156 @@
+# KubeIntellect — local deployment
+#
+# Quick start (core only):
+#   cp .env.example .env          # fill in LLM_PROVIDER + API key + POSTGRES_PASSWORD
+#   docker compose up -d
+#   pip install kube-q
+#   KUBE_Q_API_KEY=<key> kq
+#
+# With Prometheus / Grafana / Loki:
+#   docker compose --profile monitoring up -d
+#   # Add to .env: PROMETHEUS_URL=http://localhost:9090
+#   #              LOKI_URL=http://localhost:3100
+#
+# With Langfuse LLM tracing:
+#   docker compose --profile tracing up -d
+#   # Visit http://localhost:3001 to create an account and get API keys
+#   # Add to .env: LANGFUSE_ENABLED=true
+#   #              LANGFUSE_HOST=http://localhost:3001
+#   #              LANGFUSE_PUBLIC_KEY=pk-lf-...
+#   #              LANGFUSE_SECRET_KEY=sk-lf-...
+#
+# With everything:
+#   docker compose --profile monitoring --profile tracing up -d
+#
+# To use a different kubeconfig:
+#   KUBECONFIG=/path/to/config docker compose up -d
+
+services:
+
+  # ── Core ─────────────────────────────────────────────────────────────────────
+
+  kubeintellect:
+    build: .
+    image: kubeintellect-dev
+    ports:
+      - "8000:8000"
+    volumes:
+      - ${KUBECONFIG:-~/.kube/config}:/root/.kube/config:ro
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_HOST=postgres
+      # Langfuse host is fixed in compose context; set LANGFUSE_ENABLED=true in .env
+      # when using --profile tracing to activate tracing.
+      - LANGFUSE_HOST=http://localhost:3001
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-kubeintellect}
+      POSTGRES_USER: ${POSTGRES_USER:-kubeintellect}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kubeintellect} -d ${POSTGRES_DB:-kubeintellect}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Monitoring profile (Prometheus + Loki + Grafana) ─────────────────────────
+  # Start with: docker compose --profile monitoring up -d
+  # Then set in .env: PROMETHEUS_URL=http://localhost:9090
+  #                   LOKI_URL=http://localhost:3100
+
+  prometheus:
+    profiles: [monitoring]
+    image: prom/prometheus:v2.52.0
+    volumes:
+      - ./deploy/docker-compose/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  loki:
+    profiles: [monitoring]
+    image: grafana/loki:3.0.0
+    volumes:
+      - ./deploy/docker-compose/monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/tmp/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    restart: unless-stopped
+
+  grafana:
+    profiles: [monitoring]
+    image: grafana/grafana:11.0.0
+    volumes:
+      - ./deploy/docker-compose/monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/ds.yml:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+    restart: unless-stopped
+
+  # ── Tracing profile (Langfuse) ────────────────────────────────────────────────
+  # Start with: docker compose --profile tracing up -d
+  # Visit http://localhost:3001 to create an account, then get API keys from Settings.
+  # Then set in .env: LANGFUSE_ENABLED=true
+  #                   LANGFUSE_HOST=http://localhost:3001
+  #                   LANGFUSE_PUBLIC_KEY=pk-lf-...
+  #                   LANGFUSE_SECRET_KEY=sk-lf-...
+
+  langfuse-db:
+    profiles: [tracing]
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: langfuse
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:-langfuse-local}
+    volumes:
+      - langfuse-pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  langfuse:
+    profiles: [tracing]
+    image: langfuse/langfuse:latest
+    ports:
+      - "3001:3000"
+    environment:
+      DATABASE_URL: postgresql://langfuse:${LANGFUSE_DB_PASSWORD:-langfuse-local}@langfuse-db:5432/langfuse
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-changeme-local-secret-32chars!!}
+      NEXTAUTH_URL: http://localhost:3001
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "true"
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  prometheus-data:
+  loki-data:
+  grafana-data:
+  langfuse-pgdata:
