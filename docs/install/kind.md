@@ -139,4 +139,4 @@ kubeintellect set PROMETHEUS_URL=http://172.18.0.2:30090
 | Cluster DNS auto-config | Yes — `svc.cluster.local` works from host | No |
 | Who it's for | End users, ops teams | KubeIntellect developers |
 
-For the full developer setup with hot-reload, see [deploy-kind.md](deploy-kind.md).
+For the full developer setup with hot-reload, see [deploy-kind.md](../deploy/kind.md).

@@ -131,3 +131,4 @@ nav:
     - Security & Privacy:
       - Security Model: v1/security-model.md
       - GDPR & Data Retention: v1/gdpr.md
+    - AI Kubernetes Debugging: v1/kubernetes-ai-debugging.md
