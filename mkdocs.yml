@@ -1,9 +1,14 @@
 site_name: KubeIntellect
-site_description: AI-powered Kubernetes operations assistant
-site_url: https://mskazemi.github.io/kubeintellect-v2
-repo_url: https://github.com/mskazemi/kubeintellect-v2
-repo_name: mskazemi/kubeintellect-v2
+site_description: >-
+  AI-powered Kubernetes management. Diagnose CrashLoopBackOff, pending pods,
+  and RBAC issues in plain English — with human-approval gates before any
+  write operation runs.
+site_url: https://kubeintellect.com
+site_author: Mohsen Seyedkazemi Ardebili
+repo_url: https://github.com/MSKazemi/kubeintellect
+repo_name: MSKazemi/kubeintellect
 edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2024–2025 Mohsen Seyedkazemi Ardebili
 
 theme:
   name: material
@@ -33,41 +38,96 @@ theme:
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.sections
+    - navigation.indexes
     - navigation.top
+    - navigation.footer
     - search.suggest
     - search.highlight
+    - search.share
     - content.code.copy
+    - content.action.edit
+    - toc.follow
 
 extra_css:
   - stylesheets/extra.css
 
+extra:
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/MSKazemi/kubeintellect
+      name: KubeIntellect on GitHub
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/kubeintellect/
+      name: kubeintellect on PyPI
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/kube-q/
+      name: kube-q CLI on PyPI
+
 markdown_extensions:
   - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      title: On this page
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
-  - tables
-  - attr_list
-  - md_in_html
+  - pymdownx.tasklist:
+      custom_checkbox: true
 
 plugins:
-  - search
+  - search:
+      lang: en
+      separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)'
 
 nav:
   - Home: index.md
   - Quickstart: quickstart.md
+
   - Install:
-    - No cluster (quick try): install-pip-no-cluster.md
-    - Existing cluster: install-pip-existing-cluster.md
-    - Kind cluster (pip): install-pip-kind.md
+    - No cluster (quick try): install/no-cluster.md
+    - Existing cluster: install/existing-cluster.md
+    - Local Kind cluster: install/kind.md
+
   - Deploy:
-    - Docker Compose: deploy-docker-compose.md
-    - Kind (dev env): deploy-kind.md
-    - Cloud / VM: deploy-cloud.md
-  - Configuration: configuration.md
-  - Security: security.md
+    - Docker Compose: deploy/docker-compose.md
+    - Kind (dev env): deploy/kind.md
+    - Cloud / VM (Helm): deploy/cloud.md
+
+  - Reference:
+    - Configuration: configuration.md
+    - Security: security.md
+
+  - KubeIntellect v1 (Legacy):
+    - Overview: v1/index.md
+    - Getting Started:
+      - Installation & Deployment: v1/installation.md
+      - Development Setup: v1/development.md
+      - Package Management: v1/package-management.md
+    - Architecture:
+      - System Overview: v1/architecture.md
+      - Flowcharts: v1/flowcharts/index.md
+      - Multi-User Concurrency: v1/concurrency.md
+    - Workflows:
+      - Human-in-the-Loop (HITL): v1/hitl.md
+    - Operations:
+      - Runbook & Troubleshooting: v1/runbook.md
+      - Observability Stack: v1/observability.md
+      - Secret Management: v1/secret-management.md
+    - Security & Privacy:
+      - Security Model: v1/security-model.md
+      - GDPR & Data Retention: v1/gdpr.md

@@ -1,4 +1,6 @@
 ---
+description: >-
+  AI-powered Kubernetes management. Diagnose CrashLoopBackOff, pending pods, and RBAC issues in plain English — human-approval gates before any write operation.
 hide:
   - navigation
   - toc
@@ -16,7 +18,7 @@ hide:
     </p>
     <div class="ki-ctas">
       <a href="quickstart/" class="md-button md-button--primary">Get Started →</a>
-      <a href="https://github.com/mskazemi/kubeintellect-v2" class="md-button">View on GitHub</a>
+      <a href="https://github.com/MSKazemi/kubeintellect" class="md-button">View on GitHub</a>
     </div>
   </div>
 </div>
@@ -117,7 +119,7 @@ SSE client at `/v1/chat/completions`.
 
     `pip install kubeintellect` + SQLite. Explore the API and CLI in minutes, no Kubernetes needed.
 
-    [→ Install guide](install-pip-no-cluster.md)
+    [→ Install guide](install/no-cluster.md)
 
 -   **:material-server-network: Existing cluster**
 
@@ -125,7 +127,7 @@ SSE client at `/v1/chat/completions`.
 
     Connect KubeIntellect to any cluster you already have — AKS, EKS, GKE, or any kubeconfig.
 
-    [→ Install guide](install-pip-existing-cluster.md)
+    [→ Install guide](install/existing-cluster.md)
 
 -   **:material-docker: Docker Compose**
 
@@ -133,7 +135,7 @@ SSE client at `/v1/chat/completions`.
 
     Full local stack with PostgreSQL, optional Prometheus + Grafana + Loki, and optional Langfuse LLM tracing.
 
-    [→ Deploy guide](deploy-docker-compose.md)
+    [→ Deploy guide](deploy/docker-compose.md)
 
 -   **:material-cloud-upload: Production (Helm)**
 
@@ -141,7 +143,7 @@ SSE client at `/v1/chat/completions`.
 
     Helm chart for AKS / EKS / GKE. Includes RBAC, secrets management, ingress, and resource limits.
 
-    [→ Deploy guide](deploy-cloud.md)
+    [→ Deploy guide](deploy/cloud.md)
 
 </div>
 
@@ -162,7 +164,7 @@ SSE client at `/v1/chat/completions`.
 === "Docker Compose"
 
     ```bash
-    git clone https://github.com/mskazemi/kubeintellect-v2
+    git clone https://github.com/MSKazemi/kubeintellect
     cd kubeintellect-v2
     cp .env.example .env        # add your LLM key
     docker compose up -d
@@ -172,7 +174,7 @@ SSE client at `/v1/chat/completions`.
 === "Kind (local K8s)"
 
     ```bash
-    git clone https://github.com/mskazemi/kubeintellect-v2
+    git clone https://github.com/MSKazemi/kubeintellect
     cd kubeintellect-v2
     make kind-cluster-create
     cp .env.example .env        # add your LLM key

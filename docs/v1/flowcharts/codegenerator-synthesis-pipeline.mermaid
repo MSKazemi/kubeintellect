@@ -1,0 +1,29 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	generate_code(generate_code)
+	test_code(test_code)
+	evaluate_test_results(evaluate_test_results)
+	generate_metadata(generate_metadata)
+	register_tool(register_tool)
+	handle_failure(handle_failure)
+	finish(finish)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> generate_code;
+	finish --> __end__;
+	generate_code --> test_code;
+	handle_failure --> finish;
+	register_tool --> finish;
+	test_code --> evaluate_test_results;
+	evaluate_test_results -.-> generate_metadata;
+	evaluate_test_results -.-> generate_code;
+	evaluate_test_results -.-> handle_failure;
+	generate_metadata -.-> register_tool;
+	generate_metadata -.-> handle_failure;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
