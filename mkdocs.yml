@@ -3,7 +3,7 @@ site_description: >-
   AI-powered Kubernetes management. Diagnose CrashLoopBackOff, pending pods,
   and RBAC issues in plain English — with human-approval gates before any
   write operation runs.
-site_url: https://kubeintellect.com
+site_url: https://mskazemi.github.io/kubeintellect/
 site_author: Mohsen Seyedkazemi Ardebili
 repo_url: https://github.com/MSKazemi/kubeintellect
 repo_name: MSKazemi/kubeintellect

@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /v1/
 
-Sitemap: https://kubeintellect.com/sitemap.xml
+Sitemap: https://mskazemi.github.io/kubeintellect/sitemap.xml
