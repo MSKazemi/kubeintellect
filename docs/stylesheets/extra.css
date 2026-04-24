@@ -1,294 +1,240 @@
-/* =============================================================================
-   KubeIntellect Documentation — Custom Theme
-   Material for MkDocs overrides and enhancements
-   ============================================================================= */
+/* KubeIntellect brand: #00e676 → #00d4ff gradient */
 
-/* -----------------------------------------------------------------------------
-   1. Color Palette — Kubernetes Blue (#326CE5) + Cyan accent
-   ----------------------------------------------------------------------------- */
-
-[data-md-color-primary="custom"] {
-  --md-primary-fg-color:        #326CE5;
-  --md-primary-fg-color--light: #5B8FF9;
-  --md-primary-fg-color--dark:  #1A56C4;
-  --md-primary-bg-color:        #FFFFFF;
-  --md-primary-bg-color--light: rgba(255, 255, 255, 0.70);
+/* ── Light mode ─────────────────────────────────────────────── */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color:        #00a040;
+  --md-primary-fg-color--light: #00c853;
+  --md-primary-fg-color--dark:  #007d2e;
+  --md-primary-bg-color:        #ffffff;
+  --md-accent-fg-color:         #00acc1;
+  --md-accent-fg-color--transparent: rgba(0, 172, 193, 0.12);
 }
 
-[data-md-color-accent="custom"] {
-  --md-accent-fg-color:              #00BCD4;
-  --md-accent-fg-color--transparent: rgba(0, 188, 212, 0.10);
-  --md-accent-bg-color:              #FFFFFF;
-  --md-accent-bg-color--light:       rgba(255, 255, 255, 0.70);
-}
-
-/* Dark mode */
+/* ── Dark mode ───────────────────────────────────────────────── */
 [data-md-color-scheme="slate"] {
-  --md-hue: 220;
+  --md-primary-fg-color:        #00e676;
+  --md-primary-fg-color--light: #00d4ff;
+  --md-primary-fg-color--dark:  #00b34d;
+  --md-primary-bg-color:        #0a0a0a;
+  --md-accent-fg-color:         #00d4ff;
+  --md-accent-fg-color--transparent: rgba(0, 212, 255, 0.12);
+  --md-default-bg-color:        #0d0d0d;
+  --md-default-bg-color--light: #111111;
+  --md-code-bg-color:           #121212;
+  --md-code-fg-color:           #e2e8f0;
 }
 
-[data-md-color-scheme="slate"][data-md-color-primary="custom"] {
-  --md-primary-fg-color:        #5B8FF9;
-  --md-primary-fg-color--light: #7BA7FB;
-  --md-primary-fg-color--dark:  #326CE5;
-  --md-primary-bg-color:        #FFFFFF;
+/* ── Header: always dark with brand glow ─────────────────────── */
+.md-header {
+  background: linear-gradient(90deg, #0a0a0a 0%, #0b160d 100%);
+  box-shadow: 0 1px 0 rgba(0, 230, 118, 0.18), 0 4px 24px rgba(0, 0, 0, 0.55);
 }
 
-/* -----------------------------------------------------------------------------
-   2. Hero Section (Home Page)
-   ----------------------------------------------------------------------------- */
-
-.hero-section {
-  text-align: center;
-  padding: 4rem 2rem 3.5rem;
-  background: linear-gradient(135deg, #EEF4FF 0%, #F5F9FF 50%, #EAF6FB 100%);
-  border-radius: 16px;
-  margin-bottom: 2.5rem;
-  border: 1px solid rgba(50, 108, 229, 0.12);
+.md-tabs {
+  background: #0a0a0a;
+  border-top: 1px solid rgba(0, 230, 118, 0.12);
 }
 
-[data-md-color-scheme="slate"] .hero-section {
-  background: linear-gradient(
-    135deg,
-    rgba(50, 108, 229, 0.12) 0%,
-    rgba(91, 143, 249, 0.08) 50%,
-    rgba(0, 188, 212, 0.06) 100%
-  );
-  border-color: rgba(91, 143, 249, 0.20);
+.md-tabs__link--active,
+.md-tabs__link:focus,
+.md-tabs__link:hover {
+  color: #00e676;
 }
 
-.hero-section h1 {
-  font-size: clamp(1.8rem, 4vw, 2.6rem);
-  font-weight: 800;
-  line-height: 1.2;
-  margin-bottom: 1.25rem;
-  background: linear-gradient(135deg, #326CE5 30%, #00BCD4 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  letter-spacing: -0.02em;
+/* ── Logo ────────────────────────────────────────────────────── */
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  height: 26px;
+  width: auto;
 }
 
-.hero-section > .md-typeset p:first-of-type {
-  font-size: 1.1rem;
-  line-height: 1.7;
-  max-width: 680px;
-  margin: 0 auto 1.75rem;
-  opacity: 0.88;
+/* ── Site title in header ────────────────────────────────────── */
+.md-header__title {
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
-.hero-cta {
-  margin: 0.35rem !important;
+/* ── Gradient text for code in dark mode ─────────────────────── */
+[data-md-color-scheme="slate"] .md-typeset code {
+  border-radius: 4px;
 }
 
-/* Badge row */
-.hero-section p img {
-  margin: 0 0.2rem;
-  vertical-align: middle;
-}
-
-/* -----------------------------------------------------------------------------
-   3. Feature Cards — Hover Lift Effect
-   ----------------------------------------------------------------------------- */
-
-.md-typeset .grid.cards > :is(ul, ol) > li {
-  border: 1px solid var(--md-default-fg-color--lightest);
-  border-radius: 12px;
-  transition:
-    transform 0.20s ease,
-    box-shadow 0.20s ease,
-    border-color 0.20s ease;
-}
-
-.md-typeset .grid.cards > :is(ul, ol) > li:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 32px rgba(50, 108, 229, 0.14);
-  border-color: var(--md-primary-fg-color);
-}
-
-/* Card heading color */
-.md-typeset .grid.cards > :is(ul, ol) > li > p strong a {
-  color: var(--md-primary-fg-color);
-}
-
-/* -----------------------------------------------------------------------------
-   4. Code Blocks
-   ----------------------------------------------------------------------------- */
-
-.md-typeset pre {
-  border-radius: 10px;
-}
-
-.md-typeset pre > code {
-  border-radius: 10px;
-  font-size: 0.83em;
-}
-
-/* Copy button polish */
-.md-code__content .md-clipboard {
-  border-radius: 6px;
-}
-
-/* -----------------------------------------------------------------------------
-   5. Mermaid Diagram Container
-   ----------------------------------------------------------------------------- */
-
-.md-typeset .mermaid {
-  background: var(--md-code-bg-color);
-  border-radius: 12px;
-  padding: 1.5rem;
-  overflow-x: auto;
-  border: 1px solid var(--md-default-fg-color--lightest);
-  margin: 1.5rem 0;
-  text-align: center;
-}
-
-.md-typeset .mermaid svg {
-  max-width: 100%;
-  height: auto;
-}
-
-/* -----------------------------------------------------------------------------
-   6. Tables
-   ----------------------------------------------------------------------------- */
-
-.md-typeset table:not([class]) {
-  border-radius: 10px;
-  overflow: hidden;
-  border: 1px solid var(--md-default-fg-color--lightest);
-}
-
-.md-typeset table:not([class]) th {
-  background-color: var(--md-primary-fg-color);
-  color: #fff;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-}
-
-.md-typeset table:not([class]) tr:nth-child(even) td {
-  background-color: rgba(50, 108, 229, 0.03);
-}
-
-[data-md-color-scheme="slate"] .md-typeset table:not([class]) tr:nth-child(even) td {
-  background-color: rgba(91, 143, 249, 0.06);
-}
-
-/* -----------------------------------------------------------------------------
-   7. Admonitions — Kubernetes blue for tip/info
-   ----------------------------------------------------------------------------- */
-
+/* ── Admonition: tint tip/note with brand green ──────────────── */
 .md-typeset .admonition.tip,
 .md-typeset details.tip {
-  border-color: var(--md-primary-fg-color);
+  border-color: #00e676;
 }
-
 .md-typeset .tip > .admonition-title,
 .md-typeset .tip > summary {
-  background-color: rgba(50, 108, 229, 0.08);
+  background-color: rgba(0, 230, 118, 0.1);
 }
-
 .md-typeset .tip > .admonition-title::before,
 .md-typeset .tip > summary::before {
-  background-color: var(--md-primary-fg-color);
-  -webkit-mask-image: var(--md-admonition-icon--tip);
-  mask-image: var(--md-admonition-icon--tip);
+  color: #00e676;
 }
 
-/* -----------------------------------------------------------------------------
-   8. Navigation
-   ----------------------------------------------------------------------------- */
-
-/* Bolder active nav item */
-.md-nav__item--active > .md-nav__link {
-  font-weight: 600;
+/* ── Table header: dark + brand accent ───────────────────────── */
+.md-typeset table:not([class]) th {
+  background-color: rgba(0, 230, 118, 0.08);
 }
 
-/* Tabs active indicator */
-.md-tabs__link--active {
-  border-bottom: 2px solid var(--md-primary-fg-color);
-  font-weight: 600;
+/* ── Search highlight ────────────────────────────────────────── */
+.md-search-result mark {
+  color: #00e676;
+  background: transparent;
 }
 
-/* -----------------------------------------------------------------------------
-   9. Announcement Banner (if used)
-   ----------------------------------------------------------------------------- */
-
-.md-banner {
-  background-color: var(--md-primary-fg-color);
-  color: #fff;
-  font-weight: 500;
-}
-
-.md-banner a {
-  color: #fff;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-/* -----------------------------------------------------------------------------
-   10. Footer
-   ----------------------------------------------------------------------------- */
-
+/* ── Footer: always dark ─────────────────────────────────────── */
 .md-footer {
-  border-top: 1px solid var(--md-default-fg-color--lightest);
+  background: #0a0a0a;
+  border-top: 1px solid rgba(0, 230, 118, 0.10);
 }
 
 .md-footer-meta {
-  background-color: rgba(50, 108, 229, 0.06);
+  background: #050505;
 }
 
-[data-md-color-scheme="slate"] .md-footer-meta {
-  background-color: rgba(0, 0, 0, 0.25);
+/* ── Landing page hero ───────────────────────────────────────── */
+.ki-hero {
+  background: linear-gradient(135deg, #0a0a0a 0%, #0b1a0e 55%, #060e14 100%);
+  border-bottom: 1px solid rgba(0, 230, 118, 0.14);
+  margin: -0.8rem -1.2rem 2.5rem;
+  padding: 5rem 1.5rem 4rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
 }
 
-/* -----------------------------------------------------------------------------
-   11. Table of Contents — narrow accent line
-   ----------------------------------------------------------------------------- */
-
-.md-nav--secondary .md-nav__link--active {
-  color: var(--md-primary-fg-color);
-  font-weight: 600;
-  border-left: 2px solid var(--md-primary-fg-color);
-  padding-left: 0.5rem;
-  margin-left: -2px;
+.ki-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(0, 230, 118, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 230, 118, 0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+  pointer-events: none;
 }
 
-/* -----------------------------------------------------------------------------
-   12. Search Highlight
-   ----------------------------------------------------------------------------- */
-
-.md-search-result mark {
-  background-color: rgba(50, 108, 229, 0.18);
-  border-radius: 3px;
-  padding: 0 2px;
+.ki-hero-inner {
+  position: relative;
+  max-width: 760px;
+  margin: 0 auto;
 }
 
-/* -----------------------------------------------------------------------------
-   13. Keyboard Keys (kbd)
-   ----------------------------------------------------------------------------- */
-
-.md-typeset kbd {
-  background-color: var(--md-default-fg-color--lightest);
-  border-radius: 5px;
-  padding: 1px 6px;
-  font-size: 0.78em;
+.ki-hero-mark {
+  width: 90px;
+  height: 90px;
+  margin-bottom: 1.75rem;
+  filter: drop-shadow(0 0 24px rgba(0, 230, 118, 0.45));
+  animation: ki-glow-pulse 3s ease-in-out infinite;
 }
 
-/* -----------------------------------------------------------------------------
-   14. Inline Code Highlight
-   ----------------------------------------------------------------------------- */
-
-.md-typeset code {
-  border-radius: 5px;
-  padding: 1px 5px;
-  font-size: 0.85em;
+@keyframes ki-glow-pulse {
+  0%, 100% { filter: drop-shadow(0 0 20px rgba(0, 230, 118, 0.4)); }
+  50%       { filter: drop-shadow(0 0 36px rgba(0, 212, 255, 0.55)); }
 }
 
-/* -----------------------------------------------------------------------------
-   15. Back-to-top button
-   ----------------------------------------------------------------------------- */
+.ki-wordmark {
+  font-family: 'Inter', 'Geist Sans', system-ui, sans-serif !important;
+  font-size: clamp(2rem, 6vw, 3.25rem) !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.1em !important;
+  color: #f1f5f9 !important;
+  margin: 0 0 0.5rem !important;
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+  line-height: 1.1 !important;
+}
 
-.md-top {
-  border-radius: 50%;
-  box-shadow: 0 4px 12px rgba(50, 108, 229, 0.30);
+.ki-wordmark .ki-green {
+  font-weight: 300 !important;
+  background: linear-gradient(90deg, #00e676, #00d4ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-left: 0.12em;
+}
+
+.ki-tagline {
+  font-size: 0.72rem;
+  letter-spacing: 0.32em;
+  color: #3d5c42;
+  margin: 0 0 1.75rem;
+  text-transform: uppercase;
+}
+
+.ki-hero-desc {
+  font-size: 1.05rem;
+  line-height: 1.75;
+  color: #94a3b8;
+  max-width: 560px;
+  margin: 0 auto 2.25rem;
+}
+
+.ki-ctas {
+  display: flex;
+  gap: 0.875rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ── Stats bar ───────────────────────────────────────────────── */
+.ki-stats {
+  display: flex;
+  gap: 0;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 0 0 2.5rem;
+  padding: 1.75rem 0;
+  border-bottom: 1px solid rgba(0, 230, 118, 0.08);
+}
+
+.ki-stat {
+  text-align: center;
+  padding: 0 2.5rem;
+  border-right: 1px solid rgba(0, 230, 118, 0.12);
+}
+
+.ki-stat:last-child {
+  border-right: none;
+}
+
+.ki-stat-value {
+  display: block;
+  font-size: 2rem;
+  font-weight: 800;
+  background: linear-gradient(90deg, #00e676, #00d4ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1.2;
+}
+
+.ki-stat-label {
+  display: block;
+  font-size: 0.72rem;
+  color: #64748b;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  margin-top: 0.2rem;
+}
+
+/* ── Landing page: hide page title (h1 already in hero) ──────── */
+.md-content__inner > h1:first-child {
+  display: none;
+}
+
+/* ── Responsive tweaks ───────────────────────────────────────── */
+@media (max-width: 600px) {
+  .ki-hero {
+    padding: 3.5rem 1rem 3rem;
+  }
+  .ki-stat {
+    padding: 0 1.25rem;
+    border-right: none;
+  }
+  .ki-stats {
+    gap: 1rem;
+  }
 }

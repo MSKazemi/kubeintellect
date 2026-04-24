@@ -1,0 +1,21 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 80    # ingress HTTP  — nginx on VM proxies to this port
+        hostPort: 18080      # nginx listens on 80/443, Kind on 18080 to avoid conflict
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 18443
+        protocol: TCP
+    # No extraMounts — no hot-reload on VM; app runs from the container image
+  - role: worker
+    # Workloads (app, postgres, monitoring, langfuse) run on the worker node.
+    # Control-plane stays clean so K8s system components have dedicated CPU budget.

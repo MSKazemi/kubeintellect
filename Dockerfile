@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
+# Run `uv lock` before building to ensure a reproducible uv.lock exists.
 # ── Stage 1: dependency builder ───────────────────────────────────────────────
-# ghcr.io/astral-sh/uv bundles Python 3.12 + uv — no separate pip install needed
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
 
 WORKDIR /app
@@ -33,6 +33,14 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ── Stage 2: lean runtime image ───────────────────────────────────────────────
 FROM python:3.12-slim AS runtime
 
+# Install kubectl
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+ && curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+        -o /usr/local/bin/kubectl \
+ && chmod +x /usr/local/bin/kubectl \
+ && apt-get purge -y curl \
+ && rm -rf /var/lib/apt/lists/*
+
 # Non-root user — security best practice
 RUN groupadd --gid 1001 app \
  && useradd  --uid 1001 --gid app --shell /bin/sh --no-create-home app
@@ -52,10 +60,10 @@ USER app
 
 EXPOSE 8000
 
-# Liveness probe — matches the /health endpoint in app/main.py
+# Liveness probe — matches /healthz endpoint in app/api/v1/endpoints/health.py
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD python -c \
-        "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" \
+        "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')" \
         || exit 1
 
 CMD ["uvicorn", "app.main:app", \

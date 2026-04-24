@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://kubeintellect.com/sitemap.xml

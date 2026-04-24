@@ -1,210 +1,143 @@
-# app/main.py
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-import time
-import uuid as _uuid
+"""KubeIntellect V2 — FastAPI application entry point."""
+from __future__ import annotations
 
-from app.api.v1.routers import api_router as api_v1_router
-from app.api.v1.debug_middleware import DebugRequestMiddleware
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.api.middleware import RequestLoggingMiddleware
+from app.api.v1.router import api_router
 from app.core.config import settings
-from app.utils.logger_config import setup_logging, request_id_var, mask_headers
-from prometheus_fastapi_instrumentator import Instrumentator
-logger = setup_logging(
-    app_name="kubeintellect",
-    log_level=settings.LOG_LEVEL,
-    log_format=settings.LOG_FORMAT,
-)
-logger.info("Initializing KubeIntellect Application")
+from app.utils.logger import logger, setup_logging
+
+# Configure logging before anything else so uvicorn handlers are patched early.
+setup_logging()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    import sys
+    logger.info("KubeIntellect V2 starting up")
+    from app.core.llm import get_coordinator_llm, get_subagent_llm
+    get_coordinator_llm()
+    get_subagent_llm()
+    logger.info(f"LLM provider: {settings.LLM_PROVIDER}")
+    from app.agent.workflow import init_graph
+    try:
+        await init_graph()
+    except Exception as exc:
+        _hint = _startup_hint(exc)
+        logger.error(f"Startup failed: {exc}\n\n{_hint}")
+        sys.exit(1)
+    from app.db.audit import init_audit_pool
+    try:
+        await init_audit_pool()
+    except Exception as exc:
+        _hint = _startup_hint(exc)
+        logger.error(f"Startup failed: {exc}\n\n{_hint}")
+        sys.exit(1)
+    yield
+    logger.info("KubeIntellect V2 shutting down")
+    from app.agent.workflow import close_graph
+    await close_graph()
+    from app.db.audit import close_audit_pool
+    await close_audit_pool()
+
+
+def _startup_hint(exc: Exception) -> str:
+    msg = str(exc).lower()
+
+    # Database errors
+    if "password authentication failed" in msg:
+        return (
+            "Fix: POSTGRES_PASSWORD in ~/.kubeintellect/.env does not match your postgres user.\n"
+            "     Check the password, then run: kubeintellect status"
+        )
+    if "connection refused" in msg or "connection failed" in msg or "nodename nor servname" in msg:
+        return (
+            "Fix: postgres is not running or unreachable.\n"
+            "     Option 1 — start with Docker:\n"
+            "       docker run -d --name ki-pg \\\n"
+            "         -e POSTGRES_USER=kubeuser -e POSTGRES_PASSWORD=<pass> \\\n"
+            "         -e POSTGRES_DB=kubeintellectdb -p 5432:5432 postgres:16\n"
+            "     Option 2 — use SQLite: add USE_SQLITE=true to ~/.kubeintellect/.env\n"
+            "     Then re-run: kubeintellect db-init && kubeintellect serve"
+        )
+    if "does not exist" in msg and "database" in msg:
+        return (
+            "Fix: database has not been initialised yet.\n"
+            "     Run: kubeintellect db-init"
+        )
+    if "role" in msg and "does not exist" in msg:
+        return (
+            "Fix: the postgres user/role does not exist.\n"
+            "     Check POSTGRES_USER in ~/.kubeintellect/.env, or create the role:\n"
+            "       createuser -h localhost -s kubeuser"
+        )
+    if "ssl" in msg:
+        return (
+            "Fix: SSL/TLS error connecting to postgres.\n"
+            "     If your database requires SSL, add ?sslmode=require to DATABASE_URL.\n"
+            "     Example: DATABASE_URL=postgresql://user:pass@host:5432/db?sslmode=require"
+        )
+
+    # LLM / API errors
+    if "authenticationerror" in msg or "invalid api key" in msg or "incorrect api key" in msg:
+        provider = settings.LLM_PROVIDER
+        if provider == "openai":
+            return (
+                "Fix: OPENAI_API_KEY is invalid or expired.\n"
+                "     Get a new key at https://platform.openai.com/api-keys\n"
+                "     Update OPENAI_API_KEY in ~/.kubeintellect/.env"
+            )
+        return (
+            "Fix: AZURE_OPENAI_API_KEY is invalid or expired.\n"
+            "     Azure Portal → your OpenAI resource → Keys and Endpoint → regenerate KEY 1\n"
+            "     Update AZURE_OPENAI_API_KEY in ~/.kubeintellect/.env"
+        )
+    if "deploymentnotfound" in msg or "the api deployment" in msg:
+        return (
+            "Fix: the Azure deployment name does not exist in your resource.\n"
+            "     Check AZURE_COORDINATOR_DEPLOYMENT and AZURE_SUBAGENT_DEPLOYMENT in\n"
+            "     ~/.kubeintellect/.env — must match names in Azure AI Foundry → Deployments"
+        )
+    if "ratelimit" in msg or "rate limit" in msg or "429" in msg:
+        return (
+            "The LLM API rate limit was hit at startup.\n"
+            "     Wait a moment and restart: kubeintellect serve\n"
+            "     Check your quota at platform.openai.com or Azure Portal."
+        )
+    if "resourcenotfound" in msg or "404" in msg:
+        return (
+            "Fix: AZURE_OPENAI_ENDPOINT may be wrong — resource not found.\n"
+            "     Check AZURE_OPENAI_ENDPOINT in ~/.kubeintellect/.env\n"
+            "     Format: https://<resource-name>.openai.azure.com/"
+        )
+
+    return (
+        "Run 'kubeintellect status' to check your configuration.\n"
+        "    Config file: ~/.kubeintellect/.env"
+    )
 
 
 app = FastAPI(
-    title="KubeIntellect OpenAICompatibleAPI_PoC",
-    version="0.1.0",
-    description="Proof of Concept for an OpenAI Compatible API for KubeIntellect, interfacing with Azure OpenAI.",
+    title="KubeIntellect V2",
+    version="2.0.0",
+    lifespan=lifespan,
 )
 
+# Middleware is applied in reverse order (last added = outermost).
+# RequestLogging must wrap CORS so the request_id is set before CORS runs.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in settings.ALLOWED_ORIGINS.split(",")],
+    allow_origins=settings.ALLOWED_ORIGINS.split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RequestLoggingMiddleware)
 
-if settings.DEBUG:
-    if settings.UNSAFE_LOG_REQUEST_BODIES:
-        app.add_middleware(DebugRequestMiddleware)
-        logger.warning(
-            "UNSAFE_LOG_REQUEST_BODIES=true — request body logging is active. Do not use in production."
-        )
-    else:
-        logger.debug(
-            "DEBUG mode enabled (request body logging disabled — "
-            "set UNSAFE_LOG_REQUEST_BODIES=true to enable, never in production)."
-        )
-
-# Expose /metrics for Prometheus scraping.
-# Instruments all HTTP routes automatically (request count, latency histograms, error rate).
-Instrumentator().instrument(app).expose(app)
-
-# Include the v1 API router
-app.include_router(api_v1_router, prefix=settings.API_V1_STR)
-
-@app.get("/healthz", tags=["Health"])
-async def liveness():
-    """Liveness probe — confirms the process is running. Never checks dependencies."""
-    return {"status": "ok"}
-
-
-@app.get("/health", tags=["Health"])
-async def readiness():
-    """Readiness probe — confirms the app can serve traffic (checks PostgreSQL and Kubernetes API)."""
-    from app.services.kubernetes_service import check_kubernetes_connectivity, KubernetesConfigurationError
-
-    checks: dict = {}
-
-    # PostgreSQL — probe via the LangGraph connection pool (psycopg3)
-    try:
-        from app.orchestration.workflow import _langgraph_pool
-        if _langgraph_pool is None:
-            checks["postgres"] = "error: pool not initialised"
-        else:
-            async with _langgraph_pool.connection() as conn:
-                await conn.execute("SELECT 1")
-            checks["postgres"] = "ok"
-    except Exception as e:
-        checks["postgres"] = f"error: {e}"
-
-    # Kubernetes API
-    try:
-        result = check_kubernetes_connectivity(timeout_seconds=3, max_retries=1)
-        checks["kubernetes"] = "ok" if result["status"] == "success" else f"error: {result['message']}"
-    except KubernetesConfigurationError as e:
-        checks["kubernetes"] = f"error: {e}"
-    except Exception as e:
-        checks["kubernetes"] = f"error: {e}"
-
-    if not all(v == "ok" for v in checks.values()):
-        raise HTTPException(status_code=503, detail={"status": "degraded", "checks": checks})
-
-    return {"status": "ok", "checks": checks}
-
-_HEALTH_PATHS = frozenset(["/healthz", "/health"])
-
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    """Log HTTP requests with request-ID correlation, timing, and masked headers."""
-    # Skip noisy health-check paths
-    if request.url.path in _HEALTH_PATHS:
-        return await call_next(request)
-
-    req_id = f"req-{_uuid.uuid4().hex[:12]}"
-    token = request_id_var.set(req_id)
-    start = time.time()
-    try:
-        logger.info(
-            "http_request method=%s path=%s",
-            request.method,
-            request.url.path,
-            extra={"http_method": request.method, "http_path": request.url.path},
-        )
-        logger.debug(
-            "http_request_headers %s",
-            mask_headers(dict(request.headers)),
-        )
-        response = await call_next(request)
-        elapsed_ms = int((time.time() - start) * 1000)
-        logger.info(
-            "http_response status=%s duration_ms=%d",
-            response.status_code,
-            elapsed_ms,
-            extra={"http_status": response.status_code, "duration_ms": elapsed_ms},
-        )
-        # For SSE streams, wrap the body iterator to capture actual stream duration.
-        # The http_response log above measures header-flush latency only (typically 1ms);
-        # http_stream_complete below measures time until the last byte is sent.
-        if response.headers.get("content-type", "").startswith("text/event-stream"):
-            _stream_start = time.time()
-            _http_status = response.status_code
-            _original_body = response.body_iterator
-
-            async def _body_proxy():
-                try:
-                    async for chunk in _original_body:
-                        yield chunk
-                    _stream_ms = int((time.time() - _stream_start) * 1000)
-                    logger.info(
-                        "http_stream_complete status=%s duration_ms=%d disconnected=false error=false",
-                        _http_status, _stream_ms,
-                        extra={
-                            "event": "http_stream_complete",
-                            "http_status": _http_status,
-                            "duration_ms": _stream_ms,
-                            "disconnected": False,
-                            "error": False,
-                        },
-                    )
-                except Exception:
-                    _stream_ms = int((time.time() - _stream_start) * 1000)
-                    logger.error(
-                        "http_stream_complete status=%s duration_ms=%d disconnected=true error=true",
-                        _http_status, _stream_ms,
-                        extra={
-                            "event": "http_stream_complete",
-                            "http_status": _http_status,
-                            "duration_ms": _stream_ms,
-                            "disconnected": True,
-                            "error": True,
-                        },
-                    )
-                    raise
-
-            response.body_iterator = _body_proxy()
-        return response
-    except Exception as e:
-        elapsed_ms = int((time.time() - start) * 1000)
-        logger.error(
-            "http_request_failed after %dms: %s",
-            elapsed_ms,
-            e,
-            exc_info=True,
-            extra={"duration_ms": elapsed_ms},
-        )
-        raise
-    finally:
-        request_id_var.reset(token)
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the workflow system and log startup."""
-    from app.orchestration.workflow import initialize_workflow_async
-    logger.info("Initializing KubeIntellect workflow (AsyncPostgresSaver) …")
-    await initialize_workflow_async()
-    logger.info("Application startup complete")
-    logger.info("Available routes:")
-    for route in app.routes:
-        if hasattr(route, 'methods') and route.methods:
-            methods_str = f"[{', '.join(route.methods)}]"
-        else:
-            route_type = route.__class__.__name__
-            methods_str = f"[{route_type}]"
-        logger.info(f"  {route.path} {methods_str}")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    logger.info("Application shutting down")
-    from app.orchestration.workflow import close_langgraph_checkpointer
-    await close_langgraph_checkpointer()
-
-
-
-
-
-
-
-
-if __name__ == "__main__":
-    import uvicorn
-    # Note: For production, use a proper ASGI server like Gunicorn with Uvicorn workers
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True, log_level="debug")
+from app.api.v1.endpoints.health import router as health_router
+app.include_router(health_router)          # /healthz — probe path (no version prefix)
+app.include_router(api_router, prefix=settings.API_V1_STR)

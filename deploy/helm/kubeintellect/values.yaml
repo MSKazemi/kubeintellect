@@ -1,0 +1,116 @@
+namespace: kubeintellect
+
+image:
+  repository: ghcr.io/mskazemi/kubeintellect-v2
+  tag: dev-latest
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: false
+  className: nginx
+  host: api.kubeintellect.local
+  annotations: {}
+  tls: []
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+serviceAccount:
+  name: kubeintellect-sa
+
+rbac:
+  clusterAdmin: false
+  createNamespaced: true
+  createClusterReadOnly: true
+  createClusterOps: false      # write actions (delete/patch/scale…) — enable per env, always behind HITL
+  allowExec: false             # pods/exec — separate flag; off by default to protect secrets from exec+env
+  enableNamespaceManagement: false
+
+# Non-secret config injected via ConfigMap
+config:
+  logLevel: info
+  llmProvider: azure          # azure | openai
+  azureApiVersion: "2024-02-01"
+  # Observability — URLs of Prometheus and Loki in the target cluster.
+  # KubeIntellect queries these to answer metric/log questions.
+  # Leave empty if you don't have them; the app still works for kubectl-based queries.
+  prometheusUrl: ""
+  lokiUrl: ""
+  # Langfuse — URL of the Langfuse server this app sends LLM traces to.
+  # Install the langfuse chart separately (charts/langfuse/) or point at an external instance.
+  # Leave empty to disable tracing.
+  langfuseEnabled: false
+  langfuseHost: ""
+  # Namespaces the agent kubectl tool will never read or modify.
+  # Override to add tenant-specific or environment-specific namespaces.
+  blockedNamespaces:
+    - kubeintellect
+    - monitoring
+    - kube-system
+    - kube-public
+    - kube-node-lease
+    - ingress-nginx
+    - cert-manager
+  # Kubernetes resource types the agent will never access.
+  blockedResources:
+    - secret
+    - secrets
+    - serviceaccount
+    - serviceaccounts
+
+# Secret keys — values supplied via --set or a gitignored values override file (never committed)
+secrets:
+  # ── LLM: OpenAI (used when config.llmProvider: openai) ───────────────────
+  openaiApiKey: ""
+  openaiCoordinatorModel: gpt-4o
+  openaiSubagentModel: gpt-4o-mini
+  # ── LLM: Azure OpenAI (used when config.llmProvider: azure) ──────────────
+  azureOpenaiApiKey: ""
+  azureOpenaiEndpoint: ""
+  azureCoordinatorDeployment: gpt-4o
+  azureSubagentDeployment: gpt-4o-mini
+  # ── API key auth — comma-separated keys per role tier (empty = auth disabled)
+  #   admin    — high + medium risk ops, HITL-gated
+  #   operator — medium risk only (create, apply, scale, exec…), HITL-gated; delete/drain blocked
+  #   readonly — read-only; all writes rejected
+  # Example: --set secrets.adminApiKeys="ki-admin-abc123"
+  adminApiKeys: ""
+  operatorApiKeys: ""
+  readonlyApiKeys: ""
+  # ── Langfuse API keys — must match initProject.publicKey / secretKey seeded
+  #    in the langfuse chart (or your cloud Langfuse project).
+  langfusePublicKey: ""
+  langfuseSecretKey: ""
+
+postgres:
+  image: postgres:16-alpine
+  storage: 10Gi
+  storageClass: ""
+  database: kubeintellect
+  user: kubeintellect
+  # password supplied via --set postgres.password=... (never default in prod)
+  password: ""
+  # ── External database (Azure Database for PostgreSQL, RDS, CloudSQL, etc.) ──
+  # Set external.enabled: true to skip deploying the in-cluster StatefulSet.
+  # Provide the full connection URL in external.url.
+  external:
+    enabled: false
+    url: ""   # postgresql://user:password@host:5432/dbname
+
+# Hot-reload: mount live source into the container so uvicorn --reload picks up changes.
+# Only for local Kind dev. Disabled in production.
+hotReload:
+  enabled: false
+  # Path on the Kind node where the host's app/ directory is mounted.
+  hostPath: ""

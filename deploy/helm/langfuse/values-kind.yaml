@@ -1,0 +1,43 @@
+# Kind (local dev) overrides — smaller PVCs, seeded credentials for zero-config startup
+# UI: http://langfuse.local  (~2 min to become healthy after deploy)
+# Login: admin@kubeintellect.local / langfuse-admin
+
+postgres:
+  storage: "5Gi"
+  password: "langfuse"
+
+clickhouse:
+  storage: "10Gi"
+  password: "langfuse"
+
+redis:
+  storage: "1Gi"
+
+minio:
+  storage: "20Gi"
+  rootUser: "langfuse"
+  rootPassword: "langfuse123"
+
+nextauthUrl: "http://langfuse.local"
+nextauthSecret: "changeme-nextauth-secret-min-32-chars-long"
+salt: "changeme-salt-value"
+encryptionKey: "36653cf14b2bc0d0158f283af1e50c5401321ddb9850fcd7be7a3417ad950a4f"
+
+# SYNC REQUIRED: publicKey / secretKey seeded here MUST match secrets.langfusePublicKey /
+# langfuseSecretKey in deploy/helm/kubeintellect/values-kind.yaml. Update BOTH files together.
+initUser:
+  email: "admin@kubeintellect.local"
+  name: "Admin"
+  password: "langfuse-admin"
+initOrg:
+  id: "kubeintellect-org"
+  name: "KubeIntellect V2"
+initProject:
+  id: "kubeintellect-v2-project"
+  name: "KubeIntellect V2"
+  publicKey: "pk-lf-6492d57f-1f9a-4cb7-ba41-32aa25b5912c"
+  secretKey: "sk-lf-change-me"
+
+ingress:
+  enabled: true
+  host: "langfuse.local"

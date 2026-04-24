@@ -1,0 +1,77 @@
+# ── Kind on Azure VM — production values ─────────────────────────────────────
+# Copy to values-vm.yaml (gitignored) and fill in the blanks.
+# Deploy with: make vm-deploy
+
+ingress:
+  enabled: true
+  className: nginx
+  host: api.kubeintellect.com    # ← your domain
+  tls: []                         # TLS terminated by nginx on VM, not in-cluster
+
+# No hot-reload on VM — app runs from the built image
+hotReload:
+  enabled: false
+
+# App runs on the worker node — no control-plane taint needed
+# (remove nodeSelector/tolerations that values-local.yaml sets for control-plane)
+nodeSelector: {}
+tolerations: []
+
+rbac:
+  clusterAdmin: false
+  createNamespaced: true
+  createClusterReadOnly: true
+  createClusterOps: true
+  allowExec: false               # never enable exec in prod — protects secrets
+  enableNamespaceManagement: false
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+postgres:
+  storage: 10Gi
+  storageClass: standard         # Kind default storage class
+  password: ""                   # set via --set from .env
+
+config:
+  logLevel: info
+
+# ── Langfuse — self-hosted LLM observability ─────────────────────────────────
+langfuse:
+  enabled: true
+  namespace: "monitoring"
+  postgres:
+    storage: "10Gi"
+    password: ""                 # fill in or set via --set
+  clickhouse:
+    storage: "20Gi"
+    password: ""
+  redis:
+    storage: "2Gi"
+  minio:
+    storage: "20Gi"
+    rootUser: "langfuse"
+    rootPassword: ""             # fill in or set via --set
+  nextauthUrl: "https://api.kubeintellect.com"
+  nextauthSecret: ""             # openssl rand -base64 32
+  salt: ""                       # openssl rand -base64 32
+  encryptionKey: ""              # openssl rand -hex 32
+  initUser:
+    email: ""                    # your admin email
+    name: "Admin"
+    password: ""
+  initOrg:
+    id: "kubeintellect-org"
+    name: "KubeIntellect"
+  initProject:
+    id: "kubeintellect-v2-project"
+    name: "KubeIntellect V2"
+    publicKey: ""                # pk-lf-... (must match LANGFUSE_PUBLIC_KEY in app secret)
+    secretKey: ""                # sk-lf-... (must match LANGFUSE_SECRET_KEY in app secret)
+  ingress:
+    enabled: false               # Langfuse UI not exposed publicly; access via SSH tunnel

@@ -1,248 +1,181 @@
 ---
-title: KubeIntellect – Natural Language Kubernetes Management with AI Agents
-description: >-
-  KubeIntellect is an LLM-orchestrated multi-agent framework for end-to-end
-  Kubernetes management. 100% reliability across 200 queries, 93% tool synthesis
-  success rate. Read, write, RBAC, exec, lifecycle — all in plain English.
 hide:
   - navigation
   - toc
 ---
 
-<div class="hero-section" markdown>
+<div class="ki-hero">
+  <div class="ki-hero-inner">
+    <img src="assets/brand/ki-mark.svg" alt="KubeIntellect" class="ki-hero-mark" />
+    <h1 class="ki-wordmark"><span>KUBE</span><span class="ki-green">INTELLECT</span></h1>
+    <p class="ki-tagline">AUTONOMOUS KUBERNETES OPERATIONS</p>
+    <p class="ki-hero-desc">
+      An AI-powered operations assistant that diagnoses, explains, and acts on your cluster —
+      with parallel specialist agents for pods, metrics, and logs, and a human-approval gate
+      before any destructive command runs.
+    </p>
+    <div class="ki-ctas">
+      <a href="quickstart/" class="md-button md-button--primary">Get Started →</a>
+      <a href="https://github.com/mskazemi/kubeintellect-v2" class="md-button">View on GitHub</a>
+    </div>
+  </div>
+</div>
 
-# Chat with your Kubernetes cluster in plain English
-
-**KubeIntellect** is an AI-powered Kubernetes management platform.
-Describe a problem — a `CrashLoopBackOff`, a pending pod, an RBAC error — and a
-multi-agent LLM system diagnoses it, proposes a fix, shows you a dry-run diff,
-and waits for your approval before touching anything.
-
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://github.com/MSKazemi/kubeintellect/blob/main/LICENSE)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org)
-[![Docker](https://img.shields.io/badge/ghcr.io-MSKazemi%2Fkubeintellect-2496ED.svg?logo=docker&logoColor=white)](https://github.com/MSKazemi/kubeintellect/pkgs/container/kubeintellect-release)
-[![Build](https://github.com/MSKazemi/kubeintellect/actions/workflows/docker-ghcr.yml/badge.svg)](https://github.com/MSKazemi/kubeintellect/actions/workflows/docker-ghcr.yml)
-
-[Get Started :material-arrow-right:](installation.md){ .md-button .md-button--primary .hero-cta }
-[Architecture :material-sitemap:](architecture.md){ .md-button .hero-cta }
-[GitHub :material-github:](https://github.com/MSKazemi/kubeintellect){ .md-button .hero-cta }
-
-
+<div class="ki-stats">
+  <div class="ki-stat">
+    <span class="ki-stat-value">93%</span>
+    <span class="ki-stat-label">Tool synthesis success</span>
+  </div>
+  <div class="ki-stat">
+    <span class="ki-stat-value">200</span>
+    <span class="ki-stat-label">Queries tested</span>
+  </div>
+  <div class="ki-stat">
+    <span class="ki-stat-value">4</span>
+    <span class="ki-stat-label">Parallel subagents</span>
+  </div>
+  <div class="ki-stat">
+    <span class="ki-stat-value">3</span>
+    <span class="ki-stat-label">Role tiers</span>
+  </div>
 </div>
 
 ---
 
-## Why KubeIntellect?
+## What it does
 
 <div class="grid cards" markdown>
 
--   :material-magnify: **Root Cause Analysis**
+-   :material-kubernetes: **Kubernetes Intelligence**
 
     ---
 
-    Correlates logs, metrics, events, and resource config **in parallel** — not just a log
-    dump. Surfaces the actual cause, not a list of things to check.
+    Runs `kubectl` across get, describe, logs, top, events, apply, scale, and delete.
+    Routes complex diagnostics to four parallel specialist subagents (pod, metrics, logs, events)
+    and synthesises findings into a single root-cause report.
 
--   :material-shield-check: **Human-in-the-Loop by Design**
-
-    ---
-
-    Every write operation produces a dry-run diff and pauses for your explicit approval.
-    No unreviewed changes on live clusters — ever.
-
--   :material-graph: **Multi-Agent Orchestration**
+-   :material-chart-line: **Metrics + Logs**
 
     ---
 
-    14 specialized agents (Logs, RBAC, Metrics, Security, Lifecycle, CodeGenerator, …) routed
-    by a Supervisor LLM via LangGraph StateGraph.
+    Native Prometheus PromQL and Loki LogQL integration. The coordinator automatically
+    delegates to the right data source — you ask in plain English, it picks the tool.
 
--   :material-code-braces-box: **Dynamic Tool Generation**
-
-    ---
-
-    Need a capability that doesn't exist yet? KubeIntellect generates Python tools, sandboxes
-    them, and registers them for reuse — all with your approval.
-
--   :material-brain: **Persistent Memory**
+-   :material-shield-check: **Safety Gates**
 
     ---
 
-    Per-user context: sticky namespace, routing lessons, 30 pre-seeded failure patterns,
-    and preference learning across sessions.
+    Every destructive operation pauses for human approval before kubectl is called.
+    Three role tiers (admin / operator / readonly) limit what each API key can request.
+    Shell injection is blocked before any subprocess runs.
 
--   :material-swap-horizontal: **LLM-Agnostic**
+-   :material-brain: **Stateful Conversations**
 
     ---
 
-    Azure OpenAI, OpenAI, Anthropic Claude, Google Gemini, AWS Bedrock, Ollama, LiteLLM —
-    swap providers with a single env var.
+    Sessions are checkpointed in PostgreSQL or SQLite. Ask follow-up questions, approve
+    a pending action hours later, or replay a session post-mortem — all in the same thread.
 
 </div>
 
 ---
 
-## See It in Action
+## How it works
 
-=== ":material-bug: Diagnose a crash"
+```
+You (kq CLI)
+     │  POST /v1/chat/completions  (SSE streaming)
+     ▼
+┌──────────────────────────────────────────────────┐
+│  Coordinator                                     │
+│  ┌──────────┐  ┌──────────┐  ┌────────────────┐  │
+│  │  kubectl │  │Prometheus│  │      Loki      │  │
+│  │   tool   │  │   tool   │  │      tool      │  │
+│  └──────────┘  └──────────┘  └────────────────┘  │
+│                                                  │
+│  On complex issues — fan out to 4 subagents:     │
+│  pod │ metrics │ logs │ events                   │
+│             fan-in → synthesis                   │
+└──────────────────────────────────────────────────┘
+     │  HITL interrupt on destructive commands
+     ▼
+LangGraph checkpoint store (Postgres / SQLite)
+```
 
-    ```text
-    > Why is my payment-api pod crashing in the prod namespace?
-
-    Fetching logs, events, and resource config in parallel...
-
-    Root cause: OOMKilled — container hit the 256Mi memory limit.
-    Last 3 events: BackOff restarts (5m ago, 3m ago, 1m ago).
-
-    Recommendation: increase memory limit to 512Mi.
-    Dry-run diff ready — confirm to apply? [approve / deny]
-    ```
-
-=== ":material-shield-account: Audit RBAC"
-
-    ```text
-    > Who has cluster-admin access?
-
-    3 service accounts hold cluster-admin:
-      • default/tiller           (inactive — consider revoking)
-      • kube-system/admin-sa     (system — expected)
-      • kubeintellect/core-sa    (this platform — expected)
-
-    Tiller is a known attack surface. Show remediation steps?
-    ```
-
-=== ":material-tools: Generate a tool"
-
-    ```text
-    > I need a tool that shows pods sorted by restart count
-
-    No matching tool in registry. Generating...
-
-    [HITL] Review generated code before registration? [approve / deny]
-    [approve]
-
-    Tool registered as 'list_pods_by_restart_count'. Running now:
-      pod/api-6d4f9b       14 restarts
-      pod/worker-2          3 restarts
-      pod/scheduler-1       0 restarts
-    ```
-
-=== ":material-scale-balance: Scale with approval"
-
-    ```text
-    > Scale down all staging deployments to 0 replicas overnight
-
-    I'll scale the following (dry-run diff attached):
-      api      3 → 0 replicas
-      worker   2 → 0 replicas
-      cron     1 → 0 replicas
-
-    Confirm? [approve / deny]
-    ```
+Responses stream back as Server-Sent Events. The API is OpenAI-compatible — point any
+SSE client at `/v1/chat/completions`.
 
 ---
 
-## Architecture at a Glance
-
-```
-User query
-  → Memory Orchestrator (reflections + failure hints + user prefs + registered tools ≤ 550 tokens)
-  → Supervisor LLM     (LangGraph StateGraph routing)
-  → Specialized agents (ReAct loops → Kubernetes API)
-  → HITL gate          (diff + approval for all write operations)
-  → Streaming SSE response
-```
-
-| Layer | Technology |
-|-------|-----------|
-| Orchestration | LangGraph StateGraph |
-| API Server | FastAPI + Server-Sent Events |
-| State & Checkpoints | PostgreSQL (LangGraph checkpointer) |
-| Chat History | MongoDB (LibreChat) |
-| Dynamic Tools | PVC + PostgreSQL registry |
-| Observability | Langfuse · Prometheus · Loki |
-| Frontend | LibreChat |
-
-[:material-sitemap: Full Architecture Diagrams](flowcharts/index.md){ .md-button }
-
----
-
-## Explore the Documentation
+## Pick your path
 
 <div class="grid cards" markdown>
 
--   :material-rocket-launch: **[Getting Started](installation.md)**
+-   **:material-lightning-bolt: Quickest — no cluster**
 
     ---
 
-    Deploy KubeIntellect locally with Kind or to Azure AKS.
-    Full prerequisites, credentials, and Helm walkthrough.
+    `pip install kubeintellect` + SQLite. Explore the API and CLI in minutes, no Kubernetes needed.
 
--   :material-sitemap: **[Architecture](architecture.md)**
+    [→ Install guide](install-pip-no-cluster.md)
 
-    ---
-
-    Deep-dive into the multi-agent system, the supervisor routing logic,
-    tool design patterns, and all storage layers.
-
--   :material-file-tree: **[Flowcharts](flowcharts/index.md)**
+-   **:material-server-network: Existing cluster**
 
     ---
 
-    Interactive Mermaid diagrams — system overview, supervisor flow,
-    CodeGenerator pipeline, and complete workflow topology.
+    Connect KubeIntellect to any cluster you already have — AKS, EKS, GKE, or any kubeconfig.
 
--   :material-cog: **[Operations](runbook.md)**
+    [→ Install guide](install-pip-existing-cluster.md)
 
-    ---
-
-    Deployment runbooks, known issues, troubleshooting guides,
-    observability stack setup, and backup / restore procedures.
-
--   :material-shield-lock: **[Security](security-model.md)**
+-   **:material-docker: Docker Compose**
 
     ---
 
-    CodeGenerator sandbox (AST + exec timeout + SHA-256),
-    RBAC model, secret handling policy, and GDPR compliance.
+    Full local stack with PostgreSQL, optional Prometheus + Grafana + Loki, and optional Langfuse LLM tracing.
 
--   :material-human-queue: **[HITL Workflow](hitl.md)**
+    [→ Deploy guide](deploy-docker-compose.md)
 
-    ---
-
-    How human-in-the-loop approval works — breakpoints,
-    checkpoint/resume cycle, and the API contract.
-
--   :material-chart-line: **[Observability](observability.md)**
+-   **:material-cloud-upload: Production (Helm)**
 
     ---
 
-    Langfuse LLM tracing, Prometheus metrics, Loki log aggregation,
-    and self-hosted stack configuration.
+    Helm chart for AKS / EKS / GKE. Includes RBAC, secrets management, ingress, and resource limits.
 
+    [→ Deploy guide](deploy-cloud.md)
 
 </div>
 
 ---
 
-## Quick Start
+## Quick install
 
-```bash
-# 1. Clone & configure
-git clone https://github.com/MSKazemi/kubeintellect
-cd kubeintellect
-cp .env.example .env       # fill in LLM credentials
+=== "pip (no cluster)"
 
-# 2. Deploy to local Kind cluster (full setup in one command)
-make kind-kubeintellect-clean-deploy
+    ```bash
+    pip install kubeintellect
+    kubeintellect init   # setup wizard — installs kubectl, configures kube-q,
+                         # optionally creates Kind cluster + observability,
+                         # installs systemd service, then hands off to kq
+    kq                   # open a new terminal and run — that's it
+    ```
 
-# 3. Access the UI
-make port-forward-librechat  # → http://localhost:3080
-```
+=== "Docker Compose"
 
-!!! tip "Fastest path"
-    Run `make kind-kubeintellect-clean-deploy` — it creates the Kind cluster,
-    generates secrets from `.env`, builds the image, and deploys via Helm.
-    Total time: ~5 minutes on first run.
+    ```bash
+    git clone https://github.com/mskazemi/kubeintellect-v2
+    cd kubeintellect-v2
+    cp .env.example .env        # add your LLM key
+    docker compose up -d
+    kq --url http://localhost:8000
+    ```
 
-See [Installation](installation.md) for Azure AKS, N1, or other targets.
+=== "Kind (local K8s)"
+
+    ```bash
+    git clone https://github.com/mskazemi/kubeintellect-v2
+    cd kubeintellect-v2
+    make kind-cluster-create
+    cp .env.example .env        # add your LLM key
+    make kind-deploy-kubeintellect
+    make cli                    # opens REPL
+    ```

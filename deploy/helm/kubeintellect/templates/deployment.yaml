@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "kubeintellect.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "kubeintellect.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kubeintellect.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+      containers:
+        - name: kubeintellect
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.hotReload.enabled }}
+          command:
+            - uvicorn
+            - app.main:app
+            - --host
+            - "0.0.0.0"
+            - --port
+            - "8000"
+            - --reload
+            - --reload-dir
+            - /app/app
+          env:
+            - name: WATCHFILES_FORCE_POLLING
+              value: "true"
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "kubeintellect.fullname" . }}-config
+            - secretRef:
+                name: {{ include "kubeintellect.fullname" . }}-secrets
+          {{- if .Values.hotReload.enabled }}
+          volumeMounts:
+            - name: hot-code
+              mountPath: /app/app
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- if .Values.hotReload.enabled }}
+      volumes:
+        - name: hot-code
+          hostPath:
+            path: {{ .Values.hotReload.hostPath }}
+            type: Directory
+      {{- end }}

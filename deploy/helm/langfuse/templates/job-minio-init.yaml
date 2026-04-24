@@ -1,0 +1,37 @@
+{{- $ns       := include "langfuse.namespace" . }}
+{{- $minioUser := .Values.minio.rootUser     | default "langfuse" }}
+{{- $minioPwd  := .Values.minio.rootPassword | default "langfuse123" }}
+# ─────────────────────────────────────────────────────────────────────────────
+# MinIO bucket init Job
+# Creates the 'langfuse' bucket. Retries until MinIO is ready, then exits.
+# ─────────────────────────────────────────────────────────────────────────────
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: langfuse-minio-init
+  namespace: {{ $ns | quote }}
+  labels:
+    component: langfuse
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "5"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        component: langfuse
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: minio-init
+          image: minio/minio:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              mc alias set local http://langfuse-minio:9000 {{ $minioUser }} {{ $minioPwd }} &&
+              mc mb --ignore-existing local/langfuse &&
+              echo "MinIO bucket 'langfuse' ready."
