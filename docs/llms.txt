@@ -9,22 +9,22 @@ Install: `pip install kubeintellect` or Docker Compose or Helm.
 
 ## Documentation
 
-- [Quickstart](https://kubeintellect.com/quickstart/): Choose your install path — pip, Docker Compose, or Helm.
-- [Install: No cluster](https://kubeintellect.com/install/no-cluster/): Run locally with SQLite, no Kubernetes required.
-- [Install: Existing cluster](https://kubeintellect.com/install/existing-cluster/): Connect to AKS, EKS, GKE, or any kubeconfig.
-- [Install: Kind cluster](https://kubeintellect.com/install/kind/): Create a local Kubernetes cluster for development and testing.
-- [Deploy: Docker Compose](https://kubeintellect.com/deploy/docker-compose/): Full local stack with PostgreSQL, Prometheus, Grafana, Loki, and optional Langfuse LLM tracing.
-- [Deploy: Kind dev environment](https://kubeintellect.com/deploy/kind/): 2-node cluster with hot-reload, monitoring, and LLM tracing for contributors.
-- [Deploy: Cloud / Helm](https://kubeintellect.com/deploy/cloud/): Production deployment on AKS, EKS, GKE, or any Kubernetes cluster using Helm.
-- [Configuration reference](https://kubeintellect.com/configuration/): All environment variables — LLM provider, auth keys, database, kubectl, observability.
-- [Security model](https://kubeintellect.com/security/): HITL gates, three-tier RBAC, shell injection blocking, kubectl blocklists, REPL sandbox.
+- [Quickstart](https://mskazemi.github.io/kubeintellect/quickstart/): Choose your install path — pip, Docker Compose, or Helm.
+- [Install: No cluster](https://mskazemi.github.io/kubeintellect/install/no-cluster/): Run locally with SQLite, no Kubernetes required.
+- [Install: Existing cluster](https://mskazemi.github.io/kubeintellect/install/existing-cluster/): Connect to AKS, EKS, GKE, or any kubeconfig.
+- [Install: Kind cluster](https://mskazemi.github.io/kubeintellect/install/kind/): Create a local Kubernetes cluster for development and testing.
+- [Deploy: Docker Compose](https://mskazemi.github.io/kubeintellect/deploy/docker-compose/): Full local stack with PostgreSQL, Prometheus, Grafana, Loki, and optional Langfuse LLM tracing.
+- [Deploy: Kind dev environment](https://mskazemi.github.io/kubeintellect/deploy/kind/): 2-node cluster with hot-reload, monitoring, and LLM tracing for contributors.
+- [Deploy: Cloud / Helm](https://mskazemi.github.io/kubeintellect/deploy/cloud/): Production deployment on AKS, EKS, GKE, or any Kubernetes cluster using Helm.
+- [Configuration reference](https://mskazemi.github.io/kubeintellect/configuration/): All environment variables — LLM provider, auth keys, database, kubectl, observability.
+- [Security model](https://mskazemi.github.io/kubeintellect/security/): HITL gates, three-tier RBAC, shell injection blocking, kubectl blocklists, REPL sandbox.
 
 ## v1 Legacy (LibreChat backend)
 
-- [v1 Overview](https://kubeintellect.com/v1/): Original multi-agent system with LibreChat frontend, 14 specialized agents, dynamic tool generation.
-- [v1 Architecture](https://kubeintellect.com/v1/architecture/): LangGraph Supervisor routing, CodeGenerator pipeline, DiagnosticsOrchestrator fan-out.
-- [v1 HITL](https://kubeintellect.com/v1/hitl/): Checkpoint/resume approval flow, SSE event schema, PostgreSQL state persistence.
-- [v1 Security Model](https://kubeintellect.com/v1/security-model/): AST hallucination check, safeguard review, REPL timeout, SHA-256 integrity.
+- [v1 Overview](https://mskazemi.github.io/kubeintellect/v1/): Original multi-agent system with LibreChat frontend, 14 specialized agents, dynamic tool generation.
+- [v1 Architecture](https://mskazemi.github.io/kubeintellect/v1/architecture/): LangGraph Supervisor routing, CodeGenerator pipeline, DiagnosticsOrchestrator fan-out.
+- [v1 HITL](https://mskazemi.github.io/kubeintellect/v1/hitl/): Checkpoint/resume approval flow, SSE event schema, PostgreSQL state persistence.
+- [v1 Security Model](https://mskazemi.github.io/kubeintellect/v1/security-model/): AST hallucination check, safeguard review, REPL timeout, SHA-256 integrity.
 
 ## Source Code & Packages
 
