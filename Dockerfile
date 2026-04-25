@@ -31,12 +31,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libffi-dev
 
 # Layer 1: install dependencies only (cached until pyproject.toml or lockfile changes).
-# --frozen:           treat uv.lock as immutable truth; fail if resolution would differ.
-# --no-sources:       kube-q must resolve from PyPI, not the local ../../kube_q dev path.
+# --frozen:             treat uv.lock as immutable truth; fail if resolution would differ.
+#                       The CI lockfile-check gate ensures it was generated with --no-sources.
 # --no-install-project: skip building kubeintellect itself; app/ is not copied yet.
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-sources --no-dev --no-install-project
+    uv sync --frozen --no-dev --no-install-project
 
 # Layer 2: install the project itself.
 # README.md: hatchling validates it exists (readme = "README.md" in pyproject.toml).
@@ -44,7 +44,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY README.md ./
 COPY app ./app
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-sources --no-dev
+    uv sync --frozen --no-dev
 
 # ── Stage 2: kubectl fetcher (curl never enters the runtime image) ─────────────
 FROM debian:bookworm-slim AS kubectl-fetcher
