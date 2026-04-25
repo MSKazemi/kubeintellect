@@ -13,7 +13,8 @@ rbac:
 
 ingress:
   enabled: true
-  host: api.kubeintellect.local
+  hosts:
+    - api.kubeintellect.local
 
 resources:
   requests:
