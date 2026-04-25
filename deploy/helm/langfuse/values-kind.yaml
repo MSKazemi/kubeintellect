@@ -33,7 +33,7 @@ initOrg:
   id: "kubeintellect-org"
   name: "KubeIntellect V2"
 initProject:
-  id: "kubeintellect-v2-project"
+  id: "kubeintellect-project"
   name: "KubeIntellect V2"
   publicKey: "pk-lf-6492d57f-1f9a-4cb7-ba41-32aa25b5912c"
   secretKey: "sk-lf-change-me"

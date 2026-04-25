@@ -9,7 +9,7 @@
 
 # ── Image ─────────────────────────────────────────────────────────────────────
 image:
-  repository: ghcr.io/mskazemi/kubeintellect-v2
+  repository: ghcr.io/mskazemi/kubeintellect
   tag: dev-latest       # pin to a specific version in production, e.g. v2.1.0
   pullPolicy: IfNotPresent
 

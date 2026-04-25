@@ -10,7 +10,7 @@
         helm-package check-dist \
         scenarios help
 
-IMAGE_NAME        ?= ghcr.io/mskazemi/kubeintellect-v2
+IMAGE_NAME        ?= ghcr.io/mskazemi/kubeintellect
 TAG               ?= dev-latest
 KIND_CLUSTER_NAME ?= testbed-v2
 NAMESPACE         ?= kubeintellect
