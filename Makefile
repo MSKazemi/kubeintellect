@@ -199,7 +199,8 @@ langfuse-install: ## Install Langfuse LLM tracing (optional — skip if you don'
 	helm upgrade --install langfuse deploy/helm/langfuse \
 	  -f deploy/helm/langfuse/values.yaml \
 	  -f deploy/helm/langfuse/values-kind.yaml \
-	  --namespace $(MONITORING_NS) --create-namespace
+	  --namespace $(MONITORING_NS) --create-namespace \
+	  --timeout 10m
 
 langfuse-clean: ## Uninstall Langfuse and wipe all trace data (PVCs) — irreversible
 	helm uninstall langfuse -n $(MONITORING_NS) || true
@@ -213,11 +214,7 @@ langfuse-clean: ## Uninstall Langfuse and wipe all trace data (PVCs) — irrever
 # ═══════════════════════════════════════════════════════════════════════════════
 
 kind-deploy-kubeintellect: ## Deploy (or upgrade) KubeIntellect on local Kind via Helm — sources .env for secrets
-	@kubectl create namespace $(MONITORING_NS) --dry-run=client -o yaml | kubectl apply -f -
-	helm upgrade --install langfuse deploy/helm/langfuse \
-	  -f deploy/helm/langfuse/values.yaml \
-	  -f deploy/helm/langfuse/values-kind.yaml \
-	  --namespace $(MONITORING_NS) --create-namespace
+	$(MAKE) langfuse-install
 	@bash -c '\
 	  set -euo pipefail; \
 	  test -f .env || { echo "ERROR: .env not found — copy .env.example and fill in secrets"; exit 1; }; \
