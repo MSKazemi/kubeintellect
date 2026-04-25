@@ -115,7 +115,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 
 # --no-access-log: RequestLoggingMiddleware already logs every request with
 # structured fields and request IDs; uvicorn's access log would duplicate them.
-CMD ["uvicorn", "app.main:app", \
+CMD ["/app/.venv/bin/python", "-m", "uvicorn", "app.main:app", \
      "--host", "0.0.0.0", \
      "--port", "8000", \
      "--log-level", "info", \
