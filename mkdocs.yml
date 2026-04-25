@@ -104,6 +104,7 @@ nav:
     - Local Kind cluster: install/kind.md
 
   - Deploy:
+    - Container Image: deploy/image.md
     - Docker Compose: deploy/docker-compose.md
     - Kind (dev env): deploy/kind.md
     - Cloud / VM (Helm): deploy/cloud.md
