@@ -9,7 +9,7 @@ Three ways to try KubeIntellect without a cluster or Docker:
 
 |  | Browser demo | Option A — kube-q CLI | Option B — Local cluster |
 |--|:------------:|:---------------------:|:------------------------:|
-| **Setup** | None | < 1 min | ~5 min |
+| **Setup** | None | ~2 min | ~5 min |
 | **Install** | Nothing | `kube-q` only | Docker + `kubeintellect` |
 | **Speed** | Slower† | Fast | Fast |
 | **Access** | Read-only | Read-only | Full (HITL-gated) |
@@ -32,11 +32,22 @@ No install, no terminal. Open **[kubeintellect.com/demo](https://kubeintellect.c
 ## Option A — kube-q CLI
 
 Install only the thin CLI client and connect it to our hosted KubeIntellect instance.
-`kq` already defaults to `https://api.kubeintellect.com`, so all you need is the API key.
+`kq` already defaults to `https://api.kubeintellect.com`, so all you need is a personal API key.
 
 **Requirements:** Python 3.12+
 
-### 1. Install kube-q
+### 1. Get your personal API key
+
+Go to **[kubeintellect.com/demo](https://kubeintellect.com/demo)**, enter your email, and your key
+appears instantly on the page and is emailed to you. It looks like:
+
+```
+ki-ro-dXNlckBleGFtcGxlLmNvbQ.a1b2c3d4e5f6g7h8i9j0k1l2
+```
+
+Keys expire after 30 days — request a new one at any time from the same page.
+
+### 2. Install kube-q
 
 ```bash
 pip install kube-q
@@ -47,7 +58,7 @@ pip install kube-q
 > echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 > ```
 
-### 2. Connect
+### 3. Connect
 
 ```bash
 kq --api-key ki-ro-dev

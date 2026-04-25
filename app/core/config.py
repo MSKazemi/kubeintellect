@@ -134,6 +134,17 @@ class Settings(BaseSettings):
     KUBEINTELLECT_OPERATOR_KEYS: str = Field(default="")
     KUBEINTELLECT_READONLY_KEYS: str = Field(default="")
 
+    # AUTH_BACKEND controls how readonly (demo) keys are validated:
+    #   static — keys are checked against KUBEINTELLECT_READONLY_KEYS (default)
+    #   hmac   — keys of the form ki-ro-<payload>.<sig> are validated via HMAC;
+    #            no list needed — any unexpired key signed with the right secret is valid
+    AUTH_BACKEND: str = Field(default="static")
+
+    # Secret used to sign and verify HMAC demo keys (AUTH_BACKEND=hmac).
+    # Rotate to invalidate all outstanding demo keys instantly.
+    # Generate: openssl rand -hex 32
+    DEMO_KEY_HMAC_SECRET: Optional[str] = None
+
     @property
     def admin_keys(self) -> set[str]:
         return {k.strip() for k in self.KUBEINTELLECT_ADMIN_KEYS.split(",") if k.strip()}
@@ -148,7 +159,7 @@ class Settings(BaseSettings):
 
     @property
     def auth_enabled(self) -> bool:
-        return bool(self.admin_keys or self.operator_keys or self.readonly_keys)
+        return bool(self.admin_keys or self.operator_keys or self.readonly_keys or self.DEMO_KEY_HMAC_SECRET)
 
     @model_validator(mode="after")
     def _validate_provider(self) -> Settings:
