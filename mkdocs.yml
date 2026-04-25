@@ -12,6 +12,7 @@ copyright: Copyright &copy; 2024–2025 Mohsen Seyedkazemi Ardebili
 
 theme:
   name: material
+  custom_dir: overrides
   logo: assets/brand/ki-c-indigo.svg
   favicon: assets/brand/ki-c-indigo.svg
   palette:
