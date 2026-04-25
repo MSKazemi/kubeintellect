@@ -12,8 +12,8 @@ copyright: Copyright &copy; 2024–2025 Mohsen Seyedkazemi Ardebili
 
 theme:
   name: material
-  logo: assets/brand/ki-mark.svg
-  favicon: assets/brand/ki-icon.svg
+  logo: assets/brand/ki-c-indigo.svg
+  favicon: assets/brand/ki-c-indigo.svg
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default

@@ -196,16 +196,17 @@
 
 /* Brand mark */
 .ki-hero-mark {
-  width: 84px;
-  height: 84px;
+  width: 88px;
+  height: 88px;
   margin-bottom: 2rem;
-  filter: drop-shadow(0 0 20px rgba(0, 230, 118, 0.4));
+  border-radius: 20px;
+  filter: drop-shadow(0 0 20px rgba(79, 70, 229, 0.5));
   animation: ki-glow-pulse 4s ease-in-out infinite;
 }
 
 @keyframes ki-glow-pulse {
-  0%, 100% { filter: drop-shadow(0 0 18px rgba(0, 230, 118, 0.35)); }
-  50%       { filter: drop-shadow(0 0 32px rgba(0, 212, 255, 0.5)); }
+  0%, 100% { filter: drop-shadow(0 0 18px rgba(79, 70, 229, 0.45)); }
+  50%       { filter: drop-shadow(0 0 32px rgba(6, 182, 212, 0.55)); }
 }
 
 /* Wordmark */
@@ -234,7 +235,7 @@
 .ki-tagline {
   font-size: 0.68rem;
   letter-spacing: 0.35em;
-  color: #2d4a35;
+  color: rgba(0, 230, 118, 0.45);
   margin: 0 0 1.6rem;
   text-transform: uppercase;
 }
@@ -378,7 +379,7 @@
 .ki-terminal-title {
   margin-left: auto;
   font-size: 0.7rem;
-  color: #3a3a3a;
+  color: #6b7280;
   letter-spacing: 0.05em;
   font-family: 'Inter', sans-serif;
 }

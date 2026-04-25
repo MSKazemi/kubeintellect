@@ -8,7 +8,7 @@ hide:
 
 <div class="ki-hero">
   <div class="ki-hero-inner">
-    <img src="assets/brand/ki-mark.svg" alt="KubeIntellect" class="ki-hero-mark" />
+    <img src="assets/brand/ki-c-indigo.svg" alt="KubeIntellect" class="ki-hero-mark" />
     <h1 class="ki-wordmark"><span>KUBE</span><span class="ki-green">INTELLECT</span></h1>
     <p class="ki-tagline">AI DEVOPS ENGINEER FOR KUBERNETES</p>
     <p class="ki-hero-desc">
