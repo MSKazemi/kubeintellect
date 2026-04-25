@@ -19,7 +19,8 @@ replicaCount: 1         # increase to 2+ for HA (requires external postgres)
 ingress:
   enabled: true
   className: nginx      # or: azure/application-gateway, alb, traefik
-  host: api.your-domain.com
+  hosts:
+    - api.your-domain.com    # ← replace with your public domain
   tls: []
   # For cert-manager automatic TLS:
   # annotations:
@@ -108,7 +109,7 @@ langfuse:
     rootUser: "langfuse"
     rootPassword: ""
 
-  nextauthUrl: "https://api.your-domain.com"   # your domain
+  nextauthUrl: "https://api.your-domain.com"   # ← replace with your public domain
   nextauthSecret: ""      # openssl rand -base64 32
   salt: ""                # openssl rand -base64 32
   encryptionKey: ""       # openssl rand -hex 32
@@ -128,7 +129,7 @@ langfuse:
 
   ingress:
     enabled: false        # expose Langfuse UI (optional — can use SSH tunnel instead)
-    host: "langfuse.your-domain.com"
+    host: "langfuse.your-domain.com"    # ← replace with your public domain
 
   # ── Option B: Managed / external Langfuse ────────────────────────────────
   # selfHosted: false

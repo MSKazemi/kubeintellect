@@ -5,7 +5,9 @@
 ingress:
   enabled: true
   className: nginx
-  host: api.kubeintellect.com    # ← your domain
+  hosts:
+    - api.kubeintellect.com      # internet access (nginx on VM proxies here)
+    - api.kubeintellect.local    # VM-local access (Kind cluster direct / /etc/hosts)
   tls: []                         # TLS terminated by nginx on VM, not in-cluster
 
 # No hot-reload on VM — app runs from the built image
