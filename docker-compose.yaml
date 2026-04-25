@@ -1,28 +1,34 @@
 # KubeIntellect — local deployment
 #
-# Quick start (core only):
-#   cp .env.example .env          # fill in LLM_PROVIDER + API key + POSTGRES_PASSWORD
-#   docker compose up -d
+# ── What you need ─────────────────────────────────────────────────────────────
+#   1. A kubeconfig with access to a Kubernetes cluster (default: ~/.kube/config)
+#   2. An LLM API key (OpenAI or Azure OpenAI)
+#   3. Any password for the Postgres database (started automatically below)
+#
+# ── Quick start ───────────────────────────────────────────────────────────────
+#   cp .env.example .env          # fill in: LLM key + POSTGRES_PASSWORD + ADMIN key
+#   docker compose up -d          # builds image + starts app + postgres (~2 min first run)
 #   pip install kube-q
-#   KUBE_Q_API_KEY=<key> kq
+#   KUBE_Q_API_KEY=<key> kq       # key = value of KUBEINTELLECT_ADMIN_KEYS in .env
 #
-# With Prometheus / Grafana / Loki:
+# ── Optional: local monitoring (Prometheus + Grafana + Loki) ──────────────────
 #   docker compose --profile monitoring up -d
-#   # Add to .env: PROMETHEUS_URL=http://localhost:9090
-#   #              LOKI_URL=http://localhost:3100
+#   # Then add to .env:  PROMETHEUS_URL=http://localhost:9090
+#   #                    LOKI_URL=http://localhost:3100
+#   # Skip if your cluster already has Prometheus/Loki — just point those URLs there.
 #
-# With Langfuse LLM tracing:
+# ── Optional: LLM call tracing (Langfuse) ────────────────────────────────────
 #   docker compose --profile tracing up -d
-#   # Visit http://localhost:3001 to create an account and get API keys
-#   # Add to .env: LANGFUSE_ENABLED=true
-#   #              LANGFUSE_HOST=http://localhost:3001
-#   #              LANGFUSE_PUBLIC_KEY=pk-lf-...
-#   #              LANGFUSE_SECRET_KEY=sk-lf-...
+#   # Visit http://localhost:3001 → create account → Settings → API Keys
+#   # Then add to .env:  LANGFUSE_ENABLED=true
+#   #                    LANGFUSE_HOST=http://localhost:3001
+#   #                    LANGFUSE_PUBLIC_KEY=pk-lf-...
+#   #                    LANGFUSE_SECRET_KEY=sk-lf-...
 #
-# With everything:
+# ── Everything at once ────────────────────────────────────────────────────────
 #   docker compose --profile monitoring --profile tracing up -d
 #
-# To use a different kubeconfig:
+# ── Use a non-default kubeconfig ─────────────────────────────────────────────
 #   KUBECONFIG=/path/to/config docker compose up -d
 
 services:
@@ -30,12 +36,11 @@ services:
   # ── Core ─────────────────────────────────────────────────────────────────────
 
   kubeintellect:
-    build: .
-    image: kubeintellect-dev
+    image: kubeintellect:latest
     ports:
       - "8000:8000"
     volumes:
-      - ${KUBECONFIG:-~/.kube/config}:/root/.kube/config:ro
+      - ${KUBECONFIG:-~/.kube/config}:/home/app/.kube/config:ro
     env_file:
       - .env
     environment:
@@ -48,7 +53,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8000/healthz || exit 1"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys; r=urllib.request.urlopen('http://localhost:8000/healthz'); sys.exit(0 if b'ok' in r.read() else 1)"]
       interval: 15s
       timeout: 5s
       retries: 5

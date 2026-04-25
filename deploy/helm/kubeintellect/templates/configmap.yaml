@@ -22,6 +22,10 @@ data:
   # Install charts/langfuse/ separately and set config.langfuseHost to its service URL.
   LANGFUSE_ENABLED: {{ .Values.config.langfuseEnabled | default false | toString | quote }}
   LANGFUSE_HOST: {{ .Values.config.langfuseHost | default "" | quote }}
+  # In-cluster auth — empty KUBECONFIG_PATH makes kubectl use the pod's ServiceAccount token.
+  # kubectl_tool.py sets KUBECONFIG env var from this value; an empty path causes kubectl
+  # to skip kubeconfig file loading and fall back to in-cluster auth automatically.
+  KUBECONFIG_PATH: ""
   # Agent kubectl guardrails — namespaces and resource types the agent cannot touch.
   # Edit config.blockedNamespaces / config.blockedResources in values.yaml to adjust.
   KUBECTL_BLOCKED_NAMESPACES: {{ .Values.config.blockedNamespaces | join "," | quote }}

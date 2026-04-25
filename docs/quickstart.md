@@ -9,10 +9,10 @@ Choose based on your situation:
 
 | I want to… | Use |
 |---|---|
-| Try it out quickly, no cluster yet | [A — pip install + SQLite](install/no-cluster.md) |
-| Connect to my company's K8s cluster | [B — pip install + existing cluster](install/existing-cluster.md) |
-| Create a local K8s cluster on my machine/VM | [C — pip install + Kind](install/kind.md) |
-| Run everything via Docker Compose, no K8s | [D — Docker Compose](deploy/docker-compose.md) |
+| Try it fast — I have a cluster and Docker | [A — Docker Compose](deploy/docker-compose.md) |
+| Try it fast — I have a cluster, no Docker | [B — pip install + existing cluster](install/existing-cluster.md) |
+| Try it with no cluster at all | [C — pip install + SQLite](install/no-cluster.md) |
+| Create a local K8s cluster on my machine/VM | [D — pip install + Kind](install/kind.md) |
 | Full local dev environment (monitoring + Langfuse) | [E — Kind from repo](deploy/kind.md) |
 | Deploy to production / AKS / EKS / GKE | [F — Helm cloud](deploy/cloud.md) |
 
