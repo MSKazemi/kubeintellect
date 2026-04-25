@@ -41,6 +41,7 @@ theme:
     - navigation.indexes
     - navigation.top
     - navigation.footer
+    - navigation.breadcrumbs
     - search.suggest
     - search.highlight
     - search.share

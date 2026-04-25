@@ -21,6 +21,87 @@ kubeintellect set A=1 B=2 C=3        # multiple values at once
 
 ---
 
+## pip install — complete `.env` template {#pip-install-template}
+
+Skip the interactive wizard and configure manually. Copy the block below, save it to
+`~/.kubeintellect/.env`, fill in the values marked `← change this`, and run
+`kubeintellect serve`.
+
+```bash
+# ~/.kubeintellect/.env
+# KubeIntellect local configuration
+# Update a value at any time: kubeintellect set KEY=VALUE
+
+
+# ═══════════════════════════════════════════════════════
+# REQUIRED — fill in exactly one LLM provider
+# ═══════════════════════════════════════════════════════
+
+LLM_PROVIDER=openai                     # openai  or  azure
+
+# ── Option A: OpenAI ─────────────────────────────────────────────────────────
+OPENAI_API_KEY=sk-...                   # ← your key (platform.openai.com/api-keys)
+OPENAI_COORDINATOR_MODEL=gpt-4o
+OPENAI_SUBAGENT_MODEL=gpt-4o-mini
+
+# ── Option B: Azure OpenAI ───────────────────────────────────────────────────
+# Comment out the OpenAI lines above and uncomment these:
+#
+# LLM_PROVIDER=azure
+# AZURE_OPENAI_API_KEY=                 # ← your key
+# AZURE_OPENAI_ENDPOINT=https://YOUR-RESOURCE.openai.azure.com/  # ← your endpoint
+# AZURE_COORDINATOR_DEPLOYMENT=gpt-4o
+# AZURE_SUBAGENT_DEPLOYMENT=gpt-4o-mini
+# AZURE_OPENAI_API_VERSION=2024-02-01
+
+
+# ═══════════════════════════════════════════════════════
+# AUTHENTICATION  (optional — recommended for any non-localhost use)
+# ═══════════════════════════════════════════════════════
+#
+# Leave all three empty for open-access mode (safe on localhost only).
+# Generate a key:  openssl rand -hex 20
+# kube-q uses:     KUBE_Q_API_KEY=<key>  in  ~/.kube-q/.env
+
+KUBEINTELLECT_ADMIN_KEYS=               # e.g. ki-admin-a1b2c3d4e5
+KUBEINTELLECT_OPERATOR_KEYS=
+KUBEINTELLECT_READONLY_KEYS=
+
+
+# ═══════════════════════════════════════════════════════
+# KUBERNETES
+# ═══════════════════════════════════════════════════════
+
+KUBECONFIG_PATH=~/.kube/config          # change if your kubeconfig is elsewhere
+
+
+# ═══════════════════════════════════════════════════════
+# DATABASE  (no change needed for local use)
+# ═══════════════════════════════════════════════════════
+#
+# SQLite is used automatically — no setup needed.
+# To switch to PostgreSQL, uncomment and fill in:
+# DATABASE_URL=postgresql://user:password@host:5432/kubeintellect
+
+
+# ═══════════════════════════════════════════════════════
+# OBSERVABILITY  (optional)
+# ═══════════════════════════════════════════════════════
+
+PROMETHEUS_URL=                         # e.g. http://prometheus.company.com
+LOKI_URL=                               # e.g. http://loki.company.com
+
+
+# ═══════════════════════════════════════════════════════
+# APP SETTINGS  (defaults are fine)
+# ═══════════════════════════════════════════════════════
+
+LOG_LEVEL=INFO
+LOG_FORMAT=text
+```
+
+---
+
 ## LLM provider
 
 | Variable | Default | Values | Description |

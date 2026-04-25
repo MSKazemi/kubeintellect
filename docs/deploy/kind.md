@@ -14,8 +14,8 @@ Full local Kubernetes environment for developing KubeIntellect — 2-node cluste
 ## 1. Clone the repo
 
 ```bash
-git clone https://github.com/mskazemi/kubeintellect-v2
-cd kubeintellect-v2
+git clone https://github.com/mskazemi/kubeintellect
+cd kubeintellect
 ```
 
 ---

@@ -1,6 +1,6 @@
----
+![1777130270937](image/quickstart/1777130270937.png)---
 description: >-
-  Choose your KubeIntellect install path — pip with SQLite, Docker Compose, Kind cluster, or Helm on AKS/EKS/GKE.
+  Choose your KubeIntellect install path — demo server, local Kind cluster, Docker Compose, or Helm on AKS/EKS/GKE.
 ---
 
 # Quickstart — Pick Your Path
@@ -9,10 +9,12 @@ Choose based on your situation:
 
 | I want to… | Use |
 |---|---|
+| Try it instantly — open a browser, no install | [Browser demo](install/no-cluster.md#try-it-in-your-browser-zero-install) at kubeintellect.com/demo — slower, read-only |
+| Try it fast — no Docker, no cluster | [C1 — kube-q CLI](install/no-cluster.md#option-a--kube-q-cli) — read-only, one `pip install` |
+| Try it fast — no cluster, install Docker | [C2 — install Docker + Kind](install/no-cluster.md#option-b--local-cluster) (~5 min, all features) |
 | Try it fast — I have a cluster and Docker | [A — Docker Compose](deploy/docker-compose.md) |
 | Try it fast — I have a cluster, no Docker | [B — pip install + existing cluster](install/existing-cluster.md) |
-| Try it with no cluster at all | [C — pip install + SQLite](install/no-cluster.md) |
-| Create a local K8s cluster on my machine/VM | [D — pip install + Kind](install/kind.md) |
+| Have Docker, want a local Kind cluster | [D — pip install + Kind](install/kind.md) |
 | Full local dev environment (monitoring + Langfuse) | [E — Kind from repo](deploy/kind.md) |
 | Deploy to production / AKS / EKS / GKE | [F — Helm cloud](deploy/cloud.md) |
 
@@ -34,21 +36,8 @@ All pip-install paths use the `kubeintellect` CLI:
 
 ---
 
-## `kubeintellect init` vs `make` — what's the difference?
-
-| | `kubeintellect init` (pip) | repo `make` path |
-|---|---|---|
-| Requires repo clone | No | Yes |
-| Cluster setup | 1-node Kind + DNS, sample workloads, RCA scenarios | 2-node Kind, hot-reload mounts, tuned ingress |
-| Observability | NodePort (host-accessible from init) | `make monitoring-install` |
-| Langfuse | Not included in init | `make langfuse-install` |
-| Background service | systemd user service (auto-start on login) | `make run-bg` |
-| kube-q auto-config | Yes (`~/.kube-q/.env` written by init) | Manual (`KUBE_Q_URL=...`) |
-| Cluster DNS auto-config | Yes — `svc.cluster.local` works from host | No |
-| Who it's for | End users, ops teams | Developers working on KubeIntellect itself |
-
----
-
 ## All config options
 
-See [configuration.md](configuration.md) for the full variable reference.
+See [configuration.md](configuration.md) for the full variable reference and a
+[ready-to-copy `~/.kubeintellect/.env` template](configuration.md#pip-install-template)
+you can fill in without running the wizard.
