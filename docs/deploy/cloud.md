@@ -18,8 +18,8 @@ Run a Kind cluster on a Linux VM and expose it via nginx + TLS.
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/mskazemi/kubeintellect-v2
-cd kubeintellect-v2
+git clone https://github.com/mskazemi/kubeintellect
+cd kubeintellect
 ```
 
 ### 2. Create the Kind cluster
@@ -102,8 +102,8 @@ curl https://api.your-domain.com/healthz    # → {"status":"ok"}
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/mskazemi/kubeintellect-v2
-cd kubeintellect-v2
+git clone https://github.com/mskazemi/kubeintellect
+cd kubeintellect
 ```
 
 ### 2. Configure

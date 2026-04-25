@@ -1,100 +1,202 @@
 ---
 description: >-
-  Install KubeIntellect with pip and SQLite in minutes — no Kubernetes cluster needed. Explore the AI assistant and kube-q CLI locally.
+  No Kubernetes cluster, no Docker? Three paths: browser demo (zero install), kube-q CLI against our hosted server, or install Docker and create a local Kind cluster in minutes.
 ---
 
-# Install: pip — No Cluster (Quick Try)
+# Install: No Cluster, No Docker
 
-Run KubeIntellect locally with SQLite and no Kubernetes cluster. Explore the API and CLI in minutes.
+Three ways to try KubeIntellect without a cluster or Docker:
 
-**Requirements:** Python 3.12+, an LLM API key.
+|  | Browser demo | Option A — kube-q CLI | Option B — Local cluster |
+|--|:------------:|:---------------------:|:------------------------:|
+| **Setup** | None | < 1 min | ~5 min |
+| **Install** | Nothing | `kube-q` only | Docker + `kubeintellect` |
+| **Speed** | Slower† | Fast | Fast |
+| **Access** | Read-only | Read-only | Full (HITL-gated) |
+| **RCA scenarios** | Yes | Yes | Yes (if selected) |
+
+† The browser terminal shares a single backend instance — responses may be slower under load.
 
 ---
 
-## 1. Install
+## Try it in your browser (zero install)
+
+No install, no terminal. Open **[kubeintellect.com/demo](https://kubeintellect.com/demo)** and start querying immediately.
+
+!!! warning "Slower and limited"
+    The demo terminal shares a single hosted instance. Responses are slower under concurrent load,
+    and access is read-only — destructive operations (delete, restart, scale) are disabled.
+
+---
+
+## Option A — kube-q CLI
+
+Install only the thin CLI client and connect it to our hosted KubeIntellect instance.
+`kq` already defaults to `https://api.kubeintellect.com`, so all you need is the API key.
+
+**Requirements:** Python 3.12+
+
+### 1. Install kube-q
+
+```bash
+pip install kube-q
+```
+
+> `kq: command not found`? Add `~/.local/bin` to your PATH:
+> ```bash
+> echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+> ```
+
+### 2. Connect
+
+```bash
+kq --api-key ki-ro-dev
+```
+
+Or save it permanently so you never type it again:
+
+```bash
+mkdir -p ~/.kube-q
+echo "KUBE_Q_API_KEY=ki-ro-dev" >> ~/.kube-q/.env
+kq
+```
+
+!!! note "Read-only access"
+    The demo cluster is shared. Destructive operations (delete, restart, scale) are disabled.
+    For full access use [Option B](#option-b--local-cluster) or
+    [connect to your own cluster](existing-cluster.md).
+
+---
+
+## Option B — Local Cluster
+
+Install Docker, then let `kubeintellect init` handle everything else: Kind cluster creation, sample
+workloads, optional observability stack, and RCA practice scenarios.
+
+**Requirements:** Python 3.12+, an LLM API key (OpenAI or Azure OpenAI)
+
+### 1. Install Docker
+
+=== "Linux"
+
+    ```bash
+    curl -fsSL https://get.docker.com | sh
+    sudo usermod -aG docker $USER
+    newgrp docker          # apply group change without logging out
+    docker run hello-world # verify
+    ```
+
+=== "macOS"
+
+    Install **[Docker Desktop](https://www.docker.com/products/docker-desktop/)**, launch it, and wait for the whale icon in the menu bar before continuing.
+
+=== "Windows (WSL 2)"
+
+    Install **[Docker Desktop](https://www.docker.com/products/docker-desktop/)** with WSL 2 integration enabled, then run the remaining steps inside your WSL terminal.
+
+### 2. Install KubeIntellect
 
 ```bash
 pip install kubeintellect
 ```
 
-> **Ubuntu 22.04** ships Python 3.10. You need 3.12+:
-> ```bash
-> sudo add-apt-repository ppa:deadsnakes/ppa -y && sudo apt-get install -y python3.12
-> python3.12 -m venv .venv && source .venv/bin/activate
-> pip install kubeintellect
-> ```
->
-> If `kubeintellect` or `kq` are not found after install (pipx path):
+??? tip "Ubuntu 22.04 — Python 3.10 ships by default, you need 3.12+"
+    ```bash
+    sudo add-apt-repository ppa:deadsnakes/ppa -y
+    sudo apt-get install -y python3.12 python3.12-distutils
+    python3.12 -m pip install kubeintellect
+    ```
+
+> `kubeintellect: command not found`? Fix PATH:
 > ```bash
 > echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 > ```
 
----
+### 3. Configure and start
 
-## 2. Set up — one command
+!!! tip "Prefer editing a file directly?"
+    Create `~/.kubeintellect/.env` from the
+    [pip install template](../configuration.md#pip-install-template) — fill in your LLM key,
+    save, then run `kubeintellect serve`. Skip the rest of this step.
+
+Otherwise, run the interactive wizard:
 
 ```bash
 kubeintellect init
 ```
 
-The wizard walks you through:
+Because no `~/.kube/config` exists yet, the wizard offers to create a cluster automatically.
+Recommended answers:
 
-| Prompt | What to enter (no-cluster path) |
-|--------|--------------------------------|
+| Prompt | Answer |
+|--------|--------|
 | LLM provider | `1` OpenAI or `2` Azure OpenAI |
 | API key (and endpoint for Azure) | Your key |
-| Create a local Kind cluster? | **N** — skip for now |
-| Access level | `1` admin (recommended for local testing) |
-| Database (if Docker available) | Press Enter — SQLite is the default |
-| Install as background service? | **Y** — server starts automatically on login |
+| Create a local Kind cluster with sample workloads? | **Y** |
+| *(kind, kubectl, helm installed automatically if missing)* | — |
+| Install observability stack (Prometheus, Grafana, Loki)? | **Y** |
+| Create RCA demo scenarios? | **Y** — 5 broken pods to practice root-cause analysis |
+| Install as background service? | **Y** — server starts automatically on every login |
 
 When `init` finishes it:
-- Writes `~/.kubeintellect/.env`
-- Configures `kube-q` automatically (`~/.kube-q/.env`)
-- Installs a systemd service (Linux) so the server starts on every login
-- Hands off to `kq` immediately
 
----
+- Creates a 1-node Kind cluster named `kubeintellect`
+- Deploys sample workloads in the `demo` namespace (nginx ×2, httpbin ×1)
+- Installs Prometheus + Grafana (NodePort 30090 / 30080) and Loki (NodePort 30100) — if selected
+- Deploys 5 RCA practice scenarios in `demo-rca` namespace — if selected
+- Configures cluster DNS so `svc.cluster.local` resolves from your host
+- Writes `~/.kubeintellect/.env` with all URLs set automatically
+- Configures `kube-q` (`~/.kube-q/.env`) with your API key
+- Installs a systemd service so the server starts on every login
 
-## 3. Connect
-
-Open a new terminal (or wait for `kq` to launch automatically):
+### 4. Open a new terminal and start querying
 
 ```bash
 kq
 ```
 
-No API key to copy — `init` configured it automatically.
+No API key to copy — `init` configured everything automatically.
 
----
-
-## 4. Verify
+### 5. Verify
 
 ```bash
 kubeintellect status
 ```
 
-Expected output (no cluster):
+Expected output (with Kind cluster and observability):
+
 ```
   Config:    ✓  ~/.kubeintellect/.env
   LLM:       ✓  openai / gpt-4o
   DB:        ✓  sqlite  ~/.kubeintellect/kubeintellect.db
-  kubectl:   ✗  not found  → run: kubeintellect kind-setup
-  Kube:      ✗  ~/.kube/config  file not found — set KUBECONFIG_PATH in ~/.kubeintellect/.env
+  kubectl:   ✓  found
+  Kube:      ✓  ~/.kube/config  context: kind-kubeintellect
   Auth:      ✓  enabled
     admin     ki-admin-xxxxxxxxxxxxxxxxxxxx
-  Prometheus:-  not configured
-  Loki:      -  not configured
-  Grafana:   -  not configured
-  Langfuse:  -  disabled
+  Prometheus:✓  http://172.18.0.2:30090  reachable
+  Loki:      ✓  http://172.18.0.2:30100  reachable
+  Grafana:   ✓  http://172.18.0.2:30080  reachable
   kube-q:    ✓  found
 ```
 
-Without `kubectl` and a cluster only informational questions work. That's fine for exploring the API.
+### Try the RCA scenarios
+
+```bash
+kq
+```
+
+Ask questions like:
+
+- *"what pods are broken in the demo-rca namespace?"*
+- *"why is crash-loop crashing and how do I fix it?"*
+- *"why is resource-hog pending?"*
+- *"why does the api-server service have no endpoints?"*
+
+The 5 scenarios cover: `CrashLoopBackOff`, `OOMKilled`, `ImagePullBackOff`, `Pending` (resource exhaustion), and a service with no endpoints.
 
 ---
 
-## Managing the service
+## Managing the service (Option B)
 
 ```bash
 kubeintellect service status     # check if server is running
@@ -106,19 +208,8 @@ kubeintellect service uninstall  # remove the service entirely
 
 ---
 
-## Update a config value
+## Next steps
 
-```bash
-kubeintellect set OPENAI_API_KEY=sk-...
-kubeintellect set PROMETHEUS_URL=http://localhost:9090
-```
-
-Changes take effect immediately — if the service is running it restarts automatically.
-
----
-
-## Next step
-
-Once you have a cluster, add kubectl and connect:
-- [Connect to an existing cluster →](existing-cluster.md)
-- [Create a local Kind cluster →](kind.md)
+- Already have a cluster? → [Connect to an existing cluster](existing-cluster.md)
+- Want full monitoring + Langfuse for local dev? → [Kind dev environment](../deploy/kind.md)
+- Deploy to production (AKS, EKS, GKE)? → [Helm / cloud](../deploy/cloud.md)

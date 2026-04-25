@@ -83,20 +83,28 @@
 .md-tabs {
   background: #060606;
   border-top: 1px solid var(--ki-border-soft);
+  color: var(--ki-text-light); /* prevent Material's --md-primary-bg-color from leaking */
 }
 
 .md-tabs__link {
+  color: var(--ki-text-light);
   opacity: 0.6;
   transition: opacity var(--ki-transition), color var(--ki-transition);
   font-size: 0.78rem;
   letter-spacing: 0.04em;
 }
 
-.md-tabs__link--active,
+/* Material uses .md-tabs__item--active .md-tabs__link, NOT .md-tabs__link--active */
+.md-tabs__item--active .md-tabs__link,
 .md-tabs__link:focus,
 .md-tabs__link:hover {
   color: var(--ki-green) !important;
   opacity: 1;
+}
+
+.md-tabs__item--active .md-tabs__link::after,
+.md-tabs__link:hover::after {
+  background-color: var(--ki-green) !important;
 }
 
 /* ── Sidebar nav ──────────────────────────────────────────────── */
@@ -418,6 +426,18 @@
 /* ═══════════════════════════════════════════════════════════════
    TYPOGRAPHY
    ═══════════════════════════════════════════════════════════════ */
+
+[data-md-color-scheme="slate"] .md-typeset {
+  color: #cbd5e1;
+}
+
+[data-md-color-scheme="slate"] .md-typeset p,
+[data-md-color-scheme="slate"] .md-typeset li,
+[data-md-color-scheme="slate"] .md-typeset td,
+[data-md-color-scheme="slate"] .md-typeset dt,
+[data-md-color-scheme="slate"] .md-typeset dd {
+  color: #cbd5e1;
+}
 
 [data-md-color-scheme="slate"] .md-typeset h2 {
   border-bottom: 1px solid var(--ki-border-soft);

@@ -75,7 +75,7 @@ The image reads all settings from environment variables. It has no built-in defa
 
 ```
 ┌───────────────────────────┐     ┌───────────────────────────┐
-│    Docker Compose          │     │    Kubernetes (Helm)        │
+│    Docker Compose         │     │    Kubernetes (Helm)      │
 │                           │     │                           │
 │  .env file                │     │  ConfigMap (non-secret)   │
 │  ┌──────────────────────┐ │     │  ┌──────────────────────┐ │
