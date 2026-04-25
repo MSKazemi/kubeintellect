@@ -11,26 +11,99 @@ AI-powered Kubernetes management. Natural-language interface to diagnose faults,
 
 ---
 
-## Quickstart
+## Quickstart — Pick Your Path
 
-### Install (requires Python 3.12+)
+| Starting point | Path |
+|----------------|------|
+| Try it instantly — no install at all | [Browser demo](https://kubeintellect.com/demo) — open in browser, slower, read-only |
+| Try it fast — no Docker, no cluster | [A — kube-q CLI](#a--kube-q-cli-no-install-except-pip) (read-only, one `pip install`) |
+| Try it fast — no cluster, install Docker | [B — create local cluster](#b--create-local-cluster) (~5 min, all features) |
+| Have Docker, no cluster | [pip install + `kubeintellect init`](#c--local-install-have-docker-or-existing-cluster) |
+| Have an existing cluster | [pip install + `kubeintellect init`](#c--local-install-have-docker-or-existing-cluster) |
+| Want Docker Compose / production setup | [Docker Compose](#docker-compose-laptop--vm---no-cluster-required-to-run-the-server) |
+
+---
+
+### A — kube-q CLI (no install except pip)
+
+Install only the thin CLI. `kq` defaults to `https://api.kubeintellect.com` — no `--url` needed.
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+pip install kube-q
+kq --api-key ki-ro-dev
+```
+
+> Read-only — the demo cluster is shared. Destructive ops are disabled. For full access use path B.
+
+---
+
+### Browser demo (zero install)
+
+No terminal, no install. Open **[kubeintellect.com/demo](https://kubeintellect.com/demo)** directly.
+
+> Slower than the CLI — the browser terminal shares a single hosted instance. Read-only access.
+
+---
+
+### B — Create local cluster
+
+Docker is the only prerequisite. `kubeintellect init` installs Kind, creates the cluster, deploys sample workloads, and starts a background service.
+
+**1. Install Docker**
+```bash
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER && newgrp docker
+```
+
+**2. Install KubeIntellect**
+```bash
 pip install kubeintellect
 ```
 
-> **Ubuntu 22.04** ships Python 3.10. Check your version first:
+**3. Run the wizard — answer Y to everything**
+```bash
+kubeintellect init
+```
+
+The wizard:
+- Asks your LLM provider (OpenAI or Azure) and API key
+- Creates a local Kind cluster with sample workloads
+- Optionally installs Prometheus, Grafana, and Loki
+- Optionally deploys 5 broken-pod RCA scenarios to practise with
+- Generates an API key and configures `kq` automatically
+- Installs a systemd service so the server starts on every login
+
+**4. Open a new terminal**
+```bash
+kq
+```
+
+No manual server start, no copy-pasting API keys.
+
+---
+
+### C — Local install (have Docker or existing cluster)
+
+```bash
+pip install kubeintellect
+```
+
+> **`kubeintellect: command not found` / `kq: command not found`?**
+> pip installs scripts to `~/.local/bin` which may not be on your PATH. Fix it permanently:
 > ```bash
-> python3 --version   # need 3.12 or higher
+> echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 > ```
-> If you have 3.10, install 3.12 from the deadsnakes PPA:
+
+**Prefer isolated install?** pipx manages a private env automatically — no PATH fiddling:
+```bash
+pipx install kubeintellect   # apt install pipx  if missing
+```
+
+> **Ubuntu 22.04** ships Python 3.10. You need 3.12+:
 > ```bash
 > sudo add-apt-repository ppa:deadsnakes/ppa -y
-> sudo apt-get install -y python3.12
-> python3.12 -m venv .venv && source .venv/bin/activate
-> pip install kubeintellect
+> sudo apt-get install -y python3.12 python3.12-distutils
+> python3.12 -m pip install kubeintellect
 > ```
 
 ### First-time setup — one command
@@ -138,9 +211,29 @@ Generate keys: `openssl rand -hex 20`
 ```bash
 git clone https://github.com/MSKazemi/kubeintellect
 cd kubeintellect
-cp .env.example .env        # set LLM key + KUBEINTELLECT_ADMIN_KEYS
+cp .env.example .env
+```
+
+Open `.env` and fill in three things:
+
+```bash
+# 1. LLM key (OpenAI or Azure)
+OPENAI_API_KEY=sk-...          # or AZURE_OPENAI_API_KEY / AZURE_OPENAI_ENDPOINT
+
+# 2. Database password
+POSTGRES_PASSWORD=changeme     # use something stronger
+
+# 3. Admin API key — generate one, then paste the same value as KUBE_Q_API_KEY below
+KUBEINTELLECT_ADMIN_KEYS=ki-admin-$(openssl rand -hex 10)
+```
+
+```bash
 docker compose up -d
 pip install kube-q
+```
+
+```bash
+# KUBE_Q_API_KEY = the value you set in KUBEINTELLECT_ADMIN_KEYS above
 KUBE_Q_API_KEY=<your-admin-key> kq --url http://localhost:8000
 ```
 

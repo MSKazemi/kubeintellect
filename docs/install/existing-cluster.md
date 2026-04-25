@@ -24,7 +24,14 @@ pip install kubeintellect
 
 ---
 
-## 2. Set up — one command
+## 2. Configure and start
+
+!!! tip "Prefer editing a file directly?"
+    Create `~/.kubeintellect/.env` from the
+    [pip install template](../configuration.md#pip-install-template) — fill in your LLM key,
+    save, then run `kubeintellect serve`. Skip the wizard entirely.
+
+Otherwise, run the interactive wizard:
 
 ```bash
 kubeintellect init
