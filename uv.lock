@@ -474,7 +474,8 @@ wheels = [
 
 [[package]]
 name = "kube-q"
-source = { editable = "../../kube_q" }
+version = "1.4.3"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "prompt-toolkit" },
@@ -482,21 +483,10 @@ dependencies = [
     { name = "pygments" },
     { name = "rich" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "httpx", specifier = ">=0.28" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
-    { name = "prompt-toolkit", specifier = ">=3.0" },
-    { name = "pydantic", specifier = ">=2.0" },
-    { name = "pygments", specifier = ">=2.18" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.14" },
-    { name = "respx", marker = "extra == 'dev'", specifier = ">=0.21" },
-    { name = "rich", specifier = ">=14.3.3" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
+sdist = { url = "https://files.pythonhosted.org/packages/f2/95/72733d5929c665a530742ed300efbb1d331b03041fce36231e594fcf131e/kube_q-1.4.3.tar.gz", hash = "sha256:90413938522cf9aa355c808dc7bcafb3ed5a4eb389234d7b541ef9cb38593896", size = 191664, upload-time = "2026-04-19T11:47:46.698Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/93/8c/781e5ff2d196fee8dfffe5f7d805d44d2ed398fccb9f71ae4352034e672e/kube_q-1.4.3-py3-none-any.whl", hash = "sha256:fdec4a090d29f97a0255bd67098ea760ff5c580c4480d90b97f9918021605b90", size = 70092, upload-time = "2026-04-19T11:47:45.041Z" },
 ]
-provides-extras = ["dev"]
 
 [[package]]
 name = "kubeintellect"
@@ -549,7 +539,7 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.29" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.28" },
-    { name = "kube-q", editable = "../../kube_q" },
+    { name = "kube-q" },
     { name = "kubeintellect", extras = ["tracing", "metrics"], marker = "extra == 'all'" },
     { name = "langchain", specifier = ">=0.3" },
     { name = "langchain-openai", specifier = ">=0.2" },
