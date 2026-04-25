@@ -9,7 +9,7 @@
 
 # ── Image ─────────────────────────────────────────────────────────────────────
 image:
-  repository: ghcr.io/mskazemi/kubeintellect-v2
+  repository: ghcr.io/mskazemi/kubeintellect
   tag: dev-latest
   pullPolicy: Always     # cloud deployments always pull to pick up new tags
 

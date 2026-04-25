@@ -69,7 +69,7 @@ langfuse:
     id: "kubeintellect-org"
     name: "KubeIntellect"
   initProject:
-    id: "kubeintellect-v2-project"
+    id: "kubeintellect-project"
     name: "KubeIntellect V2"
     publicKey: ""                # pk-lf-... (must match LANGFUSE_PUBLIC_KEY in app secret)
     secretKey: ""                # sk-lf-... (must match LANGFUSE_SECRET_KEY in app secret)
