@@ -31,19 +31,18 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libffi-dev
 
 # Layer 1: install all dependencies (cached until lockfile changes)
-# Bind-mount avoids copying lock files into a layer; cache mount reuses the uv download cache.
+# --no-sources: ignore [tool.uv.sources] so kube-q resolves from PyPI, not a local path.
+# COPY (not bind-mount) so uv can rewrite the lockfile entry in-place if the source changed.
+COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-dev --no-install-project
+    uv sync --no-sources --no-dev --no-install-project
 
 # Layer 2: copy application source, then install the project itself
 # Only app/ is copied — docs, tests, deploy, scripts stay out of the image.
 COPY app ./app
-COPY pyproject.toml uv.lock ./
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+    uv sync --no-sources --no-dev
 
 # ── Stage 2: kubectl fetcher (curl never enters the runtime image) ─────────────
 FROM debian:bookworm-slim AS kubectl-fetcher
