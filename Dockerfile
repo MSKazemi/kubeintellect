@@ -30,19 +30,21 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         build-essential \
         libffi-dev
 
-# Layer 1: install all dependencies (cached until lockfile changes)
-# --no-sources: ignore [tool.uv.sources] so kube-q resolves from PyPI, not a local path.
-# COPY (not bind-mount) so uv can rewrite the lockfile entry in-place if the source changed.
+# Layer 1: install dependencies only (cached until pyproject.toml or lockfile changes).
+# --frozen:           treat uv.lock as immutable truth; fail if resolution would differ.
+# --no-sources:       kube-q must resolve from PyPI, not the local ../../kube_q dev path.
+# --no-install-project: skip building kubeintellect itself; app/ is not copied yet.
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-sources --no-dev --no-install-project
+    uv sync --frozen --no-sources --no-dev --no-install-project
 
-# Layer 2: copy application source, then install the project itself
-# Only app/ is copied — docs, tests, deploy, scripts stay out of the image.
+# Layer 2: install the project itself.
+# README.md: hatchling validates it exists (readme = "README.md" in pyproject.toml).
+# Kept separate from layer 1 so changing docs does not bust the dep-install cache.
+COPY README.md ./
 COPY app ./app
-
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-sources --no-dev
+    uv sync --frozen --no-sources --no-dev
 
 # ── Stage 2: kubectl fetcher (curl never enters the runtime image) ─────────────
 FROM debian:bookworm-slim AS kubectl-fetcher
