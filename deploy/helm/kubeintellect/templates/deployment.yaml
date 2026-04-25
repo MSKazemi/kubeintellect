@@ -36,6 +36,8 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           {{- if .Values.hotReload.enabled }}
           command:
+            - /app/.venv/bin/python
+            - -m
             - uvicorn
             - app.main:app
             - --host
