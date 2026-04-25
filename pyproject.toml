@@ -36,7 +36,7 @@ dependencies = [
     # HTTP (Prometheus + Loki queries)
     "httpx>=0.28",
     # CLI client — bundled so pip install kubeintellect gives both server and kq
-    "kube-q",  # must stay in [project.dependencies]; do NOT add a [tool.uv.sources] override
+    "kube-q>=1.4.3",  # must stay in [project.dependencies]; do NOT add a [tool.uv.sources] override
 ]
 
 [project.urls]

@@ -539,7 +539,7 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.29" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.28" },
-    { name = "kube-q" },
+    { name = "kube-q", specifier = ">=1.4.3" },
     { name = "kubeintellect", extras = ["tracing", "metrics"], marker = "extra == 'all'" },
     { name = "langchain", specifier = ">=0.3" },
     { name = "langchain-openai", specifier = ">=0.2" },
