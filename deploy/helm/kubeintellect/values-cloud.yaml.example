@@ -21,7 +21,8 @@ ingress:
   className: nginx        # AKS: nginx | azure/application-gateway
                           # EKS: alb
                           # GKE: gce | nginx
-  host: api.your-domain.com
+  hosts:
+    - api.your-domain.com    # ← replace with your public domain
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
   tls:
