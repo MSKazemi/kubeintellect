@@ -16,16 +16,18 @@ metadata:
 spec:
   ingressClassName: {{ .Values.ingress.className | default "nginx" }}
   rules:
-    - host: {{ .Values.ingress.host }}
+    {{- range .Values.ingress.hosts }}
+    - host: {{ . }}
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: {{ include "kubeintellect.fullname" . }}
+                name: {{ include "kubeintellect.fullname" $ }}
                 port:
-                  number: {{ .Values.service.port }}
+                  number: {{ $.Values.service.port }}
+    {{- end }}
   {{- if .Values.ingress.tls }}
   tls:
     {{- toYaml .Values.ingress.tls | nindent 4 }}

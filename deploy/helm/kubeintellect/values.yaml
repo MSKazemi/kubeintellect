@@ -14,7 +14,8 @@ service:
 ingress:
   enabled: false
   className: nginx
-  host: api.kubeintellect.local
+  hosts:
+    - api.kubeintellect.local
   annotations: {}
   tls: []
 
