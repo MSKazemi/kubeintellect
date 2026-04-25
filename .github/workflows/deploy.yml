@@ -76,12 +76,16 @@ jobs:
     if: github.event_name == 'workflow_dispatch'   # only runs when you click the button
 
     steps:
+      - name: Compute short SHA
+        id: sha
+        run: echo "short=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2  # v1.2.5
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_ACTOR: ${{ github.actor }}
-          IMAGE_TAG: ghcr.io/mskazemi/kubeintellect:sha-${{ github.sha }}
+          IMAGE_TAG: ghcr.io/mskazemi/kubeintellect:sha-${{ steps.sha.outputs.short }}
         with:
           host:     ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
