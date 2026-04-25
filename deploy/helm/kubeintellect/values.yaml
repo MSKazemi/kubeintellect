@@ -1,8 +1,8 @@
 namespace: kubeintellect
 
 image:
-  repository: ghcr.io/mskazemi/kubeintellect-v2
-  tag: dev-latest
+  repository: ghcr.io/mskazemi/kubeintellect
+  tag: latest
   pullPolicy: IfNotPresent
 
 replicaCount: 1
