@@ -38,13 +38,18 @@ cp deploy/helm/kubeintellect/values-production.yaml.example \
 Edit `values-production.yaml`:
 ```yaml
 ingress:
-  host: api.your-domain.com   # your VM's domain or IP
+  hosts:
+    - api.your-domain.com      # internet access — your public domain
+    - api.kubeintellect.local  # local VM access (add to /etc/hosts on clients)
 
 config:
   llmProvider: azure          # or: openai
   prometheusUrl: ""           # add after monitoring install
   lokiUrl: ""
 ```
+
+!!! note "Dual hostname setup"
+    The VM nginx reverse proxy passes the original `Host` header through to the Kind cluster, so both hostnames route to the same pod. Add `api.kubeintellect.local` to `/etc/hosts` on any machine that needs local access without going through DNS.
 
 ```bash
 cp .env.example .env
@@ -92,7 +97,8 @@ bash scripts/vm/setup-tls.sh      # get Let's Encrypt cert
 ### 7. Verify
 
 ```bash
-curl https://api.your-domain.com/healthz    # → {"status":"ok"}
+curl https://api.your-domain.com/healthz           # → {"status":"ok"}  (internet)
+curl http://api.kubeintellect.local/healthz         # → {"status":"ok"}  (local, if /etc/hosts set)
 ```
 
 ---
@@ -116,7 +122,8 @@ cp deploy/helm/kubeintellect/values-cloud.yaml.example \
 Edit `values-cloud.yaml`:
 ```yaml
 ingress:
-  host: api.your-domain.com
+  hosts:
+    - api.your-domain.com    # ← your public domain
   className: nginx          # or: alb (EKS), gce (GKE)
 
 config:

@@ -12,7 +12,8 @@ replicaCount: 2                  # AKS can run multiple replicas
 ingress:
   enabled: true
   className: nginx               # or azure/application-gateway
-  host: api.kubeintellect.com
+  hosts:
+    - api.kubeintellect.com
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
   tls:
