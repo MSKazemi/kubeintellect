@@ -7,7 +7,7 @@
 #
 # ── Quick start ───────────────────────────────────────────────────────────────
 #   cp .env.example .env          # fill in: LLM key + POSTGRES_PASSWORD + ADMIN key
-#   docker compose up -d          # builds image + starts app + postgres (~2 min first run)
+#   docker compose up -d          # pulls ghcr.io/mskazemi/kubeintellect + starts postgres
 #   pip install kube-q
 #   KUBE_Q_API_KEY=<key> kq       # key = value of KUBEINTELLECT_ADMIN_KEYS in .env
 #
@@ -36,7 +36,7 @@ services:
   # ── Core ─────────────────────────────────────────────────────────────────────
 
   kubeintellect:
-    image: kubeintellect:latest
+    image: ghcr.io/mskazemi/kubeintellect:latest
     ports:
       - "8000:8000"
     volumes:
