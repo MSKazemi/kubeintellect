@@ -47,7 +47,7 @@ class ChatMessage(BaseModel):
 
 
 class ChatCompletionRequest(BaseModel):
-    model: str = "kubeintellect-v2"
+    model: str = "kubeintellect"
     messages: list[ChatMessage]
     stream: bool = True
     user: str = "default"
@@ -76,7 +76,7 @@ def _make_chunk(
         "id": completion_id,
         "object": "chat.completion.chunk",
         "created": int(time.time()),
-        "model": "kubeintellect-v2",
+        "model": "kubeintellect",
         "choices": [choice],
     }
     return f"data: {json.dumps(payload)}\n\n"
@@ -88,7 +88,7 @@ def _make_ki_event_chunk(completion_id: str, ki_event: dict) -> str:
         "id": completion_id,
         "object": "chat.completion.chunk",
         "created": int(time.time()),
-        "model": "kubeintellect-v2",
+        "model": "kubeintellect",
         "ki_event": ki_event,
         "choices": [],
     }

@@ -92,7 +92,7 @@ class TestHealthz:
 
 class TestAuth:
     _body = {
-        "model": "kubeintellect-v2",
+        "model": "kubeintellect",
         "messages": [{"role": "user", "content": "get all pods"}],
         "stream": True,
     }
