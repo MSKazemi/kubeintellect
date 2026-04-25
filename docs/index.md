@@ -198,9 +198,10 @@ SSE client or your own tooling at `/v1/chat/completions`.
     ```bash
     git clone https://github.com/MSKazemi/kubeintellect
     cd kubeintellect
-    cp .env.example .env        # add your LLM key
+    cp .env.example .env        # set LLM key + KUBEINTELLECT_ADMIN_KEYS
     docker compose up -d
-    kq --url http://localhost:8000
+    pip install kube-q
+    KUBE_Q_API_KEY=<your-admin-key> kq --url http://localhost:8000
     ```
 
 === "Kind (local K8s)"

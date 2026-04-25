@@ -133,9 +133,23 @@ Generate keys: `openssl rand -hex 20`
 
 ## Other deployment options
 
+### Docker Compose (laptop / VM — no cluster required to run the server)
+
+```bash
+git clone https://github.com/MSKazemi/kubeintellect
+cd kubeintellect
+cp .env.example .env        # set LLM key + KUBEINTELLECT_ADMIN_KEYS
+docker compose up -d
+pip install kube-q
+KUBE_Q_API_KEY=<your-admin-key> kq --url http://localhost:8000
+```
+
+Full guide: [Deploy: Docker Compose](https://mskazemi.github.io/kubeintellect/deploy/docker-compose/)
+
+### Other options
+
 | Option | When to use |
 |--------|-------------|
-| [Docker Compose](https://mskazemi.github.io/kubeintellect/deploy/docker-compose/) | Laptop, no K8s cluster, full stack via Docker |
 | [Kind cluster](https://mskazemi.github.io/kubeintellect/deploy/kind/) | Local K8s dev with monitoring + Langfuse |
 | [Cloud / VM (Helm)](https://mskazemi.github.io/kubeintellect/deploy/cloud/) | Production, AKS, or company cluster |
 

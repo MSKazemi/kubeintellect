@@ -14,7 +14,7 @@ Run the full KubeIntellect stack on your laptop with a single command. No Kubern
 
 ## How it works
 
-`docker compose up` builds the KubeIntellect image from the local `Dockerfile` and starts these services:
+`docker compose up` pulls `ghcr.io/mskazemi/kubeintellect:latest` and starts these services:
 
 | Service | Always? | What it is |
 |---|---|---|
@@ -82,7 +82,7 @@ KUBEINTELLECT_ADMIN_KEYS=ki-admin-$(openssl rand -hex 10)
 docker compose up -d
 ```
 
-The first run builds the image from source — this takes ~2 minutes. Subsequent starts are instant.
+The first run pulls `ghcr.io/mskazemi/kubeintellect:latest` (~400 MB). Subsequent starts are instant.
 
 Verify the server is healthy:
 
