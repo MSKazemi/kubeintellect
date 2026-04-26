@@ -2,11 +2,12 @@
 API key verification — extracts and validates the Bearer token from the
 Authorization header and returns the caller's role.
 
-Role model (three tiers):
-  "admin"    — high + medium risk ops allowed, always HITL-gated
-  "operator" — medium risk ops allowed (create, apply, scale, exec…), HITL-gated;
-               high-risk ops (delete, drain, replace, taint) are blocked
-  "readonly" — read-only ops only; all write ops rejected before reaching the agent
+Role model (four tiers):
+  "superadmin" — all ops allowed, HITL-gated; bypasses infra namespace write block
+  "admin"      — high + medium risk ops allowed, always HITL-gated; infra ns writes blocked
+  "operator"   — medium risk ops allowed (create, apply, scale, exec…), HITL-gated;
+                 high-risk ops (delete, drain, replace, taint) are blocked
+  "readonly"   — read-only ops only; all write ops rejected before reaching the agent
 
 When auth is disabled (no keys configured), all requests are treated as
 "admin" to preserve backward compatibility with unauthenticated deployments.
@@ -69,6 +70,8 @@ def get_user_role(request: Request) -> str:
 
     token = auth.removeprefix("Bearer ").strip()
 
+    if token in settings.superadmin_keys:
+        return "superadmin"
     if token in settings.admin_keys:
         return "admin"
     if token in settings.operator_keys:

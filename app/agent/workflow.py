@@ -26,6 +26,7 @@ from langchain_core.messages import HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, Send
 
+from app.agent.hitl import is_auto_approve_request as _is_auto_approve_request
 from app.agent.hitl import is_denial as _is_denial
 from app.agent.nodes.context_fetcher import context_fetcher
 from app.agent.nodes.coordinator import coordinator
@@ -67,6 +68,51 @@ async def subagent_executor(payload: SubagentInput) -> dict:
     return {"findings": [finding]}
 
 
+# ── Targeted investigator node ────────────────────────────────────────────────
+
+
+async def targeted_investigator(state: AgentState) -> dict:
+    """Run 3 parallel targeted reads for a single-resource issue, then return to coordinator."""
+    from app.agent.nodes.context_fetcher import _run_kubectl_snapshot
+
+    info = state.get("targeted_investigation") or {}
+    ns = info.get("namespace", "")
+    pod = info.get("pod", "")
+    issue = info.get("issue", "")
+    session_id = state.get("session_id", "-")
+
+    await emit(session_id, StatusEvent(
+        phase="investigating",
+        message=f"Investigating {pod} in {ns}…",
+        session_id=session_id,
+    ))
+
+    describe_out, events_out, deploy_out = await asyncio.gather(
+        asyncio.to_thread(_run_kubectl_snapshot, ["describe", "pod", pod, "-n", ns]),
+        asyncio.to_thread(_run_kubectl_snapshot, ["get", "events", "-n", ns, "--sort-by=.lastTimestamp"]),
+        asyncio.to_thread(_run_kubectl_snapshot, ["get", "deployments", "-n", ns]),
+    )
+
+    detail = (
+        f"## Targeted Investigation: {pod} in {ns}\n"
+        f"**Issue**: {issue}\n\n"
+        f"### Pod Description\n```\n{describe_out}\n```\n\n"
+        f"### Namespace Events\n```\n{events_out}\n```\n\n"
+        f"### Deployments\n```\n{deploy_out}\n```"
+    )
+
+    existing = state.get("cluster_snapshot", "")
+    updated_snapshot = f"{existing}\n\n{detail}" if existing else detail
+
+    logger.debug(
+        f"targeted_investigator: detail={len(detail)} chars pod={pod} session={session_id}"
+    )
+    return {
+        "cluster_snapshot": updated_snapshot,
+        "targeted_investigation": None,
+    }
+
+
 # ── Routing function ──────────────────────────────────────────────────────────
 
 
@@ -74,14 +120,18 @@ def route_coordinator(state: AgentState) -> str | list[Send]:
     """
     Conditional edge after coordinator.
 
-    - rca_required=True  → fan-out: return list[Send] to 4 subagent_executor nodes.
-    - rca_result is set  → synthesis done, go to END.
-    - findings present   → subagents finished, route back to coordinator for synthesis.
-    - otherwise          → direct answer completed, go to END.
+    - targeted_investigation set → run parallel targeted reads, return to coordinator.
+    - rca_required=True          → fan-out: return list[Send] to 4 subagent_executor nodes.
+    - rca_result is set          → synthesis done, go to END.
+    - findings present           → subagents finished, route back to coordinator for synthesis.
+    - otherwise                  → direct answer completed, go to END.
 
     Returning list[Send] is LangGraph's fan-out mechanism; it bypasses the
     string-based path_map and dispatches directly to the target node.
     """
+    if state.get("targeted_investigation"):
+        return "targeted_investigator"
+
     if state.get("rca_required"):
         session_id = state.get("session_id", "-")
         logger.info(f"route_coordinator: fanning out to {len(_RCA_DOMAINS)} subagents session={session_id}")
@@ -105,6 +155,7 @@ def route_coordinator(state: AgentState) -> str | list[Send]:
                     user_role=state.get("user_role", "admin"),
                     messages=subagent_messages,
                     memory_context=state.get("memory_context", ""),
+                    evidence_bundle=state.get("cluster_snapshot", ""),
                 ),
             )
             for domain in _RCA_DOMAINS
@@ -129,6 +180,7 @@ def build_graph() -> StateGraph:
     builder.add_node("memory_loader", memory_loader)
     builder.add_node("context_fetcher", context_fetcher)
     builder.add_node("coordinator", coordinator)
+    builder.add_node("targeted_investigator", targeted_investigator)
     builder.add_node("subagent_executor", subagent_executor)
 
     builder.add_edge(START, "memory_loader")
@@ -139,6 +191,9 @@ def build_graph() -> StateGraph:
     # LangGraph handles list[Send] as fan-out commands directly without consulting
     # a path_map, so we omit the mapping to avoid spurious routing constraints.
     builder.add_conditional_edges("coordinator", route_coordinator)
+
+    # Targeted investigator runs parallel reads then returns to coordinator for final answer.
+    builder.add_edge("targeted_investigator", "coordinator")
 
     # All subagent branches feed back into coordinator for synthesis (fan-in).
     # LangGraph waits for all parallel Send branches before running coordinator.
@@ -221,6 +276,7 @@ def _fresh_turn_state(
         "cluster_snapshot": "",
         "rca_required": False,
         "rca_result": None,
+        "targeted_investigation": None,
         "pending_hitl": None,
         **(extra or {}),
     }
@@ -254,15 +310,26 @@ async def stream_events(
     session_id: str,
     user_id: str = "default",
     user_role: str = "admin",
+    auto_approve: bool = False,
 ):
     """Async generator yielding LangGraph astream_events for SSE.
 
     If the thread has a pending HITL interrupt, user_message is interpreted
     as an approval/denial and the graph is resumed via Command(resume=...).
     Otherwise a fresh turn is started.
+
+    auto_approve=True skips all HITL interrupt gates — useful for testing
+    and trusted automation. The flag is passed via configurable so kubectl_tool
+    can read it without touching AgentState.
     """
     graph = await get_graph()
-    config = {"configurable": {"thread_id": session_id, "user_role": user_role}}
+    config = {"configurable": {"thread_id": session_id, "user_role": user_role, "hitl_bypass": auto_approve}}
+
+    # "approve all" message activates session-wide bypass for this turn onward
+    if _is_auto_approve_request(user_message):
+        auto_approve = True
+        config["configurable"]["hitl_bypass"] = True
+        logger.info(f"stream_events: HITL bypass enabled for session={session_id}")
 
     # Check whether this thread is paused at a HITL interrupt
     graph_state = await graph.aget_state(config)
@@ -361,6 +428,7 @@ async def run_session(
     session_id: str,
     user_id: str = "default",
     user_role: str = "admin",
+    auto_approve: bool = False,
 ) -> None:
     """
     Run the graph for one turn and emit typed events to the per-session queue.
@@ -370,7 +438,7 @@ async def run_session(
     the SSE generator never blocks waiting for a sentinel that never arrives.
     """
     try:
-        async for raw in stream_events(user_message, session_id, user_id, user_role):
+        async for raw in stream_events(user_message, session_id, user_id, user_role, auto_approve=auto_approve):
             typed = _translate_raw_event(session_id, raw)
             if typed is not None:
                 await emit(session_id, typed)

@@ -316,9 +316,10 @@ def run_kubectl(
         )
 
     # ── 4a. Role check ────────────────────────────────────────────────────────
-    # readonly : all writes blocked
-    # operator : medium-risk allowed (HITL-gated); high-risk blocked
-    # admin    : everything allowed (HITL-gated)
+    # readonly   : all writes blocked
+    # operator   : medium-risk allowed (HITL-gated); high-risk blocked
+    # admin      : everything allowed (HITL-gated); infra namespace writes blocked
+    # superadmin : everything allowed (HITL-gated); no namespace write restrictions
     user_role = "admin"
     if config:
         user_role = (config.get("configurable") or {}).get("user_role", "admin")
@@ -337,7 +338,14 @@ def run_kubectl(
     # ── 4b. Protected namespace / resource check ──────────────────────────────
     # Runs before HITL so users never even get an approval prompt for
     # commands that would expose internal credentials.
+    # superadmin bypasses the namespace write block but not the resource block
+    # (secrets/serviceaccounts remain shielded for all roles).
     protected_err = _check_protected_access(verb, args)
+    if protected_err and user_role == "superadmin":
+        # Re-run the check considering only the resource block (not ns block)
+        resource = _extract_resource_type(verb, args)
+        if not (resource and resource in settings.kubectl_blocked_resources):
+            protected_err = None
     if protected_err:
         logger.warning(f"run_kubectl: blocked protected access: {cmd!r}")
         return protected_err
@@ -347,7 +355,8 @@ def run_kubectl(
         has_dry_run = any(
             flag in args for flag in ("--dry-run=client", "--dry-run=server", "--dry-run")
         )
-        if not has_dry_run:
+        hitl_bypass = bool((config.get("configurable") or {}).get("hitl_bypass", False)) if config else False
+        if not has_dry_run and not hitl_bypass:
             risk = _classify_risk(verb)
             approved = interrupt({
                 "type": "hitl",
@@ -358,6 +367,8 @@ def run_kubectl(
             })
             if not approved:
                 return "Action cancelled by user."
+        elif not has_dry_run and hitl_bypass:
+            logger.info(f"run_kubectl: HITL bypassed (auto-approve) for: {cmd!r}")
 
     # ── 5. Execute ───────────────────────────────────────────────────────────
     kubeconfig = os.path.expanduser(settings.KUBECONFIG_PATH)

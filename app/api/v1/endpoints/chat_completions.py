@@ -51,6 +51,7 @@ class ChatCompletionRequest(BaseModel):
     messages: list[ChatMessage]
     stream: bool = True
     user: str = "default"
+    auto_approve: bool = False   # skip HITL gates for this request (testing / trusted sessions)
 
 
 # ── SSE chunk builders ────────────────────────────────────────────────────────
@@ -200,7 +201,7 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
         raise HTTPException(status_code=422, detail="Only stream=true is supported")
 
     return StreamingResponse(
-        _stream(user_message, session_id, user_id, user_role),
+        _stream(user_message, session_id, user_id, user_role, body.auto_approve),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -214,6 +215,7 @@ async def _stream(
     session_id: str,
     user_id: str,
     user_role: str,
+    auto_approve: bool = False,
 ) -> AsyncIterator[str]:
     completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
 
@@ -225,7 +227,7 @@ async def _stream(
 
     # ── Start workflow as background task ─────────────────────────────────────
     task = asyncio.create_task(
-        run_session(user_message, session_id, user_id, user_role)
+        run_session(user_message, session_id, user_id, user_role, auto_approve=auto_approve)
     )
 
     try:

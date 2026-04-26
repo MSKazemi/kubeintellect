@@ -74,8 +74,13 @@ class AgentState(TypedDict):
     # Reset to False by the per-turn initial state (no reducer → plain overwrite).
     rca_required: bool
 
-    # Final RCA (set by synthesizer node, None until synthesis is done)
-    rca_result: RCAResult | None
+    # Final RCA (set by synthesizer node, None until synthesis is done).
+    # Stored as plain dict (not RCAResult) to avoid LangGraph msgpack serialization warnings.
+    rca_result: dict | None
+
+    # Set by coordinator when the LLM emits a TARGETED sentinel.
+    # Consumed by targeted_investigator; cleared after the investigation runs.
+    targeted_investigation: dict[str, str] | None
 
     # HITL state — set when run_kubectl raises HITLRequired
     pending_hitl: dict[str, Any] | None   # {action_id, command, risk_level, human_summary}
@@ -83,7 +88,7 @@ class AgentState(TypedDict):
     # Conversation / session metadata
     session_id: str
     user_id: str
-    user_role: str   # "admin" | "readonly" — injected by API auth layer
+    user_role: str   # "superadmin" | "admin" | "operator" | "readonly" — injected by API auth layer
 
 
 # ── Subagent-scoped state (used in Send payload) ───────────────────────────────
@@ -97,3 +102,4 @@ class SubagentInput(TypedDict):
     user_role: str   # "admin" | "readonly"
     messages: list[BaseMessage]
     memory_context: str
+    evidence_bundle: str  # pre-fetched cluster snapshot (pods + warning events)

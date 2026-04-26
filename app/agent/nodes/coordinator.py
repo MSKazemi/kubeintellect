@@ -16,6 +16,11 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+_TARGETED_RE = re.compile(
+    r"TARGETED:\s*namespace\s*=\s*(\S+?),\s*pod\s*=\s*(\S+?),\s*issue\s*=\s*(.+)",
+    re.IGNORECASE,
+)
+
 # Keep the last N messages from session history to prevent context bloat.
 # Each exchange ≈ 4 messages (HumanMessage + AIMessage(tool_call) + ToolMessage + AIMessage).
 # 20 messages ≈ 5 prior exchanges — enough context while capping prompt growth.
@@ -159,17 +164,26 @@ Tool-selection by time intent — CRITICAL:
       Pending (stuck), Terminating (stuck), ContainerCreating (stuck).
     - kubectl get pods --all-namespaces is the correct and sufficient tool.
 
-For SIMPLE questions (cluster info, status checks, single-resource lookups):
-  Answer directly using tools as needed.
-  When the user asks to list or get resources (pods, nodes, deployments, etc.),
-  always show the COMPLETE raw output in a code block — never summarize or omit rows.
+## Routing Decision
+Choose investigation depth based on the request:
+
+SIMPLE — answer directly from the Cluster Snapshot and/or tool calls.
+  Use for: list requests, status checks, single-resource lookups, mutations.
+  When listing resources, always show COMPLETE raw output in a code block.
+
+TARGETED — emit exactly on its own line:
+  TARGETED: namespace=<ns>, pod=<pod>, issue=<one-line description>
+  Use for: ONE specific resource is failing and needs deeper investigation
+  (describe, events, deployment check). The system runs parallel reads and
+  returns the results to you for the final answer.
+  Do NOT escalate to RCA_REQUIRED for single-resource issues — TARGETED is sufficient.
+
+RCA_REQUIRED — emit exactly: RCA_REQUIRED
+  Use for: multi-pod / cross-namespace outages, unknown root cause, cascading failures.
+  The system dispatches 4 specialist subagents in parallel.
 
 For mutations, NEVER use kubectl edit (no interactive terminal available).
 Use kubectl patch or kubectl apply -f - with stdin instead.
-
-For COMPLEX root-cause analysis (pod crashes, service outages, performance degradation):
-  Respond with EXACTLY: "RCA_REQUIRED"
-  The system will automatically dispatch 4 specialist subagents in parallel.
 
 When synthesizing subagent findings (messages contain <findings> XML):
   Produce a comprehensive root-cause analysis with a concrete fix recommendation.
@@ -242,10 +256,26 @@ async def coordinator(state: AgentState, config: RunnableConfig = None) -> dict:
 
     last = result["messages"][-1].content.strip()
     is_rca = last == "RCA_REQUIRED"
+    targeted_match = _TARGETED_RE.search(last) if not is_rca else None
     logger.debug(
         f"coordinator: LLM responded in {elapsed:.2f}s session={session_id} "
-        f"decision={'RCA' if is_rca else 'direct'}"
+        f"decision={'RCA' if is_rca else 'TARGETED' if targeted_match else 'direct'}"
     )
+
+    if targeted_match:
+        ns = targeted_match.group(1).rstrip(",")
+        pod = targeted_match.group(2).rstrip(",")
+        issue = targeted_match.group(3).strip()
+        logger.info(f"coordinator: TARGETED ns={ns} pod={pod} issue={issue!r} session={session_id}")
+        await emit(session_id, StatusEvent(
+            phase="investigating",
+            message=f"Targeting {pod} in {ns}…",
+            session_id=session_id,
+        ))
+        return {
+            "targeted_investigation": {"namespace": ns, "pod": pod, "issue": issue},
+            "rca_required": False,
+        }
 
     if is_rca:
         logger.info("coordinator: LLM requested RCA — setting rca_required flag for fan-out")
@@ -357,7 +387,7 @@ Synthesize these into a single root-cause analysis. Respond with ONLY a JSON obj
     )
 
     return {
-        "rca_result": rca,
+        "rca_result": rca.model_dump(),  # plain dict avoids LangGraph msgpack serialization warning
         "rca_required": False,
         "messages": [AIMessage(content=summary)],
     }
