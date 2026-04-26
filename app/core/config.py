@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     # Azure OpenAI
     AZURE_OPENAI_API_KEY: Optional[str] = None
     AZURE_OPENAI_ENDPOINT: Optional[str] = None
-    AZURE_OPENAI_API_VERSION: str = "2024-02-01"
+    AZURE_OPENAI_API_VERSION: str = "2024-10-01-preview"  # enables automatic prefix caching
     AZURE_COORDINATOR_DEPLOYMENT: str = "gpt-4o"
     AZURE_SUBAGENT_DEPLOYMENT: str = "gpt-4o-mini"
 
@@ -126,10 +126,12 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "http://localhost:3080"
 
     # ── Auth / RBAC ───────────────────────────────────────────────────────────
-    # Three-tier role model (all comma-separated; empty = auth disabled):
-    #   admin    — high + medium risk ops, always HITL-gated
-    #   operator — medium risk ops only (create, apply, scale, exec…), HITL-gated; high-risk blocked
-    #   readonly — read-only ops only; all writes rejected before reaching the agent
+    # Four-tier role model (all comma-separated; empty = auth disabled):
+    #   superadmin — admin capabilities + write access to all namespaces (no ns block)
+    #   admin      — high + medium risk ops, always HITL-gated; infra ns writes blocked
+    #   operator   — medium risk ops only (create, apply, scale, exec…), HITL-gated; high-risk blocked
+    #   readonly   — read-only ops only; all writes rejected before reaching the agent
+    KUBEINTELLECT_SUPERADMIN_KEYS: str = Field(default="")
     KUBEINTELLECT_ADMIN_KEYS: str = Field(default="")
     KUBEINTELLECT_OPERATOR_KEYS: str = Field(default="")
     KUBEINTELLECT_READONLY_KEYS: str = Field(default="")
@@ -146,6 +148,10 @@ class Settings(BaseSettings):
     DEMO_KEY_HMAC_SECRET: Optional[str] = None
 
     @property
+    def superadmin_keys(self) -> set[str]:
+        return {k.strip() for k in self.KUBEINTELLECT_SUPERADMIN_KEYS.split(",") if k.strip()}
+
+    @property
     def admin_keys(self) -> set[str]:
         return {k.strip() for k in self.KUBEINTELLECT_ADMIN_KEYS.split(",") if k.strip()}
 
@@ -159,7 +165,7 @@ class Settings(BaseSettings):
 
     @property
     def auth_enabled(self) -> bool:
-        return bool(self.admin_keys or self.operator_keys or self.readonly_keys or self.DEMO_KEY_HMAC_SECRET)
+        return bool(self.superadmin_keys or self.admin_keys or self.operator_keys or self.readonly_keys or self.DEMO_KEY_HMAC_SECRET)
 
     @model_validator(mode="after")
     def _validate_provider(self) -> Settings:
