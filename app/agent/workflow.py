@@ -2,16 +2,16 @@
 KubeIntellect V2 LangGraph workflow.
 
 Graph shape:
-  START → memory_loader → coordinator
-                              │
-                    ┌─────────┴──────────────────────────┐
-                    │ rca_required=True                    │ direct answer
-                    ▼                                      ▼
-        [Send x4] → subagent_executor (parallel)         END
-                              ↓ (all 4 complete, fan-in)
-                          coordinator  (synthesis)
-                              ↓
-                            END
+  START → memory_loader → context_fetcher → coordinator
+                                                 │
+                               ┌─────────────────┴──────────────────────────┐
+                               │ rca_required=True                            │ direct answer
+                               ▼                                              ▼
+               [Send x4] → subagent_executor (parallel)                     END
+                                       ↓ (all 4 complete, fan-in)
+                                   coordinator  (synthesis)
+                                       ↓
+                                     END
 
 Fan-out is driven by route_coordinator returning list[Send] — NOT by the
 coordinator node itself.  The coordinator always returns a plain dict; it
@@ -27,6 +27,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, Send
 
 from app.agent.hitl import is_denial as _is_denial
+from app.agent.nodes.context_fetcher import context_fetcher
 from app.agent.nodes.coordinator import coordinator
 from app.agent.nodes.memory_loader import memory_loader
 from app.agent.nodes.subagent import run_subagent
@@ -84,6 +85,16 @@ def route_coordinator(state: AgentState) -> str | list[Send]:
     if state.get("rca_required"):
         session_id = state.get("session_id", "-")
         logger.info(f"route_coordinator: fanning out to {len(_RCA_DOMAINS)} subagents session={session_id}")
+
+        # Pass only the current investigation query to each subagent.
+        # Subagents must NOT inherit the full session history — it bloats their
+        # context and causes the LLM to respond in prose instead of JSON.
+        current_query = next(
+            (m for m in reversed(state["messages"]) if hasattr(m, "type") and m.type == "human"),
+            None,
+        )
+        subagent_messages = [current_query] if current_query else state["messages"][-1:]
+
         return [
             Send(
                 "subagent_executor",
@@ -92,7 +103,7 @@ def route_coordinator(state: AgentState) -> str | list[Send]:
                     session_id=state["session_id"],
                     user_id=state["user_id"],
                     user_role=state.get("user_role", "admin"),
-                    messages=state["messages"],
+                    messages=subagent_messages,
                     memory_context=state.get("memory_context", ""),
                 ),
             )
@@ -116,11 +127,13 @@ def build_graph() -> StateGraph:
     builder = StateGraph(AgentState)
 
     builder.add_node("memory_loader", memory_loader)
+    builder.add_node("context_fetcher", context_fetcher)
     builder.add_node("coordinator", coordinator)
     builder.add_node("subagent_executor", subagent_executor)
 
     builder.add_edge(START, "memory_loader")
-    builder.add_edge("memory_loader", "coordinator")
+    builder.add_edge("memory_loader", "context_fetcher")
+    builder.add_edge("context_fetcher", "coordinator")
 
     # No path_map: route_coordinator may return a string, END, or list[Send].
     # LangGraph handles list[Send] as fan-out commands directly without consulting
@@ -205,6 +218,7 @@ def _fresh_turn_state(
         "user_id": user_id,
         "user_role": user_role,
         "memory_context": "",
+        "cluster_snapshot": "",
         "rca_required": False,
         "rca_result": None,
         "pending_hitl": None,

@@ -60,6 +60,10 @@ class AgentState(TypedDict):
     # Loaded from DB before coordinator runs (pinned system context)
     memory_context: str
 
+    # Pre-fetched by context_fetcher node: live pod state + warning events.
+    # Injected into coordinator system prompt so it can answer without extra tool calls.
+    cluster_snapshot: str
+
     # Subagent findings accumulated via parallel fan-out.
     # Uses _findings_reducer so all 4 subagents contribute (not last-write-wins)
     # and memory_loader can reset with None between turns.

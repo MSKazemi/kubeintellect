@@ -34,6 +34,15 @@ _HIGH_RISK = {"delete", "drain", "replace", "taint"}
 _MEDIUM_RISK = {"patch", "apply", "scale", "exec", "cordon", "uncordon", "create", "run"}
 DESTRUCTIVE_VERBS = _HIGH_RISK | _MEDIUM_RISK
 
+# Verbs that have no side effects — allowed on all namespaces including protected ones.
+_READ_ONLY_VERBS = {
+    "get", "describe", "logs", "top", "diff", "explain",
+    "auth", "version", "cluster-info", "api-resources", "api-versions", "rollout",
+}
+
+# kubectl edit requires an interactive terminal that is never available in the container.
+_REJECTED_VERBS = {"edit"}
+
 # ── Shell injection guard ─────────────────────────────────────────────────────
 # Pipe (|) is intentionally excluded — it is handled in Python via _apply_pipes.
 
@@ -192,13 +201,18 @@ def _check_protected_access(verb: str, args: list[str]) -> str | None:
     Return an error string if the command targets a protected namespace or
     resource type. Returns None if the command is allowed to proceed.
 
-    This is the primary defence against users reading KubeIntellect's own
-    secrets, API keys, and infrastructure through the agent — even when the
-    ServiceAccount has cluster-admin.
+    Read-only verbs (get, describe, logs, top…) are allowed on ALL namespaces
+    including protected ones — the agent needs to observe its own pod and the
+    observability stack to diagnose issues.
+
+    Write verbs (patch, apply, delete, scale…) are blocked on protected
+    namespaces to prevent self-modification or infrastructure damage.
     """
     resource = _extract_resource_type(verb, args)
     ns = _extract_namespace(args)
 
+    # Secrets and serviceaccounts are fully blocked regardless of verb — they
+    # would expose credentials and tokens even to read-only viewers.
     if resource and resource in settings.kubectl_blocked_resources:
         return (
             f"[Protected] Access to '{resource}' is not permitted through KubeIntellect. "
@@ -206,12 +220,15 @@ def _check_protected_access(verb: str, args: list[str]) -> str | None:
             "to protect cluster credentials."
         )
 
+    # Write operations on infrastructure namespaces are blocked.
+    # Read operations are allowed so the agent can observe its own state.
     if ns and ns in settings.kubectl_blocked_namespaces:
-        return (
-            f"[Protected] Namespace '{ns}' is an infrastructure namespace that "
-            "KubeIntellect cannot inspect or modify through this interface. "
-            "It contains internal configuration that must remain private."
-        )
+        if verb not in _READ_ONLY_VERBS:
+            return (
+                f"[Protected] Write operations on namespace '{ns}' are not permitted. "
+                "This is an infrastructure namespace — read-only access is allowed "
+                "but modifications are blocked."
+            )
 
     return None
 
@@ -290,6 +307,13 @@ def run_kubectl(
         raise ValueError(f"Could not parse command: {exc}") from exc
 
     verb = _extract_verb(args)
+
+    # ── 4. Rejected verbs (non-interactive, always fail in container) ─────────
+    if verb in _REJECTED_VERBS:
+        return (
+            f"[Unsupported] 'kubectl {verb}' requires an interactive terminal which is "
+            "not available. Use 'kubectl patch' or 'kubectl apply -f -' with stdin instead."
+        )
 
     # ── 4a. Role check ────────────────────────────────────────────────────────
     # readonly : all writes blocked
