@@ -20,37 +20,42 @@ _SUBAGENT_RECURSION_LIMIT = 50
 _DOMAIN_PROMPTS: dict[str, str] = {
     "pod": (
         "You are a Kubernetes pod-health specialist. "
+        "A Shared Evidence Bundle is pre-loaded in your context — check it FIRST before making tool calls. "
+        "If the bundle already shows the failing pod and its state, use that as your starting point. "
+        "Use tool calls only to DRILL DEEPER: describe pod, logs, resource limits. "
         "Investigate pod status, container restarts, OOMKilled events, "
         "image pull errors, readiness/liveness probe failures, and resource limits. "
-        "Use kubectl (get pods --all-namespaces, describe pod, logs) to gather evidence. "
-        "Limit yourself to at most 6 tool calls — focus on the most suspicious pods first."
+        "Limit yourself to at most 5 tool calls — focus on the most suspicious pods first."
     ),
     "metrics": (
         "You are a Kubernetes metrics specialist. "
+        "A Shared Evidence Bundle is pre-loaded in your context — check it FIRST. "
+        "If the bundle shows failing pods, target your Prometheus queries at those specific pods/namespaces. "
         "Investigate CPU/memory usage, HPA scaling events, throttling, "
         "and resource saturation via Prometheus queries. "
         "Look for anomalies in the last 30 minutes (use range_minutes=30). "
         "Use instant queries (range_minutes=0) for current resource utilisation. "
-        "Limit yourself to at most 6 Prometheus queries — prioritise high-level signals first."
+        "Limit yourself to at most 5 Prometheus queries — prioritise high-level signals first."
     ),
     "logs": (
         "You are a Kubernetes application-log specialist. "
+        "A Shared Evidence Bundle is pre-loaded in your context — check it FIRST. "
+        "If the bundle identifies failing pods/namespaces, target your Loki queries there directly. "
         "Investigate recent error/warning log lines from affected pods via Loki. "
         "Identify error patterns, stack traces, and timing correlations.\n\n"
         "IMPORTANT — query efficiency:\n"
-        "  Use a single broad query that covers all namespaces at once, for example:\n"
-        "    {namespace=~\".+\"} |= `ERROR` \n"
-        "  or target the most relevant namespace first:\n"
-        "    {namespace=\"kubeintellect\"} |= `ERROR`\n"
+        "  Target the most relevant namespace from the evidence bundle first:\n"
+        "    {namespace=\"<affected-namespace>\"} |= `ERROR`\n"
         "  Do NOT query each namespace in a separate call. "
-        "Limit yourself to at most 4 Loki queries total."
+        "Limit yourself to at most 3 Loki queries total."
     ),
     "events": (
         "You are a Kubernetes cluster-events specialist. "
-        "Investigate warning events, scheduler failures, node pressure, "
-        "PVC binding issues, and network policy rejections via kubectl events. "
-        "Use 'kubectl get events --all-namespaces' as your first call to get a full picture. "
-        "Limit yourself to at most 5 tool calls."
+        "A Shared Evidence Bundle is pre-loaded in your context — it already contains warning events. "
+        "Use the bundle as your primary events source. "
+        "Only call 'kubectl get events' if you need to drill into a specific namespace not covered by the bundle. "
+        "Investigate scheduler failures, node pressure, PVC binding issues, and network policy rejections. "
+        "Limit yourself to at most 3 tool calls."
     ),
 }
 
@@ -73,12 +78,15 @@ async def run_subagent(payload: SubagentInput) -> AgentFinding:
     domain = payload["domain"]
     messages = payload["messages"]
     memory_context = payload.get("memory_context", "")
+    evidence_bundle = payload.get("evidence_bundle", "")
 
     logger.debug(f"subagent [{domain}]: starting investigation")
 
     system_parts = [_DOMAIN_PROMPTS[domain]]
     if memory_context:
         system_parts.append(f"\n\n## Cluster Context\n{memory_context}")
+    if evidence_bundle:
+        system_parts.append(f"\n\n## Shared Evidence Bundle\n{evidence_bundle}")
     system_parts.append(_FINDING_SCHEMA_HINT)
     system_prompt = "\n".join(system_parts)
 
