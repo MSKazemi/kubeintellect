@@ -1,0 +1,15 @@
+name: TerminatingStuck
+triggers:
+  - pod_status_regex: "Terminating"
+investigation_steps:
+  - "kubectl get pod <pod> -n <ns> -o yaml — read metadata.finalizers and deletionTimestamp."
+  - "kubectl describe pod <pod> -n <ns> — check for graceful-shutdown hooks blocking termination."
+  - "kubectl get events -n <ns> --sort-by=.lastTimestamp — look for finalizer/controller errors."
+expected_evidence:
+  - "deletionTimestamp set but pod still Terminating"
+  - "Non-empty metadata.finalizers list"
+  - "Controller failing to remove a finalizer"
+recommended_fix_template: |
+  The pod is stuck in Terminating. Suggested fix: <ACTION> (resolve the blocking
+  finalizer, kill the lingering process via kubectl exec, or as a last resort use
+  `kubectl delete pod <pod> --grace-period=0 --force`).

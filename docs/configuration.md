@@ -250,3 +250,18 @@ pip install 'kubeintellect[tracing]'
 | `LOG_FORMAT` | `text` | `text` or `json` |
 | `DEBUG` | `false` | Enable FastAPI debug mode |
 | `ALLOWED_ORIGINS` | `http://localhost:3080` | CORS allowed origins (comma-separated) |
+
+---
+
+## Agent behavior flags
+
+Five additive behaviors shape how the KubeIntellect coordinator
+investigates. Each is feature-flagged so you can disable without redeploying.
+
+| Variable | Default | Values | Description |
+|---|---|---|---|
+| `KUBECTL_ERROR_HINTS_ENABLED` | `true` | `true` \| `false` | Append a one-line diagnostic hint to non-zero kubectl errors (e.g. NotFound → "verify namespace and name"). Original error preserved verbatim. |
+| `SNAPSHOT_SUFFICIENCY_MODE` | `lenient` | `off` \| `lenient` \| `strict` | Bias the coordinator toward answering list-shaped questions from the pre-fetched snapshot when the cluster is healthy. `off` disables the bias entirely. `strict` = aggressive bias (opt-in). Always falls back to fresh data for logs, metrics, history, named resources, post-mutation, or freshness keywords. |
+| `SNAPSHOT_FRESHNESS_SECONDS` | `30` | integer | Snapshot age beyond which the coordinator must re-fetch regardless of mode. |
+| `INVESTIGATION_PLAN_ENABLED` | `true` | `true` \| `false` | Coordinator emits an `INVESTIGATION_PLAN:` block for queries needing 3+ tool calls; surfaced via SSE `PlanEvent`. |
+| `PLAYBOOKS_ENABLED` | `true` | `true` \| `false` | When a snapshot matches a known failure pattern (CrashLoopBackOff, OOMKilled, ImagePullBackOff, …), inject the matching playbook(s) from `app/agent/playbooks/*.yaml` into the coordinator's system prompt. |

@@ -278,6 +278,14 @@ def _fresh_turn_state(
         "rca_result": None,
         "targeted_investigation": None,
         "pending_hitl": None,
+        # Snapshot health flags (re-populated by context_fetcher each turn)
+        "snapshot_has_issues": False,
+        "snapshot_has_warnings": False,
+        "snapshot_pod_count": 0,
+        "snapshot_built_at": 0.0,
+        "investigation_plan": None,
+        # Matched playbooks (re-populated by context_fetcher each turn)
+        "matched_playbooks": [],
         **(extra or {}),
     }
 
@@ -420,6 +428,11 @@ def _llm_error_hint(exc: Exception) -> str:
         return "LLM connection failed: check your endpoint URL and network connectivity."
     if "rate limit" in msg or "429" in msg:
         return "LLM rate limit hit — please try again in a moment."
+    if "content_filter" in msg or "content management policy" in msg or "responsibleaipolicyviolation" in msg:
+        return (
+            "Azure content filter blocked this request. "
+            "Try rephrasing — if the issue persists, start a new session (/new) to reset conversation history."
+        )
     return f"LLM error: {exc}"
 
 
