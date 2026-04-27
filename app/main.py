@@ -23,7 +23,7 @@ async def lifespan(app: FastAPI):
     get_coordinator_llm()
     get_subagent_llm()
     logger.info(f"LLM provider: {settings.LLM_PROVIDER}")
-    from app.agent.workflow import init_graph
+    from app.agent.main_agent import init_graph
     try:
         await init_graph()
     except Exception as exc:
@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
         sys.exit(1)
     yield
     logger.info("KubeIntellect V2 shutting down")
-    from app.agent.workflow import close_graph
+    from app.agent.main_agent import close_graph
     await close_graph()
     from app.db.audit import close_audit_pool
     await close_audit_pool()
