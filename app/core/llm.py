@@ -3,13 +3,31 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
-from typing import Any, List
+from typing import Any, List, Type
 
 from langchain_core.language_models import BaseChatModel
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Resolved once at import time so the ImportError warning fires only on startup,
+# not on every request.  None = not yet resolved, False = unavailable.
+_LangfuseCallbackHandler: Type[Any] | None | bool = None
+
+
+def _resolve_langfuse() -> Type[Any] | None:
+    global _LangfuseCallbackHandler
+    if _LangfuseCallbackHandler is not None:
+        return None if _LangfuseCallbackHandler is False else _LangfuseCallbackHandler  # type: ignore[return-value]
+    try:
+        from langfuse.langchain import CallbackHandler
+        _LangfuseCallbackHandler = CallbackHandler
+        return CallbackHandler
+    except ImportError:
+        logger.warning("LANGFUSE_ENABLED=true but 'langfuse' is not installed. Run: uv add langfuse")
+        _LangfuseCallbackHandler = False
+        return None
 
 
 def get_langfuse_callbacks() -> List[Any]:
@@ -23,23 +41,20 @@ def get_langfuse_callbacks() -> List[Any]:
     if not settings.LANGFUSE_PUBLIC_KEY or not settings.LANGFUSE_SECRET_KEY:
         logger.warning("LANGFUSE_ENABLED=true but PUBLIC_KEY or SECRET_KEY is missing — tracing disabled.")
         return []
-    try:
-        from langfuse.langchain import CallbackHandler
-        # Pass keys explicitly for compatibility with both langfuse v2 (keyword args)
-        # and v3+ (reads LANGFUSE_* env vars automatically — no kwargs needed).
-        try:
-            return [CallbackHandler(
-                public_key=settings.LANGFUSE_PUBLIC_KEY,
-                secret_key=settings.LANGFUSE_SECRET_KEY,
-                host=settings.LANGFUSE_HOST,
-            )]
-        except TypeError:
-            # langfuse v3+: env vars LANGFUSE_PUBLIC_KEY / SECRET_KEY / HOST are
-            # already set in the pod — CallbackHandler picks them up automatically.
-            return [CallbackHandler()]
-    except ImportError:
-        logger.warning("LANGFUSE_ENABLED=true but 'langfuse' is not installed. Run: uv add langfuse")
+    CallbackHandler = _resolve_langfuse()
+    if CallbackHandler is None:
         return []
+    # Pass keys explicitly for compatibility with both langfuse v2 (keyword args)
+    # and v3+ (reads LANGFUSE_* env vars automatically — no kwargs needed).
+    try:
+        return [CallbackHandler(
+            public_key=settings.LANGFUSE_PUBLIC_KEY,
+            secret_key=settings.LANGFUSE_SECRET_KEY,
+            host=settings.LANGFUSE_HOST,
+        )]
+    except TypeError:
+        # langfuse v3+: env vars are already set — CallbackHandler picks them up.
+        return [CallbackHandler()]
 
 
 def _make_azure(deployment: str, temperature: float = 0.0, max_tokens: int = 4096) -> BaseChatModel:
