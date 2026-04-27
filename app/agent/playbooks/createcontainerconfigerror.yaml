@@ -1,0 +1,15 @@
+name: CreateContainerConfigError
+triggers:
+  - pod_status_regex: "CreateContainerConfigError|CreateContainerError"
+  - event_reason_regex: "Failed"
+investigation_steps:
+  - "kubectl describe pod <pod> -n <ns> — read the exact missing key/secret name in Events."
+  - "kubectl get configmap,secret -n <ns> — confirm whether the referenced object exists."
+  - "Inspect the pod spec env/envFrom/volumeMounts referencing the missing object."
+expected_evidence:
+  - "Event message naming a missing configmap or secret key"
+  - "kubectl get on the referenced object returns NotFound or missing key"
+recommended_fix_template: |
+  The container cannot be created because a referenced ConfigMap/Secret key is missing.
+  Suggested fix: <ACTION> (create the missing key or update the pod spec to point at the
+  correct name).

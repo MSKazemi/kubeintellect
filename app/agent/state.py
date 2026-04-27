@@ -1,7 +1,7 @@
 """LangGraph state types for KubeIntellect V2."""
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
@@ -33,6 +33,15 @@ class AgentFinding(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0, description="Confidence score 0-1")
     evidence: list[str] = Field(description="Verbatim excerpts or metric values supporting the hypothesis")
     tool_calls_made: list[str] = Field(default_factory=list, description="Tools invoked by this subagent")
+
+
+# ── Investigation plan ────────────────────────────────────────────────────────
+
+
+class PlanStep(BaseModel):
+    """One step in a coordinator investigation plan."""
+    description: str
+    status: Literal["pending", "in_progress", "done", "skipped"] = "pending"
 
 
 # ── Synthesizer structured output ─────────────────────────────────────────────
@@ -84,6 +93,27 @@ class AgentState(TypedDict):
 
     # HITL state — set when run_kubectl raises HITLRequired
     pending_hitl: dict[str, Any] | None   # {action_id, command, risk_level, human_summary}
+
+    # ── Snapshot health flags ─────────────────────────────────────────────────
+    # Set by context_fetcher; consumed by the coordinator prompt to bias toward
+    # snapshot-only answers when the cluster is clean and the question is
+    # list-shaped. NEVER a hard gate — the prompt only suggests, it doesn't
+    # block tool calls.
+    snapshot_has_issues: bool       # any pod NOT in Running/Completed/Succeeded
+    snapshot_has_warnings: bool     # any Warning event in the snapshot
+    snapshot_pod_count: int         # total pods seen in snapshot
+    snapshot_built_at: float        # unix timestamp when context_fetcher ran
+
+    # ── Investigation plan ────────────────────────────────────────────────────
+    # Coordinator emits this for queries requiring 3+ tool calls. Surfaced via
+    # PlanEvent on the SSE stream and persisted in audit logs (when configured).
+    investigation_plan: list[PlanStep] | None
+
+    # ── Matched playbooks ─────────────────────────────────────────────────────
+    # Names of failure-pattern playbooks whose triggers fired against the
+    # snapshot. Coordinator renders the matched playbook details into its
+    # system prompt to guide deterministic investigation.
+    matched_playbooks: list[str]
 
     # Conversation / session metadata
     session_id: str

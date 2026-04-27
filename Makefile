@@ -1,4 +1,4 @@
-.PHONY: install run run-bg stop logs dev db-init lint test cli \
+.PHONY: install run run-bg stop logs dev dev-postgres dev-postgres-stop db-init lint test cli \
         local-run local-stop local-logs quickstart \
         kind-cluster-create kind-cluster-cleanup kind-cluster-create-vm \
         kind-build-kubeintellect kind-deploy-kubeintellect kind-redeploy-kubeintellect \
@@ -74,8 +74,10 @@ help: ## Show all available targets
 	@printf "  \033[36mrun-bg\033[0m       Start API server in background (logs → .server.log)\n"
 	@printf "  \033[36mstop\033[0m         Stop background server\n"
 	@printf "  \033[36mlogs\033[0m         Tail background server logs\n"
-	@printf "  \033[36mdev\033[0m          Start with hot-reload\n"
-	@printf "  \033[36mdb-init\033[0m      Apply schema.sql to Postgres\n"
+	@printf "  \033[36mdev\033[0m               Start with hot-reload\n"
+	@printf "  \033[36mdev-postgres\033[0m      Start Postgres on localhost:5432 via docker compose\n"
+	@printf "  \033[36mdev-postgres-stop\033[0m Stop that Postgres\n"
+	@printf "  \033[36mdb-init\033[0m           Apply schema.sql to Postgres\n"
 	@printf "  \033[36mlint\033[0m         Run ruff linter + format check\n"
 	@printf "  \033[36mtest\033[0m         Run pytest suite\n"
 	@printf "  \033[36mcli\033[0m          Open REPL against local Kind cluster\n"
@@ -347,8 +349,18 @@ logs: ## Tail logs from the background API server
 dev: ## Start API server with hot-reload — requires a running Postgres
 	uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-db-init: ## Apply schema.sql to the configured Postgres database
-	psql $$(uv run python -c "from app.core.config import settings; print(settings.POSTGRES_DSN)") -f app/db/schema.sql
+dev-postgres: ## Start only Postgres via docker compose (for use with make dev)
+	docker compose up -d postgres
+	@echo "Postgres ready on localhost:5432 — run 'make db-init' on first use, then 'make dev'"
+
+dev-postgres-stop: ## Stop the docker compose Postgres
+	docker compose stop postgres
+
+db-init: ## Apply schema.sql to the configured Postgres database (uses docker compose postgres)
+	docker compose exec -T postgres psql \
+	  -U $${POSTGRES_USER:-kubeintellect} \
+	  -d $${POSTGRES_DB:-kubeintellect} \
+	  -f /dev/stdin < app/db/schema.sql
 
 lint: ## Run ruff linter and format check
 	uv run ruff check app/

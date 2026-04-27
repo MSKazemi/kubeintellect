@@ -113,6 +113,7 @@ nav:
 
   - Reference:
     - Configuration: configuration.md
+    - Agent Behaviors: agent-behaviors.md
     - Security: security.md
 
   - KubeIntellect v1 (Legacy):

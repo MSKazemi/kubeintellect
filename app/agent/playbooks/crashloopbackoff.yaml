@@ -1,0 +1,16 @@
+name: CrashLoopBackOff
+triggers:
+  - pod_status_regex: "CrashLoopBackOff"
+  - event_reason_regex: "BackOff"
+investigation_steps:
+  - "kubectl describe pod <pod> -n <ns> — inspect Last State exit code and reason."
+  - "kubectl logs <pod> -n <ns> --previous --tail=50 — capture the crash output from the prior container instance."
+  - "kubectl get events -n <ns> --sort-by=.lastTimestamp — confirm the crash sequence."
+expected_evidence:
+  - "Exit code and reason in Last State"
+  - "Stack trace or fatal error in the previous container's logs"
+  - "Recurring BackOff event for the pod"
+recommended_fix_template: |
+  The container is exiting on startup. Based on exit code <CODE> and the log excerpt,
+  the likely cause is <CAUSE>. Suggested fix: <ACTION> (e.g. fix the env var, increase
+  the readiness delay, or correct the command).

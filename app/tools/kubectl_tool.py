@@ -24,6 +24,7 @@ from langgraph.types import interrupt
 from typing import Annotated
 
 from app.core.config import settings
+from app.tools import kubectl_errors
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -45,8 +46,10 @@ _REJECTED_VERBS = {"edit"}
 
 # ── Shell injection guard ─────────────────────────────────────────────────────
 # Pipe (|) is intentionally excluded — it is handled in Python via _apply_pipes.
-
-_SHELL_METACHAR = re.compile(r"[;&`$><\\]")
+# < and > are intentionally excluded — they are only dangerous for shell I/O
+# redirection, which is impossible with shell=False. Excluding them allows
+# --from-literal values that contain HTML / template content.
+_SHELL_METACHAR = re.compile(r"[;&`$\\]")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -400,6 +403,17 @@ def run_kubectl(
 
     output = proc.stdout or proc.stderr or "(no output)"
     logger.debug(f"run_kubectl: exit={proc.returncode} output_len={len(output)} cmd={cmd}")
+
+    # ── 5b. Error interpretation ──────────────────────────────────────────────
+    # Append a single-line hint when kubectl exits non-zero and the stderr
+    # matches a known pattern. Original error is preserved verbatim.
+    if proc.returncode != 0 and settings.KUBECTL_ERROR_HINTS_ENABLED:
+        output, pattern_name = kubectl_errors.annotate(output)
+        if pattern_name:
+            logger.info(
+                "kubectl_error_interpreted "
+                f"pattern={pattern_name} exit_code={proc.returncode} cmd={cmd!r}"
+            )
 
     # ── 6. Pipe emulation (grep) ─────────────────────────────────────────────
     if pipe_segments:

@@ -85,6 +85,14 @@ class HitlRequestEvent(BaseModel):
     ts: float = Field(default_factory=time.time)
 
 
+class PlanEvent(BaseModel):
+    """Emitted by the coordinator when an investigation plan is produced."""
+    type: Literal["plan"] = "plan"
+    steps: list[dict]   # list of {description, status}
+    session_id: str
+    ts: float = Field(default_factory=time.time)
+
+
 class ErrorEvent(BaseModel):
     type: Literal["error"] = "error"
     error: str
@@ -99,6 +107,7 @@ Event = (
     | TokenEvent
     | FinalEvent
     | HitlRequestEvent
+    | PlanEvent
     | ErrorEvent
 )
 

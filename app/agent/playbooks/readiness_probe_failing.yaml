@@ -1,0 +1,15 @@
+name: ReadinessProbeFailing
+triggers:
+  - event_reason_regex: "Unhealthy"
+  - event_message_regex: "Readiness probe failed|Liveness probe failed"
+investigation_steps:
+  - "kubectl describe pod <pod> -n <ns> — read Events for the exact probe failure response."
+  - "Inspect spec.containers[].readinessProbe / livenessProbe — verify path, port, timing."
+  - "kubectl logs <pod> -n <ns> --tail=50 — confirm the app is actually starting."
+expected_evidence:
+  - "Event 'Readiness probe failed' with HTTP status or connection refused"
+  - "Probe configuration with too-short initialDelaySeconds or wrong path"
+  - "Application logs showing slow startup or wrong port binding"
+recommended_fix_template: |
+  The readiness/liveness probe is failing. Suggested fix: <ACTION> (correct the path
+  or port, raise initialDelaySeconds/periodSeconds, or fix the underlying app).

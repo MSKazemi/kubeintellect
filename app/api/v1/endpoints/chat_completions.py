@@ -134,6 +134,12 @@ def _serialise_event(completion_id: str, event: dict) -> str | None:
     if event_type == "token":
         return _make_chunk(completion_id, event["content"])
 
+    if event_type == "plan":
+        return _make_ki_event_chunk(completion_id, {
+            "type": "plan",
+            "steps": event["steps"],
+        })
+
     if event_type == "hitl_request":
         action_id = event.get("action_id", str(uuid.uuid4()))
         risk_level = event["risk_level"]
@@ -157,6 +163,9 @@ def _serialise_event(completion_id: str, event: dict) -> str | None:
             message += f"\n**YAML to apply:**\n```yaml\n{preview}\n```\n"
         message += "\n**Type `yes` or `/approve` to proceed, or `no` / `/deny` to cancel.**"
         return _make_chunk(completion_id, message, hitl_data=hitl_payload)
+
+    if event_type == "error":
+        return _make_chunk(completion_id, f"\n\n**Error:** {event['error']}", finish_reason="stop")
 
     # FinalEvent (type == "final") is handled by the stream loop exit; skip it.
     return None

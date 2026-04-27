@@ -8,9 +8,10 @@ from langchain_core.messages import AIMessage, BaseMessage, SystemMessage, ToolM
 from langchain_core.runnables import RunnableConfig
 from langgraph.errors import GraphInterrupt
 
-from app.agent.state import AgentState
+from app.agent.state import AgentState, PlanStep
+from app.core.config import settings
 from app.core.llm import get_coordinator_llm
-from app.streaming.emitter import StatusEvent, emit
+from app.streaming.emitter import PlanEvent, StatusEvent, emit
 from app.tools.registry import ALL_TOOLS
 from app.utils.logger import get_logger
 
@@ -21,37 +22,87 @@ _TARGETED_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Investigation plan parser.
+# Matches a leading "INVESTIGATION_PLAN:" block followed by one or more
+# "- <step>" lines. The block is stripped from the message body before storage.
+_PLAN_BLOCK_RE = re.compile(
+    r"^\s*INVESTIGATION_PLAN:\s*\n((?:-\s+.+\n?)+)",
+    re.MULTILINE,
+)
+_PLAN_STEP_RE = re.compile(r"^-\s+(.+)$", re.MULTILINE)
+_PLAN_MIN_STEPS = 3
+
 # Keep the last N messages from session history to prevent context bloat.
 # Each exchange ≈ 4 messages (HumanMessage + AIMessage(tool_call) + ToolMessage + AIMessage).
 # 20 messages ≈ 5 prior exchanges — enough context while capping prompt growth.
 _MAX_SESSION_MESSAGES = 20
 
 
-def _trim_session_messages(messages: list[BaseMessage]) -> list[BaseMessage]:
-    """Return recent messages capped at _MAX_SESSION_MESSAGES, preserving exchange integrity.
+def _compress_dropped_messages(dropped: list[BaseMessage]) -> str:
+    """Build a compact deterministic summary of dropped messages.
 
-    A naive tail-slice can start with a ToolMessage whose AIMessage(tool_calls) was
-    cut off, causing Azure to reject the request with a 400 error. We always advance
-    to the first HumanMessage in the window so every retained exchange is complete.
+    Extracts: user topics, kubectl/query commands run, and key tool results.
+    No LLM call — synchronous and zero-latency.
+    """
+    lines: list[str] = ["## Earlier Session Context (compressed)"]
+    for msg in dropped:
+        msg_type = getattr(msg, "type", None)
+        if msg_type == "human" and isinstance(msg.content, str):
+            topic = msg.content.strip().replace("\n", " ")[:120]
+            lines.append(f"- User: {topic}")
+        elif msg_type == "ai":
+            # Extract tool calls (kubectl commands, queries)
+            tool_calls = getattr(msg, "tool_calls", None) or []
+            for tc in tool_calls:
+                args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
+                cmd = args.get("command") or args.get("query") or args.get("logql") or ""
+                if cmd:
+                    lines.append(f"- Ran: {str(cmd)[:100]}")
+            # Plain AI text (answers, decisions)
+            if not tool_calls and isinstance(msg.content, str):
+                snippet = msg.content.strip().replace("\n", " ")[:120]
+                if snippet:
+                    lines.append(f"- Assistant: {snippet}")
+        elif msg_type == "tool" and isinstance(msg.content, str):
+            # Keep only first line of tool output as a hint
+            first_line = msg.content.strip().splitlines()[0][:100] if msg.content.strip() else ""
+            if first_line:
+                lines.append(f"  → {first_line}")
+    return "\n".join(lines)
+
+
+def _trim_session_messages(messages: list[BaseMessage]) -> tuple[list[BaseMessage], str | None]:
+    """Return (recent_messages, compressed_summary_of_dropped).
+
+    Caps history at _MAX_SESSION_MESSAGES, preserving exchange integrity by
+    advancing to the first HumanMessage in the window (a naive tail-slice can
+    start with a ToolMessage whose parent AIMessage(tool_calls) was cut off,
+    causing Azure to reject with 400).
+
+    Returns a non-None summary string when messages were dropped, so callers
+    can inject it into the system prompt to preserve earlier context.
     """
     if len(messages) <= _MAX_SESSION_MESSAGES:
-        return messages
+        return messages, None
 
     original_len = len(messages)
-    trimmed = messages[-_MAX_SESSION_MESSAGES:]
+    keep = messages[-_MAX_SESSION_MESSAGES:]
 
-    # Advance past any leading non-human messages (ToolMessage / AIMessage orphans)
-    # so the window always starts at a clean exchange boundary.
+    # Advance past any leading non-human messages (ToolMessage / AIMessage orphans).
     first_human = next(
-        (i for i, m in enumerate(trimmed) if hasattr(m, "type") and m.type == "human"),
+        (i for i, m in enumerate(keep) if hasattr(m, "type") and m.type == "human"),
         0,
     )
-    trimmed = trimmed[first_human:]
+    keep = keep[first_human:]
+    dropped = messages[: original_len - len(keep)]
 
-    logger.warning(
-        f"coordinator: trimmed session history {original_len} → {len(trimmed)} messages"
+    summary = _compress_dropped_messages(dropped) if dropped else None
+
+    logger.debug(
+        f"coordinator: compressed session history {original_len} → {len(keep)} messages "
+        f"({len(dropped)} dropped, summary={'yes' if summary else 'no'})"
     )
-    return trimmed
+    return keep, summary
 
 
 # ── Tool output trimmer (A4 — ISS-01) ────────────────────────────────────────
@@ -111,6 +162,46 @@ def _trim_tool_messages(messages: list[BaseMessage]) -> list[BaseMessage]:
     return result
 
 
+# ── Investigation plan extraction ────────────────────────────────────────────
+
+
+def _extract_plan(messages: list[BaseMessage]) -> tuple[list[PlanStep], list[BaseMessage]]:
+    """Strip an INVESTIGATION_PLAN block from the first AIMessage; return steps + cleaned messages.
+
+    Returns ([], messages) when no plan block is found or the block has fewer
+    than _PLAN_MIN_STEPS steps. Steps with only whitespace are skipped.
+    """
+    if not messages:
+        return [], messages
+    cleaned: list[BaseMessage] = []
+    plan: list[PlanStep] = []
+    consumed = False
+    for msg in messages:
+        if (
+            not consumed
+            and isinstance(msg, AIMessage)
+            and isinstance(msg.content, str)
+        ):
+            match = _PLAN_BLOCK_RE.search(msg.content)
+            if match:
+                steps_text = match.group(1)
+                step_lines = [
+                    s.strip()
+                    for s in _PLAN_STEP_RE.findall(steps_text)
+                    if s.strip()
+                ]
+                if len(step_lines) >= _PLAN_MIN_STEPS:
+                    plan = [PlanStep(description=s) for s in step_lines]
+                    new_content = (msg.content[:match.start()] + msg.content[match.end():]).strip()
+                    msg = AIMessage(
+                        content=new_content,
+                        tool_calls=getattr(msg, "tool_calls", []) or [],
+                    )
+                    consumed = True
+        cleaned.append(msg)
+    return plan, cleaned
+
+
 # ── Coordinator system prompt ─────────────────────────────────────────────────
 
 _COORDINATOR_SYSTEM = """\
@@ -135,6 +226,17 @@ Use sequential calls ONLY when the second call depends on the first result.
 Parallel (always):   (get pods) + (get events) + (describe node)
 Parallel (always):   (loki error query) + (prometheus CPU query)
 Sequential (only):   (get pod name) → (describe that pod) → (patch that pod)
+
+## Investigation Discipline
+For any query that requires tool calls, follow these phases strictly:
+  1. PLAN  — decide every tool call needed to answer the question completely.
+  2. FETCH — emit ALL independent tool calls in ONE response (parallel).
+  3. SYNTHESIZE — after all tool results return, produce ONE final answer.
+
+Never respond with a partial answer and then call more tools to refine it.
+Exception (sequential dependency): the second call genuinely depends on the
+first result — e.g. "find the failing pod's name → describe THAT pod". Even
+then, gather everything you can in parallel at each step.
 
 ## Fix Verification (REQUIRED after every mutation)
 After kubectl patch / apply / create / delete, you MUST verify the outcome:
@@ -185,6 +287,13 @@ RCA_REQUIRED — emit exactly: RCA_REQUIRED
 For mutations, NEVER use kubectl edit (no interactive terminal available).
 Use kubectl patch or kubectl apply -f - with stdin instead.
 
+IMPORTANT — ConfigMaps and content with special characters:
+  When creating or updating a ConfigMap whose values contain HTML, JSON, YAML,
+  or any multi-line / special-character content, ALWAYS use kubectl apply -f -
+  with a YAML manifest passed via stdin. NEVER use --from-literal with such
+  content — the argument quoting becomes fragile and error-prone.
+  Example: kubectl apply -f - (then pass the full ConfigMap YAML in stdin)
+
 When synthesizing subagent findings (messages contain <findings> XML):
   Produce a comprehensive root-cause analysis with a concrete fix recommendation.
   Be specific: name the exact resource, namespace, and remediation command.
@@ -195,6 +304,107 @@ IMPORTANT — Truncated output:
   "> ⚠️ Output was truncated — use narrower filters (e.g. `-n <namespace>`, `-l <label>`, `--tail`) to see the full result."
   Never silently drop this warning. The user must know the list is incomplete.
 """
+
+
+# ── Investigation Plan prompt block ───────────────────────────────────────────
+
+_PLAN_PROMPT_BLOCK = """\
+
+## Investigation Plan
+For queries requiring 3+ tool calls, write the plan as the FIRST line of your
+response, in this exact format:
+
+INVESTIGATION_PLAN:
+- <step 1 description>
+- <step 2 description>
+- <step 3 description>
+- ...
+
+Then proceed with your tool calls. After all tool results return, your final
+answer must address every step. Do not emit a plan for trivial single-call
+queries — only when 3 or more steps are needed.
+"""
+
+
+# ── Snapshot Sufficiency prompt block ─────────────────────────────────────────
+
+
+def _snapshot_sufficiency_block(state: AgentState) -> str:
+    """Render the Snapshot Sufficiency block when the mode is on.
+
+    Returns an empty string when SNAPSHOT_SUFFICIENCY_MODE='off'.
+    """
+    mode = settings.SNAPSHOT_SUFFICIENCY_MODE
+    if mode == "off":
+        return ""
+    age_s = max(0, int(time.time() - state.get("snapshot_built_at", time.time())))
+    issues = bool(state.get("snapshot_has_issues", False))
+    warnings = bool(state.get("snapshot_has_warnings", False))
+    pod_count = int(state.get("snapshot_pod_count", 0))
+    fresh_threshold = settings.SNAPSHOT_FRESHNESS_SECONDS
+
+    bias_strength = "Strongly prefer" if mode == "strict" else "Prefer"
+
+    return f"""
+
+## Snapshot Sufficiency
+
+The cluster snapshot above was fetched {age_s}s ago and contains {pod_count} pods.
+Health flags: issues={str(issues).lower()}, warnings={str(warnings).lower()}.
+
+When the user asks a LIST-SHAPED, READ-ONLY question AND issues=false AND
+warnings=false AND the snapshot is fresher than {fresh_threshold}s:
+  - {bias_strength} answering directly from the snapshot.
+  - Examples that qualify: "how many pods", "list namespaces", "is the cluster
+    healthy", "show pods in default", "what's running".
+
+ALWAYS fetch fresh data (regardless of the flags above) when:
+  - The question mentions logs, metrics, history, "yesterday", "last N hours",
+    "trend", or any time-windowed signal.
+  - The question targets a SPECIFIC named pod/deployment/service for detail
+    (use describe, get -o yaml, or logs).
+  - You just performed a mutation (patch/apply/create/delete) — verify with a
+    fresh get.
+  - The question contains "now", "right now", "currently", "this second" — the
+    user is asking explicitly about freshness.
+  - The snapshot is older than {fresh_threshold}s.
+
+If unsure, fetch. Stale answers are worse than redundant calls.
+"""
+
+
+# ── Matched-playbooks prompt block ────────────────────────────────────────────
+
+
+def _playbooks_block(state: AgentState) -> str:
+    """Render details of any playbooks whose triggers fired against the snapshot."""
+    if not settings.PLAYBOOKS_ENABLED:
+        return ""
+    matched: list[str] = list(state.get("matched_playbooks") or [])
+    if not matched:
+        return ""
+
+    try:
+        from app.agent.playbooks import get_playbook
+    except Exception:
+        return ""
+
+    sections: list[str] = ["\n## Recognized Failure Patterns\n"
+                           "The snapshot matches these known patterns. Follow their\n"
+                           "investigation steps before improvising.\n"]
+    for name in matched:
+        pb = get_playbook(name)
+        if pb is None:
+            continue
+        steps = "\n".join(f"  {i+1}. {s}" for i, s in enumerate(pb.investigation_steps))
+        evidence = "\n".join(f"  - {e}" for e in pb.expected_evidence)
+        sections.append(
+            f"### {pb.name}\n"
+            f"Investigation steps:\n{steps}\n"
+            f"Look for:\n{evidence}\n"
+            f"Fix template: {pb.recommended_fix_template}\n"
+        )
+    return "\n".join(sections)
 
 
 async def coordinator(state: AgentState, config: RunnableConfig = None) -> dict:
@@ -297,26 +507,55 @@ async def _direct_answer(state: AgentState, config: RunnableConfig = None) -> di
 
     memory_context = state.get("memory_context", "")
     cluster_snapshot = state.get("cluster_snapshot", "")
-    system_parts = [_COORDINATOR_SYSTEM]
+    session_id = state.get("session_id", "-")
+
+    system_parts: list[str] = [_COORDINATOR_SYSTEM]
+    if settings.INVESTIGATION_PLAN_ENABLED:
+        system_parts.append(_PLAN_PROMPT_BLOCK)
     if memory_context:
         system_parts.append(f"\n\n## Cluster Context\n{memory_context}")
     if cluster_snapshot:
         system_parts.append(f"\n\n{cluster_snapshot}")
+    snapshot_block = _snapshot_sufficiency_block(state)
+    if snapshot_block:
+        system_parts.append(snapshot_block)
+    playbook_block = _playbooks_block(state)
+    if playbook_block:
+        system_parts.append(playbook_block)
 
     llm = get_coordinator_llm()
     agent = create_react_agent(llm, tools=ALL_TOOLS)
 
-    history = _trim_session_messages(list(state["messages"]))
+    history, history_summary = _trim_session_messages(list(state["messages"]))
+    if history_summary:
+        system_parts.append(f"\n\n{history_summary}")
     input_messages = [SystemMessage(content="\n".join(system_parts))] + history
     result = await agent.ainvoke({"messages": input_messages}, config=config)
 
     new_messages = result["messages"][len(input_messages):]
     new_messages = _trim_tool_messages(new_messages)  # A4: cap tool output before state storage
+
+    update: dict = {"messages": new_messages}
+
+    # Extract investigation plan, emit PlanEvent, and store on state.
+    if settings.INVESTIGATION_PLAN_ENABLED:
+        plan, new_messages = _extract_plan(new_messages)
+        update["messages"] = new_messages
+        if plan:
+            update["investigation_plan"] = plan
+            await emit(session_id, PlanEvent(
+                steps=[s.model_dump() for s in plan],
+                session_id=session_id,
+            ))
+            logger.info(
+                f"investigation_plan_emitted session={session_id} step_count={len(plan)}"
+            )
+
     tool_calls = sum(1 for m in new_messages if hasattr(m, "tool_calls") and m.tool_calls)
     logger.debug(
         f"coordinator: direct answer complete new_msgs={len(new_messages)} tool_calls={tool_calls}"
     )
-    return {"messages": new_messages}
+    return update
 
 
 async def _synthesize(state: AgentState) -> dict:
