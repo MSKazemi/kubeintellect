@@ -26,7 +26,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app.agent.workflow import run_session
+from app.agent.runner import run_session
 from app.api.v1.auth import get_user_role
 from app.db.audit import log_request as _audit_log
 from app.streaming.emitter import PROTOCOL_VERSION, prepare_session

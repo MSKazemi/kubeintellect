@@ -126,14 +126,9 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "http://localhost:3080"
 
     # ── KubeIntellect behavior flags ───────────────────────────────────────────
-    # Each behavior is feature-flagged so it can be toggled without a redeploy.
+    # Tool-level flag inside run_kubectl that appends a one-line hint when
+    # kubectl exits non-zero with a known pattern.
     KUBECTL_ERROR_HINTS_ENABLED: bool = True
-    INVESTIGATION_PLAN_ENABLED: bool = True
-    PLAYBOOKS_ENABLED: bool = True
-    # off | lenient | strict
-    SNAPSHOT_SUFFICIENCY_MODE: str = "lenient"
-    # Snapshot is treated as fresh for this many seconds; older = always fetch.
-    SNAPSHOT_FRESHNESS_SECONDS: int = 30
 
     # ── Auth / RBAC ───────────────────────────────────────────────────────────
     # Four-tier role model (all comma-separated; empty = auth disabled):
@@ -202,12 +197,6 @@ class Settings(BaseSettings):
                 "LLM_PROVIDER=openai but OPENAI_API_KEY is not set. "
                 "Get your key at https://platform.openai.com/api-keys "
                 "and add OPENAI_API_KEY=sk-... to ~/.kubeintellect/.env"
-            )
-        valid_modes = {"off", "lenient", "strict"}
-        if self.SNAPSHOT_SUFFICIENCY_MODE not in valid_modes:
-            raise ValueError(
-                f"SNAPSHOT_SUFFICIENCY_MODE must be one of {valid_modes}, "
-                f"got {self.SNAPSHOT_SUFFICIENCY_MODE!r}."
             )
         return self
 

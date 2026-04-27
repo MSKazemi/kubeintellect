@@ -1,7 +1,7 @@
-"""Unit tests for the context_fetcher snapshot scan (C2)."""
+"""Unit tests for the snapshot scan (now lives in app.tools.snapshot_tool)."""
 from __future__ import annotations
 
-from app.agent.nodes.context_fetcher import _scan_snapshot
+from app.tools.snapshot_tool import _scan_snapshot
 
 
 HEALTHY_PODS = """\

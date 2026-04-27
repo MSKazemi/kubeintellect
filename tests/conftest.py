@@ -23,9 +23,9 @@ os.environ["KUBEINTELLECT_READONLY_KEYS"] = ""
 
 # ── Stub langgraph postgres checkpointer ─────────────────────────────────────
 # AsyncPostgresSaver.from_conn_string is called inside init_graph() at startup.
-# Stub the module so no TCP connection is attempted — the real app.agent.workflow
-# module imports fine with this stub in place (connection only happens in
-# init_graph(), not at module level).
+# Stub the module so no TCP connection is attempted — the real
+# app.agent.main_agent module imports fine with this stub in place
+# (connection only happens in init_graph(), not at module level).
 _pg_saver = MagicMock()
 _pg_saver.AsyncPostgresSaver = MagicMock()
 sys.modules.setdefault("langgraph.checkpoint.postgres.aio", _pg_saver)
