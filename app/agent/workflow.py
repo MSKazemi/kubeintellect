@@ -34,7 +34,7 @@ from app.agent.nodes.memory_loader import memory_loader
 from app.agent.nodes.subagent import run_subagent
 from app.agent.state import AgentFinding, AgentState, SubagentInput
 from app.core.config import settings
-from app.core.llm import get_langfuse_callbacks
+from app.core.llm import get_langfuse_callbacks, get_langfuse_run_metadata
 from app.streaming.emitter import (
     ErrorEvent,
     HitlRequestEvent,
@@ -309,6 +309,7 @@ async def invoke(
     callbacks = get_langfuse_callbacks()
     if callbacks:
         config["callbacks"] = callbacks
+        config["metadata"] = get_langfuse_run_metadata(session_id)
     result = await graph.ainvoke(state, config=config)
     return result
 
@@ -355,6 +356,7 @@ async def stream_events(
     callbacks = get_langfuse_callbacks()
     if callbacks:
         config["callbacks"] = callbacks
+        config["metadata"] = get_langfuse_run_metadata(session_id)
     async for event in graph.astream_events(input_data, config=config, version="v2"):
         yield event
 
