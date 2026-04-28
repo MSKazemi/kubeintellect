@@ -490,7 +490,7 @@ wheels = [
 
 [[package]]
 name = "kubeintellect"
-version = "2.0.0a4"
+version = "2.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "asyncpg" },
