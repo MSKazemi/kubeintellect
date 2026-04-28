@@ -1,6 +1,6 @@
 [project]
 name = "kubeintellect"
-version = "2.0.0a4"
+version = "2.0.1"
 description = "AI-powered Kubernetes management — local server and CLI"
 readme = "README.md"
 license = {text = "MIT"}
@@ -37,6 +37,7 @@ dependencies = [
     "httpx>=0.28",
     # CLI client — bundled so pip install kubeintellect gives both server and kq
     "kube-q>=1.4.3",  # must stay in [project.dependencies]; do NOT add a [tool.uv.sources] override
+    "langfuse>=4.1.0",
 ]
 
 [project.urls]

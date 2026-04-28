@@ -312,11 +312,15 @@ aks-deploy-kubeintellect: ## Deploy KubeIntellect to AKS / any cloud K8s — nee
 	    --set-string secrets.readonlyApiKeys="$${KUBEINTELLECT_READONLY_KEYS:-}"; \
 	'
 
-hosts-entry: ## Add api.kubeintellect.local + langfuse.local to /etc/hosts — run once for local dev
+hosts-entry: ## Add local dev hostnames to /etc/hosts — run once
 	@grep -q "api.kubeintellect.local" /etc/hosts || \
 	  echo "127.0.0.1 api.kubeintellect.local" | sudo tee -a /etc/hosts
 	@grep -q "langfuse.local" /etc/hosts || \
 	  echo "127.0.0.1 langfuse.local" | sudo tee -a /etc/hosts
+	@grep -q "loki.local" /etc/hosts || \
+	  echo "127.0.0.1 loki.local" | sudo tee -a /etc/hosts
+	@grep -q "prometheus.local" /etc/hosts || \
+	  echo "127.0.0.1 prometheus.local" | sudo tee -a /etc/hosts
 
 # ═══════════════════════════════════════════════════════════════════════════════
 ##@ Python development (local, no cluster needed)

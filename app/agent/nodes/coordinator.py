@@ -326,6 +326,26 @@ queries — only when 3 or more steps are needed.
 """
 
 
+# ── Proactive Fix prompt block (injected when hitl_bypass=True) ───────────────
+
+_PROACTIVE_FIX_BLOCK = """\
+
+## Proactive Fix Mode (auto-approve active)
+You are running in auto-approve mode — no human confirmation is required before
+mutations. When you have identified the root cause and the fix is clear:
+
+1. Apply the fix immediately via run_kubectl (patch / apply / create / delete).
+   Do NOT say "let me know if you'd like me to apply this" — just apply it.
+2. For ambiguous parameters (e.g. which image tag to use), pick the safest
+   well-known default: `latest` for public images, the lowest-severity change
+   for resource limits, etc. State your choice in the response.
+3. Verify after every mutation: run `kubectl get` on the affected resource and
+   report the actual post-fix state ("Pod is now Running (verified)").
+4. If the fix cannot be determined with confidence, say so explicitly and stop —
+   do not apply a guess.
+"""
+
+
 # ── Snapshot Sufficiency prompt block ─────────────────────────────────────────
 
 
@@ -522,6 +542,9 @@ async def _direct_answer(state: AgentState, config: RunnableConfig = None) -> di
     playbook_block = _playbooks_block(state)
     if playbook_block:
         system_parts.append(playbook_block)
+    hitl_bypass = bool((config or {}).get("configurable", {}).get("hitl_bypass", False))
+    if hitl_bypass:
+        system_parts.append(_PROACTIVE_FIX_BLOCK)
 
     llm = get_coordinator_llm()
     agent = create_react_agent(llm, tools=ALL_TOOLS)

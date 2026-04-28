@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from functools import lru_cache
 from typing import Any, List, Type
 
@@ -33,8 +34,9 @@ def _resolve_langfuse() -> Type[Any] | None:
 def get_langfuse_callbacks() -> List[Any]:
     """Return [CallbackHandler()] if Langfuse tracing is enabled, else [].
 
-    Each call returns a fresh CallbackHandler so every LangGraph invocation
-    gets its own trace context.  The Langfuse SDK batches + flushes internally.
+    Langfuse v4 reads LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY / LANGFUSE_HOST from
+    environment automatically.  Session ID is passed via LangChain run metadata
+    (key: "langfuse_session_id") — see get_langfuse_run_metadata().
     """
     if not settings.LANGFUSE_ENABLED:
         return []
@@ -44,17 +46,21 @@ def get_langfuse_callbacks() -> List[Any]:
     CallbackHandler = _resolve_langfuse()
     if CallbackHandler is None:
         return []
-    # Pass keys explicitly for compatibility with both langfuse v2 (keyword args)
-    # and v3+ (reads LANGFUSE_* env vars automatically — no kwargs needed).
-    try:
-        return [CallbackHandler(
-            public_key=settings.LANGFUSE_PUBLIC_KEY,
-            secret_key=settings.LANGFUSE_SECRET_KEY,
-            host=settings.LANGFUSE_HOST,
-        )]
-    except TypeError:
-        # langfuse v3+: env vars are already set — CallbackHandler picks them up.
-        return [CallbackHandler()]
+    # Langfuse v4 SDK reads credentials from os.environ, not from constructor args.
+    # Pydantic BaseSettings populates Python attributes but not os.environ, so bridge here.
+    os.environ["LANGFUSE_PUBLIC_KEY"] = settings.LANGFUSE_PUBLIC_KEY or ""
+    os.environ["LANGFUSE_SECRET_KEY"] = settings.LANGFUSE_SECRET_KEY or ""
+    os.environ["LANGFUSE_HOST"]       = settings.LANGFUSE_HOST or ""
+    return [CallbackHandler()]
+
+
+def get_langfuse_run_metadata(session_id: str) -> dict:
+    """Return metadata dict to inject session_id into a LangChain/LangGraph run.
+
+    Langfuse v4 picks up 'langfuse_session_id' from LangChain run metadata and
+    attaches it to the trace, making it queryable by session.
+    """
+    return {"langfuse_session_id": session_id}
 
 
 def _make_azure(deployment: str, temperature: float = 0.0, max_tokens: int = 4096) -> BaseChatModel:
