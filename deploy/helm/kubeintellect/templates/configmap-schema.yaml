@@ -38,6 +38,16 @@ data:
     );
     CREATE INDEX IF NOT EXISTS idx_rca_outcomes_user_id ON rca_outcomes (user_id, created_at DESC);
 
+    -- Reflexion v2 — additive columns
+    ALTER TABLE rca_outcomes ADD COLUMN IF NOT EXISTS cluster_id        TEXT NOT NULL DEFAULT 'unknown';
+    ALTER TABLE rca_outcomes ADD COLUMN IF NOT EXISTS namespace         TEXT;
+    ALTER TABLE rca_outcomes ADD COLUMN IF NOT EXISTS verified_resolved BOOLEAN;
+    ALTER TABLE rca_outcomes ADD COLUMN IF NOT EXISTS playbooks_matched TEXT[] NOT NULL DEFAULT '{}';
+    ALTER TABLE rca_outcomes ADD COLUMN IF NOT EXISTS created_by_role   TEXT;
+    ALTER TABLE rca_outcomes ADD COLUMN IF NOT EXISTS request_id        TEXT;
+    CREATE INDEX IF NOT EXISTS idx_rca_outcomes_cluster
+        ON rca_outcomes (cluster_id, user_id, created_at DESC);
+
     CREATE TABLE IF NOT EXISTS failure_patterns (
         pattern_name     TEXT    PRIMARY KEY,
         description      TEXT    NOT NULL,
@@ -47,6 +57,16 @@ data:
         created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
         updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+
+    -- Reflexion v2 — pattern lifecycle
+    ALTER TABLE failure_patterns ADD COLUMN IF NOT EXISTS cluster_id   TEXT NOT NULL DEFAULT 'unknown';
+    ALTER TABLE failure_patterns ADD COLUMN IF NOT EXISTS namespace    TEXT;
+    ALTER TABLE failure_patterns ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now();
+    ALTER TABLE failure_patterns ADD COLUMN IF NOT EXISTS demoted      BOOLEAN NOT NULL DEFAULT FALSE;
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_failure_patterns_cluster
+        ON failure_patterns (pattern_name, cluster_id);
+    CREATE INDEX IF NOT EXISTS idx_failure_patterns_active
+        ON failure_patterns (cluster_id, last_seen_at DESC) WHERE demoted = FALSE;
 
     CREATE TABLE IF NOT EXISTS request_log (
         id           BIGSERIAL    PRIMARY KEY,
