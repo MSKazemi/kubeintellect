@@ -162,6 +162,32 @@ def _trim_tool_messages(messages: list[BaseMessage]) -> list[BaseMessage]:
     return result
 
 
+def _fill_orphan_tool_calls(messages: list[BaseMessage]) -> list[BaseMessage]:
+    """Inject placeholder ToolMessages for tool_calls that never executed.
+
+    When a HITL interrupt fires mid-batch, only the resumed tool call gets a
+    ToolMessage; the other tool_calls in the same AIMessage are orphaned. The
+    LLM then re-proposes them on the next loop, causing redundant HITL prompts.
+    Filling the orphans with a "skipped" placeholder breaks that loop.
+    """
+    existing_ids = {
+        m.tool_call_id for m in messages
+        if isinstance(m, ToolMessage) and getattr(m, "tool_call_id", None)
+    }
+    extras: list[ToolMessage] = []
+    for msg in messages:
+        if isinstance(msg, AIMessage):
+            for tc in getattr(msg, "tool_calls", None) or []:
+                tc_id = tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", None)
+                if tc_id and tc_id not in existing_ids:
+                    extras.append(ToolMessage(
+                        tool_call_id=tc_id,
+                        content="Skipped — pending approval; will be re-proposed in a separate response.",
+                    ))
+                    existing_ids.add(tc_id)
+    return list(messages) + extras
+
+
 # ── Investigation plan extraction ────────────────────────────────────────────
 
 
@@ -243,6 +269,46 @@ After kubectl patch / apply / create / delete, you MUST verify the outcome:
 1. Make one more kubectl get call on the affected resource (e.g. kubectl get pods -n <ns>)
 2. Report ACTUAL state: "Pod is now Running (verified)" or "Fix applied — pod still in <state>"
 Never end after applying a fix without a follow-up verification read.
+
+## Mutation Batching (HITL Safety)
+When proposing kubectl mutations (patch / apply / create / delete / scale / set / rollout),
+emit at most ONE mutation per response. Wait for the result before the next.
+Reads (get / describe / logs / top) may still be batched in parallel — only mutations
+are restricted. Each mutation triggers an approval gate; batching multiple in one
+response causes redundant approval prompts and can re-queue the unapproved calls.
+
+## Service-Endpoint Cross-Check
+When investigating a namespace with multiple workloads, an empty service endpoint
+is a common silent fault — pods can be Running while their service is unreachable
+because of a selector/label drift. After examining pod statuses, ALWAYS run
+`kubectl get endpoints -n <ns>` and flag any service with ENDPOINTS=<none>.
+
+## Spec-Before-Logs for CrashLoopBackOff
+When diagnosing a CrashLoop pod, ALWAYS read `spec.containers[].command` and
+`spec.containers[].args` from `kubectl describe pod` BEFORE inferring a root
+cause from log output. A log line like "DB not configured" might be hardcoded
+in the command itself; in that case no env or secret patch will fix it — the
+spec's `command` field must be edited.
+
+## Shell-Metacharacter Constraints (applies to ALL kubectl commands)
+For safety, the runner rejects any kubectl command containing shell
+metacharacters: `&&`, `||`, `|`, `;`, `>`, `<`. This applies to the FULL
+command string, including arguments inside `--patch '[...]'`, `-p '[...]'`,
+or `-- sh -c "..."`.
+
+  - `kubectl exec ... -- sh -c "a && b"`     ❌ blocked — split into two execs.
+  - `kubectl patch ... --patch '[{...; ...}]'` ❌ blocked — even if the `;` is
+    inside a JSON string. Use `kubectl apply -f -` with stdin instead.
+  - Multi-line commands or chained shell expressions ❌ — never work.
+
+For setting a container `command` or `args` (which usually contain `;` or `&&`),
+the ONLY reliable path is:
+  1. `kubectl get <kind> <name> -n <ns> -o yaml` to fetch the current spec.
+  2. Build the corrected manifest in your response.
+  3. `kubectl apply -f -` with the manifest passed via stdin.
+
+Do NOT attempt `kubectl patch --type=json --patch '[...]'` for changes whose
+JSON body contains shell-unsafe characters.
 
 Tool-selection by time intent — CRITICAL:
 
@@ -557,6 +623,7 @@ async def _direct_answer(state: AgentState, config: RunnableConfig = None) -> di
 
     new_messages = result["messages"][len(input_messages):]
     new_messages = _trim_tool_messages(new_messages)  # A4: cap tool output before state storage
+    new_messages = _fill_orphan_tool_calls(new_messages)  # F2: HITL parallel-batch safety
 
     update: dict = {"messages": new_messages}
 
@@ -647,6 +714,33 @@ Synthesize these into a single root-cause analysis. Respond with ONLY a JSON obj
         f"**Recommended Fix**: {rca.recommended_fix}\n\n"
         f"**Reasoning**: {rca.reasoning}"
     )
+
+    # F5 — Reflexion loop: persist high-confidence outcomes so future sessions
+    # benefit. Fire-and-forget; failure to write must never break the response.
+    if (
+        settings.REFLEXION_ENABLED
+        and rca.confidence >= settings.REFLEXION_MIN_CONFIDENCE
+        and not settings.USE_SQLITE
+    ):
+        try:
+            import asyncio as _asyncio
+
+            from app.db.memory_store import record_rca_outcome
+
+            _asyncio.create_task(record_rca_outcome(
+                session_id=state.get("session_id", "-"),
+                user_id=state.get("user_id", "-"),
+                root_cause=rca.root_cause,
+                confidence=rca.confidence,
+                recommended_fix=rca.recommended_fix,
+                outcome_feedback=None,
+            ))
+            logger.info(
+                f"reflexion: recorded RCA outcome session={state.get('session_id', '-')} "
+                f"confidence={rca.confidence:.2f}"
+            )
+        except Exception as exc:
+            logger.warning(f"reflexion: failed to schedule outcome write — {exc}")
 
     return {
         "rca_result": rca.model_dump(),  # plain dict avoids LangGraph msgpack serialization warning

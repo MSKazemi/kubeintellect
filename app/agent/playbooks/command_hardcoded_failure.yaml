@@ -1,0 +1,23 @@
+name: CommandHardcodedFailure
+triggers:
+  - pod_status_regex: "CrashLoopBackOff|Error"
+investigation_steps:
+  - "kubectl describe pod <pod> -n <ns> — read spec.containers[].command and spec.containers[].args."
+  - "If the command contains `exit 1`, `exit N` (N!=0), or `false`, the failure is intentional in the spec — not a missing dependency."
+  - "If the command is a one-liner like `sh -c \"echo ... ; exit N\"`, no env-var or secret patch will help — the spec must change."
+expected_evidence:
+  - "Container command spec ends with `exit N` where N != 0"
+  - "Last State exit code matches the spec's hardcoded value"
+recommended_fix_template: |
+  The container <CONTAINER> in pod <POD> has a command that hardcodes failure
+  (exit <CODE>). Setting environment variables, ConfigMaps, or Secrets will not
+  change the outcome. The deployment spec's `command` field must be edited to a
+  real entrypoint that does not deterministically exit non-zero.
+
+  HOW TO APPLY THE FIX (use this exact path — `kubectl patch --type=json --patch '[...]'`
+  fails because the JSON patch body contains shell metacharacters):
+    1. `kubectl get deployment <DEP> -n <NS> -o yaml` — fetch the current spec.
+    2. Build the corrected manifest in your response (replace `command` with a valid
+       entrypoint, e.g. `["sh", "-c", "echo 'starting'; sleep infinity"]`).
+    3. `kubectl apply -f -` and pass the corrected manifest via stdin. This is the
+       only reliable way to set a multi-arg command in this environment.
