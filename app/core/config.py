@@ -135,6 +135,12 @@ class Settings(BaseSettings):
     # Snapshot is treated as fresh for this many seconds; older = always fetch.
     SNAPSHOT_FRESHNESS_SECONDS: int = 30
 
+    # Reflexion loop — persist completed RCA outcomes so future sessions inherit
+    # learned failure patterns. Reads are always on (memory_loader); writes are
+    # gated below. Minimum confidence threshold filters out low-quality RCAs.
+    REFLEXION_ENABLED: bool = True
+    REFLEXION_MIN_CONFIDENCE: float = 0.7
+
     # ── Auth / RBAC ───────────────────────────────────────────────────────────
     # Four-tier role model (all comma-separated; empty = auth disabled):
     #   superadmin — admin capabilities + write access to all namespaces (no ns block)

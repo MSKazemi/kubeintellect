@@ -60,8 +60,48 @@ def test_all_ten_playbooks_load() -> None:
         "TerminatingStuck",
         "ReadinessProbeFailing",
         "ServiceUnreachable",
+        "ServiceNoEndpoints",
+        "CommandHardcodedFailure",
     }
     assert expected.issubset(names), f"missing playbooks: {expected - names}"
+
+
+# ── F1: ServiceNoEndpoints triggers ───────────────────────────────────────────
+
+
+def test_match_service_no_endpoints_by_event_reason() -> None:
+    events = (
+        "NAMESPACE   LAST SEEN  TYPE     REASON                  OBJECT                MESSAGE\n"
+        "default     30s        Warning  FailedToUpdateEndpoint  endpointslice/svc-x   could not update\n"
+    )
+    matched = match_playbooks(HEALTHY_PODS, events)
+    assert "ServiceNoEndpoints" in matched
+
+
+def test_match_service_no_endpoints_by_event_message() -> None:
+    events = (
+        "NAMESPACE   LAST SEEN  TYPE     REASON   OBJECT     MESSAGE\n"
+        "default     30s        Warning  Failed   svc/svc-x  Service has no endpoints\n"
+    )
+    matched = match_playbooks(HEALTHY_PODS, events)
+    assert "ServiceNoEndpoints" in matched
+
+
+# ── F3: CommandHardcodedFailure triggers ──────────────────────────────────────
+
+
+def test_match_command_hardcoded_failure_by_crashloop() -> None:
+    matched = match_playbooks(CRASHLOOP_PODS, NO_EVENTS)
+    assert "CommandHardcodedFailure" in matched
+
+
+def test_match_command_hardcoded_failure_by_error_status() -> None:
+    pods = (
+        "NAMESPACE   NAME    READY   STATUS  RESTARTS   AGE\n"
+        "default     app-1   0/1     Error   3          1m\n"
+    )
+    matched = match_playbooks(pods, NO_EVENTS)
+    assert "CommandHardcodedFailure" in matched
 
 
 def test_each_playbook_has_complete_schema() -> None:
