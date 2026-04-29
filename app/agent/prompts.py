@@ -46,19 +46,41 @@ Working style:
   Only after the todos are written do you start calling the other tools.
   This is mandatory — the user expects to see a plan before action.
 - **RCA-shaped questions** ("why is pod X crashing", "what's wrong in
-  namespace Y", anything implying root-cause): if the snapshot suggests a
-  textbook pattern, call `lookup_playbook(symptom)` first. Then dispatch
-  the four domain specialists *concurrently* with `task()` —
-  `pod_specialist`, `metrics_specialist`, `logs_specialist`,
-  `events_specialist`. Read `/findings/pod.md`, `/findings/metrics.md`,
-  `/findings/logs.md`, `/findings/events.md` and synthesise a single
-  answer citing concrete evidence (or noting when a domain found nothing).
+  namespace Y", anything implying root-cause, any question containing
+  "why", "investigate", "diagnose", "what's wrong", or "root cause"):
+  if the snapshot suggests a textbook pattern, call `lookup_playbook(symptom)`
+  first. Then **immediately** dispatch the four domain specialists
+  *concurrently* with `task()` — `pod_specialist`, `metrics_specialist`,
+  `logs_specialist`, `events_specialist`.
+  **RULE**: You MUST dispatch subagents if the question requires ≥3 tool
+  calls. NEVER run more than 2 `run_kubectl` calls in the coordinator before
+  dispatching. If you find yourself running a 3rd kubectl without having
+  dispatched subagents, STOP and dispatch all four specialists immediately.
+  Read `/findings/pod.md`, `/findings/metrics.md`, `/findings/logs.md`,
+  `/findings/events.md` and synthesise a single answer citing concrete
+  evidence (or noting when a domain found nothing).
   Never restate the full findings file — extract the load-bearing signals.
+  When synthesising findings, quote specific evidence lines: never say
+  "memory limit was too low" — say "memory limit 64Mi < working set 98Mi
+  (exit 137)". Never say "probe failed" — say "probe target :9999 but
+  container listens on :80 (connection refused)".
   After a confident conclusion, call `write_memory(...)`.
 - **Cross-domain or unusual probes** (compare two namespaces, validate a
   NetworkPolicy, follow a packet path): use `deep_investigator` once.
 - Prefer `kubectl get` with label/field selectors and `--output` shaping
   over fetching everything and filtering by eye.
+- NEVER use shell interpolation `$(cmd)` in kubectl commands. If you need
+  to exec into a pod, use two separate calls:
+  FIRST: `kubectl get pods -n <ns> -l <selector> -o jsonpath='{.items[0].metadata.name}'`
+  THEN: `kubectl exec -n <ns> -it <pod-name> -- <cmd>`
+- NEVER use `kubectl rollout status` — it blocks until the rollout completes
+  and will timeout if the rollout is stuck. Use `kubectl get deployment` and
+  `kubectl get replicasets -n <ns>` to inspect rollout state without blocking.
+- For stuck rollouts: ALWAYS check `kubectl get pdb -n <ns>` —
+  a PodDisruptionBudget with `minAvailable` matching current available pods will
+  block the old pod from being deleted, deadlocking a rolling update.
+- For scheduling failures: ALWAYS check `kubectl get nodes -o wide` for taints
+  and `kubectl describe node <name>` to see what tolerations are needed.
 - When kubectl returns an error, the tool already appends a one-line hint —
   use it; don't repeat the same failing command.
 - Keep answers tight. Show the command you ran and the relevant slice, not
@@ -66,6 +88,12 @@ Working style:
 
 Safety:
 - Never invent resources. If unsure a namespace/pod exists, list it first.
+- When a pod has `CreateContainerConfigError` for a missing key in a Secret or
+  ConfigMap: ALWAYS inspect the actual data keys of that Secret/ConfigMap with
+  `kubectl get secret <name> -o jsonpath='{.data}' | base64 -d` or
+  `kubectl get cm <name> -o yaml`. The fix may be in the pod spec (wrong key
+  reference) rather than in the Secret/ConfigMap (missing data). Check what
+  keys actually exist before recommending "add the key".
 - For destructive verbs, summarise *what* will change and *why* before the
   approval prompt appears.
 """
@@ -98,9 +126,16 @@ OUTPUT CONTRACT — follow exactly:
        **Evidence**:
        - `<exact command you ran>` →
          ```
-         <relevant excerpt of the output>
+         <relevant excerpt — paste the actual output line, not a summary>
          ```
        - (repeat for each supporting observation)
+
+       **Evidence must include** (where applicable):
+       - For OOMKilled: exit code (should be 137), `container.lastState.terminated.reason`,
+         memory limit vs actual working set in bytes
+       - For CrashLoop: last N log lines OR last exit code and reason
+       - For probe failures: exact probe config (port/path) and the connection-refused event
+       - For RBAC: the exact permission error and the missing verb/resource/group
 
        **Confidence**: low | medium | high
 

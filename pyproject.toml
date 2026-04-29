@@ -38,6 +38,7 @@ dependencies = [
     # CLI client — bundled so pip install kubeintellect gives both server and kq
     "kube-q>=1.4.3",  # must stay in [project.dependencies]; do NOT add a [tool.uv.sources] override
     "deepagents>=0.5.3",
+    "langfuse>=4.1.0",
 ]
 
 [project.urls]

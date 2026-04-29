@@ -400,6 +400,14 @@ def run_kubectl(
             "Install it from https://kubernetes.io/docs/tasks/tools/ "
             "or run 'kubeintellect kind-setup' to provision a local cluster."
         )
+    except subprocess.TimeoutExpired:
+        return (
+            f"[Error] Command timed out after {timeout}s: {cmd!r}\n"
+            "Hint: 'kubectl rollout status' blocks until the rollout completes — "
+            "if the rollout is stuck it will always timeout. "
+            "Use 'kubectl get deployment' and 'kubectl get replicasets' instead "
+            "to inspect rollout state without blocking."
+        )
 
     output = proc.stdout or proc.stderr or "(no output)"
     logger.debug(f"run_kubectl: exit={proc.returncode} output_len={len(output)} cmd={cmd}")
