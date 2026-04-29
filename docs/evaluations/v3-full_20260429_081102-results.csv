@@ -1,0 +1,42 @@
+index,scenario,query_preview,status,latency_ms,hitl,cluster_resolved,score_signal,score_judge,judge_result
+1,01-crashloop,"A pod in namespace scenario-test is crashing repeatedly. Find the root cause, ex",unresolved,21975,False,no,0.56,29,pass
+2,02-imagepull,A newly deployed workload in namespace scenario-test is failing to start. Invest,unresolved,6448,False,no,0.59,36,pass
+3,03-service-mismatch,The frontend cannot reach backend-service in namespace scenario-test. Diagnose e,error,7593,False,,0.53,27,fail
+4,04-pending-resources,Why is pod hungry-app still Pending in namespace scenario-test? Investigate node,error,17593,False,,0.47,16,fail
+5,05-missing-configmap,The app config-app in namespace scenario-test is failing to start. Investigate w,unresolved,8324,False,no,0.57,39,pass
+6,05b-pvc-unbound,My application cannot start because its volume claim is not working in namespace,error,17310,False,,0.50,14,fail
+7,06-oomkilled,The pod memory-hog in namespace scenario-test keeps restarting. The team suspect,ok,19462,False,yes,0.93,24,fail
+8,06b-configmap-secret,The app config-app in namespace scenario-test is failing to start. Investigate w,unresolved,12916,False,no,0.58,37,pass
+9,07-rbac-denied,The application rbac-app in namespace scenario-test is using service account lim,error,23123,False,,0.48,22,fail
+10,08-probe-fail,The deployment probe-app in namespace scenario-test shows pods in Running state ,unresolved,18030,False,no,0.57,38,pass
+11,09-multi-step,"Create a namespace called loop-test, deploy a single-replica nginx app called we",error,17821,False,,0.50,17,fail
+12,10-incident-rca,Users report the application stack in namespace scenario-test is degraded. I see,error,21617,False,,0.49,14,fail
+13,11-oomkilled,The pod memory-hog in namespace scenario-test keeps restarting. The team suspect,unresolved,9351,False,no,0.58,32,pass
+14,12-init-fail,The deployment app-with-init in namespace scenario-test is stuck and never reach,error,19909,False,,0.49,14,fail
+15,13-quota-exceeded,The deployment quota-buster in namespace scenario-test has 3 desired replicas bu,ok,8587,False,yes,0.99,30,pass
+16,14-rollout-stuck,The deployment web-api in namespace scenario-test is in the middle of a rolling ,error,35740,False,,0.46,24,fail
+17,15-job-backoff,The batch job data-migration in namespace scenario-test has failed. Find out why,unresolved,14060,False,no,0.56,29,pass
+18,16-netpol-block,The client-app in namespace scenario-test cannot reach backend-api-svc on port 8,ok,35735,False,yes,0.93,40,pass
+19,17-liveness-loop,The deployment app-server in namespace scenario-test keeps restarting even thoug,ok,29185,False,yes,0.92,31,pass
+20,18-secret-key-mismatch,The deployment api-app in namespace scenario-test cannot start. The pod is stuck,unresolved,26197,False,no,0.56,26,fail
+21,19-cronjob-suspended,The scheduled backup job db-backup in namespace scenario-test has not run in a l,error,9473,False,,0.53,35,pass
+22,20-taint-no-toleration,The deployment gpu-workload in namespace scenario-test is stuck and no pods are ,unresolved,25742,False,no,0.56,39,pass
+23,21-pdb-blocks-rollout,The deployment web-service in namespace scenario-test has been stuck mid-rollout,ok,7339,False,yes,0.99,20,fail
+24,22-statefulset-no-headless,"The StatefulSet db-cluster in namespace scenario-test has a running pod, but oth",ok,27775,False,yes,0.92,40,pass
+26,24-missing-serviceaccount,The deployment metrics-app in namespace scenario-test shows 0 ready pods and has,ok,28908,False,yes,0.95,37,pass
+27,25-configmap-volume-key,The deployment config-reader in namespace scenario-test cannot start. The team c,ok,24442,False,yes,0.96,36,pass
+28,26-cluster-overview,Show me all pods running in the cluster across all namespaces.,ok,8797,False,,0.97,35,pass
+29,27-cluster-health,"Give me a health overview of the whole cluster — nodes, namespaces, and any prob",ok,5965,False,,0.98,39,pass
+30,28-warning-events,What warning events have happened in the cluster in the last hour?,ok,4042,False,,0.99,30,pass
+31,29-pod-restarts,Are there any pods with a high number of restarts? What is causing them?,ok,23462,False,,0.83,39,pass
+32,30-unhealthy-pods,Find all pods that are not in Running or Completed state across every namespace.,ok,4277,False,,0.99,40,pass
+33,31-cpu-usage,Which pods are consuming the most CPU right now?,ok,3889,False,,0.99,37,pass
+34,32-node-memory,Are any nodes under memory pressure? What is the current memory utilisation?,ok,4372,False,,0.99,37,pass
+35,33-resource-quotas,Check if any namespace is approaching its resource quota limits.,ok,5116,False,,0.98,30,pass
+36,34-pods-no-limits,Which pods are running without CPU or memory limits set?,error,6765,False,,0.54,27,fail
+37,35-namespace-events,Show me all events in the kubeintellect namespace in the last 30 minutes.,ok,8350,False,,0.94,37,pass
+38,36-services-no-endpoints,Are there any services in the cluster that have no matching endpoints?,ok,5364,False,,0.98,37,pass
+39,37-external-services,What services are exposed externally via LoadBalancer or NodePort?,ok,8065,False,,0.97,31,pass
+40,38-app-log-errors,Show me any ERROR-level log lines from the kubeintellect application in the last,ok,4344,False,,0.99,40,pass
+41,39-prometheus-error-rate,What is the HTTP error rate for the kubeintellect service over the last 30 minut,ok,3908,False,,0.99,40,pass
+42,40-prometheus-latency,"Show me the p50, p95, and p99 request latency for the kubeintellect API over the",ok,5624,False,,0.98,37,pass
