@@ -169,3 +169,14 @@ A typical investigation of a CrashLoopBackOff pod, with all behaviors on:
    playbook's `recommended_fix_template`.
 
 Each phase can be flipped independently if you need to roll one back.
+
+---
+
+## Related: Reflexion subsystem
+
+The five behaviors above shape *one turn*. On top of them, KubeIntellect runs a
+**reflexion subsystem** that records outcomes across turns and promotes
+recurring, verified patterns back into future prompts. Cluster-scoped, with
+verification gates, cooldown, and retention.
+
+See [Reflexion Subsystem](reflexion.md) for the design and operational view.
