@@ -1,0 +1,217 @@
+{
+  "title": "KubeIntellect — Reflexion Subsystem",
+  "uid": "kubeintellect-reflexion",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "tags": ["kubeintellect", "reflexion"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Loki datasource",
+        "type": "datasource",
+        "query": "loki",
+        "current": { "text": "Loki", "value": "Loki" }
+      },
+      {
+        "name": "namespace",
+        "label": "App namespace",
+        "type": "constant",
+        "current": { "text": "kubeintellect", "value": "kubeintellect" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Throughput",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Outcomes recorded (24h)",
+      "datasource": { "type": "loki", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 1 },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({namespace=\"$namespace\"} |= \"reflexion: outcome recorded\" [24h]))",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "thresholds" } }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Verified resolutions (24h)",
+      "datasource": { "type": "loki", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 1 },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({namespace=\"$namespace\"} |= \"reflexion: outcome recorded\" |= \"verified=True\" [24h]))",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "green" } }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Patterns seeded (24h)",
+      "datasource": { "type": "loki", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 1 },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({namespace=\"$namespace\"} |~ \"reflexion: seeded pattern\" [24h]))",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Cooldown skips (24h)",
+      "description": "Re-occurrences within REFLEXION_PATTERN_COOLDOWN_HOURS that did NOT bump the count. High values mean tests/fault injection are inflating signals.",
+      "datasource": { "type": "loki", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 1 },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({namespace=\"$namespace\"} |~ \"reflexion: cooldown active\" [24h]))",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "fixed", "fixedColor": "orange" } }
+      }
+    },
+    {
+      "id": 6,
+      "type": "row",
+      "title": "Quality",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Verified vs partial vs regression (rate)",
+      "description": "verified=True = cluster healthy after fix; partial = still broken; regression = worse than before.",
+      "datasource": { "type": "loki", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate({namespace=\"$namespace\"} |= \"reflexion: outcome recorded\" |= \"verified=True\" [5m]))",
+          "legendFormat": "verified",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate({namespace=\"$namespace\"} |= \"reflexion: outcome recorded\" |= \"verified=False\" [5m]))",
+          "legendFormat": "partial/regression",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate({namespace=\"$namespace\"} |= \"reflexion: outcome recorded\" |= \"verified=None\" [5m]))",
+          "legendFormat": "unverified",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ops" }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Confidence distribution",
+      "description": "0.5 = low (no playbook, unverified). 0.7 = mid (one of {playbook, verified}). 0.9 = promotion-eligible.",
+      "datasource": { "type": "loki", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate({namespace=\"$namespace\"} |= \"reflexion: outcome recorded\" |= \"confidence=0.90\" [5m]))",
+          "legendFormat": "0.9 (promotable)",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate({namespace=\"$namespace\"} |= \"reflexion: outcome recorded\" |= \"confidence=0.70\" [5m]))",
+          "legendFormat": "0.7",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate({namespace=\"$namespace\"} |= \"reflexion: outcome recorded\" |= \"confidence=0.50\" [5m]))",
+          "legendFormat": "0.5",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "row",
+      "title": "Pattern lifecycle",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 }
+    },
+    {
+      "id": 10,
+      "type": "logs",
+      "title": "Pattern seeds (verified, ≥0.9, ≥2 occurrences)",
+      "description": "A new pattern entered failure_patterns and is now eligible for prompt injection.",
+      "datasource": { "type": "loki", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
+      "targets": [
+        {
+          "expr": "{namespace=\"$namespace\"} |~ \"reflexion: seeded pattern\"",
+          "refId": "A"
+        }
+      ],
+      "options": { "showTime": true, "wrapLogMessage": true }
+    },
+    {
+      "id": 11,
+      "type": "logs",
+      "title": "Pattern bumps + demotions",
+      "datasource": { "type": "loki", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
+      "targets": [
+        {
+          "expr": "{namespace=\"$namespace\"} |~ \"reflexion: (bumped|demoted) pattern\"",
+          "refId": "A"
+        }
+      ],
+      "options": { "showTime": true, "wrapLogMessage": true }
+    },
+    {
+      "id": 12,
+      "type": "row",
+      "title": "Errors",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 }
+    },
+    {
+      "id": 13,
+      "type": "logs",
+      "title": "Reflexion failures (write or verification)",
+      "description": "These do NOT break the user response (fire-and-forget) but indicate something to fix.",
+      "datasource": { "type": "loki", "uid": "${datasource}" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 26 },
+      "targets": [
+        {
+          "expr": "{namespace=\"$namespace\"} |~ \"reflexion:\" |~ \"failed|error\"",
+          "refId": "A"
+        }
+      ],
+      "options": { "showTime": true, "wrapLogMessage": true }
+    }
+  ]
+}

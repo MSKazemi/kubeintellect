@@ -1,4 +1,4 @@
-.PHONY: install run run-bg stop logs dev dev-postgres dev-postgres-stop db-init lint test cli \
+.PHONY: install run run-bg stop logs dev dev-postgres dev-postgres-stop db-init db-purge lint test cli \
         local-run local-stop local-logs quickstart \
         kind-cluster-create kind-cluster-cleanup kind-cluster-create-vm \
         kind-build-kubeintellect kind-deploy-kubeintellect kind-redeploy-kubeintellect \
@@ -78,6 +78,7 @@ help: ## Show all available targets
 	@printf "  \033[36mdev-postgres\033[0m      Start Postgres on localhost:5432 via docker compose\n"
 	@printf "  \033[36mdev-postgres-stop\033[0m Stop that Postgres\n"
 	@printf "  \033[36mdb-init\033[0m           Apply schema.sql to Postgres\n"
+	@printf "  \033[36mdb-purge\033[0m          Reflexion retention purge (90d outcomes / 30d unverified patterns)\n"
 	@printf "  \033[36mlint\033[0m         Run ruff linter + format check\n"
 	@printf "  \033[36mtest\033[0m         Run pytest suite\n"
 	@printf "  \033[36mcli\033[0m          Open REPL against local Kind cluster\n"
@@ -365,6 +366,12 @@ db-init: ## Apply schema.sql to the configured Postgres database (uses docker co
 	  -U $${POSTGRES_USER:-kubeintellect} \
 	  -d $${POSTGRES_DB:-kubeintellect} \
 	  -f /dev/stdin < app/db/schema.sql
+
+db-purge: ## Run reflexion retention (delete old rca_outcomes / unverified patterns)
+	docker compose exec -T postgres psql \
+	  -U $${POSTGRES_USER:-kubeintellect} \
+	  -d $${POSTGRES_DB:-kubeintellect} \
+	  -c "SELECT * FROM reflexion_purge($${RETAIN_OUTCOMES_DAYS:-90}, $${RETAIN_PATTERNS_DAYS:-30});"
 
 lint: ## Run ruff linter and format check
 	uv run ruff check app/

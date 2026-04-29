@@ -265,3 +265,26 @@ investigates. Each is feature-flagged so you can disable without redeploying.
 | `SNAPSHOT_FRESHNESS_SECONDS` | `30` | integer | Snapshot age beyond which the coordinator must re-fetch regardless of mode. |
 | `INVESTIGATION_PLAN_ENABLED` | `true` | `true` \| `false` | Coordinator emits an `INVESTIGATION_PLAN:` block for queries needing 3+ tool calls; surfaced via SSE `PlanEvent`. |
 | `PLAYBOOKS_ENABLED` | `true` | `true` \| `false` | When a snapshot matches a known failure pattern (CrashLoopBackOff, OOMKilled, ImagePullBackOff, …), inject the matching playbook(s) from `app/agent/playbooks/*.yaml` into the coordinator's system prompt. |
+
+---
+
+## Reflexion flags {#reflexion-flags}
+
+Controls the self-improvement subsystem that records outcomes and promotes
+recurring, verified fix patterns into the prompt. Full design rationale in
+[Reflexion Subsystem](reflexion.md).
+
+| Variable | Default | Description |
+|---|---|---|
+| `REFLEXION_ENABLED` | `true` | Master switch — disables all reflexion writes and reads |
+| `REFLEXION_MIN_CONFIDENCE` | `0.7` | Threshold below which outcomes are not loaded into prompts |
+| `REFLEXION_VERIFY_RESOLUTION` | `true` | After a mutation, re-snapshot the cluster to verify the fix actually resolved the issue (R4). Adds ~150ms per mutation turn |
+| `REFLEXION_REDACT_SECRETS` | `true` | Strip credentials/tokens/internal hostnames from stored manifests before write (R8) |
+| `REFLEXION_PATTERN_COOLDOWN_HOURS` | `1` | Minimum gap between `occurrence_count` increments for the same `(pattern, cluster)` (R6) — prevents test-rig bursts from poisoning patterns |
+| `REFLEXION_PATTERN_DECAY_DAYS` | `30` | Read-side filter — patterns with `last_seen_at` older than this are not injected |
+
+**Retention.** Run `make db-purge` (or schedule it as a CronJob) to invoke the
+SQL function `reflexion_purge(retain_outcomes_days, retain_patterns_days)`.
+Defaults: 90 days for `rca_outcomes`, 30 days for unverified `failure_patterns`.
+Verified patterns (`confidence >= 0.9`) are never purged by retention — only
+by demotion.
