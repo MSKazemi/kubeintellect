@@ -93,3 +93,32 @@ CREATE TABLE IF NOT EXISTS runbooks (
     content     TEXT NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ── Reflexion retention (R8) ─────────────────────────────────────────────────
+-- Single function, idempotent. Call from cron, ops command, or `make db-purge`.
+-- Returns a row of (rca_outcomes_deleted, failure_patterns_deleted).
+-- Policy:
+--   * rca_outcomes  older than `retain_outcomes_days` (default 90) — purged.
+--   * failure_patterns whose last_seen_at is older than `retain_patterns_days`
+--     (default 30) AND that never reached confidence ≥ 0.9 — purged.
+--   Verified, high-confidence patterns survive forever (until demoted).
+CREATE OR REPLACE FUNCTION reflexion_purge(
+    retain_outcomes_days INTEGER DEFAULT 90,
+    retain_patterns_days INTEGER DEFAULT 30
+) RETURNS TABLE (rca_deleted BIGINT, patterns_deleted BIGINT) AS $$
+DECLARE
+    rca_count BIGINT;
+    pat_count BIGINT;
+BEGIN
+    DELETE FROM rca_outcomes
+        WHERE created_at < now() - (retain_outcomes_days || ' days')::INTERVAL;
+    GET DIAGNOSTICS rca_count = ROW_COUNT;
+
+    DELETE FROM failure_patterns
+        WHERE last_seen_at < now() - (retain_patterns_days || ' days')::INTERVAL
+          AND confidence < 0.9;
+    GET DIAGNOSTICS pat_count = ROW_COUNT;
+
+    RETURN QUERY SELECT rca_count, pat_count;
+END;
+$$ LANGUAGE plpgsql;
