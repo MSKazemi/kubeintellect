@@ -219,3 +219,63 @@ class TestOrphanToolCallFiller:
         from langchain_core.messages import HumanMessage
         msgs = [HumanMessage(content="hi")]
         assert _fill_orphan_tool_calls(msgs) == msgs
+
+
+# ── F5b: mutation detector for reflexion outcome recording ───────────────────
+
+
+class TestMutationDetector:
+    def _ai(self, *commands):
+        from langchain_core.messages import AIMessage
+        return AIMessage(
+            content="",
+            tool_calls=[
+                {"id": str(i), "name": "run_kubectl", "args": {"command": cmd}}
+                for i, cmd in enumerate(commands)
+            ],
+        )
+
+    def test_read_only_not_mutation(self):
+        from app.agent.nodes.coordinator import _ran_mutation
+        msgs = [self._ai("kubectl get pods -n default")]
+        mutated, cmds = _ran_mutation(msgs)
+        assert mutated is False
+        assert cmds == []
+
+    def test_apply_is_mutation(self):
+        from app.agent.nodes.coordinator import _ran_mutation
+        msgs = [self._ai("kubectl apply -f -")]
+        mutated, cmds = _ran_mutation(msgs)
+        assert mutated is True
+        assert "apply" in cmds[0]
+
+    def test_patch_is_mutation(self):
+        from app.agent.nodes.coordinator import _ran_mutation
+        msgs = [self._ai("kubectl patch deployment foo -n bar --type=json")]
+        mutated, _ = _ran_mutation(msgs)
+        assert mutated is True
+
+    def test_mixed_batch_extracts_only_mutations(self):
+        from app.agent.nodes.coordinator import _ran_mutation
+        msgs = [self._ai(
+            "kubectl get pods -n scenario-test",
+            "kubectl apply -f -",
+            "kubectl describe pod foo -n scenario-test",
+            "kubectl scale deployment foo --replicas=3 -n scenario-test",
+        )]
+        mutated, cmds = _ran_mutation(msgs)
+        assert mutated is True
+        assert len(cmds) == 2  # apply + scale, not get/describe
+
+    def test_no_tool_calls_not_mutation(self):
+        from app.agent.nodes.coordinator import _ran_mutation
+        from langchain_core.messages import HumanMessage
+        mutated, cmds = _ran_mutation([HumanMessage(content="hi")])
+        assert mutated is False
+        assert cmds == []
+
+    def test_unknown_verb_not_mutation(self):
+        from app.agent.nodes.coordinator import _ran_mutation
+        msgs = [self._ai("kubectl top pods")]
+        mutated, _ = _ran_mutation(msgs)
+        assert mutated is False
