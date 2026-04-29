@@ -27,12 +27,22 @@ CREATE TABLE IF NOT EXISTS rca_outcomes (
     root_cause       TEXT          NOT NULL,
     confidence       FLOAT         NOT NULL,
     recommended_fix  TEXT          NOT NULL,
-    outcome_feedback TEXT,                     -- "resolved" | "incorrect" | NULL
+    outcome_feedback TEXT,                     -- "resolved" | "partial" | "regression" | "incorrect" | NULL
     created_at       TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_rca_outcomes_user_id ON rca_outcomes (user_id, created_at DESC);
 
--- ── Failure patterns (auto-seeded, confidence ≥0.9 AND occurrence ≥2) ────────
+-- Reflexion v2 — additive columns. Idempotent for existing deployments.
+ALTER TABLE rca_outcomes ADD COLUMN IF NOT EXISTS cluster_id        TEXT NOT NULL DEFAULT 'unknown';
+ALTER TABLE rca_outcomes ADD COLUMN IF NOT EXISTS namespace         TEXT;
+ALTER TABLE rca_outcomes ADD COLUMN IF NOT EXISTS verified_resolved BOOLEAN;
+ALTER TABLE rca_outcomes ADD COLUMN IF NOT EXISTS playbooks_matched TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE rca_outcomes ADD COLUMN IF NOT EXISTS created_by_role   TEXT;
+ALTER TABLE rca_outcomes ADD COLUMN IF NOT EXISTS request_id        TEXT;
+CREATE INDEX IF NOT EXISTS idx_rca_outcomes_cluster
+    ON rca_outcomes (cluster_id, user_id, created_at DESC);
+
+-- ── Failure patterns (auto-seeded; verified, confidence ≥0.9 AND occurrence ≥2) ─
 CREATE TABLE IF NOT EXISTS failure_patterns (
     pattern_name     TEXT    PRIMARY KEY,
     description      TEXT    NOT NULL,
@@ -42,6 +52,19 @@ CREATE TABLE IF NOT EXISTS failure_patterns (
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Reflexion v2 — pattern lifecycle (cluster scoping, decay, demotion).
+ALTER TABLE failure_patterns ADD COLUMN IF NOT EXISTS cluster_id   TEXT NOT NULL DEFAULT 'unknown';
+ALTER TABLE failure_patterns ADD COLUMN IF NOT EXISTS namespace    TEXT;
+ALTER TABLE failure_patterns ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE failure_patterns ADD COLUMN IF NOT EXISTS demoted      BOOLEAN NOT NULL DEFAULT FALSE;
+-- Composite uniqueness on (pattern_name, cluster_id) so the same pattern can
+-- exist independently per cluster. The legacy single-column PK stays for
+-- backwards compat; new writes use ON CONFLICT against the composite index.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_failure_patterns_cluster
+    ON failure_patterns (pattern_name, cluster_id);
+CREATE INDEX IF NOT EXISTS idx_failure_patterns_active
+    ON failure_patterns (cluster_id, last_seen_at DESC) WHERE demoted = FALSE;
 
 -- ── API request audit log ────────────────────────────────────────────────────
 -- Every POST /v1/chat/completions is recorded here so you can see who ran what.

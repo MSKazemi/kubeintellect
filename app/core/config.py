@@ -141,6 +141,19 @@ class Settings(BaseSettings):
     REFLEXION_ENABLED: bool = True
     REFLEXION_MIN_CONFIDENCE: float = 0.7
 
+    # Reflexion v2 — production-grade controls.
+    #   VERIFY_RESOLUTION: re-snapshot the cluster after a fix and only promote
+    #     patterns whose mutation actually moved the cluster to healthy.
+    #   REDACT_SECRETS:    apply secret/URL/token scrubbing before persisting.
+    #   PATTERN_COOLDOWN_HOURS: skip occurrence_count bumps within this window
+    #     (test-loop spam protection).
+    #   PATTERN_DECAY_DAYS: read filter — patterns not seen in this many days
+    #     stop being injected into prompts.
+    REFLEXION_VERIFY_RESOLUTION: bool = True
+    REFLEXION_REDACT_SECRETS: bool = True
+    REFLEXION_PATTERN_COOLDOWN_HOURS: int = 1
+    REFLEXION_PATTERN_DECAY_DAYS: int = 30
+
     # ── Auth / RBAC ───────────────────────────────────────────────────────────
     # Four-tier role model (all comma-separated; empty = auth disabled):
     #   superadmin — admin capabilities + write access to all namespaces (no ns block)
