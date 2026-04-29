@@ -286,6 +286,8 @@ def _fresh_turn_state(
         "investigation_plan": None,
         # Matched playbooks (re-populated by context_fetcher each turn)
         "matched_playbooks": [],
+        # Cluster identity (re-populated by context_fetcher each turn — cheap, cached)
+        "cluster_id": "unknown",
         **(extra or {}),
     }
 

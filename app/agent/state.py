@@ -120,6 +120,11 @@ class AgentState(TypedDict):
     user_id: str
     user_role: str   # "superadmin" | "admin" | "operator" | "readonly" — injected by API auth layer
 
+    # Cluster identity (R1) — populated by context_fetcher; used to scope
+    # reflexion outcomes and pattern hints so that learnings from one cluster
+    # never leak into queries against a different cluster.
+    cluster_id: str
+
 
 # ── Subagent-scoped state (used in Send payload) ───────────────────────────────
 

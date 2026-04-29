@@ -122,6 +122,14 @@ async def context_fetcher(state: AgentState) -> dict:
         f"pods={pod_count} issues={has_issues} warnings={has_warnings} "
         f"playbooks={matched_playbooks} session={session_id}"
     )
+    # Resolve cluster identity (cached for the process lifetime).
+    try:
+        from app.cluster_id import get_cluster_id
+        cluster_id = get_cluster_id()
+    except Exception as exc:
+        logger.warning(f"context_fetcher: cluster_id resolution failed: {exc}")
+        cluster_id = "unknown"
+
     return {
         "cluster_snapshot": cluster_snapshot,
         "snapshot_has_issues": has_issues,
@@ -129,4 +137,5 @@ async def context_fetcher(state: AgentState) -> dict:
         "snapshot_pod_count": pod_count,
         "snapshot_built_at": time.time(),
         "matched_playbooks": matched_playbooks,
+        "cluster_id": cluster_id,
     }

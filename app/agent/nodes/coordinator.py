@@ -660,13 +660,23 @@ async def _direct_answer(state: AgentState, config: RunnableConfig = None) -> di
     return update
 
 
-# ── F5b: outcome extraction & recording for direct-answer path ───────────────
+# ── F5b/v2: outcome extraction & recording for direct-answer path ────────────
 
 _MUTATION_VERBS = ("patch", "apply", "create", "delete", "scale", "set", "rollout", "edit", "replace")
+_NAMESPACE_RE = re.compile(r"(?:^|\s)(?:-n|--namespace)[ =]([a-zA-Z0-9][a-zA-Z0-9\-]*)")
+# Match `namespace: <ns>` inside YAML metadata blocks.
+_YAML_NS_RE = re.compile(r"^\s*namespace:\s*([a-zA-Z0-9][a-zA-Z0-9\-]*)", re.MULTILINE)
+# Transitional pod statuses — verification waits for these to clear.
+_TRANSITIONAL_STATUSES = frozenset({"ContainerCreating", "Pending", "Terminating", "Init", "PodInitializing"})
 
 
 def _ran_mutation(messages: list[BaseMessage]) -> tuple[bool, list[str]]:
-    """Return (mutation_happened, list_of_kubectl_commands_run)."""
+    """Return (mutation_happened, list_of_kubectl_commands_run).
+
+    Inspects AIMessage.tool_calls for `run_kubectl` invocations whose command
+    starts with a mutation verb. Used both as a flag and as input to
+    `_extract_mutation_pairs` for the structured fix payload.
+    """
     commands: list[str] = []
     for msg in messages:
         if not isinstance(msg, AIMessage):
@@ -677,7 +687,6 @@ def _ran_mutation(messages: list[BaseMessage]) -> tuple[bool, list[str]]:
             if not cmd:
                 continue
             head = cmd.strip().split()
-            # Look for `kubectl <verb>` or just `<verb>` (some traces drop the prefix).
             verb_candidates = []
             if head and head[0] == "kubectl" and len(head) > 1:
                 verb_candidates.append(head[1].lower())
@@ -688,12 +697,187 @@ def _ran_mutation(messages: list[BaseMessage]) -> tuple[bool, list[str]]:
     return bool(commands), commands
 
 
-def _maybe_record_direct_outcome(state: AgentState, messages: list[BaseMessage]) -> None:
-    """Persist a moderate-confidence outcome when a direct-answer run included a mutation.
+def _extract_mutation_pairs(messages: list[BaseMessage]) -> list[dict]:
+    """Pair each kubectl mutation command with its stdin YAML if present.
 
-    Fire-and-forget — never blocks the response, never raises. Uses the user's
-    last query as `root_cause` proxy and the kubectl commands actually run as
-    `recommended_fix`. Skipped on read-only queries (no mutation) and SQLite mode.
+    Reads tool_calls for `run_kubectl` and captures both `command` and any
+    of {stdin, stdin_yaml, manifest, yaml} fields where the manifest payload
+    typically lives. Each YAML is redacted via redact_secrets before storage.
+    """
+    from app.utils.redact import redact_secrets
+
+    pairs: list[dict] = []
+    redact = settings.REFLEXION_REDACT_SECRETS
+    for msg in messages:
+        if not isinstance(msg, AIMessage):
+            continue
+        for tc in getattr(msg, "tool_calls", None) or []:
+            args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
+            args = args or {}
+            cmd = args.get("command") or ""
+            if not cmd:
+                continue
+            head = cmd.strip().split()
+            verb_candidates = []
+            if head and head[0] == "kubectl" and len(head) > 1:
+                verb_candidates.append(head[1].lower())
+            elif head:
+                verb_candidates.append(head[0].lower())
+            if not any(v in _MUTATION_VERBS for v in verb_candidates):
+                continue
+            stdin_yaml = (
+                args.get("stdin")
+                or args.get("stdin_yaml")
+                or args.get("manifest")
+                or args.get("yaml")
+                or ""
+            )
+            cmd_clean = redact_secrets(cmd, max_chars=200) if redact else cmd[:200]
+            yaml_clean = redact_secrets(stdin_yaml, max_chars=1500) if redact else (stdin_yaml or "")[:1500]
+            pairs.append({"command": cmd_clean, "stdin_yaml": yaml_clean or None})
+    return pairs
+
+
+def _outcome_key(state: AgentState, namespace: str | None) -> str:
+    """Build a stable structured pattern key (R2)."""
+    cluster_id = state.get("cluster_id") or "unknown"
+    matched = sorted(set(state.get("matched_playbooks") or []))
+    if matched:
+        playbook_part = "+".join(matched)
+        ns_part = f" | ns={namespace}" if namespace else ""
+        return f"playbook={playbook_part}{ns_part} | cluster={cluster_id}"
+
+    # Fallback: query stub (low-quality path; never promotes).
+    last_user = ""
+    for m in reversed(state.get("messages", [])):
+        if hasattr(m, "type") and m.type == "human" and isinstance(m.content, str):
+            last_user = m.content.strip().replace("\n", " ")[:60]
+            break
+    return f"query={last_user} | cluster={cluster_id}"
+
+
+def _infer_namespace(commands: list[str], pairs: list[dict] | None = None) -> str | None:
+    """Pick the most-cited namespace across kubectl args AND stdin YAML metadata.
+
+    `kubectl apply -f -` has no `-n` flag — the namespace is inside the YAML.
+    Without scanning the manifest the namespace column ends up empty.
+    """
+    counts: dict[str, int] = {}
+    for cmd in commands:
+        m = _NAMESPACE_RE.search(cmd)
+        if m:
+            counts[m.group(1)] = counts.get(m.group(1), 0) + 1
+    for pair in (pairs or []):
+        yaml_text = pair.get("stdin_yaml") or ""
+        for m in _YAML_NS_RE.finditer(yaml_text):
+            counts[m.group(1)] = counts.get(m.group(1), 0) + 1
+    if not counts:
+        return None
+    return max(counts.items(), key=lambda kv: kv[1])[0]
+
+
+def _wait_for_rollout(namespace: str, max_wait_s: int = 30, poll_interval_s: float = 2.0) -> None:
+    """Block until pods in `namespace` clear transitional statuses, or timeout.
+
+    A `kubectl apply` returns immediately but the rollout takes seconds. Without
+    waiting, verification snapshots a half-rolled cluster and reports "partial"
+    even when the fix is correct. We poll cheaply via the existing snapshot
+    helper — no extra dependency.
+    """
+    from app.agent.nodes.context_fetcher import _run_kubectl_snapshot
+
+    deadline = time.monotonic() + max_wait_s
+    while time.monotonic() < deadline:
+        pods_out = _run_kubectl_snapshot(["get", "pods", "-n", namespace, "--no-headers"])
+        in_transition = False
+        for line in pods_out.splitlines():
+            cols = line.split()
+            if len(cols) < 3:
+                continue
+            status = cols[2]
+            # `Init:0/1` etc — match the prefix.
+            if status in _TRANSITIONAL_STATUSES or status.startswith("Init:") or status.startswith("PodInitializing"):
+                in_transition = True
+                break
+        if not in_transition:
+            return
+        # Sleep with deadline guard — never overshoot max_wait_s significantly.
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(poll_interval_s, remaining))
+
+
+def _verify_resolution(namespace: str | None, pre_state: dict | None = None) -> tuple[bool | None, str | None]:
+    """Re-snapshot the cluster after a fix to verify resolution (R4).
+
+    Returns (verified_resolved, feedback_label) where:
+      verified_resolved: True if no issues+warnings, False if still broken,
+                         None if verification disabled or failed to run.
+      feedback_label: 'resolved' | 'partial' | 'regression' | None
+    """
+    if not settings.REFLEXION_VERIFY_RESOLUTION:
+        return None, None
+    try:
+        from app.agent.nodes.context_fetcher import _run_kubectl_snapshot, _scan_snapshot
+
+        # Wait for any rolling deployment to settle before snapshotting.
+        # Without this, freshly-applied fixes get penalised for transitional
+        # ContainerCreating / Pending statuses they're about to leave.
+        if namespace:
+            _wait_for_rollout(namespace)
+
+        ns_arg = ["-n", namespace] if namespace else ["--all-namespaces"]
+        pods_out = _run_kubectl_snapshot(["get", "pods", *ns_arg])
+        events_out = _run_kubectl_snapshot([
+            "get", "events", *ns_arg,
+            "--sort-by=.lastTimestamp",
+            "--field-selector=type=Warning",
+        ])
+        has_issues, has_warnings, _ = _scan_snapshot(pods_out, events_out)
+
+        if not has_issues:
+            # Pods are healthy — even if old warning events linger, the fix
+            # is in effect. Stale events are not regressions.
+            return True, "resolved"
+
+        # Still broken — compare with pre-state if provided to detect regression.
+        if pre_state and pre_state.get("had_issues") is False and has_issues:
+            return False, "regression"
+        return False, "partial"
+    except Exception as exc:
+        logger.debug(f"reflexion: verify_resolution failed — {exc}")
+        return None, None
+
+
+def _resolve_confidence(
+    state: AgentState,
+    *,
+    has_playbook: bool,
+    verified: bool | None,
+) -> float:
+    """Confidence resolution table (R5).
+
+    Synthesis path uses model-reported confidence (handled in _synthesize).
+    This is the direct-answer path:
+      verified + playbook  → 0.9 (eligible for promotion)
+      verified, no playbook → 0.7
+      not verified, playbook → 0.7 (rca_outcomes only)
+      not verified, no playbook → 0.5 (low-priority retention)
+    """
+    if verified and has_playbook:
+        return 0.9
+    if verified or has_playbook:
+        return 0.7
+    return 0.5
+
+
+def _maybe_record_direct_outcome(state: AgentState, messages: list[BaseMessage]) -> None:
+    """Persist a structured, verified outcome when a direct-answer run mutated state.
+
+    Fire-and-forget. Skipped on read-only queries and SQLite mode. Verification
+    happens synchronously (one extra ~150ms kubectl pair) so we know whether
+    the outcome is eligible for pattern promotion before we write.
     """
     if not settings.REFLEXION_ENABLED or settings.USE_SQLITE:
         return
@@ -701,25 +885,31 @@ def _maybe_record_direct_outcome(state: AgentState, messages: list[BaseMessage])
     if not mutated:
         return
 
-    # Last user query (the question that drove this fix)
-    last_user = ""
-    for m in reversed(state.get("messages", [])):
-        if hasattr(m, "type") and m.type == "human" and isinstance(m.content, str):
-            last_user = m.content.strip().replace("\n", " ")[:200]
-            break
-    if not last_user:
-        return
+    pairs = _extract_mutation_pairs(messages)
+    # Namespace inference must include stdin YAML — `kubectl apply -f -` has no -n flag.
+    namespace = _infer_namespace(commands, pairs)
 
-    # Final AI text (the explanation accompanying the fix)
-    last_ai = ""
-    for m in reversed(messages):
-        if isinstance(m, AIMessage) and isinstance(m.content, str) and m.content.strip():
-            last_ai = m.content.strip().replace("\n", " ")[:300]
-            break
+    # R4 — verify on cluster (waits for rollout to settle before snapshotting)
+    pre_state = {
+        "had_issues": bool(state.get("snapshot_has_issues")),
+        "had_warnings": bool(state.get("snapshot_has_warnings")),
+    }
+    verified, feedback = _verify_resolution(namespace, pre_state=pre_state)
 
-    fix_summary = " | ".join(commands[:3])  # cap at 3 commands
-    if last_ai:
-        fix_summary = f"{fix_summary} — {last_ai[:200]}"
+    # R2 — structured key
+    key = _outcome_key(state, namespace)
+
+    # R3 — manifest-aware fix payload
+    import json as _json
+    fix_payload = _json.dumps(pairs, ensure_ascii=False)[:8000]
+
+    # R5 — confidence
+    has_playbook = bool(state.get("matched_playbooks"))
+    confidence = _resolve_confidence(state, has_playbook=has_playbook, verified=verified)
+
+    # R1 / R8 — cluster identity + redacted root_cause
+    from app.cluster_id import get_cluster_id
+    cluster_id = state.get("cluster_id") or get_cluster_id()
 
     try:
         import asyncio as _asyncio
@@ -729,14 +919,21 @@ def _maybe_record_direct_outcome(state: AgentState, messages: list[BaseMessage])
         _asyncio.create_task(record_rca_outcome(
             session_id=state.get("session_id", "-"),
             user_id=state.get("user_id", "-"),
-            root_cause=last_user[:120],
-            confidence=0.75,  # moderate — direct path lacks subagent corroboration
-            recommended_fix=fix_summary,
-            outcome_feedback=None,
+            root_cause=key[:240],
+            confidence=confidence,
+            recommended_fix=fix_payload,
+            outcome_feedback=feedback,
+            cluster_id=cluster_id,
+            namespace=namespace,
+            verified_resolved=verified,
+            playbooks_matched=list(state.get("matched_playbooks") or []),
+            created_by_role=state.get("user_role"),
         ))
         logger.info(
-            f"reflexion(direct): recorded outcome session={state.get('session_id', '-')} "
-            f"mutations={len(commands)}"
+            f"reflexion(direct): recorded session={state.get('session_id', '-')} "
+            f"cluster={cluster_id} ns={namespace} verified={verified} "
+            f"confidence={confidence:.2f} mutations={len(pairs)} "
+            f"feedback={feedback}"
         )
     except Exception as exc:
         logger.warning(f"reflexion(direct): failed to schedule outcome write — {exc}")
