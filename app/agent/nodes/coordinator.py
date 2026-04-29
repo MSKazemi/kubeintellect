@@ -277,11 +277,18 @@ Reads (get / describe / logs / top) may still be batched in parallel — only mu
 are restricted. Each mutation triggers an approval gate; batching multiple in one
 response causes redundant approval prompts and can re-queue the unapproved calls.
 
-## Service-Endpoint Cross-Check
-When investigating a namespace with multiple workloads, an empty service endpoint
-is a common silent fault — pods can be Running while their service is unreachable
-because of a selector/label drift. After examining pod statuses, ALWAYS run
-`kubectl get endpoints -n <ns>` and flag any service with ENDPOINTS=<none>.
+## Service-Endpoint Cross-Check (MANDATORY for namespace-level queries)
+On EVERY namespace-level investigation ("check ns X", "what's wrong in X",
+"solve issues in X", "diagnose X"), include these calls in your INITIAL
+parallel tool batch — alongside `get pods` and `get events`:
+
+  - `kubectl get endpoints -n <ns>`
+  - `kubectl get services -n <ns>`
+
+Then flag any service whose ENDPOINTS column is `<none>` while its target pods
+are Running. This is a silent fault — no warning event fires for a selector/label
+drift, so this cross-check is the ONLY way to surface it. Do NOT skip this even
+when the obvious failing pods are already explained.
 
 ## Spec-Before-Logs for CrashLoopBackOff
 When diagnosing a CrashLoop pod, ALWAYS read `spec.containers[].command` and
@@ -645,7 +652,94 @@ async def _direct_answer(state: AgentState, config: RunnableConfig = None) -> di
     logger.debug(
         f"coordinator: direct answer complete new_msgs={len(new_messages)} tool_calls={tool_calls}"
     )
+
+    # F5b — Reflexion: record outcomes from the direct-answer path so future
+    # sessions can learn from successful fixes (not only RCA-fan-out runs).
+    _maybe_record_direct_outcome(state, new_messages)
+
     return update
+
+
+# ── F5b: outcome extraction & recording for direct-answer path ───────────────
+
+_MUTATION_VERBS = ("patch", "apply", "create", "delete", "scale", "set", "rollout", "edit", "replace")
+
+
+def _ran_mutation(messages: list[BaseMessage]) -> tuple[bool, list[str]]:
+    """Return (mutation_happened, list_of_kubectl_commands_run)."""
+    commands: list[str] = []
+    for msg in messages:
+        if not isinstance(msg, AIMessage):
+            continue
+        for tc in getattr(msg, "tool_calls", None) or []:
+            args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
+            cmd = (args or {}).get("command") or ""
+            if not cmd:
+                continue
+            head = cmd.strip().split()
+            # Look for `kubectl <verb>` or just `<verb>` (some traces drop the prefix).
+            verb_candidates = []
+            if head and head[0] == "kubectl" and len(head) > 1:
+                verb_candidates.append(head[1].lower())
+            elif head:
+                verb_candidates.append(head[0].lower())
+            if any(v in _MUTATION_VERBS for v in verb_candidates):
+                commands.append(cmd.strip()[:200])
+    return bool(commands), commands
+
+
+def _maybe_record_direct_outcome(state: AgentState, messages: list[BaseMessage]) -> None:
+    """Persist a moderate-confidence outcome when a direct-answer run included a mutation.
+
+    Fire-and-forget — never blocks the response, never raises. Uses the user's
+    last query as `root_cause` proxy and the kubectl commands actually run as
+    `recommended_fix`. Skipped on read-only queries (no mutation) and SQLite mode.
+    """
+    if not settings.REFLEXION_ENABLED or settings.USE_SQLITE:
+        return
+    mutated, commands = _ran_mutation(messages)
+    if not mutated:
+        return
+
+    # Last user query (the question that drove this fix)
+    last_user = ""
+    for m in reversed(state.get("messages", [])):
+        if hasattr(m, "type") and m.type == "human" and isinstance(m.content, str):
+            last_user = m.content.strip().replace("\n", " ")[:200]
+            break
+    if not last_user:
+        return
+
+    # Final AI text (the explanation accompanying the fix)
+    last_ai = ""
+    for m in reversed(messages):
+        if isinstance(m, AIMessage) and isinstance(m.content, str) and m.content.strip():
+            last_ai = m.content.strip().replace("\n", " ")[:300]
+            break
+
+    fix_summary = " | ".join(commands[:3])  # cap at 3 commands
+    if last_ai:
+        fix_summary = f"{fix_summary} — {last_ai[:200]}"
+
+    try:
+        import asyncio as _asyncio
+
+        from app.db.memory_store import record_rca_outcome
+
+        _asyncio.create_task(record_rca_outcome(
+            session_id=state.get("session_id", "-"),
+            user_id=state.get("user_id", "-"),
+            root_cause=last_user[:120],
+            confidence=0.75,  # moderate — direct path lacks subagent corroboration
+            recommended_fix=fix_summary,
+            outcome_feedback=None,
+        ))
+        logger.info(
+            f"reflexion(direct): recorded outcome session={state.get('session_id', '-')} "
+            f"mutations={len(commands)}"
+        )
+    except Exception as exc:
+        logger.warning(f"reflexion(direct): failed to schedule outcome write — {exc}")
 
 
 async def _synthesize(state: AgentState) -> dict:
