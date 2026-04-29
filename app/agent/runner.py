@@ -64,6 +64,13 @@ def _llm_error_hint(exc: Exception) -> str:
         return "LLM connection failed: check your endpoint URL and network connectivity."
     if "rate limit" in msg or "429" in msg:
         return "LLM rate limit hit — please try again in a moment."
+    if "disallowed shell characters" in msg or "shell metachar" in msg:
+        return (
+            "Command rejected: shell interpolation not allowed. "
+            "Run the pod-lookup and exec as two separate kubectl calls: "
+            "first `kubectl get pods -n <ns> -l <selector> -o jsonpath='{.items[0].metadata.name}'` "
+            "then `kubectl exec -n <ns> -it <pod-name> -- <cmd>`."
+        )
     if "content_filter" in msg or "content management policy" in msg or "responsibleaipolicyviolation" in msg:
         return (
             "Azure content filter blocked this request. "
@@ -118,6 +125,17 @@ async def _emit_event(session_id: str, raw: dict) -> None:
     name = raw.get("name", "")
 
     if kind == "on_chat_model_stream":
+        # Only stream tokens from the coordinator — subagent model outputs are
+        # internal tool results and must not appear in the user-visible SSE stream.
+        #
+        # Subagents are invoked via .invoke() inside the task() tool. Their LLM
+        # calls inherit the parent's callbacks, so they emit on_chat_model_stream
+        # events with additional entries in parent_ids (one per nesting level).
+        # Coordinator events have ≤3 parent_ids (graph run + node run + maybe 1 more).
+        # Subagent events have 4+ parent_ids because they run inside a tool call.
+        parent_ids = raw.get("parent_ids") or []
+        if len(parent_ids) > 3:
+            return  # subagent — skip
         chunk = raw.get("data", {}).get("chunk")
         if chunk and getattr(chunk, "content", None):
             await emit(session_id, TokenEvent(content=chunk.content, session_id=session_id))
@@ -211,6 +229,10 @@ async def run_session(
                 "user_role": user_role,
                 "hitl_bypass": auto_approve,
             },
+            # LangGraph's config-merge path can revert to the 25-step Pregel default
+            # even when the graph was built with .with_config(recursion_limit=9_999).
+            # Explicitly pass 100 here to cover the deepest subagent-nested scenarios.
+            "recursion_limit": 100,
         }
         callbacks = get_langfuse_callbacks()
         if callbacks:

@@ -20,8 +20,9 @@ import subprocess
 import time
 
 from deepagents.backends.utils import create_file_data
-from langchain_core.tools import tool
+from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.types import Command
+from typing import Annotated
 
 from app.core.config import settings
 from app.utils.logger import get_logger
@@ -135,7 +136,7 @@ async def _collect_snapshot() -> tuple[str, dict]:
 
 
 @tool
-async def refresh_snapshot() -> Command:
+async def refresh_snapshot(tool_call_id: Annotated[str, InjectedToolCallId]) -> Command:
     """Refresh the cluster snapshot at /snapshot.md.
 
     Runs `kubectl get pods --all-namespaces` and `kubectl get events
@@ -155,7 +156,7 @@ async def refresh_snapshot() -> Command:
     logger.debug(f"refresh_snapshot: {summary}")
     return Command(update={
         "files": {SNAPSHOT_PATH: create_file_data(content)},
-        "messages": [{"role": "tool", "content": summary, "tool_call_id": "refresh_snapshot"}],
+        "messages": [{"role": "tool", "content": summary, "tool_call_id": tool_call_id}],
     })
 
 
