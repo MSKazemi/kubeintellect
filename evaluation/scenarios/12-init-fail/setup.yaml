@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: scenario-test
+  labels:
+    managed-by: kubeintellect-scenarios
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-with-init
+  namespace: scenario-test
+  labels:
+    scenario: "12-init-fail"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app-with-init
+  template:
+    metadata:
+      labels:
+        app: app-with-init
+        scenario: "12-init-fail"
+    spec:
+      initContainers:
+        - name: db-check
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Checking database connectivity..."
+              # Intentional fault: tries to connect to a non-existent host
+              nc -zw3 db.internal.svc.cluster.local 5432 || exit 1
+      containers:
+        - name: app
+          image: nginx:1.25
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi

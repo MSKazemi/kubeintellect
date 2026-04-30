@@ -1,0 +1,1 @@
+The scheduled backup job db-backup in namespace scenario-test has not run in a long time. No recent job history is visible and there are no pods. The schedule should fire every minute. Investigate why no jobs are being created and identify the fix.

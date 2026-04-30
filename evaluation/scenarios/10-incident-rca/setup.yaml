@@ -1,0 +1,122 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: scenario-test
+  labels:
+    managed-by: kubeintellect-scenarios
+---
+# FAULT 1: web-frontend — Pending (excessive resource request)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-frontend
+  namespace: scenario-test
+  labels:
+    scenario: "10-incident-rca"
+    fault: "pending-resources"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web-frontend
+  template:
+    metadata:
+      labels:
+        app: web-frontend
+        scenario: "10-incident-rca"
+    spec:
+      containers:
+        - name: frontend
+          image: nginx:1.25
+          resources:
+            requests:
+              cpu: 100m
+              memory: 50Gi
+            limits:
+              cpu: 200m
+              memory: 50Gi
+---
+# FAULT 2: api-server — CrashLoopBackOff (bad command)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-server
+  namespace: scenario-test
+  labels:
+    scenario: "10-incident-rca"
+    fault: "crashloop"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-server
+  template:
+    metadata:
+      labels:
+        app: api-server
+        scenario: "10-incident-rca"
+    spec:
+      containers:
+        - name: api
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "FATAL: Database connection string not configured"
+              exit 1
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+---
+# FAULT 3: db-connector — Running but service has 0 endpoints (selector mismatch)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db-connector
+  namespace: scenario-test
+  labels:
+    scenario: "10-incident-rca"
+    fault: "selector-mismatch"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: db-connector-v1
+  template:
+    metadata:
+      labels:
+        app: db-connector-v1
+        scenario: "10-incident-rca"
+    spec:
+      containers:
+        - name: db
+          image: nginx:1.25
+          ports:
+            - containerPort: 5432
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: db-service
+  namespace: scenario-test
+  labels:
+    scenario: "10-incident-rca"
+spec:
+  selector:
+    # Intentional fault: selects db-connector-v2, pod has db-connector-v1
+    app: db-connector-v2
+  ports:
+    - port: 5432
+      targetPort: 5432
