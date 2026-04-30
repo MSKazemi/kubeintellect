@@ -1,0 +1,64 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: scenario-test
+  labels:
+    managed-by: kubeintellect-scenarios
+---
+# ConfigMap exists and has valid data — but pod mounts a specific key
+# that doesn't exist inside it (app.properties vs app.conf)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: scenario-test
+  labels:
+    scenario: "25-configmap-volume-key"
+data:
+  app.properties: |
+    log.level=info
+    server.port=8080
+  feature-flags.yaml: |
+    enable_cache: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: config-reader
+  namespace: scenario-test
+  labels:
+    scenario: "25-configmap-volume-key"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: config-reader
+  template:
+    metadata:
+      labels:
+        app: config-reader
+        scenario: "25-configmap-volume-key"
+    spec:
+      containers:
+        - name: app
+          image: busybox:1.36
+          command: ["sh", "-c", "cat /etc/config/app.conf && sleep 3600"]
+          volumeMounts:
+            - name: config-vol
+              mountPath: /etc/config/app.conf
+              # Intentional fault: subPath key is app.conf but ConfigMap has app.properties
+              subPath: app.conf
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+      volumes:
+        - name: config-vol
+          configMap:
+            name: app-config
+            items:
+              - key: app.conf       # fault: key is app.properties, not app.conf
+                path: app.conf

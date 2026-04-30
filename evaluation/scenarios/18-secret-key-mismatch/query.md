@@ -1,0 +1,1 @@
+The deployment api-app in namespace scenario-test cannot start. The pod is stuck with a configuration error. The team has confirmed that all required Secrets exist in the namespace. Investigate the exact cause and identify what needs to be fixed.

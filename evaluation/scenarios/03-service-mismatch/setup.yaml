@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: scenario-test
+  labels:
+    managed-by: kubeintellect-scenarios
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-v1
+  namespace: scenario-test
+  labels:
+    scenario: "03-service-mismatch"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend-v1
+  template:
+    metadata:
+      labels:
+        # Fault: pod has label app=backend-v1
+        # but service below selects app=backend-v2
+        app: backend-v1
+        scenario: "03-service-mismatch"
+    spec:
+      containers:
+        - name: backend
+          image: nginx:1.25
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: scenario-test
+  labels:
+    scenario: "03-service-mismatch"
+spec:
+  selector:
+    # Intentional fault: selects backend-v2 but pod is labeled backend-v1
+    app: backend-v2
+  ports:
+    - port: 80
+      targetPort: 80

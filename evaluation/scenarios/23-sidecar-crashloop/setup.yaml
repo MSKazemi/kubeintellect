@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: scenario-test
+  labels:
+    managed-by: kubeintellect-scenarios
+---
+# FAULT: sidecar container log-shipper exits immediately (bad command).
+# The main app (nginx) is healthy and serving traffic, but the pod keeps
+# restarting because Kubernetes restarts all containers when any one crashes.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+  namespace: scenario-test
+  labels:
+    scenario: "23-sidecar-crashloop"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+        scenario: "23-sidecar-crashloop"
+    spec:
+      containers:
+        - name: app
+          image: nginx:1.25
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+        - name: log-shipper
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              # Intentional fault: tries to ship logs to a non-existent endpoint;
+              # exits with code 1 immediately
+              echo "ERROR: cannot connect to log-aggregator.internal:5170"
+              exit 1
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi

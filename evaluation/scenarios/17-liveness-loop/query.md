@@ -1,0 +1,1 @@
+The deployment app-server in namespace scenario-test keeps restarting even though the application logs look normal. The team says the app itself is working fine. Investigate why Kubernetes keeps killing the container and identify what is triggering the restarts.

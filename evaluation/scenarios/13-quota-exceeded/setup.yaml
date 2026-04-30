@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: scenario-test
+  labels:
+    managed-by: kubeintellect-scenarios
+---
+# Tight quota: only 1 CPU total allowed in this namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: tight-quota
+  namespace: scenario-test
+  labels:
+    scenario: "13-quota-exceeded"
+spec:
+  hard:
+    requests.cpu: "200m"
+    limits.cpu: "400m"
+    requests.memory: "256Mi"
+    limits.memory: "512Mi"
+    pods: "2"
+---
+# This deployment requests more CPU than the quota allows
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: quota-buster
+  namespace: scenario-test
+  labels:
+    scenario: "13-quota-exceeded"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: quota-buster
+  template:
+    metadata:
+      labels:
+        app: quota-buster
+        scenario: "13-quota-exceeded"
+    spec:
+      containers:
+        - name: app
+          image: nginx:1.25
+          resources:
+            requests:
+              cpu: 150m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
