@@ -87,6 +87,11 @@ DEFAULT_KEY   = (
     or os.environ.get("KUBEINTELLECT_ADMIN_KEYS", "").split(",")[0]
     or ""
 )
+TARGET_URLS: dict[str, str] = {
+    "v1": "http://api-v1.kubeintellect.local",
+    "v2": "http://api.kubeintellect.local",
+    "v3": "http://api-v3.kubeintellect.local",
+}
 K8S_NAMESPACE = "scenario-test"
 
 
@@ -614,7 +619,10 @@ def run_stress(args) -> None:
 
 def _cli() -> None:
     parser = argparse.ArgumentParser(description="KubeIntellect evaluation runner")
-    parser.add_argument("--api-url", default=DEFAULT_URL)
+    parser.add_argument("--api-url", default=None,
+                        help="API base URL (overrides --target)")
+    parser.add_argument("--target", choices=["v1", "v2", "v3"], default="v2",
+                        help="Version to target: v1|v2|v3 (sets default API URL)")
     parser.add_argument("--api-key", default=DEFAULT_KEY)
     parser.add_argument("--tag", default="", help="Label for output directory")
     parser.add_argument("--no-auto-approve", dest="auto_approve",
@@ -640,6 +648,8 @@ def _cli() -> None:
     rp.add_argument("--follow-up-text", default=None,
                     help="Override the default follow-up reply "
                          f"(default: {DEFAULT_FOLLOW_UP!r})")
+    rp.add_argument("--categories", default=None,
+                    help="Comma-separated category filter (e.g. debugging,deployment)")
 
     # csv — bulk query testing
     cp = sub.add_parser("csv", help="Run queries from a CSV file")
@@ -652,6 +662,10 @@ def _cli() -> None:
     sp.add_argument("--query",       default=None, help="Query to repeat")
 
     args = parser.parse_args()
+
+    # Resolve API URL: explicit --api-url > target preset > env default
+    if args.api_url is None:
+        args.api_url = TARGET_URLS.get(args.target, DEFAULT_URL)
 
     if args.mode == "run":
         asyncio.run(run_scenarios(args))

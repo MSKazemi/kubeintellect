@@ -78,3 +78,25 @@ def test_list_scenarios_filters_by_category(tmp_path, monkeypatch):
     result = list_scenarios(category_filter={"debugging"})
     assert len(result) == 1
     assert result[0].name == "01-crashloop"
+
+
+def test_target_urls_dict_exists():
+    from evaluation.runner import TARGET_URLS
+    assert "v1" in TARGET_URLS
+    assert "v2" in TARGET_URLS
+    assert "v3" in TARGET_URLS
+
+
+def test_target_v2_url():
+    from evaluation.runner import TARGET_URLS
+    assert TARGET_URLS["v2"] == "http://api.kubeintellect.local"
+
+
+def test_target_v3_url():
+    from evaluation.runner import TARGET_URLS
+    assert TARGET_URLS["v3"] == "http://api-v3.kubeintellect.local"
+
+
+def test_target_v1_url():
+    from evaluation.runner import TARGET_URLS
+    assert TARGET_URLS["v1"] == "http://api-v1.kubeintellect.local"
