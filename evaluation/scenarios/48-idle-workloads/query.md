@@ -1,0 +1,1 @@
+Find all deployments with near-zero CPU usage (below 1 millicpu average) over the last hour that could safely be scaled to zero during off-hours. Show the deployment name, namespace, and current replica count.

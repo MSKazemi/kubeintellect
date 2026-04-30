@@ -1,0 +1,1 @@
+Find all pods that consume Kubernetes Secrets as plain environment variables (via env[].valueFrom.secretKeyRef) rather than projected volume mounts. List the pod name, namespace, container, and which secret they reference.

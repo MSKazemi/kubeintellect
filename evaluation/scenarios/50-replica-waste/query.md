@@ -1,0 +1,1 @@
+Which deployments have more than 2 replicas but consistent per-replica CPU below 5 millicpu over the last hour? Show the deployment name, replica count, total CPU usage, and per-replica average. Explain the math.
