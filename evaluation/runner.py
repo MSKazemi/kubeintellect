@@ -272,7 +272,7 @@ def _fetch_app_logs(tail: int = 200) -> str:
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
-def _write_metadata(out_dir: Path, tag: str, mode: str, api_url: str) -> None:
+def _write_metadata(out_dir: Path, tag: str, mode: str, api_url: str, target: str = "v2") -> None:
     try:
         commit = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
     except Exception:
@@ -281,6 +281,7 @@ def _write_metadata(out_dir: Path, tag: str, mode: str, api_url: str) -> None:
         "date": datetime.now(timezone.utc).isoformat(),
         "tag": tag, "mode": mode,
         "git_commit": commit, "api_url": api_url,
+        "target": target,
     }, indent=2))
 
 
@@ -295,19 +296,24 @@ def _open_csv(out_dir: Path, fields: list[str]):
 # ── Mode: run (scenarios) ─────────────────────────────────────────────────────
 
 async def run_scenarios(args) -> None:
+    category_filter: set[str] | None = None
+    if getattr(args, "categories", None):
+        category_filter = set(c.strip() for c in args.categories.split(",") if c.strip())
+
     scenarios = list_scenarios(
         prefix_filter=args.scenario,
         scored_only=args.scored,
+        category_filter=category_filter,
     )
     if not scenarios:
         print("No scenarios matched. Check evaluation/scenarios/ and your filters.")
         return
 
-    tag     = args.tag or "run"
+    tag     = args.tag or args.target
     ts      = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     out_dir = RUNS_DIR / f"{tag}_{ts}"
     out_dir.mkdir(parents=True, exist_ok=True)
-    _write_metadata(out_dir, tag, "run", args.api_url)
+    _write_metadata(out_dir, tag, "run", args.api_url, target=args.target)
 
     client   = KubeIntellectClient(api_url=args.api_url, api_key=args.api_key)
     langfuse = LangfuseCollector()
@@ -419,7 +425,7 @@ async def run_scenarios(args) -> None:
 
         # Cluster verification — must run BEFORE fault cleanup
         cluster_resolved: bool | None = None
-        if sc["setup"] and sc["verify"] and not result.had_error:
+        if sc["verify"] and not result.had_error:
             cluster_resolved = _verify_cluster(sc["verify"])
             if cluster_resolved is False and status == "ok":
                 status = "unresolved"
@@ -468,6 +474,8 @@ async def run_scenarios(args) -> None:
             follow_up_sent=follow_up_sent,
             num_turns=len(turns),
             turns=turns,
+            version=args.target,
+            category=sc.get("category", ""),
         )
         all_records.append(record)
         save_record_json(record, out_dir / f"{sc['id']}.json")
