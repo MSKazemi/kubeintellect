@@ -131,7 +131,7 @@ def test_compute_rqb_table_averages(tmp_path):
     ])
     table = compute_rqb_table([run])
     assert table[0]["avg_judge_score"] == 30.0
-    assert table[0]["judge_pass_rate_pct"] == 50.0   # 1 of 2 >= 28
+    assert table[0]["judge_pass_rate_pct"] == 50.0   # 1 of 2 > 28 (28.0 itself does not pass)
     assert table[0]["avg_latency_s"] == 15.0
     assert table[0]["avg_tokens"] == 1500
 
