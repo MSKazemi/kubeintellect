@@ -13,10 +13,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 try:
+    from scipy import stats as scipy_stats
+    _SCIPY_AVAILABLE = True
+except ImportError:
+    _SCIPY_AVAILABLE = False
+
+try:
     import matplotlib.pyplot as plt
     import matplotlib.patches as mpatches
     import numpy as np
-    from scipy import stats as scipy_stats
     _PLOT_AVAILABLE = True
 except ImportError:
     _PLOT_AVAILABLE = False
@@ -199,7 +204,7 @@ def compute_issue_table(runs: list[RunSummary]) -> list[dict]:
 
 def chi_squared_rqa(runs: list[RunSummary]) -> str:
     """Chi-squared test on resolution counts across versions."""
-    if not _PLOT_AVAILABLE or len(runs) < 2:
+    if not _SCIPY_AVAILABLE or len(runs) < 2:
         return "N/A (scipy not available or <2 runs)"
     contingency = []
     for run in runs:
@@ -220,7 +225,7 @@ def chi_squared_rqa(runs: list[RunSummary]) -> str:
 
 def wilcoxon_rqb(runs: list[RunSummary]) -> str:
     """Paired Wilcoxon test on judge scores between first two versions."""
-    if not _PLOT_AVAILABLE or len(runs) < 2:
+    if not _SCIPY_AVAILABLE or len(runs) < 2:
         return "N/A (scipy not available or <2 runs)"
     r1, r2 = runs[0], runs[1]
     scores1 = {r.scenario_id: r.judge_total for r in r1.records if r.judge_total is not None}
@@ -241,7 +246,7 @@ def wilcoxon_rqb(runs: list[RunSummary]) -> str:
 
 def mannwhitney_rqc(runs: list[RunSummary]) -> dict[str, str]:
     """Mann-Whitney U test per category between first two versions."""
-    if not _PLOT_AVAILABLE or len(runs) < 2:
+    if not _SCIPY_AVAILABLE or len(runs) < 2:
         return {cat: "N/A (scipy not available)" for cat in CATEGORIES}
     r1, r2 = runs[0], runs[1]
     results: dict[str, str] = {}
