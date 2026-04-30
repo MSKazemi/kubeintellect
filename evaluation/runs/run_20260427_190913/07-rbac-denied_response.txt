@@ -1,0 +1,48 @@
+INVESTIGATION_PLAN:
+1. Verify the service account `limited-sa` exists in the `scenario-test` namespace.
+2. Check the role or role binding associated with `limited-sa` to confirm its permissions.
+3. Identify if the role binding grants the necessary permissions to list pods.
+4. Suggest and apply a fix if permissions are insufficient.
+
+Let's proceed with the tool calls.### Findings:
+1. **Service Account `limited-sa`**: Access to inspect the service account directly is restricted for security reasons.
+2. **Role Bindings in `scenario-test` Namespace**: No role bindings were found in the `scenario-test` namespace. This indicates that `limited-sa` does not have any permissions assigned within the namespace.
+3. **Cluster Role Bindings**: A large number of cluster role bindings exist, but the output was truncated. None of the visible bindings appear to reference `limited-sa`.
+
+### Root Cause:
+The service account `limited-sa` does not have any role binding granting it permissions to list pods in the `scenario-test` namespace. Without a role binding, the service account cannot perform actions requiring specific permissions.
+
+### Fix Recommendation:
+Create a role binding in the `scenario-test` namespace to grant `limited-sa` the necessary permissions to list pods. Here's the YAML manifest for the role and role binding:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: scenario-test
+  name: pod-reader
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  namespace: scenario-test
+  name: limited-sa-pod-reader-binding
+subjects:
+- kind: ServiceAccount
+  name: limited-sa
+  namespace: scenario-test
+roleRef:
+  kind: Role
+  name: pod-reader
+  apiGroup: rbac.authorization.k8s.io
+```
+
+### Next Steps:
+1. Apply the above YAML manifest to the cluster.
+2. Verify that `limited-sa` can now list pods in the `scenario-test` namespace.
+
+Would you like me to apply this fix?

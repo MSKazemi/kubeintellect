@@ -1,0 +1,27 @@
+INVESTIGATION_PLAN:
+- Describe the pod `memory-hog` in namespace `scenario-test` to check its detailed status, including container restart reasons and resource limits.
+- Query Prometheus for memory usage metrics of the pod `memory-hog` to confirm if it is exceeding its memory limits.
+- Query Loki for logs from the pod `memory-hog` to identify any memory-related errors or other issues.
+
+Proceeding with the tool calls.### Findings:
+
+1. **Pod Description**:
+   - The pod `memory-hog` in namespace `scenario-test` is running with a memory limit of **64Mi** and a request of **32Mi**.
+   - The container executes a command that allocates approximately **100MB** of memory using `dd`, which exceeds the memory limit of 64Mi.
+   - The pod has not restarted yet, but the command is designed to trigger an **OOMKilled** event due to memory allocation exceeding the limit.
+
+2. **Prometheus Metrics**:
+   - No memory usage data was available for the pod `memory-hog`. This could be due to the pod being newly created or metrics not being scraped yet.
+
+3. **Loki Logs**:
+   - No logs containing memory-related errors were found for the pod `memory-hog`. This aligns with the fact that the pod has not yet restarted or encountered an OOMKilled event.
+
+### Conclusion:
+The pod `memory-hog` is designed to allocate memory beyond its limit (64Mi), which will result in an **OOMKilled** event. While the pod has not restarted yet, the described behavior and resource limits confirm that the issue is indeed memory-related.
+
+### Recommendation:
+To prevent the pod from being OOMKilled:
+- Increase the memory limit for the container to accommodate the memory allocation (e.g., set the limit to 128Mi or higher).
+- Alternatively, modify the container's command to allocate less memory (e.g., reduce the `dd` allocation to fit within the 64Mi limit).
+
+Would you like me to apply a fix to adjust the memory limit or modify the container's command?

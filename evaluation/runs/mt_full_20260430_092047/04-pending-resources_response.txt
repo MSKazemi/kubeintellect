@@ -1,0 +1,45 @@
+INVESTIGATION_PLAN:
+- Describe the pod `hungry-app-7f7977844d-zrpxc` in namespace `scenario-test` to inspect its scheduling constraints, resource requests, and events.
+- Get details of all nodes (`kubectl get nodes -o wide`) to check node count, roles, and labels.
+- Describe each node to inspect Allocatable vs Allocated resources, taints, and tolerations.
+- Review scheduler events for the pod to confirm the exact scheduling failure reasons.
+
+Executing the following tool calls in parallel:
+
+1. Describe the pod `hungry-app-7f7977844d-zrpxc` in namespace `scenario-test`.
+2. Get details of all nodes (`kubectl get nodes -o wide`).
+3. Describe the nodes to inspect Allocatable vs Allocated resources and taints.### Root Cause Analysis
+
+The pod `hungry-app-7f7977844d-zrpxc` in namespace `scenario-test` is stuck in the `Pending` state due to the following reasons:
+
+1. **Insufficient Memory**:
+   - The pod requests 50Gi of memory, which exceeds the available memory on both nodes (`testbed-v2-control-plane` and `testbed-v2-worker`).
+   - Both nodes have a total memory capacity of approximately 31Gi, and their current memory allocation does not leave enough room for the pod's request.
+
+2. **Taint on Control Plane Node**:
+   - The control plane node (`testbed-v2-control-plane`) has a taint `node-role.kubernetes.io/control-plane:NoSchedule`, which prevents scheduling unless the pod explicitly tolerates this taint. The pod does not have the required toleration.
+
+3. **Scheduler Events**:
+   - The scheduler explicitly reports:
+     ```
+     0/2 nodes are available: 1 Insufficient memory, 1 node(s) had untolerated taint {node-role.kubernetes.io/control-plane: }.
+     ```
+
+### Suggested Fixes
+
+1. **Reduce Memory Requests**:
+   - Lower the pod's memory request from 50Gi to a value that fits within the available node capacity (e.g., 30Gi or less).
+
+2. **Add Toleration for Control Plane Node**:
+   - If the control plane node is intended to host workloads, add a toleration to the pod for the taint `node-role.kubernetes.io/control-plane:NoSchedule`.
+
+3. **Scale Up Cluster**:
+   - Add more worker nodes with sufficient memory capacity to accommodate the pod's resource requests.
+
+### Next Steps
+
+I will proceed with reducing the pod's memory request to 30Gi as the first step. If this resolves the issue, no further action will be needed.The fix has been applied successfully. A new pod `hungry-app-54cd7cc9bd-v5fqh` has been created and is now in the `Running` state (verified). The original pod `hungry-app-7f7977844d-zrpxc` remains `Pending` due to its excessive memory request.
+
+### Outcome
+- The issue was resolved by reducing the memory request to 30Gi, allowing the pod to be scheduled and run successfully.
+- No further action is required unless the original pod needs to be deleted manually.

@@ -1,0 +1,89 @@
+INVESTIGATION_PLAN:
+- Check the service `probe-service` in namespace `scenario-test` to confirm its existence and inspect its selector.
+- Check the endpoints for `probe-service` to verify if there are any backing pods.
+- Inspect the labels on the pods in `scenario-test` to ensure they match the service selector.
+- Verify the readiness probe configuration for the pods in `probe-app` deployment to ensure they are passing and the pods are truly ready.
+
+Proceeding with parallel tool calls.### Findings:
+1. **Service Configuration**:
+   - The service `probe-service` exists in the `scenario-test` namespace.
+   - It is configured with a selector `app=probe-app`.
+
+2. **Endpoints**:
+   - The service `probe-service` has no endpoints (`ENDPOINTS` column is empty). This indicates that no pods are considered "ready" to serve traffic.
+
+3. **Pod Labels**:
+   - The pod `probe-app-5d7689bb5-dtjtt` has the label `app=probe-app`, which matches the service selector. However, the pod is not "Ready".
+
+4. **Pod Readiness Probe**:
+   - The readiness probe for the container in the pod is configured as:
+     ```
+     http-get http://:9999/ delay=5s timeout=1s period=5s #success=1 #failure=3
+     ```
+   - The probe is failing with the error:
+     ```
+     Readiness probe failed: Get "http://10.244.1.120:9999/": dial tcp 10.244.1.120:9999: connect: connection refused
+     ```
+   - The container is running but not ready because the readiness probe is targeting port `9999`, which is not exposed or bound by the container.
+
+### Root Cause:
+The readiness probe is misconfigured. The container is running an `nginx` image, which typically serves traffic on port `80`. However, the readiness probe is attempting to check port `9999`, which is not bound by the container, leading to connection refusal.
+
+### Suggested Fix:
+Update the readiness probe in the deployment `probe-app` to target port `80` instead of `9999`.
+
+### Fix Command:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: probe-app
+  namespace: scenario-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: probe-app
+  template:
+    metadata:
+      labels:
+        app: probe-app
+        scenario: 08-probe-fail
+    spec:
+      containers:
+      - name: app
+        image: nginx:1.25
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          timeoutSeconds: 1
+          periodSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+```
+
+I will apply this fix now.### Post-Fix Verification:
+1. **Deployment Update**:
+   - The deployment `probe-app` was successfully updated with the corrected readiness probe targeting port `80`.
+
+2. **Pod State**:
+   - A new pod `probe-app-5dfbc7f545-mgtxd` has been created, but it is still in the `Running` state with `0/1` readiness.
+
+3. **Service Endpoints**:
+   - The service `probe-service` still has no endpoints (`ENDPOINTS` column is empty). This indicates that the pods are not yet passing the readiness probe.
+
+### Next Steps:
+The readiness probe may require additional time to stabilize. I will monitor the pod readiness and service endpoints for a few moments to confirm if the fix resolves the issue.### Final Verification:
+1. **Pod State**:
+   - The new pod `probe-app-5dfbc7f545-mgtxd` is now `1/1 Ready` and running successfully.
+   - The old pod `probe-app-5d7689bb5-dtjtt` is terminating, as expected after the deployment update.
+
+2. **Service Endpoints**:
+   - The service `probe-service` now has an active endpoint: `10.244.1.121:80`. This confirms that the pod is passing the readiness probe and is registered as a backend for the service.
+
+### Resolution:
+The issue has been resolved. The readiness probe was corrected to target port `80`, allowing the pod to pass the probe and register with the service. Traffic can now reach the app successfully.

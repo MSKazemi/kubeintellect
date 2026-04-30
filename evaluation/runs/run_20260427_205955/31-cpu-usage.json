@@ -1,0 +1,1092 @@
+{
+  "query_id": "31-cpu-usage",
+  "title": "31-cpu-usage",
+  "session_id": "eval-20260427_205955-31-cpu-usage",
+  "run_id": "run_20260427_205955",
+  "result": {
+    "session_id": "eval-20260427_205955-31-cpu-usage",
+    "query_id": "31-cpu-usage",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Which pods are consuming the most CPU right now?"
+      }
+    ],
+    "final_text": "The pods consuming the most CPU right now are:\n\n1. **langfuse-clickhouse-69bf5f8b54-chrqf**: 0.319 CPU seconds per second\n2. **kube-apiserver-testbed-v2-control-plane**: 0.181 CPU seconds per second\n3. **langfuse-web-67f656c5d-mlxnk**: 0.093 CPU seconds per second\n4. **etcd-testbed-v2-control-plane**: 0.069 CPU seconds per second\n5. **langfuse-worker-867b4d6567-5htzt**: 0.052 CPU seconds per second\n\nThese values represent the average CPU usage over the last 5 minutes.",
+    "events": [
+      {
+        "type": "start",
+        "data": {
+          "protocol_version": "1.0",
+          "object": "stream.start",
+          "session_id": "eval-20260427_205955-31-cpu-usage"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "loading",
+          "message": "Loading conversation context\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "snapshot",
+          "message": "Fetching cluster snapshot\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "analyzing",
+          "message": "Analyzing your request\u2026"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "query_prometheus",
+          "message": "Calling query_prometheus"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "query_prometheus",
+          "output": "PromQL (instant): sum(rate(container_cpu_usage_seconds_total[5m])) by (pod)\nSeries: 31\n  [pod=kube-prometheus-stack-prometheus-node-exporter-l6hkp] = 0.004430458183180005\n  [pod=kube-proxy-tnfrv] = 0.0009742339708495714\n  [pod=kube-apiserver-testbed-v2-control-plane] = 0.18142468313740973\n  [pod=coredns-7db6d8ff4d-xc95d] = 0.0052850964446577425\n  [pod=langfuse-clickhouse-69bf5f8b54-chrqf] = 0.31900019706702176\n  [pod=langfuse-web-67f656c5d-mlxnk] = 0.09371819550821234\n  [pod=kube-prometheus-stac"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pods"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " consuming"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " most"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " CPU"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " right"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " now"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " are"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "1"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "lang"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "f"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "use"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-click"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "house"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "69"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "bf"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "5"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "f"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "8"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "b"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "54"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-ch"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "rq"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "f"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "0"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "319"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " CPU"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " seconds"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " per"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " second"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "k"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ube"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-ap"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "iser"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ver"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "bed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-v"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-control"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-plane"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "0"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "181"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " CPU"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " seconds"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " per"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " second"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "3"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "lang"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "f"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "use"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-web"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "67"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "f"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "656"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "c"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "5"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "d"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "mlx"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "nk"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "0"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "093"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " CPU"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " seconds"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " per"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " second"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "4"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "et"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "cd"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "bed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-v"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-control"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-plane"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "0"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "069"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " CPU"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " seconds"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " per"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " second"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "5"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "lang"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "f"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "use"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-worker"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "867"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "b"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "4"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "d"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "656"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "7"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "5"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ht"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "zt"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "0"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "052"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " CPU"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " seconds"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " per"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " second"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "These"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " values"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " represent"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " average"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " CPU"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " usage"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " over"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " last"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "5"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " minutes"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      }
+    ],
+    "had_hitl": false,
+    "had_error": false,
+    "error_message": null,
+    "latency_ms": 4660.616636276245,
+    "start_ts": 1777325351.5506938,
+    "end_ts": 1777325356.2113104,
+    "tool_calls": [
+      "query_prometheus"
+    ],
+    "tool_errors": [],
+    "status_phases": [
+      "loading",
+      "snapshot",
+      "analyzing"
+    ],
+    "hitl_commands": []
+  },
+  "trace": {
+    "trace_id": "18d99ee7120c98facc1ae8d10260ebaa",
+    "session_id": "eval-20260427_205955-31-cpu-usage",
+    "total_tokens": 7918,
+    "total_latency_ms": 3.283,
+    "generations": [
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 4320,
+        "completion_tokens": 160,
+        "latency_ms": 1.982
+      },
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 3402,
+        "completion_tokens": 36,
+        "latency_ms": 1.301
+      }
+    ],
+    "tool_spans": [
+      {
+        "name": "query_prometheus",
+        "input_args": "{'promql': 'sum(rate(container_cpu_usage_seconds_total[5m])) by (pod)', 'range_minutes': 0}",
+        "output": "{'content': 'PromQL (instant): sum(rate(container_cpu_usage_seconds_total[5m])) by (pod)\\nSeries: 31\\n  [pod=kube-prometheus-stack-prometheus-node-exporter-l6hkp] = 0.004430458183180005\\n  [pod=kube-proxy-tnfrv] = 0.0009742339708495714\\n  [pod=kube-apiserver-testbed-v2-control-plane] = 0.18142468313740973\\n  [pod=coredns-7db6d8ff4d-xc95d] = 0.0052850964446577425\\n  [pod=langfuse-clickhouse-69bf5f8b54-chrqf] = 0.31900019706702176\\n  [pod=langfuse-web-67f656c5d-mlxnk] = 0.09371819550821234\\n  [pod",
+        "error": null,
+        "latency_ms": 0.218
+      }
+    ],
+    "has_error": false,
+    "error_messages": [],
+    "available": true
+  },
+  "logs": {
+    "session_id": "eval-20260427_205955-31-cpu-usage",
+    "lines": [],
+    "error_count": 0,
+    "warning_count": 0,
+    "kubectl_commands": [],
+    "hitl_events": [],
+    "available": true
+  },
+  "scores": {
+    "completion": 1.0,
+    "tool_correctness": 1.0,
+    "error_free": 1.0,
+    "hitl_discipline": 1.0,
+    "latency": 0.8446461121241251,
+    "notes": []
+  },
+  "aggregate_score": 0.9845,
+  "review_verdict": null,
+  "timestamp": "2026-04-27T21:29:22.284103+00:00",
+  "trace_issues": [
+    {
+      "id": "TOKEN_EXPLOSION",
+      "severity": "HIGH",
+      "detail": "Prompt grew by 918 tokens across LLM calls (3402 \u2192 4320). Tool output fed raw into next prompt without summarization."
+    }
+  ]
+}

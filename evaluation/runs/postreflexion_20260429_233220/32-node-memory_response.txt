@@ -1,0 +1,6 @@
+INVESTIGATION_PLAN:
+- Query Prometheus for current memory utilization across all nodes.
+- Check for memory pressure conditions on nodes using Prometheus metrics.
+
+Proceeding with parallel tool calls to gather this information.- **Current Memory Utilization**: The cluster's memory utilization is approximately **59.49%**.
+- **Memory Pressure Status**: No nodes are currently under memory pressure. Both `testbed-v2-worker` and `testbed-v2-control-plane` nodes report `MemoryPressure=false`.

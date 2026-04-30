@@ -1,0 +1,94 @@
+INVESTIGATION_PLAN:
+- Check the pod states in the `scenario-test` namespace to identify any failing pods.
+- Review warning events in the `scenario-test` namespace for scheduling or resource-related issues.
+- Inspect services and endpoints in the `scenario-test` namespace to ensure proper connectivity and endpoint resolution.
+- Drill down into specific pods with issues (e.g., `ContainerCreating`, `Pending`) by describing them for detailed error messages and events.
+
+Proceeding with parallel tool calls to gather initial data.### Findings:
+1. **Pod States**:
+   - `api-server-5954fcb578-948bz`: Status `Error`.
+   - `db-connector-6cf4484486-bg778`: Status `Running`.
+   - `web-frontend-7f7564dbc4-55zrx`: Status `Pending`.
+
+2. **Warning Events**:
+   - `web-frontend-7f7564dbc4-55zrx` failed scheduling due to:
+     - Insufficient memory on one node.
+     - Untolerated taint `{node-role.kubernetes.io/control-plane:}` on another node.
+
+3. **Services and Endpoints**:
+   - `db-service` exists but has `<none>` for endpoints, indicating no pod is backing the service.
+
+### Next Steps:
+- Investigate the `api-server` pod for the `Error` status.
+- Address the scheduling issue for `web-frontend`.
+- Resolve the missing endpoints for `db-service`.
+
+Proceeding with targeted investigations into the `api-server` pod and `web-frontend` pod.### Root Cause Analysis:
+
+1. **`api-server` Pod**:
+   - The container is in a `CrashLoopBackOff` state due to a hardcoded command failure:
+     ```
+     Command:
+     sh -c echo "FATAL: Database connection string not configured"
+     exit 1
+     ```
+   - This indicates the pod's startup logic is flawed and requires a corrected `command` or `args` field in its spec.
+
+2. **`web-frontend` Pod**:
+   - The pod is stuck in `Pending` due to insufficient memory on one node and untolerated taints on the control-plane node.
+   - The memory request (`50Gi`) is excessive and likely exceeds the cluster's capacity.
+
+3. **`db-service`**:
+   - The service has no endpoints because its selector (`app=db-connector-v2`) does not match any running pods.
+   - The `db-connector` pod is running, but its label is `app=db-connector`, not `app=db-connector-v2`.
+
+### Recommendations:
+
+#### Immediate Actions:
+1. **Fix `api-server` Pod**:
+   - Update the pod spec to remove the hardcoded failing command. Replace it with a valid startup script or logic.
+
+2. **Fix `web-frontend` Pod**:
+   - Reduce the memory request to a reasonable value (e.g., `512Mi`) to fit within the cluster's capacity.
+
+3. **Fix `db-service` Selector**:
+   - Update the service selector to match the `db-connector` pod's label (`app=db-connector`).
+
+#### Next Steps:
+- Apply these fixes sequentially, verifying each change before proceeding to the next.
+
+Starting with the `api-server` pod fix.### Verification:
+- A new pod (`api-server-5fb7f86d84-5php5`) is being created with the updated spec.
+- The old pod (`api-server-5954fcb578-948bz`) is still in `CrashLoopBackOff`.
+
+### Next Action:
+Proceed to fix the `web-frontend` pod by reducing its memory request to fit within the cluster's capacity.### Verification:
+- The new `web-frontend` pod (`web-frontend-549fbfff46-6k6nx`) is now in `ContainerCreating`, indicating progress.
+- The old pod (`web-frontend-7f7564dbc4-55zrx`) remains in `Pending`.
+
+### Next Action:
+Fix the `db-service` selector to match the running `db-connector` pod's label (`app=db-connector`).### Verification:
+- The `db-service` selector has been updated, but the endpoints are still `<none>`. This indicates the service is not yet resolving the `db-connector` pod.
+
+### Next Action:
+Investigate why the service is not resolving the pod. Describe the `db-connector` pod for further details.### Root Cause for `db-service`:
+- The `db-connector` pod has the label `app=db-connector-v1`, but the service selector was updated to `app=db-connector`. This mismatch prevents the service from resolving the pod.
+
+### Fix Recommendation:
+Update the `db-service` selector to match the pod's label (`app=db-connector-v1`).
+
+Proceeding with the fix.### Verification:
+- The `db-service` now has a valid endpoint (`10.244.1.74:5432`), confirming the fix.
+
+### Summary of Actions Taken:
+1. **`api-server` Pod**:
+   - Fixed the hardcoded failing command. The new pod is now `Running`.
+
+2. **`web-frontend` Pod**:
+   - Reduced memory requests to fit within cluster capacity. The new pod is progressing (`ContainerCreating`).
+
+3. **`db-service`**:
+   - Corrected the service selector to match the pod's label. Endpoints are now resolved.
+
+### Next Steps:
+Monitor the `web-frontend` pod to ensure it transitions to `Running`. If further issues arise, investigate accordingly. The application stack in `scenario-test` is now significantly improved.

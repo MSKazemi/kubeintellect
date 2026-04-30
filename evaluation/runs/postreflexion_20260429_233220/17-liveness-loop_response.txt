@@ -1,0 +1,53 @@
+INVESTIGATION_PLAN:
+- Check the pod events for `app-server` in the `scenario-test` namespace to identify any warnings or errors related to restarts.
+- Describe the pod `app-server-6b897994b6-npcgz` to inspect the container's liveness and readiness probes, resource limits, and other configurations.
+- Query Prometheus for restart metrics (`kube_pod_container_status_restarts_total`) to confirm the restart pattern and frequency.
+- Query Loki logs for Kubernetes system-level messages related to the pod to identify any underlying issues.
+
+Executing the necessary tool calls in parallel.### Findings:
+1. **Pod Events**:
+   - The pod `app-server-6b897994b6-npcgz` in the `scenario-test` namespace is failing its liveness probe repeatedly. The probe is configured as an HTTP GET to `/health` on port 80, but it returns a `404` status code.
+   - Kubernetes is killing and restarting the container due to the failed liveness probe.
+
+2. **Pod Description**:
+   - The liveness probe is set to check `/health` with a delay of 5 seconds and a timeout of 1 second. It fails after 2 consecutive failures.
+   - The container is running the `nginx:1.25` image, which does not natively serve content at `/health`. This mismatch is likely causing the `404` errors.
+
+3. **Prometheus Metrics**:
+   - The container has restarted approximately 3.9 times in the last hour, confirming frequent restarts due to liveness probe failures.
+
+4. **Loki Logs**:
+   - The application logs show normal behavior, with no errors or crashes. However, the logs do not indicate any handling of requests to `/health`, further confirming the probe path mismatch.
+   - ⚠️ Output was truncated — the logs contain more details, but the current query limit was exceeded.
+
+### Root Cause:
+The liveness probe is misconfigured to check `/health`, which is not a valid endpoint for the `nginx:1.25` image. This causes the probe to fail, triggering container restarts.
+
+### Suggested Fix:
+Update the liveness probe to check a valid endpoint or disable it if unnecessary. For `nginx`, a common approach is to use `/` as the probe path.
+
+### Proposed Action:
+Patch the deployment to update the liveness probe path to `/`.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-server
+  namespace: scenario-test
+spec:
+  template:
+    spec:
+      containers:
+      - name: app
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          timeoutSeconds: 1
+          periodSeconds: 5
+          failureThreshold: 2
+```
+
+Shall I apply this fix?

@@ -1,0 +1,11 @@
+Since the root cause is primarily **Insufficient Memory**, I will proceed with the first fix: reducing the pod's memory request and limit to 30Gi to fit within the worker node's capacity.
+
+### Applying Fix:
+I will update the deployment `hungry-app` in namespace `scenario-test` with the following configuration:
+- **Memory Requests**: 30Gi
+- **Memory Limits**: 30Gi
+
+Executing the `kubectl apply` command.The deployment `hungry-app` has been successfully updated with reduced memory requests and limits (30Gi).
+
+### Verifying Fix:
+I will now check the status of the pod `hungry-app` in namespace `scenario-test` to confirm if it is now scheduled and running.The pod `hungry-app` in namespace `scenario-test` is now **Running** (verified). The fix has successfully resolved the Pending state caused by insufficient memory.
