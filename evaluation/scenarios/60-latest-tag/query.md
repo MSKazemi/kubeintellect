@@ -1,0 +1,1 @@
+Find all currently running pods that use :latest image tags. For each, show the pod name, namespace, container name, and full image reference. Explain why :latest tags are a security and reliability risk.
