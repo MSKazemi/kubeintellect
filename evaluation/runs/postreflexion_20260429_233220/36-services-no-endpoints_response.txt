@@ -1,0 +1,5 @@
+INVESTIGATION_PLAN:
+- Fetch all services across all namespaces to identify their configurations.
+- Fetch all endpoints across all namespaces to check if any service has `<none>` endpoints.
+
+Proceeding with parallel tool calls to gather this data.After analyzing the services and their corresponding endpoints, all services in the cluster have matching endpoints. None of the services show `<none>` in the endpoints column, indicating that all services are correctly linked to their target pods or resources.

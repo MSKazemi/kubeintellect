@@ -1,0 +1,68 @@
+To investigate and resolve the issue, I will follow these steps:
+
+INVESTIGATION_PLAN:
+1. Check the `rbac-app` pod's service account configuration to confirm it is using `limited-sa`.
+2. Inspect the `limited-sa` service account in the `scenario-test` namespace to ensure it exists.
+3. Check the Role or ClusterRole and RoleBinding or ClusterRoleBinding associated with `limited-sa` to verify its permissions.
+4. Identify whether the permissions granted to `limited-sa` allow listing pods.
+
+Let me fetch the required information.### Findings:
+1. **Pod Configuration**:
+   - The `rbac-app` pod in the `scenario-test` namespace is confirmed to use the `limited-sa` service account.
+   - The pod attempts to list pods using `kubectl get pods -n scenario-test` but encounters permission errors.
+
+2. **Service Account**:
+   - Access to the `limited-sa` service account details is restricted for security reasons, but it exists since the pod is using it.
+
+3. **RoleBindings and ClusterRoleBindings**:
+   - The output of `kubectl get rolebinding,clusterrolebinding -n scenario-test` was truncated, and no specific RoleBinding or ClusterRoleBinding for `limited-sa` was visible in the partial output.
+   - This suggests that `limited-sa` might not have the necessary permissions to list pods.
+
+### Root Cause:
+The `limited-sa` service account likely lacks the required RBAC permissions to list pods in the `scenario-test` namespace. This could be due to:
+- Missing RoleBinding or ClusterRoleBinding for `limited-sa`.
+- Incorrectly configured Role or ClusterRole associated with `limited-sa`.
+
+### Fix Recommendation:
+1. Create a Role with permissions to list pods in the `scenario-test` namespace.
+2. Bind the Role to the `limited-sa` service account using a RoleBinding.
+
+Here is the YAML manifest to apply:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: scenario-test
+  name: pod-list-role
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  namespace: scenario-test
+  name: pod-list-rolebinding
+subjects:
+- kind: ServiceAccount
+  name: limited-sa
+  namespace: scenario-test
+roleRef:
+  kind: Role
+  name: pod-list-role
+  apiGroup: rbac.authorization.k8s.io
+```
+
+### Next Steps:
+I will apply the above YAML manifest to fix the issue and verify the permissions afterward. Let me proceed.### Resolution:
+The Role and RoleBinding were successfully created:
+- **Role**: `pod-list-role` grants permissions to list pods in the `scenario-test` namespace.
+- **RoleBinding**: `pod-list-rolebinding` binds the `limited-sa` service account to the `pod-list-role`.
+
+### Verification:
+The `limited-sa` service account can now list pods in the `scenario-test` namespace, as confirmed by the `kubectl auth can-i` command.
+
+### Final Status:
+The permission issue for the `rbac-app` pod has been resolved. The application should now function correctly without encountering permission errors.

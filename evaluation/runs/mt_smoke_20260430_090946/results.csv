@@ -1,0 +1,2 @@
+index,scenario,query_preview,status,latency_ms,hitl,cluster_resolved,score_signal,score_judge,judge_result
+1,02-imagepull,A newly deployed workload in namespace scenario-test is failing to start. Invest,ok,22642,False,yes,0.96,30,pass

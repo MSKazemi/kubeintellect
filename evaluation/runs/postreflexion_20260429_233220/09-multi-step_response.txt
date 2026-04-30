@@ -1,0 +1,43 @@
+### Step 1: Create the namespace `loop-test`
+I will create the namespace `loop-test` first.Namespace `loop-test` has been created successfully.
+
+---
+
+### Step 2: Deploy a single-replica nginx app called `web-server`
+I will deploy the nginx app using a manifest.The deployment `web-server` has been created successfully in the `loop-test` namespace.
+
+---
+
+### Step 3: Expose the deployment with a ClusterIP service on port 80
+I will create a service to expose the `web-server` deployment.The service `web-server` has been created successfully in the `loop-test` namespace.
+
+---
+
+### Step 4: Verify the deployment is healthy and the service has endpoints
+I will check the status of the deployment and the service endpoints.### Verification Results:
+1. **Deployment Status**:  
+   - Pod `web-server-5d8d8d6bc9-df26v` is `Running` and healthy.
+
+2. **Service Endpoints**:  
+   - Service `web-server` has endpoints: `10.244.1.72:80`.
+
+3. **Service Details**:  
+   - Service `web-server` is of type `ClusterIP` with IP `10.96.239.86` and is exposing port `80/TCP`.
+
+The deployment is healthy, and the service has valid endpoints.
+
+---
+
+### Step 5: Clean up the resources
+I will delete the namespace `loop-test` to clean up all resources.The namespace `loop-test` has been deleted successfully, along with all its resources.
+
+---
+
+### Final Status:
+1. **Namespace Creation**: Completed successfully.
+2. **Deployment Creation**: Completed successfully.
+3. **Service Creation**: Completed successfully.
+4. **Verification**: Deployment was healthy, and the service had valid endpoints.
+5. **Cleanup**: All resources were cleaned up successfully.
+
+The task is fully completed.

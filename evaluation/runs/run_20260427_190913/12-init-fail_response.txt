@@ -1,0 +1,21 @@
+TARGETED: namespace=scenario-test, pod=app-with-init-7965877949-ms2f6, issue=Init container blocking main application startupThe issue is already clear from the snapshot: the init container `db-check` in the pod `app-with-init-7965877949-ms2f6` is failing repeatedly with a `CrashLoopBackOff` state. This is preventing the main application container from starting.
+
+### Root Cause
+The init container `db-check` is attempting to check database connectivity using the command:
+```sh
+nc -zw3 db.internal.svc.cluster.local 5432 || exit 1
+```
+This command fails because the host `db.internal.svc.cluster.local` does not exist or is unreachable. As a result, the init container exits with code `1`, causing the pod to remain in the `Init:0/1` state.
+
+### Blocking Component
+The blocking component is the init container `db-check`. Its failure prevents the pod from progressing to the main application container startup.
+
+### Recommendation
+To resolve this issue:
+1. Verify the intended database service (`db.internal.svc.cluster.local`) exists and is correctly configured.
+2. If the database service is not required, remove the init container from the deployment.
+3. If the database service is required but not yet deployed, deploy it and ensure it is reachable from the pod.
+
+Would you like me to:
+- Check if the database service exists in the cluster?
+- Patch the deployment to remove the init container?

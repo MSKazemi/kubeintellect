@@ -1,0 +1,4 @@
+The attempt to patch the PVC failed because the `spec.storageClassName` field is immutable after creation. This means the PVC cannot be updated to use a different storage class once it has been created.
+
+### Corrective Action
+The only way to resolve this issue is to delete the existing PVC and recreate it with the correct storage class (`standard`). Would you like me to proceed with this approach?

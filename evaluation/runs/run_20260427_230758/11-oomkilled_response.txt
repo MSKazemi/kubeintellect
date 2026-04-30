@@ -1,0 +1,26 @@
+INVESTIGATION_PLAN:
+1. Describe the pod `memory-hog` in namespace `scenario-test` to inspect the Last State and Events for detailed error messages.
+2. Query the logs of the previous container instance (`--previous`) to capture any crash-related output.
+3. Check Prometheus metrics for memory usage of the pod to confirm if it exceeded its memory limit.
+
+Proceeding with parallel tool calls.### Findings:
+
+1. **Pod Description**:
+   - The pod `memory-hog-7bf6fd8cd-q8xkb` in namespace `scenario-test` is in a `CrashLoopBackOff` state.
+   - The container's last state indicates it was terminated due to being OOM-killed (Out of Memory). The error message explicitly states: `container init was OOM-killed (memory limit too low?)`.
+   - The container has a memory limit of `64Mi`, but its startup command attempts to allocate `128Mi` by writing to `/dev/shm`, which exceeds the limit.
+
+2. **Logs**:
+   - No logs were captured from the previous container instance (`--previous`) because the container failed to start properly due to the OOM condition.
+
+3. **Prometheus Metrics**:
+   - The `container_memory_working_set_bytes` metric for the pod shows `0` usage, confirming the container did not successfully allocate memory before being killed.
+
+### Root Cause:
+The container's startup command (`dd if=/dev/zero of=/dev/shm/bigfile bs=1M count=128`) attempts to allocate `128Mi` of memory, which exceeds the configured limit of `64Mi`. This results in the container being OOM-killed during initialization.
+
+### Suggested Fix:
+Increase the memory limit for the container to accommodate its allocation needs. For example:
+- Update the memory limit to at least `128Mi` or higher in the pod's specification.
+
+Would you like me to apply the fix by patching the pod's memory limit?

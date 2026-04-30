@@ -1,0 +1,1 @@
+No ERROR-level log lines were found for the kubeintellect application in the last 15 minutes.

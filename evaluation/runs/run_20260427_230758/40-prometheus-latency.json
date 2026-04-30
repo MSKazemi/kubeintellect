@@ -1,0 +1,543 @@
+{
+  "query_id": "40-prometheus-latency",
+  "title": "40-prometheus-latency",
+  "session_id": "eval-20260427_230758-40-prometheus-latency",
+  "run_id": "run_20260427_230758",
+  "result": {
+    "session_id": "eval-20260427_230758-40-prometheus-latency",
+    "query_id": "40-prometheus-latency",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Show me the p50, p95, and p99 request latency for the kubeintellect API over the last hour."
+      }
+    ],
+    "final_text": "There is no data available for the p50, p95, or p99 request latency of the kubeintellect API over the last hour. This could be due to missing metrics or the API not generating sufficient traffic during this period. If you suspect an issue, we can investigate further.",
+    "events": [
+      {
+        "type": "start",
+        "data": {
+          "protocol_version": "1.0",
+          "object": "stream.start",
+          "session_id": "eval-20260427_230758-40-prometheus-latency"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "loading",
+          "message": "Loading conversation context\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "snapshot",
+          "message": "Fetching cluster snapshot\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "analyzing",
+          "message": "Analyzing your request\u2026"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "query_prometheus",
+          "message": "Calling query_prometheus"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "query_prometheus",
+          "output": "No data for query: histogram_quantile(0.5, rate(http_request_duration_seconds_bucket{job=\"kubeintellect-api\"}[1h]))"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "query_prometheus",
+          "message": "Calling query_prometheus"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "query_prometheus",
+          "message": "Calling query_prometheus"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "query_prometheus",
+          "output": "No data for query: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{job=\"kubeintellect-api\"}[1h]))"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "query_prometheus",
+          "output": "No data for query: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=\"kubeintellect-api\"}[1h]))"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "There"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " no"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " data"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " available"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " for"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " p"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "50"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " p"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "95"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " p"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "99"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " request"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " latency"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " of"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " kube"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "int"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ellect"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " API"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " over"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " last"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " hour"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " This"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " could"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " be"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " due"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " missing"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " metrics"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " API"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " not"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " generating"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " sufficient"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " traffic"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " during"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " this"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " period"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " If"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " you"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " suspect"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " an"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " issue"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " we"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " can"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " investigate"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " further"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      }
+    ],
+    "had_hitl": false,
+    "had_error": false,
+    "error_message": null,
+    "latency_ms": 4983.696937561035,
+    "start_ts": 1777334052.6290185,
+    "end_ts": 1777334057.6127155,
+    "tool_calls": [
+      "query_prometheus",
+      "query_prometheus",
+      "query_prometheus"
+    ],
+    "tool_errors": [],
+    "status_phases": [
+      "loading",
+      "snapshot",
+      "analyzing"
+    ],
+    "hitl_commands": []
+  },
+  "trace": {
+    "trace_id": "e2c113b6983e6d3cc7064cda92ac5f39",
+    "session_id": "eval-20260427_230758-40-prometheus-latency",
+    "total_tokens": 11426,
+    "total_latency_ms": 4.553,
+    "generations": [
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 3891,
+        "completion_tokens": 60,
+        "latency_ms": 1.715
+      },
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 3701,
+        "completion_tokens": 113,
+        "latency_ms": 1.503
+      },
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 3612,
+        "completion_tokens": 49,
+        "latency_ms": 1.335
+      }
+    ],
+    "tool_spans": [
+      {
+        "name": "query_prometheus",
+        "input_args": "{'promql': 'histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{job=\"kubeintellect-api\"}[1h]))', 'range_minutes': 60}",
+        "output": "{'content': 'No data for query: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{job=\"kubeintellect-api\"}[1h]))', 'additional_kwargs': {}, 'response_metadata': {}, 'type': 'tool', 'name': 'query_prometheus', 'id': None, 'tool_call_id': 'call_m8Q5uBqQVXkiD9fbamJ6lSJ7', 'artifact': None, 'status': 'success'}",
+        "error": null,
+        "latency_ms": 0.046
+      },
+      {
+        "name": "query_prometheus",
+        "input_args": "{'promql': 'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=\"kubeintellect-api\"}[1h]))', 'range_minutes': 60}",
+        "output": "{'content': 'No data for query: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=\"kubeintellect-api\"}[1h]))', 'additional_kwargs': {}, 'response_metadata': {}, 'type': 'tool', 'name': 'query_prometheus', 'id': None, 'tool_call_id': 'call_uN5ynZAkEhCevdgtIYsSrES4', 'artifact': None, 'status': 'success'}",
+        "error": null,
+        "latency_ms": 0.046
+      },
+      {
+        "name": "query_prometheus",
+        "input_args": "{'promql': 'histogram_quantile(0.5, rate(http_request_duration_seconds_bucket{job=\"kubeintellect-api\"}[1h]))', 'range_minutes': 60}",
+        "output": "{'content': 'No data for query: histogram_quantile(0.5, rate(http_request_duration_seconds_bucket{job=\"kubeintellect-api\"}[1h]))', 'additional_kwargs': {}, 'response_metadata': {}, 'type': 'tool', 'name': 'query_prometheus', 'id': None, 'tool_call_id': 'call_nu5x3DJGpgn3IkJO0mi1cmFx', 'artifact': None, 'status': 'success'}",
+        "error": null,
+        "latency_ms": 0.028
+      }
+    ],
+    "has_error": false,
+    "error_messages": [],
+    "available": true
+  },
+  "logs": {
+    "session_id": "eval-20260427_230758-40-prometheus-latency",
+    "lines": [],
+    "error_count": 0,
+    "warning_count": 0,
+    "kubectl_commands": [],
+    "hitl_events": [],
+    "available": true
+  },
+  "scores": {
+    "completion": 1.0,
+    "tool_correctness": 1.0,
+    "error_free": 1.0,
+    "hitl_discipline": 1.0,
+    "latency": 0.8338767687479655,
+    "cluster_resolved": null,
+    "notes": []
+  },
+  "aggregate_score": 0.9834,
+  "review_verdict": null,
+  "timestamp": "2026-04-27T23:54:20.904554+00:00",
+  "trace_issues": [],
+  "cluster_resolved": null
+}

@@ -1,0 +1,55 @@
+INVESTIGATION_PLAN:
+1. Check the DNS resolution for `backend-service` in the `scenario-test` namespace from the frontend pod.
+2. Verify the Service configuration for `backend-service` in the `scenario-test` namespace (selectors, ports, etc.).
+3. Check the endpoints associated with `backend-service` to ensure they are correctly populated.
+4. Inspect NetworkPolicies in the `scenario-test` namespace to see if they are blocking traffic.
+5. Confirm the backend pod's readiness and port exposure.
+
+Proceeding with parallel tool calls to gather the required data.### Findings:
+
+1. **DNS Resolution**:
+   - The `nslookup` command failed because the `nslookup` utility is not available in the backend pod's container image (`nginx:1.25`). This does not confirm or deny DNS resolution issues.
+
+2. **Service Configuration**:
+   - The `backend-service` Service in the `scenario-test` namespace has a selector targeting pods with the label `app: backend-v2`.
+   - However, the backend pod (`backend-v1-699b6bdd8f-kj2w9`) is labeled with `app: backend-v1`. This mismatch means the Service cannot select the backend pod.
+
+3. **Endpoints**:
+   - The `backend-service` has no endpoints populated, which aligns with the Service selector mismatch. Without matching pods, the Service cannot route traffic.
+
+4. **NetworkPolicy**:
+   - No NetworkPolicies exist in the `scenario-test` namespace, so there are no restrictions blocking traffic.
+
+5. **Backend Pod**:
+   - The backend pod (`backend-v1-699b6bdd8f-kj2w9`) is running, ready, and exposing port 80 as expected. The pod itself is healthy and functional.
+
+### Root Cause:
+The issue lies in the Service selector mismatch. The `backend-service` is configured to select pods with the label `app: backend-v2`, but the backend pod is labeled `app: backend-v1`. As a result, the Service cannot route traffic to the backend pod, and no endpoints are populated.
+
+### Recommended Fix:
+Update the `backend-service` Service to use the correct selector (`app: backend-v1`) to match the backend pod's labels.
+
+### Fix Command:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: scenario-test
+spec:
+  selector:
+    app: backend-v1
+  ports:
+  - port: 80
+    targetPort: 80
+```
+
+I will apply this fix and verify the outcome.### Verification:
+
+The `backend-service` Service has been successfully updated to use the correct selector (`app: backend-v1`). The endpoints for the Service are now populated:
+
+- **Endpoint IP**: `10.244.1.36` (backend pod)
+- **Port**: `80/TCP`
+
+### Conclusion:
+The issue has been resolved. The frontend should now be able to reach the backend through the `backend-service`. The root cause was a Service selector mismatch, and updating the selector fixed the problem.

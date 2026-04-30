@@ -1,0 +1,28 @@
+index,scenario,query_preview,status,latency_ms,hitl,score_signal,score_judge,judge_result
+1,01-crashloop,"A pod in namespace scenario-test is crashing repeatedly. Find the root cause, ex",ok,22087,False,0.93,36,pass
+2,02-imagepull,A newly deployed workload in namespace scenario-test is failing to start. Invest,ok,5916,False,0.98,36,pass
+3,03-service-mismatch,The frontend cannot reach backend-service in namespace scenario-test. Diagnose e,ok,23031,False,0.89,37,pass
+4,04-pending-resources,Why is pod hungry-app still Pending in namespace scenario-test? Investigate node,ok,25941,False,0.91,35,pass
+5,05-missing-configmap,The app config-app in namespace scenario-test is failing to start. Investigate w,ok,14391,False,0.95,40,pass
+6,05b-pvc-unbound,My application cannot start because its volume claim is not working in namespace,ok,13062,False,0.93,40,pass
+7,06-oomkilled,The pod memory-hog in namespace scenario-test keeps restarting. The team suspect,ok,13370,False,0.96,32,pass
+8,06b-configmap-secret,The app config-app in namespace scenario-test is failing to start. Investigate w,ok,11214,False,0.96,40,pass
+9,07-rbac-denied,The application rbac-app in namespace scenario-test is using service account lim,ok,10408,False,0.97,31,pass
+10,08-probe-fail,The deployment probe-app in namespace scenario-test shows pods in Running state ,ok,40782,False,0.90,39,pass
+11,09-multi-step,,setup_failed,,,,,
+12,10-incident-rca,Users report the application stack in namespace scenario-test is degraded. I see,ok,20451,False,0.93,37,pass
+13,11-oomkilled,The pod memory-hog in namespace scenario-test keeps restarting. The team suspect,ok,22755,False,0.92,40,pass
+14,12-init-fail,The deployment app-with-init in namespace scenario-test is stuck and never reach,ok,8507,False,0.97,36,pass
+15,13-quota-exceeded,The deployment quota-buster in namespace scenario-test has 3 desired replicas bu,ok,19303,False,0.94,38,pass
+16,14-rollout-stuck,The deployment web-api in namespace scenario-test is in the middle of a rolling ,ok,15325,False,0.95,35,pass
+17,15-job-backoff,The batch job data-migration in namespace scenario-test has failed. Find out why,ok,10767,False,0.93,37,pass
+18,16-netpol-block,The client-app in namespace scenario-test cannot reach backend-api-svc on port 8,ok,22228,False,0.93,37,pass
+19,17-liveness-loop,The deployment app-server in namespace scenario-test keeps restarting even thoug,ok,12835,False,0.96,34,pass
+20,18-secret-key-mismatch,The deployment api-app in namespace scenario-test cannot start. The pod is stuck,ok,11604,False,0.96,29,pass
+21,19-cronjob-suspended,The scheduled backup job db-backup in namespace scenario-test has not run in a l,ok,18773,False,0.94,40,pass
+22,20-taint-no-toleration,The deployment gpu-workload in namespace scenario-test is stuck and no pods are ,ok,14321,False,0.95,23,fail
+23,21-pdb-blocks-rollout,The deployment web-service in namespace scenario-test has been stuck mid-rollout,ok,24462,False,0.92,28,pass
+24,22-statefulset-no-headless,"The StatefulSet db-cluster in namespace scenario-test has a running pod, but oth",ok,16091,False,0.86,36,pass
+25,23-sidecar-crashloop,The deployment web-app in namespace scenario-test keeps restarting. The applicat,ok,17964,False,0.91,40,pass
+26,24-missing-serviceaccount,The deployment metrics-app in namespace scenario-test shows 0 ready pods and has,ok,29152,False,0.90,38,pass
+27,25-configmap-volume-key,The deployment config-reader in namespace scenario-test cannot start. The team c,ok,14471,False,0.95,39,pass

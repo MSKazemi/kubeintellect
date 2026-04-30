@@ -1,0 +1,54 @@
+INVESTIGATION_PLAN:
+1. Check the NetworkPolicies in the `scenario-test` namespace to see if any policies are applied that might block traffic between `client-app` and `backend-api-svc`.
+2. Verify the endpoints of the `backend-api-svc` service to ensure they match the `backend-api` pod.
+3. Describe the `client-app` pod to check its labels and ensure it matches any NetworkPolicy rules.
+4. Describe the `backend-api` pod to check its labels and ensure it matches any NetworkPolicy rules.
+
+Proceeding with parallel tool calls.### Findings:
+
+1. **NetworkPolicy in `scenario-test` namespace**:
+   - There is one NetworkPolicy named `backend-allow-frontend-only`.
+   - It applies to pods with the label `app=backend-api`.
+
+2. **Endpoints of `backend-api-svc`**:
+   - The service has a valid endpoint: `10.244.1.84:8080`, which matches the IP and port of the `backend-api` pod.
+
+3. **Labels of `client-app` pod**:
+   - The `client-app` pod has the following labels:
+     - `app=client-app`
+     - `scenario=16-netpol-block`
+
+4. **Labels of `backend-api` pod**:
+   - The `backend-api` pod has the following labels:
+     - `app=backend-api`
+     - `scenario=16-netpol-block`
+
+### Analysis:
+The NetworkPolicy `backend-allow-frontend-only` restricts traffic to pods with the label `app=backend-api`. However, it likely specifies which pods are allowed to communicate with `backend-api`. Since the `client-app` pod has the label `app=client-app`, it does not match the selector for allowed traffic in the NetworkPolicy.
+
+This mismatch is likely causing the traffic from `client-app` to `backend-api-svc` to be blocked.
+
+### Recommendation:
+To confirm and resolve the issue:
+1. Describe the NetworkPolicy `backend-allow-frontend-only` to inspect its rules and verify the allowed pod selectors.
+2. If the NetworkPolicy is indeed blocking traffic, update it to allow traffic from pods with the label `app=client-app`.
+
+Proceeding to describe the NetworkPolicy for detailed rules.### Detailed Findings:
+
+The NetworkPolicy `backend-allow-frontend-only` in the `scenario-test` namespace has the following rules:
+- **Pod Selector**: It applies to pods with the label `app=backend-api`.
+- **Ingress Rules**:
+  - Allows traffic to port `8080/TCP`.
+  - Only allows traffic from pods with the label `role=frontend`.
+- **Egress Rules**: Not specified (default behavior applies).
+- **Policy Type**: Ingress only.
+
+### Root Cause:
+The `client-app` pod does not have the label `role=frontend`. Therefore, it does not match the ingress rule of the NetworkPolicy, and its traffic to the `backend-api` pod is being blocked.
+
+### Resolution:
+To allow traffic from `client-app` to `backend-api-svc`:
+1. Update the NetworkPolicy `backend-allow-frontend-only` to include pods with the label `app=client-app` in the `From` section.
+2. Alternatively, add the label `role=frontend` to the `client-app` pod if appropriate.
+
+Would you like me to proceed with updating the NetworkPolicy or provide the exact patch command for manual application?

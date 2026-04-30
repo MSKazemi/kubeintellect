@@ -1,0 +1,4531 @@
+{
+  "query_id": "16-netpol-block",
+  "title": "16-netpol-block",
+  "session_id": "eval-20260427_205955-16-netpol-block",
+  "run_id": "run_20260427_205955",
+  "result": {
+    "session_id": "eval-20260427_205955-16-netpol-block",
+    "query_id": "16-netpol-block",
+    "messages": [
+      {
+        "role": "user",
+        "content": "The client-app in namespace scenario-test cannot reach backend-api-svc on port 8080. Both pods are Running and the service has endpoints. The team thinks it might be a NetworkPolicy issue. Investigate and confirm whether NetworkPolicy is blocking the traffic and why."
+      }
+    ],
+    "final_text": "INVESTIGATION_PLAN:\n1. Check the NetworkPolicies in the `scenario-test` namespace to see if any policies are applied that might block traffic between `client-app` and `backend-api-svc`.\n2. Verify the endpoints of the `backend-api-svc` service to ensure they match the `backend-api` pod.\n3. Describe the `client-app` pod to check its labels and ensure it matches any NetworkPolicy rules.\n4. Describe the `backend-api` pod to check its labels and ensure it matches any NetworkPolicy rules.\n\nProceeding with parallel tool calls.### Findings:\n\n1. **NetworkPolicy in `scenario-test` namespace**:\n   - There is one NetworkPolicy named `backend-allow-frontend-only`.\n   - It applies to pods with the label `app=backend-api`.\n\n2. **Endpoints of `backend-api-svc`**:\n   - The service has a valid endpoint: `10.244.1.84:8080`, which matches the IP and port of the `backend-api` pod.\n\n3. **Labels of `client-app` pod**:\n   - The `client-app` pod has the following labels:\n     - `app=client-app`\n     - `scenario=16-netpol-block`\n\n4. **Labels of `backend-api` pod**:\n   - The `backend-api` pod has the following labels:\n     - `app=backend-api`\n     - `scenario=16-netpol-block`\n\n### Analysis:\nThe NetworkPolicy `backend-allow-frontend-only` restricts traffic to pods with the label `app=backend-api`. However, it likely specifies which pods are allowed to communicate with `backend-api`. Since the `client-app` pod has the label `app=client-app`, it does not match the selector for allowed traffic in the NetworkPolicy.\n\nThis mismatch is likely causing the traffic from `client-app` to `backend-api-svc` to be blocked.\n\n### Recommendation:\nTo confirm and resolve the issue:\n1. Describe the NetworkPolicy `backend-allow-frontend-only` to inspect its rules and verify the allowed pod selectors.\n2. If the NetworkPolicy is indeed blocking traffic, update it to allow traffic from pods with the label `app=client-app`.\n\nProceeding to describe the NetworkPolicy for detailed rules.### Detailed Findings:\n\nThe NetworkPolicy `backend-allow-frontend-only` in the `scenario-test` namespace has the following rules:\n- **Pod Selector**: It applies to pods with the label `app=backend-api`.\n- **Ingress Rules**:\n  - Allows traffic to port `8080/TCP`.\n  - Only allows traffic from pods with the label `role=frontend`.\n- **Egress Rules**: Not specified (default behavior applies).\n- **Policy Type**: Ingress only.\n\n### Root Cause:\nThe `client-app` pod does not have the label `role=frontend`. Therefore, it does not match the ingress rule of the NetworkPolicy, and its traffic to the `backend-api` pod is being blocked.\n\n### Resolution:\nTo allow traffic from `client-app` to `backend-api-svc`:\n1. Update the NetworkPolicy `backend-allow-frontend-only` to include pods with the label `app=client-app` in the `From` section.\n2. Alternatively, add the label `role=frontend` to the `client-app` pod if appropriate.\n\nWould you like me to proceed with updating the NetworkPolicy or provide the exact patch command for manual application?",
+    "events": [
+      {
+        "type": "start",
+        "data": {
+          "protocol_version": "1.0",
+          "object": "stream.start",
+          "session_id": "eval-20260427_205955-16-netpol-block"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "loading",
+          "message": "Loading conversation context\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "snapshot",
+          "message": "Fetching cluster snapshot\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "analyzing",
+          "message": "Analyzing your request\u2026"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "INV"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "EST"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "IGATION"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "_PLAN"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "1"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Check"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Network"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Policies"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " see"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " if"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " any"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " policies"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " are"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " applied"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " that"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " might"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " block"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " traffic"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " between"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "client"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "backend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-api"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-s"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "vc"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`.\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Verify"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " endpoints"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " of"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "backend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-api"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-s"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "vc"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " service"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ensure"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " they"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " match"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "backend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-api"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "3"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Describe"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "client"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " check"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " its"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " labels"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ensure"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " it"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " matches"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " any"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Network"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Policy"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " rules"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "4"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Describe"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "backend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-api"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " check"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " its"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " labels"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ensure"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " it"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " matches"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " any"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Network"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Policy"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " rules"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Proceed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ing"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " parallel"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " tool"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " calls"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: describe pod client-app-585d4fb466-74tkc -n scenario-test"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: get networkpolicy -n scenario-test"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: describe pod backend-api-77b9c6fd65-w4zxc -n scenario-test"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: get endpoints backend-api-svc -n scenario-test"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "NAME                          POD-SELECTOR      AGE\nbackend-allow-frontend-only   app=backend-api   65s\n"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "Name:             client-app-585d4fb466-74tkc\nNamespace:        scenario-test\nPriority:         0\nService Account:  default\nNode:             testbed-v2-worker/172.20.0.2\nStart Time:       Mon, 27 Apr 2026 23:15:08 +0200\nLabels:           app=client-app\n                  pod-template-hash=585d4fb466\n                  scenario=16-netpol-block\nAnnotations:      <none>\nStatus:           Running\nIP:               10.244.1.85\nIPs:\n  IP:           10.244.1.85\nControlled By:  ReplicaSet/client-app-585d"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "NAME              ENDPOINTS          AGE\nbackend-api-svc   10.244.1.84:8080   65s\n"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "Name:             backend-api-77b9c6fd65-w4zxc\nNamespace:        scenario-test\nPriority:         0\nService Account:  default\nNode:             testbed-v2-worker/172.20.0.2\nStart Time:       Mon, 27 Apr 2026 23:15:08 +0200\nLabels:           app=backend-api\n                  pod-template-hash=77b9c6fd65\n                  scenario=16-netpol-block\nAnnotations:      <none>\nStatus:           Running\nIP:               10.244.1.84\nIPs:\n  IP:           10.244.1.84\nControlled By:  ReplicaSet/backend-api-7"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "###"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Findings"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "1"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Network"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Policy"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " There"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " one"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Network"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Policy"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " named"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "backend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "allow"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "frontend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-only"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`.\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " It"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " applies"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pods"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " label"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "="
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "backend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-api"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`.\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Endpoints"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " of"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "backend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-api"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-s"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "vc"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " service"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " has"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " a"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " valid"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " endpoint"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "10"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "244"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "1"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "84"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "808"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "0"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`,"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " which"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " matches"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " IP"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " port"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " of"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "backend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-api"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "3"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Labels"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " of"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "client"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "client"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " has"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " following"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " labels"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "    "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "="
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "client"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "    "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "="
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "16"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-net"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "pol"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-block"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "4"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Labels"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " of"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "backend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-api"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "backend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-api"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " has"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " following"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " labels"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "    "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "="
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "backend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-api"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "    "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "="
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "16"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-net"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "pol"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-block"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "###"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Analysis"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Network"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Policy"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "backend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "allow"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "frontend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-only"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " restrict"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "s"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " traffic"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pods"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " label"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "="
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "backend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-api"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " However"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " it"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " likely"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " specifies"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " which"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pods"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " are"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " allowed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " communicate"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "backend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-api"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Since"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "client"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " has"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " label"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "="
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "client"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`,"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " it"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " does"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " not"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " match"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " selector"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " for"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " allowed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " traffic"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Network"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Policy"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "This"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " mismatch"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " likely"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " causing"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " traffic"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " from"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "client"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "backend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-api"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-s"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "vc"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " be"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " blocked"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "###"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Recommendation"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "To"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " confirm"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resolve"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " issue"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "1"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Describe"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Network"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Policy"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "backend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "allow"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "frontend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-only"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " inspect"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " its"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " rules"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " verify"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " allowed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " selectors"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " If"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Network"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Policy"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " indeed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " blocking"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " traffic"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " update"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " it"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " allow"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " traffic"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " from"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pods"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " label"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "="
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "client"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`.\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Proceed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ing"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " describe"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Network"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Policy"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " for"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " detailed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " rules"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: describe networkpolicy backend-allow-frontend-only -n scenario-test"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "Name:         backend-allow-frontend-only\nNamespace:    scenario-test\nCreated on:   2026-04-27 23:15:08 +0200 CEST\nLabels:       scenario=16-netpol-block\nAnnotations:  <none>\nSpec:\n  PodSelector:     app=backend-api\n  Allowing ingress traffic:\n    To Port: 8080/TCP\n    From:\n      PodSelector: role=frontend\n  Not affecting egress traffic\n  Policy Types: Ingress\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "###"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Detailed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Findings"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Network"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Policy"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "backend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "allow"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "frontend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-only"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " has"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " following"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " rules"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Selector"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " It"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " applies"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pods"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " label"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "="
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "backend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-api"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`.\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Ingress"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Rules"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Allows"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " traffic"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " port"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "808"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "0"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/T"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "CP"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`.\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Only"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " allows"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " traffic"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " from"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pods"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " label"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "role"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "="
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "frontend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`.\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "E"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "gress"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Rules"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Not"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " specified"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ("
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "default"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " behavior"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " applies"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ").\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Policy"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Type"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " In"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "gress"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " only"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "###"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Root"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Cause"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "client"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " does"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " not"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " have"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " label"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "role"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "="
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "frontend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Therefore"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " it"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " does"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " not"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " match"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ingress"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " rule"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " of"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Network"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Policy"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " its"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " traffic"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "backend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-api"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " being"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " blocked"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "###"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Resolution"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "To"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " allow"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " traffic"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " from"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "client"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "backend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-api"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-s"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "vc"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "1"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Update"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Network"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Policy"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "backend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "allow"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "frontend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-only"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " include"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pods"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " label"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "="
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "client"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "From"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " section"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Alternatively"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " add"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " label"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "role"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "="
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "frontend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "client"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " if"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " appropriate"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Would"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " you"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " like"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " me"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " proceed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " updating"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Network"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Policy"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " provide"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " exact"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " patch"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " command"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " for"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " manual"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " application"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "?"
+        }
+      }
+    ],
+    "had_hitl": false,
+    "had_error": false,
+    "error_message": null,
+    "latency_ms": 14583.083391189575,
+    "start_ts": 1777324569.1561174,
+    "end_ts": 1777324583.7392008,
+    "tool_calls": [
+      "run_kubectl",
+      "run_kubectl",
+      "run_kubectl",
+      "run_kubectl",
+      "run_kubectl"
+    ],
+    "tool_errors": [],
+    "status_phases": [
+      "loading",
+      "snapshot",
+      "analyzing"
+    ],
+    "hitl_commands": []
+  },
+  "trace": {
+    "trace_id": "7b02d488b6533efac704b79662e9c930",
+    "session_id": "eval-20260427_205955-16-netpol-block",
+    "total_tokens": 15462,
+    "total_latency_ms": 13.541,
+    "generations": [
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 5787,
+        "completion_tokens": 248,
+        "latency_ms": 3.54
+      },
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 5286,
+        "completion_tokens": 382,
+        "latency_ms": 6.247
+      },
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 3508,
+        "completion_tokens": 251,
+        "latency_ms": 3.754
+      }
+    ],
+    "tool_spans": [
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'describe networkpolicy backend-allow-frontend-only -n scenario-test'}",
+        "output": "{'content': 'Name:         backend-allow-frontend-only\\nNamespace:    scenario-test\\nCreated on:   2026-04-27 23:15:08 +0200 CEST\\nLabels:       scenario=16-netpol-block\\nAnnotations:  <none>\\nSpec:\\n  PodSelector:     app=backend-api\\n  Allowing ingress traffic:\\n    To Port: 8080/TCP\\n    From:\\n      PodSelector: role=frontend\\n  Not affecting egress traffic\\n  Policy Types: Ingress\\n', 'additional_kwargs': {}, 'response_metadata': {}, 'type': 'tool', 'name': 'run_kubectl', 'id': None, 'tool_",
+        "error": null,
+        "latency_ms": 0.255
+      },
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'describe pod backend-api-77b9c6fd65-w4zxc -n scenario-test'}",
+        "output": "{'content': 'Name:             backend-api-77b9c6fd65-w4zxc\\nNamespace:        scenario-test\\nPriority:         0\\nService Account:  default\\nNode:             testbed-v2-worker/172.20.0.2\\nStart Time:       Mon, 27 Apr 2026 23:15:08 +0200\\nLabels:           app=backend-api\\n                  pod-template-hash=77b9c6fd65\\n                  scenario=16-netpol-block\\nAnnotations:      <none>\\nStatus:           Running\\nIP:               10.244.1.84\\nIPs:\\n  IP:           10.244.1.84\\nControlled By",
+        "error": null,
+        "latency_ms": 0.254
+      },
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'describe pod client-app-585d4fb466-74tkc -n scenario-test'}",
+        "output": "{'content': 'Name:             client-app-585d4fb466-74tkc\\nNamespace:        scenario-test\\nPriority:         0\\nService Account:  default\\nNode:             testbed-v2-worker/172.20.0.2\\nStart Time:       Mon, 27 Apr 2026 23:15:08 +0200\\nLabels:           app=client-app\\n                  pod-template-hash=585d4fb466\\n                  scenario=16-netpol-block\\nAnnotations:      <none>\\nStatus:           Running\\nIP:               10.244.1.85\\nIPs:\\n  IP:           10.244.1.85\\nControlled By: ",
+        "error": null,
+        "latency_ms": 0.242
+      },
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'get endpoints backend-api-svc -n scenario-test'}",
+        "output": "{'content': 'NAME              ENDPOINTS          AGE\\nbackend-api-svc   10.244.1.84:8080   65s\\n', 'additional_kwargs': {}, 'response_metadata': {}, 'type': 'tool', 'name': 'run_kubectl', 'id': None, 'tool_call_id': 'call_WQrsFunN01P2Pz3CWRe4Alne', 'artifact': None, 'status': 'success'}",
+        "error": null,
+        "latency_ms": 0.246
+      },
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'get networkpolicy -n scenario-test'}",
+        "output": "{'content': 'NAME                          POD-SELECTOR      AGE\\nbackend-allow-frontend-only   app=backend-api   65s\\n', 'additional_kwargs': {}, 'response_metadata': {}, 'type': 'tool', 'name': 'run_kubectl', 'id': None, 'tool_call_id': 'call_CTetiMH0FSK0HFLnFEoPZr87', 'artifact': None, 'status': 'success'}",
+        "error": null,
+        "latency_ms": 0.229
+      }
+    ],
+    "has_error": false,
+    "error_messages": [],
+    "available": true
+  },
+  "logs": {
+    "session_id": "eval-20260427_205955-16-netpol-block",
+    "lines": [],
+    "error_count": 0,
+    "warning_count": 0,
+    "kubectl_commands": [],
+    "hitl_events": [],
+    "available": true
+  },
+  "scores": {
+    "completion": 1.0,
+    "tool_correctness": 1.0,
+    "error_free": 1.0,
+    "hitl_discipline": 1.0,
+    "latency": 0.5138972202936809,
+    "notes": []
+  },
+  "aggregate_score": 0.9514,
+  "review_verdict": null,
+  "timestamp": "2026-04-27T21:16:29.382284+00:00",
+  "trace_issues": [
+    {
+      "id": "TOKEN_EXPLOSION",
+      "severity": "HIGH",
+      "detail": "Prompt grew by 2279 tokens across LLM calls (3508 \u2192 5787). Tool output fed raw into next prompt without summarization."
+    }
+  ]
+}

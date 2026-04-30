@@ -1,0 +1,3145 @@
+{
+  "query_id": "17-liveness-loop",
+  "title": "17-liveness-loop",
+  "session_id": "eval-20260427_190913-17-liveness-loop",
+  "run_id": "run_20260427_190913",
+  "result": {
+    "session_id": "eval-20260427_190913-17-liveness-loop",
+    "query_id": "17-liveness-loop",
+    "messages": [
+      {
+        "role": "user",
+        "content": "The deployment app-server in namespace scenario-test keeps restarting even though the application logs look normal. The team says the app itself is working fine. Investigate why Kubernetes keeps killing the container and identify what is triggering the restarts."
+      }
+    ],
+    "final_text": "INVESTIGATION_PLAN:\n- Describe the pod `app-server-6b897994b6-xhld5` in the `scenario-test` namespace to inspect the Last State exit code and reason for the restarts.\n- Fetch the logs of the previous container instance (`--previous`) to capture any crash output or termination details.\n- Retrieve the events in the `scenario-test` namespace to confirm the sequence of warnings and errors related to the pod.\n\nProceeding with parallel tool calls.### Findings:\n1. **Pod Description**:\n   - The container `app` in pod `app-server-6b897994b6-xhld5` is in a `CrashLoopBackOff` state.\n   - The last state of the container shows it terminated with an exit code `0` (indicating successful completion).\n   - The liveness probe is configured as an HTTP GET request to `http://:80/health` with a delay of 5 seconds, timeout of 1 second, and failure threshold of 2.\n   - The liveness probe repeatedly fails with HTTP status code `404`.\n\n2. **Previous Logs**:\n   - The logs show the container shutting down gracefully, with no errors or abnormal behavior. This confirms the application itself is functioning correctly and exiting cleanly.\n\n3. **Events**:\n   - The liveness probe failure is the primary trigger for the container restarts. Kubernetes kills the container because the probe fails to return a successful response.\n\n### Root Cause:\nThe liveness probe is misconfigured. It is attempting to access the `/health` endpoint on port `80`, but the application does not serve this endpoint or returns a `404` status code. This causes Kubernetes to interpret the container as unhealthy and restart it.\n\n### Suggested Fix:\nUpdate the liveness probe configuration to point to a valid endpoint that the application serves. If the application does not have a health-check endpoint, consider disabling the liveness probe or using a different mechanism to monitor container health.\n\n### Remediation Command:\nTo fix the liveness probe, patch the deployment with the correct configuration:\n```yaml\nkubectl patch deployment app-server -n scenario-test --type='json' -p='[{\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/livenessProbe/httpGet/path\", \"value\": \"/\"}]'\n```\n\nWould you like me to apply this fix?",
+    "events": [
+      {
+        "type": "start",
+        "data": {
+          "protocol_version": "1.0",
+          "object": "stream.start",
+          "session_id": "eval-20260427_190913-17-liveness-loop"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "loading",
+          "message": "Loading conversation context\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "snapshot",
+          "message": "Fetching cluster snapshot\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "analyzing",
+          "message": "Analyzing your request\u2026"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "INV"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "EST"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "IGATION"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "_PLAN"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Describe"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-server"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "6"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "b"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "897"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "994"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "b"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "6"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-x"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "h"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ld"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "5"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " inspect"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Last"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " State"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " exit"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " code"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " reason"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " for"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " rest"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "arts"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Fetch"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " logs"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " of"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " previous"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " container"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " instance"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " (`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "--"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "previous"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`)"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " capture"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " any"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " crash"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " output"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " termination"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " details"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Retrieve"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " events"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " confirm"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " sequence"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " of"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " warnings"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " errors"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " related"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Proceed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ing"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " parallel"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " tool"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " calls"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: kubectl logs app-server-6b897994b6-xhld5 -n scenario-test --previous --tail=50"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: kubectl describe pod app-server-6b897994b6-xhld5 -n scenario-test"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: kubectl get events -n scenario-test --sort-by=.lastTimestamp"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "Name:             app-server-6b897994b6-xhld5\nNamespace:        scenario-test\nPriority:         0\nService Account:  default\nNode:             testbed-v2-worker/172.20.0.2\nStart Time:       Mon, 27 Apr 2026 21:27:56 +0200\nLabels:           app=app-server\n                  pod-template-hash=6b897994b6\n                  scenario=17-liveness-loop\nAnnotations:      <none>\nStatus:           Running\nIP:               10.244.1.55\nIPs:\n  IP:           10.244.1.55\nControlled By:  ReplicaSet/app-server-6b8"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "LAST SEEN   TYPE      REASON              OBJECT                             MESSAGE\n66s         Normal    Scheduled           pod/app-server-6b897994b6-xhld5    Successfully assigned scenario-test/app-server-6b897994b6-xhld5 to testbed-v2-worker\n66s         Normal    SuccessfulCreate    replicaset/app-server-6b897994b6   Created pod: app-server-6b897994b6-xhld5\n66s         Normal    ScalingReplicaSet   deployment/app-server              Scaled up replica set app-server-6b897994b6 to 1\n20s      "
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "2026/04/27 19:28:56 [notice] 51#51: gracefully shutting down\n2026/04/27 19:28:56 [notice] 52#52: gracefully shutting down\n2026/04/27 19:28:56 [notice] 53#53: gracefully shutting down\n2026/04/27 19:28:56 [notice] 52#52: exiting\n2026/04/27 19:28:56 [notice] 51#51: exiting\n2026/04/27 19:28:56 [notice] 53#53: exiting\n2026/04/27 19:28:56 [notice] 48#48: gracefully shutting down\n2026/04/27 19:28:56 [notice] 54#54: gracefully shutting down\n2026/04/27 19:28:56 [notice] 48#48: exiting\n2026/04/27 19:28:56"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "###"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Findings"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "1"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Description"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " container"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-server"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "6"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "b"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "897"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "994"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "b"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "6"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-x"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "h"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ld"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "5"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " a"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Crash"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Loop"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Back"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Off"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " state"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " last"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " state"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " of"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " container"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " shows"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " it"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " terminated"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " an"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " exit"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " code"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "0"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ("
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ind"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "icating"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " successful"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " completion"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ").\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " l"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "iveness"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " probe"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " configured"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " as"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " an"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " HTTP"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " GET"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " request"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "http"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "://"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "80"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "health"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " a"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " delay"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " of"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "5"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " seconds"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " timeout"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " of"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "1"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " second"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " failure"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " threshold"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " of"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " l"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "iveness"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " probe"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " repeatedly"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " fails"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " HTTP"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " status"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " code"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "404"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`.\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Previous"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Logs"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " logs"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " show"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " container"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " shutting"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " down"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " gracefully"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " no"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " errors"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " abnormal"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " behavior"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " This"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " confirms"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " application"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " itself"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " functioning"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " correctly"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " exiting"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " clean"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ly"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "3"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Events"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " l"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "iveness"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " probe"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " failure"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " primary"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " trigger"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " for"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " container"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " rest"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "arts"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Kubernetes"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " kills"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " container"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " because"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " probe"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " fails"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " return"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " a"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " successful"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " response"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "###"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Root"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Cause"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " l"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "iveness"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " probe"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " mis"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "configured"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " It"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " attempting"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " access"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `/"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "health"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " endpoint"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " on"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " port"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "80"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`,"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " but"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " application"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " does"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " not"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " serve"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " this"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " endpoint"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " returns"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " a"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "404"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " status"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " code"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " This"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " causes"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Kubernetes"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " interpret"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " container"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " as"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " unhealthy"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " restart"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " it"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "###"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Suggested"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Fix"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Update"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " l"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "iveness"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " probe"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " configuration"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " point"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " a"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " valid"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " endpoint"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " that"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " application"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " serves"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " If"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " application"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " does"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " not"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " have"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " a"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " health"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-check"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " endpoint"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " consider"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " disabling"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " l"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "iveness"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " probe"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " using"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " a"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " different"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " mechanism"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " monitor"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " container"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " health"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "###"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Rem"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ediation"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Command"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "To"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " fix"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " l"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "iveness"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " probe"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " patch"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " deployment"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " correct"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " configuration"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "```"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "yaml"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "kub"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ectl"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " patch"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " deployment"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-server"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " --"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "type"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "='"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "json"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "'"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "p"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "='"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "["
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "{\""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "op"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "replace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "path"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \"/"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "spec"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/template"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/spec"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "containers"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "0"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/l"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "iveness"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Probe"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/http"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Get"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/path"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "value"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \"/"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\"}"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "]'\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "``"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Would"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " you"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " like"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " me"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " apply"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " this"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " fix"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "?"
+        }
+      },
+      {
+        "type": "plan",
+        "data": {
+          "type": "plan",
+          "steps": [
+            {
+              "description": "Describe the pod `app-server-6b897994b6-xhld5` in the `scenario-test` namespace to inspect the Last State exit code and reason for the restarts.",
+              "status": "pending"
+            },
+            {
+              "description": "Fetch the logs of the previous container instance (`--previous`) to capture any crash output or termination details.",
+              "status": "pending"
+            },
+            {
+              "description": "Retrieve the events in the `scenario-test` namespace to confirm the sequence of warnings and errors related to the pod.",
+              "status": "pending"
+            }
+          ]
+        }
+      }
+    ],
+    "had_hitl": false,
+    "had_error": false,
+    "error_message": null,
+    "latency_ms": 12835.362911224365,
+    "start_ts": 1777318137.0533795,
+    "end_ts": 1777318149.8887424,
+    "tool_calls": [
+      "run_kubectl",
+      "run_kubectl",
+      "run_kubectl"
+    ],
+    "tool_errors": [],
+    "status_phases": [
+      "loading",
+      "snapshot",
+      "analyzing"
+    ],
+    "hitl_commands": []
+  },
+  "trace": {
+    "trace_id": "24b723b3a56e50bf389350ab08d7f316",
+    "session_id": "eval-20260427_190913-17-liveness-loop",
+    "total_tokens": 12193,
+    "total_latency_ms": 12.264,
+    "generations": [
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 7261,
+        "completion_tokens": 392,
+        "latency_ms": 7.151
+      },
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 4317,
+        "completion_tokens": 223,
+        "latency_ms": 5.113
+      }
+    ],
+    "tool_spans": [
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'kubectl get events -n scenario-test --sort-by=.lastTimestamp'}",
+        "output": "{'content': 'LAST SEEN   TYPE      REASON              OBJECT                             MESSAGE\\n66s         Normal    Scheduled           pod/app-server-6b897994b6-xhld5    Successfully assigned scenario-test/app-server-6b897994b6-xhld5 to testbed-v2-worker\\n66s         Normal    SuccessfulCreate    replicaset/app-server-6b897994b6   Created pod: app-server-6b897994b6-xhld5\\n66s         Normal    ScalingReplicaSet   deployment/app-server              Scaled up replica set app-server-6b897994b",
+        "error": null,
+        "latency_ms": 0.161
+      },
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'kubectl logs app-server-6b897994b6-xhld5 -n scenario-test --previous --tail=50'}",
+        "output": "{'content': '2026/04/27 19:28:56 [notice] 51#51: gracefully shutting down\\n2026/04/27 19:28:56 [notice] 52#52: gracefully shutting down\\n2026/04/27 19:28:56 [notice] 53#53: gracefully shutting down\\n2026/04/27 19:28:56 [notice] 52#52: exiting\\n2026/04/27 19:28:56 [notice] 51#51: exiting\\n2026/04/27 19:28:56 [notice] 53#53: exiting\\n2026/04/27 19:28:56 [notice] 48#48: gracefully shutting down\\n2026/04/27 19:28:56 [notice] 54#54: gracefully shutting down\\n2026/04/27 19:28:56 [notice] 48#48: exitin",
+        "error": null,
+        "latency_ms": 0.168
+      },
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'kubectl describe pod app-server-6b897994b6-xhld5 -n scenario-test'}",
+        "output": "{'content': 'Name:             app-server-6b897994b6-xhld5\\nNamespace:        scenario-test\\nPriority:         0\\nService Account:  default\\nNode:             testbed-v2-worker/172.20.0.2\\nStart Time:       Mon, 27 Apr 2026 21:27:56 +0200\\nLabels:           app=app-server\\n                  pod-template-hash=6b897994b6\\n                  scenario=17-liveness-loop\\nAnnotations:      <none>\\nStatus:           Running\\nIP:               10.244.1.55\\nIPs:\\n  IP:           10.244.1.55\\nControlled By:",
+        "error": null,
+        "latency_ms": 0.162
+      }
+    ],
+    "has_error": false,
+    "error_messages": [],
+    "available": true
+  },
+  "logs": {
+    "session_id": "eval-20260427_190913-17-liveness-loop",
+    "lines": [],
+    "error_count": 0,
+    "warning_count": 0,
+    "kubectl_commands": [],
+    "hitl_events": [],
+    "available": true
+  },
+  "scores": {
+    "completion": 1.0,
+    "tool_correctness": 1.0,
+    "error_free": 1.0,
+    "hitl_discipline": 1.0,
+    "latency": 0.5721545696258545,
+    "notes": []
+  },
+  "aggregate_score": 0.9572,
+  "review_verdict": null,
+  "timestamp": "2026-04-27T19:29:15.801102+00:00",
+  "trace_issues": [
+    {
+      "id": "TOKEN_EXPLOSION",
+      "severity": "HIGH",
+      "detail": "Prompt grew by 2944 tokens across LLM calls (4317 \u2192 7261). Tool output fed raw into next prompt without summarization."
+    },
+    {
+      "id": "LOKI_NOT_USED",
+      "severity": "MEDIUM",
+      "detail": "Query mentions logs but query_loki was not called. kubectl logs misses historical data."
+    }
+  ]
+}

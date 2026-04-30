@@ -1,0 +1,1 @@
+The `lastTimestamp` field selector is not supported for querying events directly. Instead, I will fetch all events in the `kubeintellect` namespace and filter them manually for the last 30 minutes. Let me proceed.There are no events in the `kubeintellect` namespace within the last 30 minutes, or at all. The namespace appears to be quiet and healthy.

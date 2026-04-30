@@ -1,0 +1,731 @@
+{
+  "query_id": "35-namespace-events",
+  "title": "35-namespace-events",
+  "session_id": "eval-20260427_205955-35-namespace-events",
+  "run_id": "run_20260427_205955",
+  "result": {
+    "session_id": "eval-20260427_205955-35-namespace-events",
+    "query_id": "35-namespace-events",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Show me all events in the kubeintellect namespace in the last 30 minutes."
+      }
+    ],
+    "final_text": "The `lastTimestamp` field selector is not supported for filtering events directly. To retrieve events from the `kubeintellect` namespace within the last 30 minutes, I will fetch all events in the namespace and filter them manually.\n\nLet me adjust the query.There are no events recorded in the `kubeintellect` namespace within the last 30 minutes or at all. If you need further assistance or want to check another namespace, let me know!",
+    "events": [
+      {
+        "type": "start",
+        "data": {
+          "protocol_version": "1.0",
+          "object": "stream.start",
+          "session_id": "eval-20260427_205955-35-namespace-events"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "loading",
+          "message": "Loading conversation context\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "snapshot",
+          "message": "Fetching cluster snapshot\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "analyzing",
+          "message": "Analyzing your request\u2026"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: get events -n kubeintellect --field-selector=lastTimestamp>=30m"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "Error from server (BadRequest): Unable to find \"/v1, Resource=events\" that match label selector \"\", field selector \"lastTimestamp>=30m\": field label not supported: lastTimestamp>\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "last"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Timestamp"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " field"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " selector"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " not"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " supported"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " for"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " filtering"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " events"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " directly"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " To"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " retrieve"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " events"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " from"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "k"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ube"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "int"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ellect"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " within"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " last"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "30"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " minutes"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " I"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " will"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " fetch"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " all"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " events"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " filter"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " them"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " manually"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Let"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " me"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " adjust"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " query"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: get events -n kubeintellect"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "No resources found in kubeintellect namespace.\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "There"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " are"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " no"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " events"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " recorded"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "k"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ube"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "int"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ellect"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " within"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " last"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "30"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " minutes"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " at"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " all"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " If"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " you"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " need"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " further"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " assistance"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " want"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " check"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " another"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " let"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " me"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " know"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "!"
+        }
+      }
+    ],
+    "had_hitl": false,
+    "had_error": false,
+    "error_message": null,
+    "latency_ms": 6126.551389694214,
+    "start_ts": 1777325401.5303843,
+    "end_ts": 1777325407.6569357,
+    "tool_calls": [
+      "run_kubectl",
+      "run_kubectl"
+    ],
+    "tool_errors": [
+      "run_kubectl"
+    ],
+    "status_phases": [
+      "loading",
+      "snapshot",
+      "analyzing"
+    ],
+    "hitl_commands": []
+  },
+  "trace": {
+    "trace_id": "3c370547baefb1dd8e52ff9e71a87cb5",
+    "session_id": "eval-20260427_205955-35-namespace-events",
+    "total_tokens": 10639,
+    "total_latency_ms": 5.343,
+    "generations": [
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 3588,
+        "completion_tokens": 42,
+        "latency_ms": 1.109
+      },
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 3490,
+        "completion_tokens": 78,
+        "latency_ms": 1.989
+      },
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 3409,
+        "completion_tokens": 32,
+        "latency_ms": 2.245
+      }
+    ],
+    "tool_spans": [
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'get events -n kubeintellect'}",
+        "output": "{'content': 'No resources found in kubeintellect namespace.\\n', 'additional_kwargs': {}, 'response_metadata': {}, 'type': 'tool', 'name': 'run_kubectl', 'id': None, 'tool_call_id': 'call_RJxcP4nfUx2qHOhRxxQafYTB', 'artifact': None, 'status': 'success'}",
+        "error": null,
+        "latency_ms": 0.214
+      },
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'get events -n kubeintellect --field-selector=lastTimestamp>=30m'}",
+        "output": "{'content': 'Error from server (BadRequest): Unable to find \"/v1, Resource=events\" that match label selector \"\", field selector \"lastTimestamp>=30m\": field label not supported: lastTimestamp>\\n', 'additional_kwargs': {}, 'response_metadata': {}, 'type': 'tool', 'name': 'run_kubectl', 'id': None, 'tool_call_id': 'call_3Rjnhjqnmn0FogU4dBfPiN4v', 'artifact': None, 'status': 'success'}",
+        "error": null,
+        "latency_ms": 0.176
+      }
+    ],
+    "has_error": false,
+    "error_messages": [],
+    "available": true
+  },
+  "logs": {
+    "session_id": "eval-20260427_205955-35-namespace-events",
+    "lines": [],
+    "error_count": 0,
+    "warning_count": 0,
+    "kubectl_commands": [],
+    "hitl_events": [],
+    "available": true
+  },
+  "scores": {
+    "completion": 1.0,
+    "tool_correctness": 1.0,
+    "error_free": 0.85,
+    "hitl_discipline": 1.0,
+    "latency": 0.7957816203435262,
+    "notes": [
+      "Tool errors detected: ['run_kubectl']"
+    ]
+  },
+  "aggregate_score": 0.9496,
+  "review_verdict": null,
+  "timestamp": "2026-04-27T21:30:13.498394+00:00",
+  "trace_issues": []
+}

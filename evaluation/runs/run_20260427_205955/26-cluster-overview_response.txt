@@ -1,0 +1,36 @@
+Here is the list of all pods running in the cluster across all namespaces:
+
+```
+NAMESPACE            NAME                                                        READY   STATUS      RESTARTS      AGE
+default              api-app-5b54d98595-lvr96                                    1/1     Running     1 (11h ago)   31h
+ingress-nginx        ingress-nginx-controller-cdc65d964-jcnv7                    1/1     Running     1 (11h ago)   45h
+kube-system          coredns-7db6d8ff4d-xc95d                                    1/1     Running     1 (11h ago)   46h
+kube-system          coredns-7db6d8ff4d-zkhzc                                    1/1     Running     1 (11h ago)   46h
+kube-system          etcd-testbed-v2-control-plane                               1/1     Running     1 (11h ago)   46h
+kube-system          kindnet-dbsdn                                               1/1     Running     1 (11h ago)   46h
+kube-system          kindnet-khzgg                                               1/1     Running     1 (11h ago)   46h
+kube-system          kube-apiserver-testbed-v2-control-plane                     1/1     Running     1 (11h ago)   46h
+kube-system          kube-controller-manager-testbed-v2-control-plane            1/1     Running     1 (11h ago)   46h
+kube-system          kube-proxy-tnfrv                                            1/1     Running     1 (11h ago)   46h
+kube-system          kube-proxy-v2p88                                            1/1     Running     1 (11h ago)   46h
+kube-system          kube-scheduler-testbed-v2-control-plane                     1/1     Running     1 (11h ago)   46h
+local-path-storage   local-path-provisioner-988d74bc-77spv                       1/1     Running     2 (11h ago)   46h
+mohsen               fancy-website-6b88f8ffd8-shpbx                              1/1     Running     1 (11h ago)   24h
+mohsen               web-app-6fb6548866-8gxbl                                    1/1     Running     1 (11h ago)   24h
+monitoring           kube-prometheus-stack-grafana-54bcb74c65-clgqb              3/3     Running     3 (11h ago)   46h
+monitoring           kube-prometheus-stack-kube-state-metrics-5687669497-zp7m6   1/1     Running     2 (11h ago)   46h
+monitoring           kube-prometheus-stack-operator-7fcf6bb697-jq4fg             1/1     Running     2 (11h ago)   46h
+monitoring           kube-prometheus-stack-prometheus-node-exporter-l6hkp        1/1     Running     1 (11h ago)   46h
+monitoring           kube-prometheus-stack-prometheus-node-exporter-p7v4t        1/1     Running     1 (11h ago)   46h
+monitoring           langfuse-clickhouse-69bf5f8b54-chrqf                        1/1     Running     1 (11h ago)   46h
+monitoring           langfuse-minio-575775b75-74nb2                              1/1     Running     1 (11h ago)   46h
+monitoring           langfuse-minio-init-6zlpc                                   0/1     Completed   0             29h
+monitoring           langfuse-postgres-56b8c66467-g2c8t                          1/1     Running     1 (11h ago)   46h
+monitoring           langfuse-redis-5c55d44864-l8pgs                             1/1     Running     1 (11h ago)   46h
+monitoring           langfuse-web-67f656c5d-mlxnk                                1/1     Running     1 (11h ago)   46h
+monitoring           langfuse-worker-867b4d6567-5htzt                            1/1     Running     1 (11h ago)   46h
+monitoring           loki-0                                                      1/1     Running     1 (11h ago)   46h
+monitoring           loki-promtail-7rc9t                                         1/1     Running     1 (11h ago)   46h
+monitoring           loki-promtail-xmvbg                                         1/1     Running     1 (11h ago)   46h
+monitoring           prometheus-kube-prometheus-stack-prometheus-0               2/2     Running     2 (11h ago)   46h
+```

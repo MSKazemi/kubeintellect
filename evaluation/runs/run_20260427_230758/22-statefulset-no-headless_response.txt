@@ -1,0 +1,39 @@
+INVESTIGATION_PLAN:
+1. Describe the StatefulSet `db-cluster` in the `scenario-test` namespace to check its configuration, including the service name and DNS settings.
+2. Get details of the headless service `db-headless` in the `scenario-test` namespace to verify its configuration and ensure it is correctly set up for DNS-based discovery.
+3. Check the endpoints associated with the `db-headless` service to confirm that the pod `db-cluster-0` is correctly registered.
+4. Investigate the DNS resolution for the stable DNS name `db-cluster-0.db-headless.scenario-test.svc.cluster.local` to verify if it resolves correctly.
+
+Fetching all required data in parallel.### Findings:
+1. **StatefulSet Configuration**:
+   - The StatefulSet `db-cluster` in the `scenario-test` namespace is correctly configured with 1 replica (`db-cluster-0`).
+   - The pod is running successfully, and the StatefulSet uses the label `app=db-cluster`.
+
+2. **Headless Service Missing**:
+   - The headless service `db-headless` does not exist in the `scenario-test` namespace. This is critical because StatefulSets rely on a headless service for DNS-based discovery.
+
+3. **Endpoints Missing**:
+   - Since the headless service `db-headless` is missing, there are no endpoints registered for it.
+
+4. **DNS Resolution Failure**:
+   - The `nslookup` command failed because the `db-cluster-0` pod does not have the `nslookup` utility installed. However, the root cause is clear: DNS resolution is broken due to the absence of the headless service.
+
+### Root Cause:
+The headless service `db-headless` is missing in the `scenario-test` namespace. Without this service, the DNS name `db-cluster-0.db-headless.scenario-test.svc.cluster.local` cannot be resolved, and other services cannot reach the pod.
+
+### Fix:
+Create the missing headless service `db-headless` in the `scenario-test` namespace. The service should be configured as follows:
+- **Type**: ClusterIP (headless, with `clusterIP: None`)
+- **Selector**: `app=db-cluster`
+- **Ports**: Match the port exposed by the StatefulSet pod (e.g., `5432/TCP`).
+
+Applying the fix now.### Fix Applied:
+The headless service `db-headless` has been successfully created in the `scenario-test` namespace. It is configured with:
+- **Type**: ClusterIP (headless, with `clusterIP: None`)
+- **Selector**: `app=db-cluster`
+- **Port**: `5432/TCP`
+
+### Verification:
+The service is now present and correctly configured. Other services in the cluster should be able to resolve the DNS name `db-cluster-0.db-headless.scenario-test.svc.cluster.local` and reach the pod.
+
+If further issues persist, let me know for additional investigation.

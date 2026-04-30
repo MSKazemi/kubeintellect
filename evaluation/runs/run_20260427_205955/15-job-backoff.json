@@ -1,0 +1,1942 @@
+{
+  "query_id": "15-job-backoff",
+  "title": "15-job-backoff",
+  "session_id": "eval-20260427_205955-15-job-backoff",
+  "run_id": "run_20260427_205955",
+  "result": {
+    "session_id": "eval-20260427_205955-15-job-backoff",
+    "query_id": "15-job-backoff",
+    "messages": [
+      {
+        "role": "user",
+        "content": "The batch job data-migration in namespace scenario-test has failed. Find out why it failed, show the failure reason, and tell me whether it can be retried or needs a fix first."
+      }
+    ],
+    "final_text": "TARGETED: namespace=scenario-test, pod=data-migration-bmtlg, issue=Error state### Failure Analysis\n\nThe batch job `data-migration` in namespace `scenario-test` failed due to the following reasons:\n\n1. **Failure Reason**:\n   - The container `migrator` terminated with an exit code `1`.\n   - Logs indicate the error: `ERROR: Cannot connect to database at postgres.internal:5432`.\n   - The migration failed due to a `connection refused` error when attempting to connect to the database.\n\n2. **Pod State**:\n   - The pod was successfully scheduled and started, but the container terminated immediately after encountering the error.\n\n### Retry or Fix?\n\nThis issue cannot be resolved by simply retrying the job. The root cause is a connectivity problem with the database (`postgres.internal:5432`). You need to address this before retrying the job. Possible fixes include:\n\n1. **Verify Database Accessibility**:\n   - Ensure the database service `postgres.internal` is running and accessible on port `5432`.\n   - Check network policies, service configurations, and DNS resolution for `postgres.internal`.\n\n2. **Database Credentials**:\n   - Confirm that the job has the correct credentials and environment variables to connect to the database.\n\n3. **Cluster Networking**:\n   - Investigate potential network issues between the job pod and the database service.\n\nOnce the connectivity issue is resolved, the job can be retried.",
+    "events": [
+      {
+        "type": "start",
+        "data": {
+          "protocol_version": "1.0",
+          "object": "stream.start",
+          "session_id": "eval-20260427_205955-15-job-backoff"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "loading",
+          "message": "Loading conversation context\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "snapshot",
+          "message": "Fetching cluster snapshot\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "analyzing",
+          "message": "Analyzing your request\u2026"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "TARGET"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ED"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "=sc"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "enario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "=data"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-m"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "igration"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-b"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "mt"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "lg"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " issue"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "="
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Error"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " state"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: kubectl describe pod data-migration-bmtlg -n scenario-test"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: kubectl logs data-migration-bmtlg -n scenario-test --tail=50"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "Name:             data-migration-bmtlg\nNamespace:        scenario-test\nPriority:         0\nService Account:  default\nNode:             testbed-v2-worker/172.20.0.2\nStart Time:       Mon, 27 Apr 2026 23:14:41 +0200\nLabels:           app=data-migration\n                  batch.kubernetes.io/controller-uid=f44f72f7-c099-4fef-8087-6096c68c4058\n                  batch.kubernetes.io/job-name=data-migration\n                  controller-uid=f44f72f7-c099-4fef-8087-6096c68c4058\n                  job-name="
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "Starting data migration...\nERROR: Cannot connect to database at postgres.internal:5432\nMigration failed: connection refused\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "###"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Failure"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Analysis"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " batch"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " job"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "data"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-m"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "igration"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " failed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " due"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " following"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " reasons"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "1"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Failure"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Reason"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " container"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "m"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "igr"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ator"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " terminated"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " an"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " exit"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " code"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "1"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`.\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Logs"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " indicate"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " error"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ERROR"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Cannot"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " connect"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " database"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " at"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " postgres"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".internal"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "543"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`.\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " migration"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " failed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " due"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " a"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "connection"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " refused"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " error"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " when"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " attempting"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " connect"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " database"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " State"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " was"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " successfully"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " scheduled"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " started"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " but"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " container"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " terminated"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " immediately"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " after"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " encountering"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " error"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "###"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Retry"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Fix"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "?\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "This"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " issue"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " cannot"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " be"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resolved"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " by"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " simply"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " retry"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ing"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " job"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " root"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " cause"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " a"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " connectivity"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " problem"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " database"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " (`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "postgres"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".internal"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "543"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`)."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " You"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " need"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " address"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " this"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " before"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " retry"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ing"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " job"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Possible"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " fixes"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " include"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "1"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Verify"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Database"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Accessibility"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Ensure"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " database"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " service"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "postgres"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".internal"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " running"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " accessible"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " on"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " port"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "543"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`.\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Check"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " network"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " policies"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " service"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " configurations"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " DNS"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resolution"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " for"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "postgres"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".internal"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`.\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Database"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Credentials"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Confirm"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " that"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " job"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " has"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " correct"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " credentials"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " environment"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " variables"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " connect"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " database"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "3"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Cluster"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Networking"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Investig"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ate"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " potential"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " network"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " issues"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " between"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " job"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " database"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " service"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Once"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " connectivity"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " issue"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resolved"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " job"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " can"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " be"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " retr"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ied"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      }
+    ],
+    "had_hitl": false,
+    "had_error": false,
+    "error_message": null,
+    "latency_ms": 7865.514755249023,
+    "start_ts": 1777324485.0725243,
+    "end_ts": 1777324492.938039,
+    "tool_calls": [
+      "run_kubectl",
+      "run_kubectl"
+    ],
+    "tool_errors": [
+      "run_kubectl"
+    ],
+    "status_phases": [
+      "loading",
+      "snapshot",
+      "analyzing"
+    ],
+    "hitl_commands": []
+  },
+  "trace": {
+    "trace_id": "7d425cd70e86ce03be5ff0662be2f75e",
+    "session_id": "eval-20260427_205955-15-job-backoff",
+    "total_tokens": 8295,
+    "total_latency_ms": 7.380999999999999,
+    "generations": [
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 4463,
+        "completion_tokens": 277,
+        "latency_ms": 5.254
+      },
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 3455,
+        "completion_tokens": 100,
+        "latency_ms": 2.127
+      }
+    ],
+    "tool_spans": [
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'kubectl logs data-migration-bmtlg -n scenario-test --tail=50'}",
+        "output": "{'content': 'Starting data migration...\\nERROR: Cannot connect to database at postgres.internal:5432\\nMigration failed: connection refused\\n', 'additional_kwargs': {}, 'response_metadata': {}, 'type': 'tool', 'name': 'run_kubectl', 'id': None, 'tool_call_id': 'call_pTL78YJHvVFoAv3BhOIminhB', 'artifact': None, 'status': 'success'}",
+        "error": null,
+        "latency_ms": 0.169
+      },
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'kubectl describe pod data-migration-bmtlg -n scenario-test'}",
+        "output": "{'content': 'Name:             data-migration-bmtlg\\nNamespace:        scenario-test\\nPriority:         0\\nService Account:  default\\nNode:             testbed-v2-worker/172.20.0.2\\nStart Time:       Mon, 27 Apr 2026 23:14:41 +0200\\nLabels:           app=data-migration\\n                  batch.kubernetes.io/controller-uid=f44f72f7-c099-4fef-8087-6096c68c4058\\n                  batch.kubernetes.io/job-name=data-migration\\n                  controller-uid=f44f72f7-c099-4fef-8087-6096c68c4058\\n    ",
+        "error": null,
+        "latency_ms": 0.164
+      }
+    ],
+    "has_error": false,
+    "error_messages": [],
+    "available": true
+  },
+  "logs": {
+    "session_id": "eval-20260427_205955-15-job-backoff",
+    "lines": [],
+    "error_count": 0,
+    "warning_count": 0,
+    "kubectl_commands": [],
+    "hitl_events": [],
+    "available": true
+  },
+  "scores": {
+    "completion": 1.0,
+    "tool_correctness": 1.0,
+    "error_free": 0.85,
+    "hitl_discipline": 1.0,
+    "latency": 0.7378161748250325,
+    "notes": [
+      "Tool errors detected: ['run_kubectl']"
+    ]
+  },
+  "aggregate_score": 0.9438,
+  "review_verdict": null,
+  "timestamp": "2026-04-27T21:15:02.618576+00:00",
+  "trace_issues": [
+    {
+      "id": "TOKEN_EXPLOSION",
+      "severity": "HIGH",
+      "detail": "Prompt grew by 1008 tokens across LLM calls (3455 \u2192 4463). Tool output fed raw into next prompt without summarization."
+    }
+  ]
+}

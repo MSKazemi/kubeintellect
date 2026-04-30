@@ -1,0 +1,25 @@
+To determine if there are any services in the cluster that have no matching endpoints, I need to check the services and their corresponding endpoints. This involves:
+
+1. Listing all services in the cluster.
+2. Checking the endpoints associated with each service to see if any are empty.
+
+INVESTIGATION_PLAN:
+- Fetch all services in the cluster.
+- Fetch all endpoints in the cluster to identify any services with no matching endpoints.
+
+Let's proceed.After analyzing the services and their corresponding endpoints, all services in the cluster have matching endpoints. There are no services without endpoints. Here is a summary:
+
+### Services with Endpoints:
+- **default/kubernetes**: Endpoint `172.20.0.3:6443`
+- **ingress-nginx/ingress-nginx-controller**: Endpoints `10.244.0.5:443, 10.244.0.5:80`
+- **ingress-nginx/ingress-nginx-controller-admission**: Endpoint `10.244.0.5:8443`
+- **kube-system/kube-dns**: Multiple endpoints including `10.244.0.3:53, 10.244.0.4:53`
+- **mohsen/fancy-website**: Endpoint `10.244.1.12:80`
+- **mohsen/web-app-service**: Endpoint `10.244.1.9:80`
+- **monitoring/kube-prometheus-stack-grafana**: Endpoint `10.244.1.2:3000`
+- **monitoring/langfuse-clickhouse**: Endpoints `10.244.1.7:9000, 10.244.1.7:8123`
+- **monitoring/langfuse-redis**: Endpoint `10.244.1.4:6379`
+- **monitoring/loki**: Endpoint `10.244.1.3:3100`
+
+### Conclusion:
+No services are missing endpoints. The cluster is correctly configured in this regard.

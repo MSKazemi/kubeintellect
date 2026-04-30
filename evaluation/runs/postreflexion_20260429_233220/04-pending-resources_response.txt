@@ -1,0 +1,34 @@
+INVESTIGATION_PLAN:
+- Describe the pod `hungry-app` in namespace `scenario-test` to inspect its resource requests, tolerations, affinity, and scheduler events.
+- Get the list of nodes and their labels to check for taints, roles, and capacity.
+- Describe each node to examine Allocatable vs Allocated resources and any taints that might affect scheduling.
+
+Proceeding with parallel tool calls.### Root Cause Analysis
+
+The pod `hungry-app` in the `scenario-test` namespace is stuck in the `Pending` state due to the following reasons:
+
+1. **Insufficient Memory**:
+   - The pod requests 50Gi of memory, which exceeds the available memory on both nodes (`testbed-v2-control-plane` and `testbed-v2-worker`).
+   - Both nodes have a total memory capacity of 32.5Gi, and their current memory allocation is far below the requested amount.
+
+2. **Taint on Control Plane Node**:
+   - The control plane node (`testbed-v2-control-plane`) has a taint `node-role.kubernetes.io/control-plane:NoSchedule`, which prevents scheduling unless the pod explicitly tolerates this taint.
+   - The pod does not have a toleration for this taint.
+
+3. **No Preemption Victims**:
+   - The scheduler attempted preemption but found no suitable victims to free up resources for the pod.
+
+### Suggested Fixes
+
+1. **Reduce Memory Requests**:
+   - Lower the memory request for the pod to fit within the available capacity of the nodes. For example, reduce the request from `50Gi` to a value below `32Gi`.
+
+2. **Add Toleration for Control Plane Node**:
+   - If the control plane node is intended to host workloads, add a toleration for the taint `node-role.kubernetes.io/control-plane:NoSchedule`.
+
+3. **Scale Up the Cluster**:
+   - Add more worker nodes with sufficient memory capacity to accommodate the pod's resource requests.
+
+### Next Steps
+
+I will proceed with reducing the memory request for the pod to ensure it can be scheduled. Let me know if you prefer a different approach, such as scaling up the cluster or modifying tolerations.

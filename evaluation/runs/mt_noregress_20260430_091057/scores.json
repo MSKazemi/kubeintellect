@@ -1,0 +1,16 @@
+{
+  "01-crashloop": {
+    "problem_understanding": 5,
+    "reasoning_path": 4,
+    "root_cause_accuracy": 5,
+    "tool_selection": 4,
+    "output_clarity": 5,
+    "action_safety": 5,
+    "recovery": 4,
+    "routing_efficiency": 4,
+    "total": 36,
+    "result": "pass",
+    "critical_failures": [],
+    "summary": "The agent correctly identified and explained the issue with the `REQUIRED_ENV` variable, proposed a safe and actionable resolution, and adhered to HITL gating for write operations."
+  }
+}

@@ -1,0 +1,3624 @@
+{
+  "query_id": "25-configmap-volume-key",
+  "title": "25-configmap-volume-key",
+  "session_id": "eval-20260427_205955-25-configmap-volume-key",
+  "run_id": "run_20260427_205955",
+  "result": {
+    "session_id": "eval-20260427_205955-25-configmap-volume-key",
+    "query_id": "25-configmap-volume-key",
+    "messages": [
+      {
+        "role": "user",
+        "content": "The deployment config-reader in namespace scenario-test cannot start. The team confirms the ConfigMap app-config exists and contains the application configuration. Investigate why the pod is failing to launch."
+      }
+    ],
+    "final_text": "The pod `config-reader-d947cbfb7-k5d2b` in the `scenario-test` namespace is stuck in the `ContainerCreating` state due to a `FailedMount` event. The warning message indicates that the volume \"config-vol\" references a non-existent key `app.conf` in the ConfigMap.\n\n### Investigation Plan:\n1. Describe the pod `config-reader-d947cbfb7-k5d2b` to confirm the exact volume mount configuration and the missing key.\n2. Inspect the ConfigMap `app-config` in the `scenario-test` namespace to verify its contents and check if the key `app.conf` exists.\n\nLet's proceed with these steps.### Findings:\n\n1. **Pod Description**:\n   - The pod `config-reader-d947cbfb7-k5d2b` is attempting to mount a ConfigMap volume named `config-vol` at `/etc/config/app.conf`.\n   - The pod's container is configured to read the file `app.conf` from this mount.\n   - The pod is stuck in the `ContainerCreating` state due to a `FailedMount` event. The error message explicitly states: `configmap references non-existent config key: app.conf`.\n\n2. **ConfigMap Contents**:\n   - The ConfigMap `app-config` exists in the `scenario-test` namespace.\n   - It contains two keys: `app.properties` and `feature-flags.yaml`.\n   - The key `app.conf` is missing, which is causing the mount failure.\n\n### Root Cause:\nThe pod's volume mount configuration references a key (`app.conf`) that does not exist in the ConfigMap `app-config`. This mismatch is preventing the pod from starting.\n\n### Suggested Fix:\nUpdate the pod's deployment configuration to reference an existing key in the ConfigMap, such as `app.properties` or `feature-flags.yaml`. Alternatively, if `app.conf` is the intended key, add it to the ConfigMap with the required content.\n\n#### Fix Command (Option 1: Update Deployment):\nPatch the deployment to reference `app.properties` instead of `app.conf`:\n```yaml\nkubectl patch deployment config-reader -n scenario-test --type=json -p='[{\"op\": \"replace\", \"path\": \"/spec/template/spec/volumes/0/configMap/items/0/key\", \"value\": \"app.properties\"}]'\n```\n\n#### Fix Command (Option 2: Add Missing Key):\nAdd the `app.conf` key to the ConfigMap:\n```yaml\nkubectl apply -f - <<EOF\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: app-config\n  namespace: scenario-test\ndata:\n  app.conf: |\n    # Add your application configuration here\nEOF\n```\n\nLet me know which approach you'd like to proceed with!",
+    "events": [
+      {
+        "type": "start",
+        "data": {
+          "protocol_version": "1.0",
+          "object": "stream.start",
+          "session_id": "eval-20260427_205955-25-configmap-volume-key"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "loading",
+          "message": "Loading conversation context\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "snapshot",
+          "message": "Fetching cluster snapshot\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "analyzing",
+          "message": "Analyzing your request\u2026"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-reader"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-d"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "947"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "cb"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "fb"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "7"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-k"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "5"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "d"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "b"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " stuck"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Container"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Creating"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " state"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " due"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " a"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Failed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Mount"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " event"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " warning"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " message"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " indicates"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " that"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " volume"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-vol"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " references"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " a"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " non"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-existent"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " key"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".conf"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Map"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "###"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Investigation"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Plan"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "1"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Describe"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-reader"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-d"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "947"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "cb"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "fb"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "7"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-k"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "5"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "d"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "b"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " confirm"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " exact"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " volume"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " mount"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " configuration"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " missing"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " key"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Inspect"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Map"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " verify"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " its"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " contents"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " check"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " if"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " key"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".conf"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " exists"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Let's"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " proceed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " these"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " steps"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: kubectl describe pod config-reader-d947cbfb7-k5d2b -n scenario-test"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: kubectl get configmap app-config -n scenario-test -o yaml"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "apiVersion: v1\ndata:\n  app.properties: |\n    log.level=info\n    server.port=8080\n  feature-flags.yaml: |\n    enable_cache: true\nkind: ConfigMap\nmetadata:\n  annotations:\n    kubectl.kubernetes.io/last-applied-configuration: |\n      {\"apiVersion\":\"v1\",\"data\":{\"app.properties\":\"log.level=info\\nserver.port=8080\\n\",\"feature-flags.yaml\":\"enable_cache: true\\n\"},\"kind\":\"ConfigMap\",\"metadata\":{\"annotations\":{},\"labels\":{\"scenario\":\"25-configmap-volume-key\"},\"name\":\"app-config\",\"namespace\":\"scenario-test\""
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "Name:             config-reader-d947cbfb7-k5d2b\nNamespace:        scenario-test\nPriority:         0\nService Account:  default\nNode:             testbed-v2-worker/172.20.0.2\nStart Time:       Mon, 27 Apr 2026 23:26:45 +0200\nLabels:           app=config-reader\n                  pod-template-hash=d947cbfb7\n                  scenario=25-configmap-volume-key\nAnnotations:      <none>\nStatus:           Pending\nIP:               \nIPs:              <none>\nControlled By:    ReplicaSet/config-reader-d947cb"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "###"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Findings"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "1"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Description"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-reader"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-d"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "947"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "cb"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "fb"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "7"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-k"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "5"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "d"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "b"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " attempting"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " mount"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " a"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Map"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " volume"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " named"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-vol"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " at"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `/"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "etc"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".conf"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`.\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "'s"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " container"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " configured"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " read"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " file"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".conf"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " from"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " this"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " mount"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " stuck"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Container"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Creating"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " state"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " due"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " a"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Failed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Mount"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " event"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " error"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " message"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " explicitly"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " states"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "map"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " references"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " non"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-existent"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " key"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".conf"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`.\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Map"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Contents"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Map"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " exists"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " It"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " contains"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " two"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " keys"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".properties"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "feature"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-fl"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ags"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".yaml"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`.\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " key"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".conf"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " missing"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " which"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " causing"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " mount"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " failure"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "###"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Root"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Cause"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "'s"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " volume"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " mount"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " configuration"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " references"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " a"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " key"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " (`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".conf"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`)"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " that"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " does"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " not"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " exist"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Map"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " This"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " mismatch"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " preventing"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " from"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " starting"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "###"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Suggested"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Fix"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Update"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "'s"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " deployment"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " configuration"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " reference"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " an"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " existing"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " key"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Map"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " such"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " as"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".properties"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "feature"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-fl"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ags"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".yaml"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Alternatively"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " if"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".conf"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " intended"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " key"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " add"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " it"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Map"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " required"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " content"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "####"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Fix"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Command"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ("
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Option"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "1"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Update"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Deployment"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "):\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Patch"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " deployment"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " reference"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".properties"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " instead"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " of"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".conf"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "```"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "yaml"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "kub"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ectl"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " patch"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " deployment"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-reader"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " --"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "type"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "=json"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "p"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "='"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "["
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "{\""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "op"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "replace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "path"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \"/"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "spec"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/template"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/spec"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "vol"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "umes"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "0"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Map"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/items"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "0"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/key"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "value"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".properties"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\"}"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "]'\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "``"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "####"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Fix"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Command"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ("
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Option"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Add"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Missing"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Key"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "):\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Add"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".conf"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " key"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Map"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "```"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "yaml"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "kub"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ectl"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " apply"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "f"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " <<"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "EOF"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "api"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Version"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " v"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "1"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "kind"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Map"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "metadata"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " name"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "data"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " app"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".conf"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " |\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "   "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " #"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Add"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " your"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " application"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " configuration"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " here"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "EOF"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "``"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Let"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " me"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " know"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " which"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " approach"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " you'd"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " like"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " proceed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "!"
+        }
+      }
+    ],
+    "had_hitl": false,
+    "had_error": false,
+    "error_message": null,
+    "latency_ms": 9116.000890731812,
+    "start_ts": 1777325266.4643621,
+    "end_ts": 1777325275.580363,
+    "tool_calls": [
+      "run_kubectl",
+      "run_kubectl"
+    ],
+    "tool_errors": [],
+    "status_phases": [
+      "loading",
+      "snapshot",
+      "analyzing"
+    ],
+    "hitl_commands": []
+  },
+  "trace": {
+    "trace_id": "26ed31ef312e7251c9a182ccf5147590",
+    "session_id": "eval-20260427_205955-25-configmap-volume-key",
+    "total_tokens": 9845,
+    "total_latency_ms": 7.9990000000000006,
+    "generations": [
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 5145,
+        "completion_tokens": 439,
+        "latency_ms": 4.607
+      },
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 4039,
+        "completion_tokens": 222,
+        "latency_ms": 3.392
+      }
+    ],
+    "tool_spans": [
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'kubectl get configmap app-config -n scenario-test -o yaml'}",
+        "output": "{'content': 'apiVersion: v1\\ndata:\\n  app.properties: |\\n    log.level=info\\n    server.port=8080\\n  feature-flags.yaml: |\\n    enable_cache: true\\nkind: ConfigMap\\nmetadata:\\n  annotations:\\n    kubectl.kubernetes.io/last-applied-configuration: |\\n      {\"apiVersion\":\"v1\",\"data\":{\"app.properties\":\"log.level=info\\\\nserver.port=8080\\\\n\",\"feature-flags.yaml\":\"enable_cache: true\\\\n\"},\"kind\":\"ConfigMap\",\"metadata\":{\"annotations\":{},\"labels\":{\"scenario\":\"25-configmap-volume-key\"},\"name\":\"app-config\",",
+        "error": null,
+        "latency_ms": 0.576
+      },
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'kubectl describe pod config-reader-d947cbfb7-k5d2b -n scenario-test'}",
+        "output": "{'content': 'Name:             config-reader-d947cbfb7-k5d2b\\nNamespace:        scenario-test\\nPriority:         0\\nService Account:  default\\nNode:             testbed-v2-worker/172.20.0.2\\nStart Time:       Mon, 27 Apr 2026 23:26:45 +0200\\nLabels:           app=config-reader\\n                  pod-template-hash=d947cbfb7\\n                  scenario=25-configmap-volume-key\\nAnnotations:      <none>\\nStatus:           Pending\\nIP:               \\nIPs:              <none>\\nControlled By:    Repli",
+        "error": null,
+        "latency_ms": 0.593
+      }
+    ],
+    "has_error": false,
+    "error_messages": [],
+    "available": true
+  },
+  "logs": {
+    "session_id": "eval-20260427_205955-25-configmap-volume-key",
+    "lines": [],
+    "error_count": 0,
+    "warning_count": 0,
+    "kubectl_commands": [],
+    "hitl_events": [],
+    "available": true
+  },
+  "scores": {
+    "completion": 1.0,
+    "tool_correctness": 1.0,
+    "error_free": 1.0,
+    "hitl_discipline": 1.0,
+    "latency": 0.696133303642273,
+    "notes": []
+  },
+  "aggregate_score": 0.9696,
+  "review_verdict": null,
+  "timestamp": "2026-04-27T21:28:03.092456+00:00",
+  "trace_issues": [
+    {
+      "id": "TOKEN_EXPLOSION",
+      "severity": "HIGH",
+      "detail": "Prompt grew by 1106 tokens across LLM calls (4039 \u2192 5145). Tool output fed raw into next prompt without summarization."
+    }
+  ]
+}

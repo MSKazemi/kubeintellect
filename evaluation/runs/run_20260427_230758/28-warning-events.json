@@ -1,0 +1,218 @@
+{
+  "query_id": "28-warning-events",
+  "title": "28-warning-events",
+  "session_id": "eval-20260427_230758-28-warning-events",
+  "run_id": "run_20260427_230758",
+  "result": {
+    "session_id": "eval-20260427_230758-28-warning-events",
+    "query_id": "28-warning-events",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What warning events have happened in the cluster in the last hour?"
+      }
+    ],
+    "final_text": "No warning events have occurred in the cluster in the last hour.",
+    "events": [
+      {
+        "type": "start",
+        "data": {
+          "protocol_version": "1.0",
+          "object": "stream.start",
+          "session_id": "eval-20260427_230758-28-warning-events"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "loading",
+          "message": "Loading conversation context\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "snapshot",
+          "message": "Fetching cluster snapshot\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "analyzing",
+          "message": "Analyzing your request\u2026"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "query_loki",
+          "message": "Calling query_loki"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "query_loki",
+          "output": "No logs found for: {level=\"warning\"}"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "No"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " warning"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " events"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " have"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " occurred"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " cluster"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " last"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " hour"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      }
+    ],
+    "had_hitl": false,
+    "had_error": false,
+    "error_message": null,
+    "latency_ms": 2774.0063667297363,
+    "start_ts": 1777333922.0991838,
+    "end_ts": 1777333924.8731902,
+    "tool_calls": [
+      "query_loki"
+    ],
+    "tool_errors": [],
+    "status_phases": [
+      "loading",
+      "snapshot",
+      "analyzing"
+    ],
+    "hitl_commands": []
+  },
+  "trace": {
+    "trace_id": "b615822b18bd0307eb95f889d2a5ad19",
+    "session_id": "eval-20260427_230758-28-warning-events",
+    "total_tokens": 7295,
+    "total_latency_ms": 2.3810000000000002,
+    "generations": [
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 3649,
+        "completion_tokens": 15,
+        "latency_ms": 1.026
+      },
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 3600,
+        "completion_tokens": 31,
+        "latency_ms": 1.355
+      }
+    ],
+    "tool_spans": [
+      {
+        "name": "query_loki",
+        "input_args": "{'logql': '{level=\"warning\"}', 'since': '1h', 'limit': 100}",
+        "output": "{'content': 'No logs found for: {level=\"warning\"}', 'additional_kwargs': {}, 'response_metadata': {}, 'type': 'tool', 'name': 'query_loki', 'id': None, 'tool_call_id': 'call_M6sgc5D1Z1Y5mD4RAV2TPc0W', 'artifact': None, 'status': 'success'}",
+        "error": null,
+        "latency_ms": 0.03
+      }
+    ],
+    "has_error": false,
+    "error_messages": [],
+    "available": true
+  },
+  "logs": {
+    "session_id": "eval-20260427_230758-28-warning-events",
+    "lines": [],
+    "error_count": 0,
+    "warning_count": 0,
+    "kubectl_commands": [],
+    "hitl_events": [],
+    "available": true
+  },
+  "scores": {
+    "completion": 1.0,
+    "tool_correctness": 1.0,
+    "error_free": 1.0,
+    "hitl_discipline": 1.0,
+    "latency": 0.9075331211090087,
+    "cluster_resolved": null,
+    "notes": []
+  },
+  "aggregate_score": 0.9908,
+  "review_verdict": null,
+  "timestamp": "2026-04-27T23:52:12.169555+00:00",
+  "trace_issues": [],
+  "cluster_resolved": null
+}

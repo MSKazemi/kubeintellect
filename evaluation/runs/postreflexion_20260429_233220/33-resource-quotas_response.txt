@@ -1,0 +1,5 @@
+INVESTIGATION_PLAN:
+- Fetch resource quotas for all namespaces to identify any limits set.
+- Check current resource usage against the quotas to determine if any namespace is approaching its limits.
+
+Executing parallel tool calls to gather this information.There are no resource quotas defined for any namespace in the cluster, and Prometheus does not report any data for CPU resource requests by namespace. This indicates that no namespace is approaching resource quota limits because no quotas are set.

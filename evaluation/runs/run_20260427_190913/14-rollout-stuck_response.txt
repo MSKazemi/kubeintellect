@@ -1,0 +1,34 @@
+INVESTIGATION_PLAN:
+1. Describe the deployment `web-api` in the `scenario-test` namespace to understand the rollout strategy and current state.
+2. Inspect the pods in the `scenario-test` namespace to identify the issue with the failing pods (e.g., ErrImagePull or other errors).
+3. Check the events in the `scenario-test` namespace for warnings or errors related to the deployment or pods.
+4. Verify the image configuration in the deployment spec to confirm the root cause of the ErrImagePull issue.
+
+Proceeding with parallel tool calls to gather the necessary information.### Root Cause Analysis
+The deployment `web-api` in the `scenario-test` namespace is stuck during a rolling update because the new pods are failing to pull the specified image `nginx:99.99-bad-rollout`. The image tag `99.99-bad-rollout` does not exist in the Docker registry, resulting in `ErrImagePull` and `ImagePullBackOff` errors for all new pods.
+
+Key findings:
+1. **Deployment Spec**: The deployment specifies the image `nginx:99.99-bad-rollout`, which is invalid or unavailable.
+2. **Pod Events**: All new pods fail with the error `Failed to pull image "nginx:99.99-bad-rollout": not found`.
+3. **Deployment State**: The rollout strategy is `RollingUpdate`, with 1 max unavailable and 1 max surge. This means the deployment is attempting to replace pods incrementally, but the new pods cannot start due to the invalid image.
+
+### Safest Recovery Action
+To safely recover the deployment:
+1. **Update the Deployment**: Patch the deployment to use a valid image tag (e.g., `nginx:latest` or another known working version).
+2. **Verify the Fix**: Ensure the new pods are created successfully and the rollout completes.
+
+### Recovery Steps
+1. Patch the deployment to use a valid image:
+   ```bash
+   kubectl set image deployment/web-api app=nginx:latest -n scenario-test
+   ```
+2. Verify the rollout status:
+   ```bash
+   kubectl rollout status deployment/web-api -n scenario-test
+   ```
+3. Confirm the pods are running:
+   ```bash
+   kubectl get pods -n scenario-test
+   ```
+
+Would you like me to execute these recovery steps?
