@@ -1,0 +1,1 @@
+There are no warning events currently reported in the cluster snapshot, which was fetched just seconds ago. However, since you specifically asked about events in the last hour, I will query the cluster for any recent warning events to ensure accuracy.No warning events have occurred in the cluster in the last hour. The cluster appears healthy.

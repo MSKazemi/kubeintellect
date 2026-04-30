@@ -1,0 +1,48 @@
+INVESTIGATION_PLAN:
+1. Check the DNS resolution for `backend-service` in the `scenario-test` namespace to ensure the frontend can resolve the service name.
+2. Verify the Service configuration for `backend-service` in the `scenario-test` namespace, including selectors and ports.
+3. Check the endpoints associated with `backend-service` to ensure they are correctly populated.
+4. Inspect any NetworkPolicies in the `scenario-test` namespace to see if they are blocking traffic.
+5. Confirm the backend pod's readiness and port exposure to ensure it matches the Service configuration.
+
+Proceeding with parallel tool calls to gather the required data.### Findings:
+1. **DNS Resolution**: The `nslookup` command failed because the `backend` container does not have the `nslookup` utility installed. This prevents direct verification of DNS resolution from the pod.
+2. **Service Configuration**: The `backend-service` is correctly defined as a `ClusterIP` service with IP `10.96.66.183` and port `80/TCP`.
+3. **Endpoints**: The `backend-service` has no endpoints (`<none>`). This indicates that no pods match the Service's selector.
+4. **NetworkPolicy**: No NetworkPolicies exist in the `scenario-test` namespace, so traffic is not being blocked by policies.
+5. **Backend Pod**: The backend pod (`backend-v1-699b6bdd8f-kw7ks`) is running, ready, and exposing port `80/TCP`. However, its labels (`app=backend-v1`, `scenario=03-service-mismatch`) suggest a potential mismatch with the Service's selector.
+
+### Root Cause:
+The `backend-service` is not associating with the backend pod because the Service's selector likely does not match the pod's labels. Without matching labels, the Service cannot route traffic to the pod, resulting in no endpoints.
+
+### Recommended Fix:
+Update the `backend-service` selector to match the pod's labels (`app=backend-v1` and `scenario=03-service-mismatch`).
+
+### Fix Command:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: scenario-test
+spec:
+  selector:
+    app: backend-v1
+    scenario: 03-service-mismatch
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+```
+
+Applying the fix now.### Verification:
+The `backend-service` now has an endpoint: `10.244.1.96:80`, which corresponds to the backend pod. This confirms that the Service selector was successfully updated and traffic can now be routed to the backend pod.
+
+### Final Status:
+- **DNS**: Likely functional, but direct verification was blocked due to missing `nslookup`.
+- **Service Selectors**: Fixed — updated to match pod labels.
+- **Endpoints**: Resolved — endpoint is now populated.
+- **Ports**: Correct — both Service and pod expose port `80/TCP`.
+- **NetworkPolicy**: No issues — no policies exist to block traffic.
+
+The frontend should now be able to reach the backend successfully.

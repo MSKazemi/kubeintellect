@@ -1,0 +1,1 @@
+There is no data available for HTTP error rates (status codes 5xx) for the `kubeintellect` service over the last 30 minutes. This could mean the service has not encountered any errors during this period or the relevant metrics are not being collected.

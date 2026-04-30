@@ -1,0 +1,54 @@
+INVESTIGATION_PLAN:
+- Identify pods with a high number of restarts from the cluster snapshot.
+- For each pod with high restarts, fetch detailed information about the last restart cause using Prometheus metrics.
+- Cross-check logs for any additional insights into the restart causes.
+
+### Step 1: Identify pods with high restarts
+From the cluster snapshot:
+- Pods with restarts > 5:
+  - `local-path-provisioner-988d74bc-77spv` (6 restarts)
+  - `kube-prometheus-stack-kube-state-metrics-5687669497-zp7m6` (6 restarts)
+  - `kube-prometheus-stack-operator-7fcf6bb697-jq4fg` (6 restarts)
+  - `prometheus-kube-prometheus-stack-prometheus-0` (6 restarts)
+
+### Step 2: Fetch detailed restart causes
+I will query Prometheus for the `kube_pod_container_status_last_terminated_reason` metric for these pods.
+
+### Step 3: Cross-check logs for restart-related errors
+I will query Loki logs for these pods to identify any error patterns.
+
+### Tool Calls
+I will now fetch the required data in parallel:
+1. Prometheus query for restart reasons.
+2. Loki logs for error patterns.### Findings
+
+#### Prometheus Metrics (Restart Reasons):
+1. **local-path-provisioner-988d74bc-77spv**:
+   - Last terminated reason: `Error`.
+
+2. **kube-prometheus-stack-kube-state-metrics-5687669497-zp7m6**:
+   - Last terminated reason: `Error`.
+
+3. **kube-prometheus-stack-operator-7fcf6bb697-jq4fg**:
+   - Last terminated reason: `Error`.
+
+4. **prometheus-kube-prometheus-stack-prometheus-0**:
+   - Last terminated reasons:
+     - Container `config-reloader`: `Unknown`.
+     - Container `prometheus`: `Unknown`.
+
+#### Loki Logs:
+- No error logs were found for the queried pods in the last 6 hours.
+
+### Analysis
+- The restart reasons for most pods are `Error`, indicating a failure in the container's execution.
+- For `prometheus-kube-prometheus-stack-prometheus-0`, the restart reasons are `Unknown`, which may require further investigation into the pod's configuration or resource constraints.
+
+### Next Steps
+1. **Investigate Pod Specifications**:
+   - Describe the pods to check their container configurations, resource limits, and events for further clues.
+
+2. **Resource Constraints**:
+   - Check if resource limits are being exceeded for these pods.
+
+Would you like me to proceed with describing these pods for deeper analysis?

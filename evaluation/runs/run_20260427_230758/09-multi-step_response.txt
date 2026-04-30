@@ -1,0 +1,99 @@
+### Step 1: Create the namespace `loop-test`
+I will create the namespace first and verify its existence.
+
+### Step 2: Deploy the nginx app
+I will deploy a single-replica nginx app called `web-server` in the `loop-test` namespace and verify the pod status.
+
+### Step 3: Expose the app with a ClusterIP service
+I will expose the `web-server` deployment with a ClusterIP service on port 80 and verify that the service has endpoints.
+
+### Step 4: Clean up resources
+I will delete the namespace `loop-test` and verify that all resources are cleaned up.
+
+INVESTIGATION_PLAN:
+- Create the namespace `loop-test` and verify.
+- Deploy the nginx app and verify the pod status.
+- Expose the app with a ClusterIP service and verify endpoints.
+- Delete the namespace and verify cleanup.
+
+### Step 1: Create the namespace
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: loop-test
+```
+
+Executing the creation of the namespace.### Step 1: Namespace Creation
+- Namespace `loop-test` has been successfully created and is active.
+
+---
+
+### Step 2: Deploy the nginx app
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-server
+  namespace: loop-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web-server
+  template:
+    metadata:
+      labels:
+        app: web-server
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+```
+
+Executing the deployment of the nginx app.### Step 2: Nginx App Deployment
+- Deployment `web-server` has been successfully created in the `loop-test` namespace.
+- Pod `web-server-7c764cd96d-mwsx4` is now in the `Running` state.
+
+---
+
+### Step 3: Expose the app with a ClusterIP service
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-server
+  namespace: loop-test
+spec:
+  selector:
+    app: web-server
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+  type: ClusterIP
+```
+
+Executing the creation of the service.### Step 3: Service Creation and Endpoint Verification
+- Service `web-server` has been successfully created in the `loop-test` namespace.
+- The service is of type `ClusterIP` and is exposing port 80.
+- Endpoints are correctly configured: `10.244.1.102:80`.
+
+---
+
+### Step 4: Clean up resources
+I will delete the namespace `loop-test` to clean up all associated resources.### Step 4: Cleanup Verification
+- Namespace `loop-test` and all associated resources have been successfully deleted.
+- The namespace no longer exists in the cluster.
+
+---
+
+### Final Summary
+1. **Namespace Creation**: `loop-test` created and active.
+2. **App Deployment**: `web-server` deployed and pod is running.
+3. **Service Creation**: `web-server` service created with endpoints verified.
+4. **Cleanup**: All resources under `loop-test` deleted successfully.
+
+All tasks completed successfully!

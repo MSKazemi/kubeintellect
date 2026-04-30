@@ -1,0 +1,19 @@
+The cluster appears healthy based on the snapshot provided. Here's the health overview:
+
+### Nodes
+- All nodes are functioning correctly. No issues reported.
+
+### Namespaces
+- **default**: Contains the `api-app` pod, which is running normally.
+- **ingress-nginx**: Contains the `ingress-nginx-controller` pod, which is running normally.
+- **kube-system**: All system pods (e.g., `coredns`, `etcd`, `kube-apiserver`, etc.) are running normally.
+- **local-path-storage**: Contains the `local-path-provisioner` pod, which is running normally.
+- **mohsen**: Contains `fancy-website` and `web-app` pods, both running normally.
+- **monitoring**: All monitoring-related pods (e.g., Prometheus, Grafana, Loki, etc.) are running normally.
+
+### Problems
+- No warning events are present in the cluster.
+- All pods are in the `Running` or `Completed` state, with no issues like `CrashLoopBackOff`, `ImagePullBackOff`, or `Pending`.
+
+### Summary
+The cluster is healthy, with no active issues or warnings. All namespaces and pods are functioning as expected.

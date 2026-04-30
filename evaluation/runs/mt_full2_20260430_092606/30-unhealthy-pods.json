@@ -1,0 +1,529 @@
+{
+  "query_id": "30-unhealthy-pods",
+  "title": "30-unhealthy-pods",
+  "session_id": "eval-20260430_092606-30-unhealthy-pods",
+  "run_id": "mt_full2_20260430_092606",
+  "result": {
+    "session_id": "eval-20260430_092606-30-unhealthy-pods",
+    "query_id": "30-unhealthy-pods",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Find all pods that are not in Running or Completed state across every namespace."
+      }
+    ],
+    "final_text": "Based on the cluster snapshot provided, all pods across every namespace are currently in either the \"Running\" or \"Completed\" state. There are no pods in other states such as \"CrashLoopBackOff,\" \"Pending,\" \"Error,\" or \"ImagePullBackOff.\"\n\nIf you need further verification or a live check, let me know!",
+    "events": [
+      {
+        "type": "start",
+        "data": {
+          "protocol_version": "1.0",
+          "object": "stream.start",
+          "session_id": "eval-20260430_092606-30-unhealthy-pods"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "loading",
+          "message": "Loading conversation context\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "snapshot",
+          "message": "Fetching cluster snapshot\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "analyzing",
+          "message": "Analyzing your request\u2026"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Based"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " on"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " cluster"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " snapshot"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " provided"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " all"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pods"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " across"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " every"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " are"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " currently"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " either"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Running"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Completed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " state"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " There"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " are"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " no"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pods"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " other"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " states"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " such"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " as"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Crash"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Loop"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Back"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Off"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ",\""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Pending"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ",\""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Error"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ",\""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Image"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Pull"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Back"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Off"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\"\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "If"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " you"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " need"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " further"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " verification"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " a"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " live"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " check"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " let"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " me"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " know"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "!"
+        }
+      }
+    ],
+    "had_hitl": false,
+    "had_error": false,
+    "error_message": null,
+    "latency_ms": 2587.0471000671387,
+    "start_ts": 1777543698.3706565,
+    "end_ts": 1777543700.9577036,
+    "tool_calls": [],
+    "tool_errors": [],
+    "status_phases": [
+      "loading",
+      "snapshot",
+      "analyzing"
+    ],
+    "hitl_commands": []
+  },
+  "trace": {
+    "trace_id": "de9d370ef8d2e82eec92bf89eea1b3c1",
+    "session_id": "eval-20260430_092606-30-unhealthy-pods",
+    "total_tokens": 4859,
+    "total_latency_ms": 2.018,
+    "generations": [
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 4789,
+        "completion_tokens": 70,
+        "latency_ms": 2.018
+      }
+    ],
+    "tool_spans": [],
+    "has_error": false,
+    "error_messages": [],
+    "available": true
+  },
+  "logs": {
+    "session_id": "eval-20260430_092606-30-unhealthy-pods",
+    "lines": [],
+    "error_count": 0,
+    "warning_count": 0,
+    "kubectl_commands": [],
+    "hitl_events": [],
+    "available": true
+  },
+  "scores": {
+    "completion": 1.0,
+    "tool_correctness": 1.0,
+    "error_free": 1.0,
+    "hitl_discipline": 1.0,
+    "latency": 0.9137650966644287,
+    "cluster_resolved": null,
+    "notes": []
+  },
+  "aggregate_score": 0.9914,
+  "review_verdict": null,
+  "timestamp": "2026-04-30T10:08:30.235917+00:00",
+  "trace_issues": [],
+  "cluster_resolved": null,
+  "agent_asked_first": false,
+  "follow_up_sent": null,
+  "num_turns": 1,
+  "turns": [
+    {
+      "turn_index": 0,
+      "sent_content": "Find all pods that are not in Running or Completed state across every namespace.",
+      "final_text": "Based on the cluster snapshot provided, all pods across every namespace are currently in either the \"Running\" or \"Completed\" state. There are no pods in other states such as \"CrashLoopBackOff,\" \"Pending,\" \"Error,\" or \"ImagePullBackOff.\"\n\nIf you need further verification or a live check, let me know!",
+      "tool_calls": [],
+      "had_hitl": false,
+      "had_error": false,
+      "latency_ms": 2587.0471000671387
+    }
+  ]
+}

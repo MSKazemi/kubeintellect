@@ -1,0 +1,4082 @@
+{
+  "query_id": "10-incident-rca",
+  "title": "10-incident-rca",
+  "session_id": "eval-20260427_230758-10-incident-rca",
+  "run_id": "run_20260427_230758",
+  "result": {
+    "session_id": "eval-20260427_230758-10-incident-rca",
+    "query_id": "10-incident-rca",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Users report the application stack in namespace scenario-test is degraded. I see alerts but I don't know where to start. Investigate like an incident commander, find the most impactful root cause, and recommend the next action."
+      }
+    ],
+    "final_text": "INVESTIGATION_PLAN:\n- Inspect the pod states in the `scenario-test` namespace to identify any stuck or failing pods.\n- Analyze the warning events in the `scenario-test` namespace for scheduling or resource-related issues.\n- Describe the problematic pods to gather detailed information about their failure reasons.\n- Check node resource availability and taints to confirm scheduling constraints.\n- Investigate PVCs or storage-related issues if pods are stuck in `ContainerCreating`.\n\nProceeding with tool calls to gather detailed information.### Findings\n\n1. **Pod States in `scenario-test` Namespace**:\n   - `api-server-5954fcb578-qch7v`: The container terminated with an error due to a missing database connection string. The pod is not ready.\n   - `db-connector-6cf4484486-4g4sl`: Running successfully without issues.\n   - `web-frontend-7f7564dbc4-4rkxm`: Pending due to insufficient memory and untolerated taint on the control-plane node.\n\n2. **Warning Events**:\n   - The `web-frontend` pod failed scheduling because:\n     - One node has insufficient memory.\n     - The other node (control-plane) has a taint (`node-role.kubernetes.io/control-plane:NoSchedule`) that the pod does not tolerate.\n\n3. **Node Resource Availability**:\n   - Both nodes (`testbed-v2-control-plane` and `testbed-v2-worker`) have sufficient memory and CPU resources overall, but the `web-frontend` pod requests 50Gi memory, which exceeds the allocatable memory on the worker node.\n\n4. **Root Causes**:\n   - **API Server Pod**: Misconfiguration in the container startup command (`echo \"FATAL: Database connection string not configured\"`).\n   - **Web Frontend Pod**: Memory request (50Gi) is too high for the available nodes, and the pod lacks toleration for the control-plane taint.\n\n### Recommendations\n\n#### Immediate Actions:\n1. **Fix API Server Pod**:\n   - Update the deployment to provide the correct database connection string as an environment variable or ConfigMap.\n   - Example fix:\n     ```yaml\n     env:\n       - name: DATABASE_URL\n         value: \"postgres://user:password@db-host:5432/dbname\"\n     ```\n   - Apply the fix and verify the pod starts successfully.\n\n2. **Fix Web Frontend Pod**:\n   - Reduce the memory request to a realistic value (e.g., 500Mi or 1Gi).\n   - Add toleration for the control-plane taint if necessary:\n     ```yaml\n     tolerations:\n       - key: \"node-role.kubernetes.io/control-plane\"\n         operator: \"Exists\"\n         effect: \"NoSchedule\"\n     ```\n   - Apply the fix and verify the pod schedules successfully.\n\n#### Long-Term Actions:\n- Review resource requests and limits across all deployments to ensure they align with the cluster's capacity.\n- Consider scaling the cluster if workloads require higher memory or CPU resources.\n\nWould you like me to proceed with applying these fixes?",
+    "events": [
+      {
+        "type": "start",
+        "data": {
+          "protocol_version": "1.0",
+          "object": "stream.start",
+          "session_id": "eval-20260427_230758-10-incident-rca"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "loading",
+          "message": "Loading conversation context\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "snapshot",
+          "message": "Fetching cluster snapshot\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "analyzing",
+          "message": "Analyzing your request\u2026"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "INV"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "EST"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "IGATION"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "_PLAN"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Inspect"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " states"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " identify"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " any"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " stuck"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " failing"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pods"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Analyze"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " warning"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " events"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " for"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " scheduling"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resource"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-related"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " issues"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Describe"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " problematic"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pods"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " gather"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " detailed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " information"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " about"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " their"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " failure"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " reasons"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Check"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " node"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resource"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " availability"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ta"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ints"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " confirm"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " scheduling"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " constraints"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Investig"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ate"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " PVC"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "s"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " storage"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-related"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " issues"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " if"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pods"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " are"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " stuck"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Container"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Creating"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`.\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Proceed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ing"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " tool"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " calls"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " gather"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " detailed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " information"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: kubectl describe pod api-server-5954fcb578-qch7v -n scenario-test"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: kubectl describe pod web-frontend-7f7564dbc4-4rkxm -n scenario-test"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: kubectl get nodes -o wide"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: kubectl describe node testbed-v2-control-plane"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: kubectl describe node testbed-v2-worker"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: kubectl describe pod db-connector-6cf4484486-4g4sl -n scenario-test"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "Name:             db-connector-6cf4484486-4g4sl\nNamespace:        scenario-test\nPriority:         0\nService Account:  default\nNode:             testbed-v2-worker/172.20.0.2\nStart Time:       Tue, 28 Apr 2026 01:25:00 +0200\nLabels:           app=db-connector-v1\n                  pod-template-hash=6cf4484486\n                  scenario=10-incident-rca\nAnnotations:      <none>\nStatus:           Running\nIP:               10.244.1.104\nIPs:\n  IP:           10.244.1.104\nControlled By:  ReplicaSet/db-con"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "Name:             api-server-5954fcb578-qch7v\nNamespace:        scenario-test\nPriority:         0\nService Account:  default\nNode:             testbed-v2-worker/172.20.0.2\nStart Time:       Tue, 28 Apr 2026 01:25:00 +0200\nLabels:           app=api-server\n                  pod-template-hash=5954fcb578\n                  scenario=10-incident-rca\nAnnotations:      <none>\nStatus:           Running\nIP:               10.244.1.103\nIPs:\n  IP:           10.244.1.103\nControlled By:  ReplicaSet/api-server-59"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "Name:             web-frontend-7f7564dbc4-4rkxm\nNamespace:        scenario-test\nPriority:         0\nService Account:  default\nNode:             <none>\nLabels:           app=web-frontend\n                  pod-template-hash=7f7564dbc4\n                  scenario=10-incident-rca\nAnnotations:      <none>\nStatus:           Pending\nIP:               \nIPs:              <none>\nControlled By:    ReplicaSet/web-frontend-7f7564dbc4\nContainers:\n  frontend:\n    Image:      nginx:1.25\n    Port:       <none>\n  "
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "NAME                       STATUS   ROLES           AGE   VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE                         KERNEL-VERSION      CONTAINER-RUNTIME\ntestbed-v2-control-plane   Ready    control-plane   2d    v1.30.0   172.20.0.3    <none>        Debian GNU/Linux 12 (bookworm)   6.14.0-37-generic   containerd://1.7.15\ntestbed-v2-worker          Ready    <none>          2d    v1.30.0   172.20.0.2    <none>        Debian GNU/Linux 12 (bookworm)   6.14.0-37-generic   containerd://1."
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "Name:               testbed-v2-control-plane\nRoles:              control-plane\nLabels:             beta.kubernetes.io/arch=amd64\n                    beta.kubernetes.io/os=linux\n                    ingress-ready=true\n                    kubernetes.io/arch=amd64\n                    kubernetes.io/hostname=testbed-v2-control-plane\n                    kubernetes.io/os=linux\n                    node-role.kubernetes.io/control-plane=\n                    node.kubernetes.io/exclude-from-external-load-bal"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "Name:               testbed-v2-worker\nRoles:              <none>\nLabels:             beta.kubernetes.io/arch=amd64\n                    beta.kubernetes.io/os=linux\n                    kubernetes.io/arch=amd64\n                    kubernetes.io/hostname=testbed-v2-worker\n                    kubernetes.io/os=linux\nAnnotations:        kubeadm.alpha.kubernetes.io/cri-socket: unix:///run/containerd/containerd.sock\n                    node.alpha.kubernetes.io/ttl: 0\n                    volumes.kubernete"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "###"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Findings"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "1"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " States"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "api"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-server"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "595"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "4"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "f"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "cb"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "578"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-q"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ch"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "7"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "v"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`:"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " container"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " terminated"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " an"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " error"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " due"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " a"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " missing"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " database"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " connection"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " string"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " not"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ready"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "db"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "connector"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "6"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "cf"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "448"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "448"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "6"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "4"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "g"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "4"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "sl"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`:"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Running"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " successfully"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " without"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " issues"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "web"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "frontend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "7"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "f"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "756"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "4"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "dbc"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "4"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "4"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "rk"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "xm"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`:"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Pending"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " due"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " insufficient"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " memory"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " unt"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "oler"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ated"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ta"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "int"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " on"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " control"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-plane"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " node"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Warning"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Events"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "web"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "frontend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " failed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " scheduling"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " because"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "    "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " One"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " node"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " has"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " insufficient"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " memory"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "    "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " other"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " node"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ("
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "control"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-plane"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ")"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " has"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " a"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ta"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "int"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " (`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "node"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-role"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".k"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ubernetes"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".io"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/control"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-plane"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "No"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Schedule"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`)"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " that"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " does"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " not"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " tolerate"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "3"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Node"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Resource"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Availability"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Both"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " nodes"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " (`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "bed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-v"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-control"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-plane"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "bed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-v"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-worker"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`)"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " have"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " sufficient"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " memory"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " CPU"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resources"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " overall"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " but"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "web"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "frontend"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " requests"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "50"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Gi"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " memory"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " which"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " exceeds"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " alloc"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "atable"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " memory"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " on"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " worker"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " node"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "4"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Root"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Causes"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "API"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Server"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Mis"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "configuration"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " container"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " startup"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " command"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " (`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "echo"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "F"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ATAL"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Database"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " connection"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " string"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " not"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " configured"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\"`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ").\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Web"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Front"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "end"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Memory"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " request"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ("
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "50"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Gi"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ")"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " too"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " high"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " for"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " available"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " nodes"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " lacks"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " toler"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ation"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " for"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " control"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-plane"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ta"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "int"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "###"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Recommendations"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "####"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Immediate"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Actions"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "1"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Fix"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " API"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Server"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Update"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " deployment"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " provide"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " correct"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " database"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " connection"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " string"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " as"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " an"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " environment"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " variable"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Config"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Map"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Example"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " fix"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "    "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ```"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "yaml"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "    "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " env"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "      "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " name"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " DATABASE"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "_URL"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "        "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " value"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "postgres"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "://"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "user"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "password"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "@"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "db"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-host"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "543"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/db"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "name"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\"\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "    "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ```\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Apply"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " fix"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " verify"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " starts"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " successfully"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Fix"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Web"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Front"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "end"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Reduce"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " memory"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " request"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " a"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " realistic"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " value"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ("
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "e"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".g"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".,"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "500"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Mi"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "1"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Gi"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ").\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Add"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " toler"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ation"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " for"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " control"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-plane"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ta"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "int"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " if"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " necessary"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "    "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ```"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "yaml"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "    "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " toler"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ations"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "      "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " key"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "node"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-role"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".k"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ubernetes"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".io"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "/control"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-plane"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\"\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "        "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " operator"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Exists"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\"\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "        "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " effect"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " \""
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "No"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Schedule"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\"\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "    "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ```\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Apply"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " fix"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " verify"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " schedules"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " successfully"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "####"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Long"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-Term"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Actions"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Review"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resource"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " requests"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " limits"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " across"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " all"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " deployments"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ensure"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " they"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " align"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " cluster"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "'s"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " capacity"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Consider"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " scaling"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " cluster"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " if"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " workloads"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " require"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " higher"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " memory"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " CPU"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resources"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Would"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " you"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " like"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " me"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " proceed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " applying"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " these"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " fixes"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "?"
+        }
+      },
+      {
+        "type": "plan",
+        "data": {
+          "type": "plan",
+          "steps": [
+            {
+              "description": "Inspect the pod states in the `scenario-test` namespace to identify any stuck or failing pods.",
+              "status": "pending"
+            },
+            {
+              "description": "Analyze the warning events in the `scenario-test` namespace for scheduling or resource-related issues.",
+              "status": "pending"
+            },
+            {
+              "description": "Describe the problematic pods to gather detailed information about their failure reasons.",
+              "status": "pending"
+            },
+            {
+              "description": "Check node resource availability and taints to confirm scheduling constraints.",
+              "status": "pending"
+            },
+            {
+              "description": "Investigate PVCs or storage-related issues if pods are stuck in `ContainerCreating`.",
+              "status": "pending"
+            }
+          ]
+        }
+      }
+    ],
+    "had_hitl": false,
+    "had_error": false,
+    "error_message": null,
+    "latency_ms": 13646.375179290771,
+    "start_ts": 1777332300.800372,
+    "end_ts": 1777332314.446747,
+    "tool_calls": [
+      "run_kubectl",
+      "run_kubectl",
+      "run_kubectl",
+      "run_kubectl",
+      "run_kubectl",
+      "run_kubectl"
+    ],
+    "tool_errors": [],
+    "status_phases": [
+      "loading",
+      "snapshot",
+      "analyzing"
+    ],
+    "hitl_commands": []
+  },
+  "trace": {
+    "trace_id": "1275f0d026f26b4f71288313df6cef08",
+    "session_id": "eval-20260427_230758-10-incident-rca",
+    "total_tokens": 16208,
+    "total_latency_ms": 12.66,
+    "generations": [
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 10709,
+        "completion_tokens": 534,
+        "latency_ms": 8.153
+      },
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 4667,
+        "completion_tokens": 298,
+        "latency_ms": 4.507
+      }
+    ],
+    "tool_spans": [
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'kubectl describe node testbed-v2-worker'}",
+        "output": "{'content': 'Name:               testbed-v2-worker\\nRoles:              <none>\\nLabels:             beta.kubernetes.io/arch=amd64\\n                    beta.kubernetes.io/os=linux\\n                    kubernetes.io/arch=amd64\\n                    kubernetes.io/hostname=testbed-v2-worker\\n                    kubernetes.io/os=linux\\nAnnotations:        kubeadm.alpha.kubernetes.io/cri-socket: unix:///run/containerd/containerd.sock\\n                    node.alpha.kubernetes.io/ttl: 0\\n               ",
+        "error": null,
+        "latency_ms": 0.408
+      },
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'kubectl describe node testbed-v2-control-plane'}",
+        "output": "{'content': 'Name:               testbed-v2-control-plane\\nRoles:              control-plane\\nLabels:             beta.kubernetes.io/arch=amd64\\n                    beta.kubernetes.io/os=linux\\n                    ingress-ready=true\\n                    kubernetes.io/arch=amd64\\n                    kubernetes.io/hostname=testbed-v2-control-plane\\n                    kubernetes.io/os=linux\\n                    node-role.kubernetes.io/control-plane=\\n                    node.kubernetes.io/exclude-",
+        "error": null,
+        "latency_ms": 0.407
+      },
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'kubectl get nodes -o wide'}",
+        "output": "{'content': 'NAME                       STATUS   ROLES           AGE   VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE                         KERNEL-VERSION      CONTAINER-RUNTIME\\ntestbed-v2-control-plane   Ready    control-plane   2d    v1.30.0   172.20.0.3    <none>        Debian GNU/Linux 12 (bookworm)   6.14.0-37-generic   containerd://1.7.15\\ntestbed-v2-worker          Ready    <none>          2d    v1.30.0   172.20.0.2    <none>        Debian GNU/Linux 12 (bookworm)   6.14.0-37-generic   ",
+        "error": null,
+        "latency_ms": 0.389
+      },
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'kubectl describe pod web-frontend-7f7564dbc4-4rkxm -n scenario-test'}",
+        "output": "{'content': 'Name:             web-frontend-7f7564dbc4-4rkxm\\nNamespace:        scenario-test\\nPriority:         0\\nService Account:  default\\nNode:             <none>\\nLabels:           app=web-frontend\\n                  pod-template-hash=7f7564dbc4\\n                  scenario=10-incident-rca\\nAnnotations:      <none>\\nStatus:           Pending\\nIP:               \\nIPs:              <none>\\nControlled By:    ReplicaSet/web-frontend-7f7564dbc4\\nContainers:\\n  frontend:\\n    Image:      nginx:1.",
+        "error": null,
+        "latency_ms": 0.4
+      },
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'kubectl describe pod db-connector-6cf4484486-4g4sl -n scenario-test'}",
+        "output": "{'content': 'Name:             db-connector-6cf4484486-4g4sl\\nNamespace:        scenario-test\\nPriority:         0\\nService Account:  default\\nNode:             testbed-v2-worker/172.20.0.2\\nStart Time:       Tue, 28 Apr 2026 01:25:00 +0200\\nLabels:           app=db-connector-v1\\n                  pod-template-hash=6cf4484486\\n                  scenario=10-incident-rca\\nAnnotations:      <none>\\nStatus:           Running\\nIP:               10.244.1.104\\nIPs:\\n  IP:           10.244.1.104\\nContro",
+        "error": null,
+        "latency_ms": 0.386
+      },
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'kubectl describe pod api-server-5954fcb578-qch7v -n scenario-test'}",
+        "output": "{'content': 'Name:             api-server-5954fcb578-qch7v\\nNamespace:        scenario-test\\nPriority:         0\\nService Account:  default\\nNode:             testbed-v2-worker/172.20.0.2\\nStart Time:       Tue, 28 Apr 2026 01:25:00 +0200\\nLabels:           app=api-server\\n                  pod-template-hash=5954fcb578\\n                  scenario=10-incident-rca\\nAnnotations:      <none>\\nStatus:           Running\\nIP:               10.244.1.103\\nIPs:\\n  IP:           10.244.1.103\\nControlled By",
+        "error": null,
+        "latency_ms": 0.391
+      }
+    ],
+    "has_error": false,
+    "error_messages": [],
+    "available": true
+  },
+  "logs": {
+    "session_id": "eval-20260427_230758-10-incident-rca",
+    "lines": [],
+    "error_count": 0,
+    "warning_count": 0,
+    "kubectl_commands": [],
+    "hitl_events": [],
+    "available": true
+  },
+  "scores": {
+    "completion": 1.0,
+    "tool_correctness": 1.0,
+    "error_free": 1.0,
+    "hitl_discipline": 1.0,
+    "latency": 0.5451208273569743,
+    "cluster_resolved": 0.0,
+    "notes": [
+      "Cluster issue NOT resolved after agent response"
+    ]
+  },
+  "aggregate_score": 0.5773,
+  "review_verdict": null,
+  "timestamp": "2026-04-27T23:26:48.233497+00:00",
+  "trace_issues": [
+    {
+      "id": "TOKEN_EXPLOSION",
+      "severity": "HIGH",
+      "detail": "Prompt grew by 6042 tokens across LLM calls (4667 \u2192 10709). Tool output fed raw into next prompt without summarization."
+    }
+  ],
+  "cluster_resolved": false
+}

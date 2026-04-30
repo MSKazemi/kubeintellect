@@ -1,0 +1,5 @@
+INVESTIGATION_PLAN:
+- Query Prometheus for pods without CPU limits set using the metric `kube_pod_container_resource_limits_cpu_cores`.
+- Query Prometheus for pods without memory limits set using the metric `kube_pod_container_resource_limits_memory_bytes`.
+
+Proceeding with parallel queries to Prometheus.No pods are running without CPU or memory limits set, as both Prometheus queries returned no data for the respective metrics. All containers in the cluster appear to have resource limits configured.

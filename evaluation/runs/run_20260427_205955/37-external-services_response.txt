@@ -1,0 +1,21 @@
+The following services are exposed externally via `NodePort`:
+
+1. **Namespace:** `mohsen`
+   - **Service Name:** `fancy-website`
+   - **Type:** NodePort
+   - **Cluster IP:** `10.96.67.96`
+   - **Port(s):** `80:31234/TCP`
+
+2. **Namespace:** `mohsen`
+   - **Service Name:** `fancy-website-service`
+   - **Type:** NodePort
+   - **Cluster IP:** `10.96.41.170`
+   - **Port(s):** `80:30855/TCP`
+
+3. **Namespace:** `mohsen`
+   - **Service Name:** `web-app-service`
+   - **Type:** NodePort
+   - **Cluster IP:** `10.96.77.67`
+   - **Port(s):** `80:30546/TCP`
+
+No services are exposed via `LoadBalancer`.

@@ -1,0 +1,3890 @@
+{
+  "query_id": "13-quota-exceeded",
+  "title": "13-quota-exceeded",
+  "session_id": "eval-20260429_233220-13-quota-exceeded",
+  "run_id": "postreflexion_20260429_233220",
+  "result": {
+    "session_id": "eval-20260429_233220-13-quota-exceeded",
+    "query_id": "13-quota-exceeded",
+    "messages": [
+      {
+        "role": "user",
+        "content": "The deployment quota-buster in namespace scenario-test has 3 desired replicas but only some pods are running. Investigate why not all replicas can be scheduled or created."
+      }
+    ],
+    "final_text": "INVESTIGATION_PLAN:\n- Check the events in the `scenario-test` namespace for warnings or errors related to the `quota-buster` deployment.\n- Describe the `quota-buster` deployment to understand its configuration and resource requests.\n- Verify the resource quota in the `scenario-test` namespace to confirm if it is limiting pod creation.\n- Check the current resource usage in the namespace to see if it exceeds the quota.\n\nNow proceeding with the tool calls.### Findings:\n1. **Events**:\n   - The `quota-buster` deployment is attempting to scale up to 3 replicas, but multiple pod creation attempts are failing due to exceeding the resource quota in the `scenario-test` namespace.\n   - The error message indicates that the requested resources (`limits.cpu=300m`, `requests.cpu=150m`) exceed the quota limits (`limits.cpu=400m`, `requests.cpu=200m`), with the current usage already at the quota limit.\n\n2. **Deployment Description**:\n   - The deployment specifies resource limits of `cpu: 300m` and `memory: 256Mi` per pod, and requests of `cpu: 150m` and `memory: 128Mi`.\n   - Only 1 pod is successfully running, while 2 replicas remain unavailable due to quota restrictions.\n\n3. **Resource Quota**:\n   - The namespace `scenario-test` has a quota named `tight-quota` with the following limits:\n     - `requests.cpu`: 200m (current usage: 150m)\n     - `limits.cpu`: 400m (current usage: 300m)\n     - `requests.memory`: 256Mi (current usage: 128Mi)\n     - `limits.memory`: 512Mi (current usage: 256Mi)\n   - The quota is fully utilized for CPU resources, preventing additional pods from being created.\n\n4. **Current Resource Usage**:\n   - Prometheus metrics confirm the current resource requests in the namespace:\n     - CPU: 150m\n     - Memory: 128Mi\n   - These values align with the quota usage reported.\n\n### Root Cause:\nThe deployment `quota-buster` cannot scale to 3 replicas because the resource quota `tight-quota` in the `scenario-test` namespace is fully utilized for CPU resources. The requested resources for additional pods exceed the quota limits.\n\n### Suggested Fix:\nTo resolve this issue, you can:\n1. **Increase the Resource Quota**:\n   - Update the `tight-quota` resource quota to allow higher CPU limits and requests.\n   - Example: Increase `limits.cpu` to `600m` and `requests.cpu` to `300m`.\n\n2. **Reduce Pod Resource Requests**:\n   - Modify the deployment to lower the resource requests and limits for each pod, ensuring they fit within the current quota.\n\nWould you like me to proceed with one of these fixes? If yes, specify whether to increase the quota or adjust the deployment resource requests.",
+    "events": [
+      {
+        "type": "start",
+        "data": {
+          "protocol_version": "1.0",
+          "object": "stream.start",
+          "session_id": "eval-20260429_233220-13-quota-exceeded"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "loading",
+          "message": "Loading conversation context\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "snapshot",
+          "message": "Fetching cluster snapshot\u2026"
+        }
+      },
+      {
+        "type": "status",
+        "data": {
+          "type": "status",
+          "phase": "analyzing",
+          "message": "Analyzing your request\u2026"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "INV"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "EST"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "IGATION"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "_PLAN"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Check"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " events"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " for"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " warnings"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " errors"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " related"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "quota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-b"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "uster"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " deployment"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Describe"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "quota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-b"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "uster"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " deployment"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " understand"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " its"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " configuration"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resource"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " requests"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Verify"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resource"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " quota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " confirm"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " if"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " it"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " limiting"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " creation"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Check"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " current"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resource"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " usage"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " see"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " if"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " it"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " exceeds"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " quota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Now"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " proceeding"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " tool"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " calls"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: kubectl get events -n scenario-test"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: kubectl describe deployment quota-buster -n scenario-test"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "run_kubectl",
+          "message": "Running: kubectl get resourcequota -n scenario-test"
+        }
+      },
+      {
+        "type": "tool_call",
+        "data": {
+          "type": "tool_call",
+          "tool": "query_prometheus",
+          "message": "Calling query_prometheus"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "query_prometheus",
+          "output": "PromQL (instant): sum(kube_pod_container_resource_requests{namespace=\"scenario-test\"}) by (resource)\nSeries: 2\n  [resource=cpu] = 0.15\n  [resource=memory] = 134217728"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "NAME          AGE   REQUEST                                                            LIMIT\ntight-quota   64s   pods: 1/2, requests.cpu: 150m/200m, requests.memory: 128Mi/256Mi   limits.cpu: 300m/400m, limits.memory: 256Mi/512Mi\n"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "LAST SEEN   TYPE      REASON              OBJECT                              MESSAGE\n64s         Normal    Scheduled           pod/quota-buster-9d6689688-td4p5    Successfully assigned scenario-test/quota-buster-9d6689688-td4p5 to testbed-v2-worker\n63s         Normal    Pulled              pod/quota-buster-9d6689688-td4p5    Container image \"nginx:1.25\" already present on machine\n63s         Normal    Created             pod/quota-buster-9d6689688-td4p5    Created container app\n63s         Norm"
+        }
+      },
+      {
+        "type": "tool_result",
+        "data": {
+          "type": "tool_result",
+          "tool": "run_kubectl",
+          "output": "Name:                   quota-buster\nNamespace:              scenario-test\nCreationTimestamp:      Thu, 30 Apr 2026 01:51:52 +0200\nLabels:                 scenario=13-quota-exceeded\nAnnotations:            deployment.kubernetes.io/revision: 1\nSelector:               app=quota-buster\nReplicas:               3 desired | 1 updated | 1 total | 1 available | 2 unavailable\nStrategyType:           RollingUpdate\nMinReadySeconds:        0\nRollingUpdateStrategy:  25% max unavailable, 25% max surge\nPod Tem"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "###"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Findings"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "1"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Events"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "quota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-b"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "uster"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " deployment"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " attempting"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " scale"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " up"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "3"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " replicas"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " but"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " multiple"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " creation"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " attempts"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " are"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " failing"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " due"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " exceeding"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resource"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " quota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " error"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " message"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " indicates"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " that"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " requested"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resources"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " (`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "limits"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".cpu"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "="
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "300"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "m"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`,"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "requests"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".cpu"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "="
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "150"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "m"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`)"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " exceed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " quota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " limits"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " (`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "limits"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".cpu"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "="
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "400"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "m"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`,"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "requests"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".cpu"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "="
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "200"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "m"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "),"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " current"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " usage"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " already"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " at"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " quota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " limit"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Deployment"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Description"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " deployment"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " specifies"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resource"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " limits"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " of"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "cpu"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "300"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "m"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "memory"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "256"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Mi"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " per"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " requests"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " of"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "cpu"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "150"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "m"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "memory"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "128"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Mi"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`.\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Only"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "1"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " successfully"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " running"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " while"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " replicas"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " remain"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " unavailable"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " due"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " quota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " restrictions"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "3"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Resource"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Qu"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " has"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " a"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " quota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " named"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "tight"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-qu"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " following"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " limits"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "    "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "requests"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".cpu"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`:"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "200"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "m"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ("
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "current"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " usage"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "150"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "m"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ")\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "    "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "limits"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".cpu"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`:"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "400"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "m"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ("
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "current"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " usage"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "300"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "m"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ")\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "    "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "requests"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".memory"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`:"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "256"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Mi"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ("
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "current"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " usage"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "128"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Mi"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ")\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "    "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "limits"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".memory"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`:"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "512"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Mi"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ("
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "current"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " usage"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "256"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Mi"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ")\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " quota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " fully"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " utilized"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " for"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " CPU"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resources"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " preventing"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " additional"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pods"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " from"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " being"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " created"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "4"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Current"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Resource"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Usage"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Prom"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "etheus"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " metrics"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " confirm"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " current"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resource"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " requests"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "    "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " CPU"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "150"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "m"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "    "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Memory"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "128"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Mi"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " These"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " values"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " align"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " quota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " usage"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " reported"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "###"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Root"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Cause"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " deployment"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "quota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-b"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "uster"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " cannot"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " scale"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "3"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " replicas"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " because"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resource"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " quota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "tight"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-qu"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " in"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "scenario"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-test"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " namespace"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " is"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " fully"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " utilized"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " for"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " CPU"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resources"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " The"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " requested"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resources"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " for"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " additional"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pods"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " exceed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " quota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " limits"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "###"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Suggested"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Fix"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "To"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resolve"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " this"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " issue"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " you"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " can"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "1"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Increase"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Resource"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Qu"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Update"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "tight"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "-qu"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "ota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resource"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " quota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " allow"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " higher"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " CPU"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " limits"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " requests"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Example"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Increase"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "limits"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".cpu"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "600"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "m"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "requests"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".cpu"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " `"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "300"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "m"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "`.\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "2"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " **"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Reduce"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Resource"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Requests"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "**"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ":\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "  "
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " -"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " Modify"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " deployment"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " lower"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resource"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " requests"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " and"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " limits"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " for"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " each"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " pod"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " ensuring"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " they"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " fit"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " within"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " current"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " quota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ".\n\n"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "Would"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " you"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " like"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " me"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " proceed"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " with"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " one"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " of"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " these"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " fixes"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "?"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " If"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " yes"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": ","
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " specify"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " whether"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " to"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " increase"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " quota"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " or"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " adjust"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " the"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " deployment"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " resource"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": " requests"
+        }
+      },
+      {
+        "type": "token",
+        "data": {
+          "content": "."
+        }
+      },
+      {
+        "type": "plan",
+        "data": {
+          "type": "plan",
+          "steps": [
+            {
+              "description": "Check the events in the `scenario-test` namespace for warnings or errors related to the `quota-buster` deployment.",
+              "status": "pending"
+            },
+            {
+              "description": "Describe the `quota-buster` deployment to understand its configuration and resource requests.",
+              "status": "pending"
+            },
+            {
+              "description": "Verify the resource quota in the `scenario-test` namespace to confirm if it is limiting pod creation.",
+              "status": "pending"
+            },
+            {
+              "description": "Check the current resource usage in the namespace to see if it exceeds the quota.",
+              "status": "pending"
+            }
+          ]
+        }
+      }
+    ],
+    "had_hitl": false,
+    "had_error": false,
+    "error_message": null,
+    "latency_ms": 8222.722291946411,
+    "start_ts": 1777506772.8496351,
+    "end_ts": 1777506781.0723574,
+    "tool_calls": [
+      "run_kubectl",
+      "run_kubectl",
+      "run_kubectl",
+      "query_prometheus"
+    ],
+    "tool_errors": [],
+    "status_phases": [
+      "loading",
+      "snapshot",
+      "analyzing"
+    ],
+    "hitl_commands": []
+  },
+  "trace": {
+    "trace_id": "0b635492648abc43cdfc8bc5fb8b12ce",
+    "session_id": "eval-20260429_233220-13-quota-exceeded",
+    "total_tokens": 15071,
+    "total_latency_ms": 7.785,
+    "generations": [
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 8125,
+        "completion_tokens": 518,
+        "latency_ms": 4.772
+      },
+      {
+        "name": "AzureChatOpenAI",
+        "model": "gpt-4o",
+        "prompt_tokens": 6205,
+        "completion_tokens": 223,
+        "latency_ms": 3.013
+      }
+    ],
+    "tool_spans": [
+      {
+        "name": "query_prometheus",
+        "input_args": "{'promql': 'sum(kube_pod_container_resource_requests{namespace=\"scenario-test\"}) by (resource)', 'range_minutes': 0}",
+        "output": "{'content': 'PromQL (instant): sum(kube_pod_container_resource_requests{namespace=\"scenario-test\"}) by (resource)\\nSeries: 2\\n  [resource=cpu] = 0.15\\n  [resource=memory] = 134217728', 'additional_kwargs': {}, 'response_metadata': {}, 'type': 'tool', 'name': 'query_prometheus', 'id': None, 'tool_call_id': 'call_nXzB1DevE5lD2EMPPC7zbzAk', 'artifact': None, 'status': 'success'}",
+        "error": null,
+        "latency_ms": 0.035
+      },
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'kubectl get resourcequota -n scenario-test'}",
+        "output": "{'content': 'NAME          AGE   REQUEST                                                            LIMIT\\ntight-quota   64s   pods: 1/2, requests.cpu: 150m/200m, requests.memory: 128Mi/256Mi   limits.cpu: 300m/400m, limits.memory: 256Mi/512Mi\\n', 'additional_kwargs': {}, 'response_metadata': {}, 'type': 'tool', 'name': 'run_kubectl', 'id': None, 'tool_call_id': 'call_aKlvdG5knjFuSs7u6Q3lB3fA', 'artifact': None, 'status': 'success'}",
+        "error": null,
+        "latency_ms": 0.138
+      },
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'kubectl describe deployment quota-buster -n scenario-test'}",
+        "output": "{'content': 'Name:                   quota-buster\\nNamespace:              scenario-test\\nCreationTimestamp:      Thu, 30 Apr 2026 01:51:52 +0200\\nLabels:                 scenario=13-quota-exceeded\\nAnnotations:            deployment.kubernetes.io/revision: 1\\nSelector:               app=quota-buster\\nReplicas:               3 desired | 1 updated | 1 total | 1 available | 2 unavailable\\nStrategyType:           RollingUpdate\\nMinReadySeconds:        0\\nRollingUpdateStrategy:  25% max unavailable,",
+        "error": null,
+        "latency_ms": 0.15
+      },
+      {
+        "name": "run_kubectl",
+        "input_args": "{'command': 'kubectl get events -n scenario-test'}",
+        "output": "{'content': 'LAST SEEN   TYPE      REASON              OBJECT                              MESSAGE\\n64s         Normal    Scheduled           pod/quota-buster-9d6689688-td4p5    Successfully assigned scenario-test/quota-buster-9d6689688-td4p5 to testbed-v2-worker\\n63s         Normal    Pulled              pod/quota-buster-9d6689688-td4p5    Container image \"nginx:1.25\" already present on machine\\n63s         Normal    Created             pod/quota-buster-9d6689688-td4p5    Created container app\\",
+        "error": null,
+        "latency_ms": 0.147
+      }
+    ],
+    "has_error": false,
+    "error_messages": [],
+    "available": true
+  },
+  "logs": {
+    "session_id": "eval-20260429_233220-13-quota-exceeded",
+    "lines": [],
+    "error_count": 0,
+    "warning_count": 0,
+    "kubectl_commands": [],
+    "hitl_events": [],
+    "available": true
+  },
+  "scores": {
+    "completion": 1.0,
+    "tool_correctness": 1.0,
+    "error_free": 1.0,
+    "hitl_discipline": 1.0,
+    "latency": 0.7259092569351197,
+    "cluster_resolved": 1.0,
+    "notes": []
+  },
+  "aggregate_score": 0.9863,
+  "review_verdict": null,
+  "timestamp": "2026-04-29T23:53:10.749960+00:00",
+  "trace_issues": [
+    {
+      "id": "TOKEN_EXPLOSION",
+      "severity": "HIGH",
+      "detail": "Prompt grew by 1920 tokens across LLM calls (6205 \u2192 8125). Tool output fed raw into next prompt without summarization."
+    }
+  ],
+  "cluster_resolved": true
+}

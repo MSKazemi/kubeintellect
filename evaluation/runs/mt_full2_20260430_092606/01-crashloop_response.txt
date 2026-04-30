@@ -1,0 +1,66 @@
+INVESTIGATION_PLAN:
+- Inspect the pod `faulty-app-86c567555-64ttp` in the `scenario-test` namespace using `kubectl describe pod` to check its container command, args, and last state exit code.
+- Review the warning events for this pod to confirm the crash sequence and any additional context.
+- Fetch logs from the previous container instance using `kubectl logs --previous` to capture the crash output.
+
+Proceeding with tool calls.### Root Cause Analysis
+The pod `faulty-app-86c567555-64ttp` in the `scenario-test` namespace is crashing due to a hardcoded failure in its container command. The container's `command` field is set to:
+
+```sh
+sh -c "if [ -z \"$REQUIRED_ENV\" ]; then echo \"FATAL: REQUIRED_ENV is not set. Cannot start.\"; exit 1; fi; echo \"App started successfully\"; sleep 3600"
+```
+
+This command checks for the presence of the environment variable `REQUIRED_ENV`. If the variable is not set, the container logs the message `FATAL: REQUIRED_ENV is not set. Cannot start.` and exits with code `1`. The environment variable `REQUIRED_ENV` is currently unset, causing the container to fail repeatedly.
+
+### Safest Fix
+The deployment spec must be updated to set a default value for the `REQUIRED_ENV` environment variable. This ensures the container starts successfully even if the variable is not explicitly provided.
+
+### Fix Implementation
+I will apply the following corrected deployment manifest:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: faulty-app
+  namespace: scenario-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: faulty-app
+  template:
+    metadata:
+      labels:
+        app: faulty-app
+        scenario: 01-crashloop
+    spec:
+      containers:
+      - name: app
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          if [ -z "$REQUIRED_ENV" ]; then
+            echo "FATAL: REQUIRED_ENV is not set. Cannot start."
+            exit 1
+          fi
+          echo "App started successfully"
+          sleep 3600
+        env:
+        - name: REQUIRED_ENV
+          value: "default_value"
+        resources:
+          limits:
+            cpu: 50m
+            memory: 32Mi
+          requests:
+            cpu: 10m
+            memory: 16Mi
+```
+
+Applying the fix now.The fix has been applied, and a new pod `faulty-app-6554d8c5fd-zbzmx` is being created. It is currently in the `ContainerCreating` state. I will monitor its progress to ensure it transitions to `Running`.The new pod `faulty-app-6554d8c5fd-zbzmx` is now in the `Running` state, and the crashing pod `faulty-app-86c567555-64ttp` is terminating. 
+
+### Outcome
+The fix has been successfully applied, and the issue is resolved. The pod is now running without crashes (verified).

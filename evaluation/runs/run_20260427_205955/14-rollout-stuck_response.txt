@@ -1,0 +1,31 @@
+INVESTIGATION_PLAN:
+1. Describe the deployment `web-api` in namespace `scenario-test` to check the rollout status and identify the cause of the failure.
+2. Inspect the events for the namespace `scenario-test` to confirm any issues related to the deployment or pods.
+3. Describe the failing pods (`web-api-6c6cc99d78-84kpf`, `web-api-6c6cc99d78-k6dxf`, `web-api-6c6cc99d78-b8gzj`) to gather detailed information about their state and errors.
+4. Verify the image configuration in the deployment spec to ensure the image tag is valid and accessible.
+
+Let's proceed with these tool calls in parallel.### Root Cause Analysis
+The deployment `web-api` in namespace `scenario-test` is stuck during its rolling update due to an invalid image reference. The deployment specifies the image `nginx:99.99-bad-rollout`, which does not exist in the Docker registry (`docker.io/library/nginx`). This results in `ErrImagePull` and `ImagePullBackOff` errors for all new pods created during the rollout.
+
+Key findings:
+1. **Deployment Status**: The deployment is configured for a rolling update strategy with 3 desired replicas. All 3 new pods are failing to pull the specified image.
+2. **Pod Events**: All pods (`web-api-6c6cc99d78-84kpf`, `web-api-6c6cc99d78-k6dxf`, `web-api-6c6cc99d78-b8gzj`) show repeated `Failed to pull image` errors due to the image tag `nginx:99.99-bad-rollout` being invalid or unavailable.
+3. **ReplicaSet**: The new ReplicaSet (`web-api-6c6cc99d78`) has created 3 pods, but none are available due to the image pull failure.
+
+### Safest Recovery Action
+To recover safely:
+1. **Update the Deployment**: Correct the image tag in the deployment to a valid and accessible version of `nginx` (e.g., `nginx:latest` or another known good tag).
+2. **Rollback**: If the previous version of the deployment was stable, you can rollback to the last working revision.
+
+### Recommended Fix
+Update the deployment to use a valid image tag:
+```bash
+kubectl set image deployment/web-api app=nginx:latest -n scenario-test
+```
+
+After applying the fix, verify the rollout status:
+```bash
+kubectl rollout status deployment/web-api -n scenario-test
+```
+
+Would you like me to proceed with applying the fix?

@@ -1,0 +1,11 @@
+The label `dedicated=gpu` has been successfully added to the worker node (`testbed-v2-worker`). However, the pod `gpu-workload-64ddbd9658-9nmwj` is still in the `Pending` state.
+
+The next step is to add a toleration for the taint `dedicated: gpu` to the pod spec. I will proceed with this update.The deployment `gpu-workload` has been successfully updated to include a toleration for the taint `dedicated: gpu`. A new pod (`gpu-workload-7cbf584578-k562j`) is now in the `ContainerCreating` state, indicating progress in scheduling.
+
+I will monitor the pod's status to ensure it transitions to `Running`.The pod `gpu-workload-7cbf584578-k562j` is now in the `Running` state, confirming that the scheduling issue has been resolved.
+
+### Summary of Actions:
+1. Added the label `dedicated=gpu` to the worker node (`testbed-v2-worker`).
+2. Updated the deployment `gpu-workload` to include a toleration for the taint `dedicated: gpu`.
+
+The GPU workload is now successfully running. No further action is required.

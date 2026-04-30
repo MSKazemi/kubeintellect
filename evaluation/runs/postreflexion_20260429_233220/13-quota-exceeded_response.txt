@@ -1,0 +1,42 @@
+INVESTIGATION_PLAN:
+- Check the events in the `scenario-test` namespace for warnings or errors related to the `quota-buster` deployment.
+- Describe the `quota-buster` deployment to understand its configuration and resource requests.
+- Verify the resource quota in the `scenario-test` namespace to confirm if it is limiting pod creation.
+- Check the current resource usage in the namespace to see if it exceeds the quota.
+
+Now proceeding with the tool calls.### Findings:
+1. **Events**:
+   - The `quota-buster` deployment is attempting to scale up to 3 replicas, but multiple pod creation attempts are failing due to exceeding the resource quota in the `scenario-test` namespace.
+   - The error message indicates that the requested resources (`limits.cpu=300m`, `requests.cpu=150m`) exceed the quota limits (`limits.cpu=400m`, `requests.cpu=200m`), with the current usage already at the quota limit.
+
+2. **Deployment Description**:
+   - The deployment specifies resource limits of `cpu: 300m` and `memory: 256Mi` per pod, and requests of `cpu: 150m` and `memory: 128Mi`.
+   - Only 1 pod is successfully running, while 2 replicas remain unavailable due to quota restrictions.
+
+3. **Resource Quota**:
+   - The namespace `scenario-test` has a quota named `tight-quota` with the following limits:
+     - `requests.cpu`: 200m (current usage: 150m)
+     - `limits.cpu`: 400m (current usage: 300m)
+     - `requests.memory`: 256Mi (current usage: 128Mi)
+     - `limits.memory`: 512Mi (current usage: 256Mi)
+   - The quota is fully utilized for CPU resources, preventing additional pods from being created.
+
+4. **Current Resource Usage**:
+   - Prometheus metrics confirm the current resource requests in the namespace:
+     - CPU: 150m
+     - Memory: 128Mi
+   - These values align with the quota usage reported.
+
+### Root Cause:
+The deployment `quota-buster` cannot scale to 3 replicas because the resource quota `tight-quota` in the `scenario-test` namespace is fully utilized for CPU resources. The requested resources for additional pods exceed the quota limits.
+
+### Suggested Fix:
+To resolve this issue, you can:
+1. **Increase the Resource Quota**:
+   - Update the `tight-quota` resource quota to allow higher CPU limits and requests.
+   - Example: Increase `limits.cpu` to `600m` and `requests.cpu` to `300m`.
+
+2. **Reduce Pod Resource Requests**:
+   - Modify the deployment to lower the resource requests and limits for each pod, ensuring they fit within the current quota.
+
+Would you like me to proceed with one of these fixes? If yes, specify whether to increase the quota or adjust the deployment resource requests.

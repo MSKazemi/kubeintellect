@@ -1,0 +1,22 @@
+INVESTIGATION_PLAN:
+- Query Prometheus for pods with high restart counts over the last 24 hours to identify trends.
+- Query Prometheus for the last termination reasons of containers in pods with high restarts.
+- If necessary, describe specific pods with high restarts to gather detailed information.
+
+Let's proceed with the queries.The Prometheus queries returned a large number of results, but here are the key findings:
+
+### Pods with High Restarts
+- **Scenario-Test Namespace**:
+  - Pod `app-server-6b897994b6-xhld5` has an average of 3.75 restarts over the last 24 hours.
+  - Pod `memory-hog-7bf6fd8cd-ts68c` has an average of 2 restarts over the last 24 hours.
+
+### Termination Reasons
+- Many pods across namespaces have termination reasons marked as `Unknown`.
+- Specific pods like `kube-prometheus-stack-operator-7fcf6bb697-jq4fg` in the `monitoring` namespace have termination reasons marked as `Error`.
+
+### Next Steps
+To investigate further:
+1. Describe the pods with high restarts (`app-server-6b897994b6-xhld5` and `memory-hog-7bf6fd8cd-ts68c`) for detailed information.
+2. Check logs for pods with termination reasons marked as `Error`.
+
+Would you like me to proceed with these investigations?
