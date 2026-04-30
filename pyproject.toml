@@ -64,6 +64,10 @@ dev = [
     "pytest-mock>=3.14",
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=0.26",
+    "scipy>=1.13",
+    "matplotlib>=3.9",
+    "seaborn>=0.13",
+    "numpy>=1.26",
 ]
 
 [tool.pytest.ini_options]
