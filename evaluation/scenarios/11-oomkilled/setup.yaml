@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: scenario-test
+  labels:
+    managed-by: kubeintellect-scenarios
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memory-hog
+  namespace: scenario-test
+  labels:
+    scenario: "11-oomkilled"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: memory-hog
+  template:
+    metadata:
+      labels:
+        app: memory-hog
+        scenario: "11-oomkilled"
+    spec:
+      containers:
+        - name: app
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              # Allocate ~128MB by writing to /dev/shm, exceeding the 64Mi limit
+              dd if=/dev/zero of=/dev/shm/bigfile bs=1M count=128
+              sleep 3600
+          resources:
+            requests:
+              memory: 32Mi
+              cpu: 10m
+            limits:
+              memory: 64Mi
+              cpu: 50m

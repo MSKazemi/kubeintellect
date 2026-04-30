@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: scenario-test
+  labels:
+    managed-by: kubeintellect-scenarios
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-image-app
+  namespace: scenario-test
+  labels:
+    scenario: "02-imagepull"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bad-image-app
+  template:
+    metadata:
+      labels:
+        app: bad-image-app
+        scenario: "02-imagepull"
+    spec:
+      containers:
+        - name: app
+          # Intentional fault: this tag does not exist on Docker Hub
+          image: nginx:99.99.99-does-not-exist
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi

@@ -1,0 +1,1 @@
+The client-app in namespace scenario-test cannot reach backend-api-svc on port 8080. Both pods are Running and the service has endpoints. The team thinks it might be a NetworkPolicy issue. Investigate and confirm whether NetworkPolicy is blocking the traffic and why.

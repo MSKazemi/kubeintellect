@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: scenario-test
+  labels:
+    managed-by: kubeintellect-scenarios
+---
+# FAULT: suspend: true prevents the CronJob from ever creating Jobs.
+# The schedule itself is valid (every minute). No pods or Jobs will appear.
+# The last successful run timestamp will be absent (never ran).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: db-backup
+  namespace: scenario-test
+  labels:
+    scenario: "19-cronjob-suspended"
+spec:
+  schedule: "* * * * *"
+  suspend: true
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            scenario: "19-cronjob-suspended"
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: busybox:1.36
+              command:
+                - sh
+                - -c
+                - |
+                  echo "Running db backup..."
+                  sleep 5
+                  echo "Backup complete."
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 16Mi
+                limits:
+                  cpu: 50m
+                  memory: 32Mi

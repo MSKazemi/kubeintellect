@@ -1,0 +1,107 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: scenario-test
+  labels:
+    managed-by: kubeintellect-scenarios
+---
+# Backend service — only accepts traffic from pods with label role=frontend
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-api
+  namespace: scenario-test
+  labels:
+    scenario: "16-netpol-block"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend-api
+  template:
+    metadata:
+      labels:
+        app: backend-api
+        scenario: "16-netpol-block"
+    spec:
+      containers:
+        - name: app
+          image: nginx:1.25
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-api-svc
+  namespace: scenario-test
+  labels:
+    scenario: "16-netpol-block"
+spec:
+  selector:
+    app: backend-api
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+# Client deployment — missing the required label (role: frontend)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client-app
+  namespace: scenario-test
+  labels:
+    scenario: "16-netpol-block"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: client-app
+  template:
+    metadata:
+      labels:
+        app: client-app
+        scenario: "16-netpol-block"
+        # Intentional fault: missing label role=frontend — blocked by NetworkPolicy
+    spec:
+      containers:
+        - name: client
+          image: busybox:1.36
+          command: ["sh", "-c", "sleep 3600"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+---
+# NetworkPolicy: only pods with role=frontend can reach backend-api
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-allow-frontend-only
+  namespace: scenario-test
+  labels:
+    scenario: "16-netpol-block"
+spec:
+  podSelector:
+    matchLabels:
+      app: backend-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              role: frontend
+      ports:
+        - protocol: TCP
+          port: 8080
