@@ -1,0 +1,1 @@
+List all ClusterRoleBindings that grant the cluster-admin role. For each binding, show the binding name, the subjects (name, kind, namespace), and whether the subject is a ServiceAccount, User, or Group.
