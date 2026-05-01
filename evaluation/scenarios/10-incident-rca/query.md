@@ -1,1 +1,0 @@
-Users report the application stack in namespace scenario-test is degraded. I see alerts but I don't know where to start. Investigate like an incident commander, find the most impactful root cause, and recommend the next action.

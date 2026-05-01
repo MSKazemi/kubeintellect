@@ -1,7 +1,0 @@
-I will increase the memory limit of the pod to accommodate the 100MB allocation. Proceeding with the update.The fix has been applied successfully. The memory limit for the `memory-hog` pod has been increased to **128Mi**. 
-
-### Verification:
-- The old pod (`memory-hog-794b7cfcbb-tqkgn`) is terminating.
-- A new pod (`memory-hog-7fb96dc9f6-lrmwl`) has been created and is now **Running** with no restarts.
-
-The issue is resolved. The pod should no longer encounter OOMKilled events.

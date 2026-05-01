@@ -1,1 +1,0 @@
-The deployment gpu-workload in namespace scenario-test is stuck and no pods are running. The cluster has enough CPU and memory. Investigate why the pod cannot be scheduled and identify the exact scheduling constraint blocking it.

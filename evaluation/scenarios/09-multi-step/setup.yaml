@@ -1,9 +1,0 @@
-# No pre-injected fault for scenario 09.
-# The query itself drives resource creation.
-# Pre-check: delete loop-test namespace if it exists from a previous run.
-#
-# Run before test:
-#   kubectl delete namespace loop-test --ignore-not-found
-#
-# This file is a placeholder — scenario 09 does not require setup.yaml.
-# The feedback loop skill handles pre-cleanup automatically.

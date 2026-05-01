@@ -1,1 +1,0 @@
-The deployment web-service in namespace scenario-test has been stuck mid-rollout for a long time. The old pod is still running and a new pod was never created. The image is valid and resources are available. Investigate what is blocking the rollout from progressing.
