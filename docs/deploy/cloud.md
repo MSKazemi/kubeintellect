@@ -159,7 +159,10 @@ curl https://api.your-domain.com/healthz    # → {"status":"ok"}
 
 Push to `main` → image is built and pushed to GHCR automatically.
 
-Manual deploy button in GitHub Actions (`workflow_dispatch`) triggers SSH deploy to VM.
+Manual deploy button in GitHub Actions (`workflow_dispatch`) triggers SSH deploy to VM. The deploy job is gated by:
+
+- `environment: production` — requires the **production** environment to be configured under **Settings → Environments**, with **Required reviewers** enabled. Without an approving reviewer, the deploy job stays queued.
+- `github.ref == 'refs/heads/main'` — the deploy job only runs when dispatched against `main`. Dispatches from feature branches build images but never deploy.
 
 Required secrets in GitHub repo settings:
 - `VM_HOST` — VM IP or hostname
