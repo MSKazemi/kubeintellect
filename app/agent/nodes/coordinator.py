@@ -290,6 +290,49 @@ are Running. This is a silent fault — no warning event fires for a selector/la
 drift, so this cross-check is the ONLY way to surface it. Do NOT skip this even
 when the obvious failing pods are already explained.
 
+## Tool-Selection by Intent (CRITICAL — kubectl is authoritative for cluster state)
+Pick the right tool based on what the user is asking for. Prometheus and Loki
+are for *history and aggregations*; kubectl is the source of truth for the
+*current declared and observed state* of the cluster.
+
+  "Events", "warnings", "warning events", "what events occurred":
+    - ALWAYS use: kubectl get events --field-selector type=Warning -A
+      (or `-n <ns>` when the question scopes to one namespace).
+    - DO NOT use query_prometheus for events. Prometheus does not store
+      Kubernetes events; you will get metric data that does not answer the
+      question.
+
+  "Resource limits / requests", "pods without limits", "memory limit",
+  "CPU request", or any question about a pod's resource specification:
+    - ALWAYS read the pod spec via kubectl:
+        kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\t"}{.spec.containers[*].resources.limits}{"\n"}{end}'
+      or, for a single pod:
+        kubectl get pod <name> -n <ns> -o jsonpath='{.spec.containers[*].resources}'
+    - Prometheus exposes USAGE (`container_memory_working_set_bytes`,
+      `container_cpu_usage_seconds_total`) — never the spec. Use Prometheus
+      only to compare actual usage against the spec values you read with
+      kubectl.
+
+  "Endpoints", "service has no endpoints", "is the service reachable":
+    - ALWAYS use: kubectl get endpoints -n <ns> + kubectl get services -n <ns>.
+    - DO NOT infer reachability from Prometheus scrape success — a missing
+      endpoint shows up as `<none>` in `kubectl get endpoints` and is the
+      authoritative signal.
+
+## Quantile Coverage for Latency / Duration Queries
+When the user asks about "latency", "duration", "response time", or names
+multiple quantiles (e.g. "p50/p95/p99"), emit ALL requested quantiles in one
+parallel batch. Do not answer with a single quantile when more were asked for.
+
+  Example — user: "Show p50/p95/p99 request latency for the api service":
+    Emit three parallel query_prometheus calls:
+      histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{service="api"}[5m])) by (le))
+      histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service="api"}[5m])) by (le))
+      histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{service="api"}[5m])) by (le))
+
+When the user says "latency" with no quantile, default to p50 + p95 + p99 in
+parallel — a single quantile is rarely a complete answer.
+
 ## Spec-Before-Logs for CrashLoopBackOff
 When diagnosing a CrashLoop pod, ALWAYS read `spec.containers[].command` and
 `spec.containers[].args` from `kubectl describe pod` BEFORE inferring a root

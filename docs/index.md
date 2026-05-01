@@ -25,15 +25,15 @@ hide:
 
 <div class="ki-stats">
   <div class="ki-stat">
-    <span class="ki-stat-value">6</span>
-    <span class="ki-stat-label">LLM providers</span>
+    <span class="ki-stat-value">10</span>
+    <span class="ki-stat-label">Failure playbooks</span>
   </div>
   <div class="ki-stat">
     <span class="ki-stat-value">4</span>
     <span class="ki-stat-label">Parallel subagents</span>
   </div>
   <div class="ki-stat">
-    <span class="ki-stat-value">3</span>
+    <span class="ki-stat-value">4</span>
     <span class="ki-stat-label">Role tiers</span>
   </div>
   <div class="ki-stat">
@@ -68,8 +68,9 @@ hide:
     ---
 
     Every destructive operation pauses for human approval before kubectl is called.
-    Three role tiers (admin / operator / readonly) limit what each API key can request.
-    Shell injection is blocked before any subprocess runs.
+    Four role tiers (superadmin / admin / operator / readonly) limit what each API
+    key can request. Shell injection, secret/serviceaccount access, and writes to
+    infrastructure namespaces are blocked before any subprocess runs.
 
 -   :material-brain: **Stateful Conversations**
 
@@ -119,22 +120,38 @@ hide:
 
 ```
 You (kq CLI or any OpenAI-compatible client)
-     │  POST /v1/chat/completions  (SSE streaming)
-     ▼
-┌───────────────────────────────────────────────────┐
-│  Coordinator LLM                                  │
-│  ┌──────────┐  ┌────────────┐  ┌───────────────┐  │
-│  │  kubectl │  │ Prometheus │  │     Loki      │  │
-│  │   tools  │  │   PromQL   │  │    LogQL      │  │
-│  └──────────┘  └────────────┘  └───────────────┘  │
-│                                                   │
-│  Complex issues → fan out to 4 parallel agents:   │
-│  pod │ metrics │ logs │ events → synthesise       │
-└───────────────────────────────────────────────────┘
-     │  HITL interrupt on every destructive command
-     ▼
+   │  POST /v1/chat/completions  (SSE streaming)
+   ▼
+┌──────────────────────────────────────────────────────────────────┐
+│  LangGraph workflow                                              │
+│                                                                  │
+│  memory_loader  →  context_fetcher  →  coordinator               │
+│   (DB context)    (live snapshot +      (LLM + tools)            │
+│                    playbook match)                               │
+│                                              │                   │
+│           ┌──────────────────────────────────┴──────────┐        │
+│           ▼ TARGETED      ▼ RCA_REQUIRED               ▼ direct │
+│   targeted_investigator   subagent_executor × 4     answer →END │
+│   (3 parallel reads)      (pod | metrics |                       │
+│           │                logs | events,                        │
+│           │                parallel fan-out)                     │
+│           ▼                       │                              │
+│       coordinator ← findings — coordinator (synthesis) → END     │
+│                                                                  │
+│  Tools: run_kubectl │ query_prometheus (PromQL) │ query_loki     │
+│  HITL interrupt fires on every destructive kubectl verb.         │
+└──────────────────────────────────────────────────────────────────┘
+   │
+   ▼
 LangGraph checkpoint store (Postgres / SQLite)
++ rca_outcomes / failure_patterns (reflexion subsystem)
 ```
+
+Each turn passes through five additive [agent behaviors](agent-behaviors.md) —
+error interpretation, snapshot bias, parallel discipline, playbook injection,
+and a visible investigation plan. Verified outcomes feed the
+[reflexion subsystem](reflexion.md), which promotes recurring fixes back into
+future prompts (cluster-scoped, with cooldown and decay).
 
 Responses stream back as Server-Sent Events. The API is OpenAI-compatible — point any
 SSE client or your own tooling at `/v1/chat/completions`.
@@ -232,29 +249,17 @@ SSE client or your own tooling at `/v1/chat/completions`.
 
 -   :material-brain: **OpenAI**
 
-    GPT-4o, GPT-4 Turbo, GPT-3.5
+    GPT-4o (coordinator) + GPT-4o-mini (subagents). Set `LLM_PROVIDER=openai`.
 
 -   :material-microsoft-azure: **Azure OpenAI**
 
-    Any Azure-hosted deployment
-
--   :material-robot-outline: **Anthropic Claude**
-
-    Claude 3.5 Sonnet, Haiku, Opus
-
--   :fontawesome-brands-google: **Google Gemini**
-
-    Gemini 1.5 Pro / Flash
-
--   :fontawesome-brands-aws: **AWS Bedrock**
-
-    Claude, Llama, Titan via Bedrock
-
--   :material-cube-outline: **Ollama (local)**
-
-    Llama 3, Mistral, Qwen — offline
+    Any Azure-hosted deployment. Default `AZURE_OPENAI_API_VERSION=2024-10-01-preview`
+    enables automatic prefix caching. Set `LLM_PROVIDER=azure`.
 
 </div>
+
+See [Configuration → LLM provider](configuration.md#llm-provider) for the full
+list of model and deployment variables.
 
 ---
 

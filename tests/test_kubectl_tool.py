@@ -150,6 +150,129 @@ class TestRiskClassification:
         assert "cancelled" in result.lower()
 
 
+# ── Always-confirm gate (overrides hitl_bypass) ───────────────────────────────
+
+class TestAlwaysConfirm:
+    """Some actions ALWAYS require user confirmation, even when hitl_bypass=True.
+
+    These are cascading-blast operations: namespace/pv/crd deletion, drain,
+    and live workload mutations via `set image|resources`. Regression tests
+    for scenarios 09-multi-step (delete namespace) and 14-rollout-stuck
+    (set image) which slipped through HITL on superadmin auto_approve.
+    """
+
+    def _invoke(self, command, hitl_bypass=True, user_role="superadmin"):
+        from app.tools.kubectl_tool import run_kubectl
+        captured = {}
+
+        def fake_interrupt(value):
+            captured.update(value)
+            return True
+
+        proc = MagicMock(); proc.stdout = "ok"; proc.stderr = ""
+        cfg = {"configurable": {"user_role": user_role, "hitl_bypass": hitl_bypass}}
+        with patch("app.tools.kubectl_tool.interrupt", side_effect=fake_interrupt) as mock_intr:
+            with patch("subprocess.run", return_value=proc):
+                run_kubectl.invoke({"command": command}, config=cfg)
+        return captured, mock_intr
+
+    @pytest.mark.parametrize("cmd", [
+        "kubectl delete namespace scenario-test",
+        "kubectl delete ns scenario-test",
+        "kubectl delete namespaces scenario-test",
+        "kubectl delete pv my-volume",
+        "kubectl delete persistentvolume my-volume",
+        "kubectl delete crd certificates.cert-manager.io",
+        "kubectl drain kind-worker --ignore-daemonsets",
+        "kubectl set image deployment/myapp container=image:v2 -n default",
+        "kubectl set resources deployment/myapp -c=app --limits=cpu=200m -n default",
+    ])
+    def test_always_confirm_overrides_bypass(self, cmd):
+        captured, mock_intr = self._invoke(cmd, hitl_bypass=True)
+        mock_intr.assert_called_once()
+        assert captured.get("always_confirm") is True
+        assert captured.get("risk_level") == "high"
+
+    def test_pod_delete_does_not_override_bypass(self):
+        """`delete pod` is destructive but not catastrophic — bypass should still work."""
+        _, mock_intr = self._invoke("kubectl delete pod foo -n default", hitl_bypass=True)
+        mock_intr.assert_not_called()
+
+    def test_apply_does_not_override_bypass(self):
+        """Plain `apply` is medium-risk — bypass applies normally."""
+        _, mock_intr = self._invoke("kubectl apply -f -", hitl_bypass=True)
+        mock_intr.assert_not_called()
+
+    def test_get_pods_never_triggers(self):
+        """Read-only verbs never trip HITL regardless of bypass state."""
+        _, mock_intr = self._invoke("kubectl get pods -n default", hitl_bypass=False)
+        mock_intr.assert_not_called()
+
+    def test_set_image_blocks_without_bypass_too(self):
+        """Regression: `set` was missing from DESTRUCTIVE_VERBS entirely.
+        Now it must trip HITL even on a normal (non-bypass) session."""
+        captured, mock_intr = self._invoke(
+            "kubectl set image deployment/myapp c=img:v2 -n default",
+            hitl_bypass=False,
+        )
+        mock_intr.assert_called_once()
+        assert captured.get("risk_level") == "high"
+
+    def test_always_confirm_dry_run_still_skips(self):
+        """--dry-run continues to skip HITL even for always-confirm actions."""
+        _, mock_intr = self._invoke(
+            "kubectl delete namespace scenario-test --dry-run=client",
+            hitl_bypass=True,
+        )
+        mock_intr.assert_not_called()
+
+    @pytest.mark.parametrize("role", ["admin", "superadmin"])
+    def test_always_confirm_fires_for_admin_roles(self, role):
+        """admin and superadmin both trip the always-confirm gate on bypass."""
+        _, mock_intr = self._invoke(
+            "kubectl delete namespace scenario-test",
+            hitl_bypass=True,
+            user_role=role,
+        )
+        mock_intr.assert_called_once()
+
+    def test_set_image_always_confirms_for_operator(self):
+        """`set` is medium-risk so operator can run it — but `set image`
+        is always-confirm, so HITL still fires under bypass."""
+        _, mock_intr = self._invoke(
+            "kubectl set image deployment/myapp c=img:v2 -n default",
+            hitl_bypass=True,
+            user_role="operator",
+        )
+        mock_intr.assert_called_once()
+
+    def test_readonly_blocked_before_always_confirm(self):
+        """readonly is rejected at the role layer; HITL is never invoked."""
+        from app.tools.kubectl_tool import run_kubectl
+        proc = MagicMock(); proc.stdout = ""; proc.stderr = ""
+        cfg = {"configurable": {"user_role": "readonly", "hitl_bypass": True}}
+        with patch("app.tools.kubectl_tool.interrupt") as mock_intr:
+            with patch("subprocess.run", return_value=proc):
+                result = run_kubectl.invoke(
+                    {"command": "kubectl delete namespace scenario-test"}, config=cfg
+                )
+        mock_intr.assert_not_called()
+        assert "Permission Denied" in result
+
+    def test_operator_blocked_on_delete_namespace(self):
+        """operator can't run high-risk verbs at all (delete is _HIGH_RISK)."""
+        from app.tools.kubectl_tool import run_kubectl
+        proc = MagicMock(); proc.stdout = ""; proc.stderr = ""
+        cfg = {"configurable": {"user_role": "operator", "hitl_bypass": True}}
+        with patch("app.tools.kubectl_tool.interrupt") as mock_intr:
+            with patch("subprocess.run", return_value=proc):
+                result = run_kubectl.invoke(
+                    {"command": "kubectl delete namespace scenario-test"}, config=cfg
+                )
+        mock_intr.assert_not_called()
+        assert "Permission Denied" in result
+
+
 # ── Protected namespace / resource blocklist ──────────────────────────────────
 
 class TestProtectedAccess:

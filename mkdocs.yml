@@ -112,6 +112,7 @@ nav:
     - Cloud / VM (Helm): deploy/cloud.md
 
   - Reference:
+    - Architecture: architecture.md
     - Configuration: configuration.md
     - Agent Behaviors: agent-behaviors.md
     - Reflexion Subsystem: reflexion.md

@@ -21,9 +21,12 @@ description: >-
 
 ## 1. API authentication
 
-Auth is controlled by three env vars. Leave all three empty to disable auth (useful for local dev or trusted networks).
+Auth is controlled by four key lists plus an optional HMAC backend. Leave all
+four empty (and `DEMO_KEY_HMAC_SECRET` unset) to disable auth — useful for local
+dev or trusted networks.
 
 ```bash
+KUBEINTELLECT_SUPERADMIN_KEYS=ki-su-rootkey
 KUBEINTELLECT_ADMIN_KEYS=ki-admin-abc123,ki-admin-def456
 KUBEINTELLECT_OPERATOR_KEYS=ki-op-xyz789
 KUBEINTELLECT_READONLY_KEYS=ki-ro-qwerty
@@ -35,19 +38,36 @@ KUBEINTELLECT_READONLY_KEYS=ki-ro-qwerty
 
 Generate a key: `openssl rand -hex 20`
 
+### HMAC-signed demo keys (optional)
+
+For public demos (e.g. the browser terminal) where you want to issue read-only
+keys without restarting the server, set `AUTH_BACKEND=hmac` and
+`DEMO_KEY_HMAC_SECRET=<random>`. The auth layer then accepts any token of the
+form `ki-ro-<base64url(email:exp_unix)>.<hmac_sha256_hex[:32]>` whose signature
+verifies and whose expiry is in the future. Static `*_KEYS` continue to be
+checked first; HMAC is only consulted for `ki-ro-*` tokens that miss the static
+list. Rotate `DEMO_KEY_HMAC_SECRET` to invalidate all outstanding demo keys
+instantly.
+
 ---
 
 ## 2. Role capabilities
 
-| Operation | admin | operator | readonly |
-|---|---|---|---|
-| `kubectl get`, `describe`, `logs`, `top`, `events` | ✅ | ✅ | ✅ |
-| `kubectl apply`, `scale`, `patch`, `create`, `run`, `exec` | ✅ HITL | ✅ HITL | ❌ Blocked |
-| `kubectl delete`, `drain`, `replace`, `taint` | ✅ HITL | ❌ Blocked | ❌ Blocked |
-| Prometheus / Loki queries | ✅ | ✅ | ✅ |
-| Receive HITL approval prompts | ✅ | ✅ (medium risk only) | ❌ |
+| Operation | superadmin | admin | operator | readonly |
+|---|---|---|---|---|
+| `kubectl get`, `describe`, `logs`, `top`, `events` | ✅ | ✅ | ✅ | ✅ |
+| `kubectl apply`, `scale`, `patch`, `create`, `run`, `exec` | ✅ HITL | ✅ HITL | ✅ HITL | ❌ Blocked |
+| `kubectl delete`, `drain`, `replace`, `taint` | ✅ HITL | ✅ HITL | ❌ Blocked | ❌ Blocked |
+| **Writes to infrastructure namespaces** (`kubeintellect`, `monitoring`, `kube-system`, …) | ✅ HITL | ❌ Blocked | ❌ Blocked | ❌ Blocked |
+| Prometheus / Loki queries | ✅ | ✅ | ✅ | ✅ |
+| Receive HITL approval prompts | ✅ | ✅ | ✅ (medium risk only) | ❌ |
 
-**HITL = Human-in-the-Loop.** Even admin users cannot execute destructive commands without explicitly typing `yes` or `/approve` in the same session.
+`superadmin` is meant for the cluster owner — it bypasses the
+`KUBECTL_BLOCKED_NAMESPACES` write-block, but it does **not** bypass
+`KUBECTL_BLOCKED_RESOURCES` (Secrets and ServiceAccounts remain shielded for
+all roles, including superadmin).
+
+**HITL = Human-in-the-Loop.** Even superadmin and admin users cannot execute destructive commands without explicitly typing `yes` or `/approve` in the same session.
 
 ---
 
@@ -89,18 +109,29 @@ Namespace + quota + RoleBinding CRUD. Off by default. Enable only for eval/test 
 
 ## 4. HITL — Human-in-the-Loop gate
 
-Every destructive or write operation hits two checks before executing:
+Every destructive or write operation hits four checks before executing:
 
 ```
 1. Role check (in run_kubectl)
    ├─ readonly  → "Permission Denied" returned, no HITL shown
    ├─ operator + high-risk verb → "Permission Denied" returned, no HITL shown
-   └─ admin / operator + allowed verb → continue
+   └─ superadmin / admin / operator + allowed verb → continue
 
-2. Risk classification + interrupt()
+2. Protected-resource check
+   └─ resource ∈ KUBECTL_BLOCKED_RESOURCES (secrets / serviceaccounts)
+        → "[Protected]" returned, kubectl never called (all roles)
+
+3. Protected-namespace check
+   ├─ ns ∈ KUBECTL_BLOCKED_NAMESPACES + write verb
+   │    ├─ superadmin → allowed (bypass) — continue to HITL
+   │    └─ admin / operator → "[Protected]" returned, kubectl never called
+   └─ read-only verbs always allowed (the agent must observe its own pod
+      and the observability stack to diagnose issues)
+
+4. Risk classification + interrupt()
    ├─ high-risk (delete, drain, replace, taint):
    │    interrupt() called → graph pauses → user sees approval prompt
-   └─ medium-risk (patch, apply, scale, exec, create, run, …):
+   └─ medium-risk (patch, apply, scale, exec, create, run, set, rollout, cordon, uncordon):
         interrupt() called → graph pauses → user sees approval prompt
 
 User response in same session (X-Session-ID header):
@@ -110,6 +141,16 @@ User response in same session (X-Session-ID header):
 ```
 
 The graph is frozen in the checkpoint store (PostgreSQL or SQLite) during the wait. No timeout — the approval can come hours later.
+
+### Auto-approve (`auto_approve=true`)
+
+Setting `auto_approve: true` in the chat-completions request body bypasses
+step 4 entirely (steps 1–3 still apply). The Proactive Fix Mode prompt block
+is appended to the coordinator's system prompt so it knows it should apply
+fixes immediately and verify after every mutation. This is used by the
+evaluation harness and trusted automation. Per-session bypass
+is also enabled when the user types "approve all" in the chat — handled by
+`is_auto_approve_request` in `app/agent/hitl.py`.
 
 ---
 
@@ -179,24 +220,39 @@ This is logged as a future roadmap item. The current model is pragmatic and secu
 
 ```
 Layer 1 — metacharacter guard
-  Reject any command containing: ; & ` $ > < \
+  Reject any command containing: ; & ` $ \
   Pipe (|) is allowed and handled in Python (not the shell).
+  < and > are intentionally allowed — they are only dangerous for shell I/O
+  redirection, which is impossible under shell=False, and excluding them allows
+  --from-literal values that contain HTML / template content.
 
-Layer 2 — shlex.split (shell=False)
+Layer 2 — rejected verbs
+  `kubectl edit` is hard-blocked at parse time — it requires an interactive
+  terminal that is never available in the container or pip install.
+
+Layer 3 — shlex.split (shell=False)
   subprocess is called with a list of args, never a shell string.
   The shell is never invoked. No interpolation possible.
 
-Layer 3 — pipe emulation
+Layer 4 — pipe emulation
   Only `grep` is supported after `|`. Any other command is rejected.
   grep is reimplemented in Python using re — no subprocess involved.
+  Supported flags: -v / --invert-match, -i / --ignore-case, -E.
 
-Layer 4 — YAML pre-validation
+Layer 5 — YAML pre-validation
   stdin YAML is parsed with yaml.safe_load_all before being passed to kubectl.
-  Malformed YAML that might confuse kubectl's parser is caught early.
+  Parse warnings are logged but do not fail the call (kubectl is the source of
+  truth for its own validation — Python's parser is sometimes stricter).
 
-Layer 5 — output cap
-  Output is truncated at 8,000 characters regardless of what kubectl returns.
-  Prevents memory exhaustion from pathological outputs.
+Layer 6 — namespace output filter
+  `kubectl get namespaces` output is post-filtered to strip blocked namespaces
+  from the table / -o name / jsonpath outputs the user sees.
+
+Layer 7 — output cap
+  Output is truncated at 8 000 characters regardless of what kubectl returns.
+  Prevents memory exhaustion from pathological outputs and includes an explicit
+  "[TRUNCATED: N chars omitted]" marker so the coordinator surfaces the warning
+  to the user.
 ```
 
 ---
