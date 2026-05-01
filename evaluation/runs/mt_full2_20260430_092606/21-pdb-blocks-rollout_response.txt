@@ -1,7 +1,0 @@
-The PodDisruptionBudget (`web-service-pdb`) has been successfully updated with the correct selector (`app: web-service`). It now ensures that at least one pod is always available.
-
-### Verification:
-- The PodDisruptionBudget is active with `MIN AVAILABLE: 1`.
-- `ALLOWED DISRUPTIONS: 0` confirms that the rollout is protected.
-
-The deployment should now progress without being blocked. Let me know if further assistance is needed!

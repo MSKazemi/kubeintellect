@@ -1,1 +1,0 @@
-The deployment metrics-app in namespace scenario-test shows 0 ready pods and has been in that state since it was deployed. No pod appears in any state. Investigate why no pods are being created and identify what is missing.

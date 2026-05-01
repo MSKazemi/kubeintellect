@@ -1,3 +1,0 @@
-There are no resource quotas defined for any namespace in the cluster. Without quotas, namespaces cannot approach resource limits because no limits are enforced.
-
-If you want to set resource quotas for specific namespaces, let me know the requirements (e.g., memory, CPU limits), and I can help you define and apply them.

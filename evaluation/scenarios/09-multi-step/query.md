@@ -1,1 +1,0 @@
-Create a namespace called loop-test, deploy a single-replica nginx app called web-server, expose it with a ClusterIP service on port 80, verify the deployment is healthy and the service has endpoints, then clean everything up. Report the status after each step.

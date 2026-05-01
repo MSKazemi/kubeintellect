@@ -1,1 +1,0 @@
-No warning events have occurred in the cluster in the last hour.

@@ -1,3 +1,0 @@
-Based on the cluster snapshot provided, all pods across every namespace are currently in either the "Running" or "Completed" state. There are no pods in other states such as "CrashLoopBackOff," "Pending," "Error," or "ImagePullBackOff."
-
-If you need further verification or a live check, let me know!

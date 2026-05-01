@@ -1,1 +1,0 @@
-The deployment web-app in namespace scenario-test keeps restarting. The application team says nginx is working correctly and they can see normal access logs between restarts. Find the exact container that is causing the pod to restart and explain why.

@@ -1,3 +1,0 @@
-There is no data available for the requested query regarding the p50 request latency for the kubeintellect API over the last hour. This could indicate that the API is not emitting metrics for request latency or that the Prometheus configuration does not include this data.
-
-Would you like me to investigate further or check for other metrics?

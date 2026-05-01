@@ -1,1 +1,0 @@
-The deployment web-api in namespace scenario-test is in the middle of a rolling update but the rollout appears stuck. Some pods are running but new ones are failing. What is blocking the rollout and what is the safest recovery action?

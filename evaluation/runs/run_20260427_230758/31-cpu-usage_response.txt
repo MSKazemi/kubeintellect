@@ -1,9 +1,0 @@
-The pods consuming the most CPU right now are:
-
-1. **langfuse-clickhouse-69bf5f8b54-chrqf**: 0.2955 CPU seconds per second
-2. **kube-apiserver-testbed-v2-control-plane**: 0.1967 CPU seconds per second
-3. **etcd-testbed-v2-control-plane**: 0.0708 CPU seconds per second
-4. **langfuse-web-67f656c5d-mlxnk**: 0.0605 CPU seconds per second
-5. **kube-controller-manager-testbed-v2-control-plane**: 0.0573 CPU seconds per second
-
-These values represent the rate of CPU usage averaged over the last 5 minutes.

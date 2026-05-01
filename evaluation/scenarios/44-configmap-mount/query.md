@@ -1,1 +1,0 @@
-Create a ConfigMap named app-config in namespace scenario-test with key DB_HOST set to postgres.svc. Then create a Deployment named busybox-config (1 replica, busybox:1.36 image) that mounts the ConfigMap as environment variables and runs: sleep 3600

@@ -1,1 +1,0 @@
-The StatefulSet db-cluster in namespace scenario-test has a running pod, but other services in the cluster cannot reach it using the stable DNS name db-cluster-0.db-headless.scenario-test.svc.cluster.local. Investigate what is missing and why DNS-based discovery is broken for this StatefulSet.

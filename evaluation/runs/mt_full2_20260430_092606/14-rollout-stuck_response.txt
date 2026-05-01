@@ -1,3 +1,0 @@
-The deployment has been updated to use the image `nginx:latest`. A new pod (`web-api-7db76f5ddf-sns5d`) is now in the `ContainerCreating` state, indicating the rollout is progressing.
-
-I will monitor the rollout further to ensure the new pods transition to the `Running` state. Shall I proceed with additional checks?

@@ -1,1 +1,0 @@
-The deployment config-reader in namespace scenario-test cannot start. The team confirms the ConfigMap app-config exists and contains the application configuration. Investigate why the pod is failing to launch.

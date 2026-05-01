@@ -1,1 +1,0 @@
-There is no data available for the p50, p95, or p99 request latency of the kubeintellect API over the last hour. This could indicate that the API has not received any requests during this period, or the metrics for this API are not being collected properly.
