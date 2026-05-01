@@ -176,6 +176,11 @@ class Settings(BaseSettings):
     # Generate: openssl rand -hex 32
     DEMO_KEY_HMAC_SECRET: Optional[str] = None
 
+    # Default TTL for demo keys minted via POST /v1/auth/demo-keys.
+    DEMO_KEY_DEFAULT_TTL_HOURS: int = Field(default=24 * 7)   # 7 days
+    # Hard cap so a misbehaving caller can't request multi-year keys.
+    DEMO_KEY_MAX_TTL_HOURS: int = Field(default=24 * 30)      # 30 days
+
     @property
     def superadmin_keys(self) -> set[str]:
         return {k.strip() for k in self.KUBEINTELLECT_SUPERADMIN_KEYS.split(",") if k.strip()}

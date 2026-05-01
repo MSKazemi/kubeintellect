@@ -56,6 +56,18 @@ def _verify_hmac_demo_key(token: str) -> bool:
         return False
 
 
+def mint_demo_key(email: str, ttl_seconds: int) -> tuple[str, int]:
+    """Mint a ki-ro-<payload>.<sig> HMAC demo key. Returns (key, exp_unix)."""
+    secret = settings.DEMO_KEY_HMAC_SECRET
+    if not secret:
+        raise RuntimeError("DEMO_KEY_HMAC_SECRET not configured")
+    exp = int(time.time()) + ttl_seconds
+    raw = f"{email}:{exp}".encode()
+    payload = base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+    sig = hmac.digest(secret.encode(), payload.encode(), hashlib.sha256).hex()[:32]
+    return f"ki-ro-{payload}.{sig}", exp
+
+
 def get_user_role(request: Request) -> str:
     """Return "admin", "operator", or "readonly" for the request, or raise HTTP 401."""
     if not settings.auth_enabled:

@@ -282,3 +282,87 @@ class TestSerialiseEvent:
         choice = payload["choices"][0]
         assert choice["hitl_required"] is True
         assert choice["risk_level"] == "high"
+
+
+# ── POST /v1/auth/demo-keys ───────────────────────────────────────────────────
+
+
+@pytest.fixture()
+def hmac_settings(monkeypatch, auth_settings):
+    """Enable HMAC minting on top of auth_settings."""
+    from app.core import config
+    monkeypatch.setattr(config.settings, "DEMO_KEY_HMAC_SECRET", "test-secret-32-chars-minimum-xxxx")
+
+
+class TestDemoKeyMint:
+    _path = "/v1/auth/demo-keys"
+    _body = {"email": "alice@example.com"}
+
+    def test_requires_auth(self, client, hmac_settings):
+        r = client.post(self._path, json=self._body)
+        assert r.status_code == 401
+
+    def test_rejects_readonly(self, client, hmac_settings):
+        r = client.post(
+            self._path,
+            json=self._body,
+            headers={"Authorization": "Bearer ki-test-readonly"},
+        )
+        assert r.status_code == 403
+
+    def test_rejects_operator(self, client, hmac_settings):
+        r = client.post(
+            self._path,
+            json=self._body,
+            headers={"Authorization": "Bearer ki-test-operator"},
+        )
+        assert r.status_code == 403
+
+    def test_admin_mints_valid_key(self, client, hmac_settings):
+        from app.api.v1.auth import _verify_hmac_demo_key
+
+        r = client.post(
+            self._path,
+            json=self._body,
+            headers={"Authorization": "Bearer ki-test-admin"},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["email"] == "alice@example.com"
+        assert body["api_key"].startswith("ki-ro-")
+        assert _verify_hmac_demo_key(body["api_key"]) is True
+
+    def test_uses_default_ttl(self, client, hmac_settings):
+        r = client.post(
+            self._path,
+            json=self._body,
+            headers={"Authorization": "Bearer ki-test-admin"},
+        )
+        assert r.status_code == 200
+        assert r.json()["expires_in_seconds"] == 7 * 24 * 3600
+
+    def test_caps_ttl(self, client, hmac_settings):
+        r = client.post(
+            self._path,
+            json={**self._body, "ttl_hours": 99999},
+            headers={"Authorization": "Bearer ki-test-admin"},
+        )
+        assert r.status_code == 400
+
+    def test_503_when_secret_missing(self, client, auth_settings, monkeypatch):
+        from app.core import config
+        monkeypatch.setattr(config.settings, "DEMO_KEY_HMAC_SECRET", None)
+        r = client.post(
+            self._path,
+            json=self._body,
+            headers={"Authorization": "Bearer ki-test-admin"},
+        )
+        assert r.status_code == 503
+
+    def test_invalid_email_rejected(self, client, hmac_settings):
+        r = client.post(
+            self._path,
+            json={"email": "not-an-email"},
+            headers={"Authorization": "Bearer ki-test-admin"},
+        )
+        assert r.status_code == 422

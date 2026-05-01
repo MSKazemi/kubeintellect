@@ -1,10 +1,46 @@
 ---
 description: >-
-  How the KubeIntellect coordinator investigates failures — error interpretation,
-  snapshot bias, parallel discipline, playbooks, and visible plans.
+  How the KubeIntellect coordinator investigates failures — workflow nodes,
+  routing decisions, error interpretation, snapshot bias, parallel discipline,
+  playbooks, plans, and the safety rules baked into the coordinator prompt.
 ---
 
 # Agent Behaviors
+
+Each turn moves through a fixed LangGraph workflow before the coordinator emits
+its first token, and every coordinator response is shaped by five feature-flagged
+behaviors plus a set of always-on safety rules baked into the system prompt.
+
+## Workflow nodes (per turn)
+
+```
+START → memory_loader → context_fetcher → coordinator
+                                              │
+        ┌─────────────────────────────────────┼─────────────────────────────┐
+        ▼ TARGETED                            ▼ RCA_REQUIRED                ▼ direct
+  targeted_investigator              subagent_executor × 4 (Send fan-out)  END
+  (3 parallel reads,                  pod | metrics | logs | events
+   back to coordinator)                       │ (fan-in)
+        │                                     ▼
+        └─────────► coordinator (synthesis) → END
+```
+
+| Node | What it does |
+|---|---|
+| `memory_loader` | Loads pinned context from Postgres (user prefs, failure hints, recent RCA, session notes). SQLite mode skips this silently. |
+| `context_fetcher` | Runs `kubectl get pods --all-namespaces` + `get events --field-selector=type=Warning` in parallel. Sets `snapshot_has_issues`, `snapshot_has_warnings`, `snapshot_pod_count`, `snapshot_built_at`, `cluster_id`, and matches playbooks against the snapshot. |
+| `coordinator` | LLM with the three tools. Decides: direct answer, `TARGETED`, or `RCA_REQUIRED`. On synthesis turns, merges subagent findings into one `RCAResult`. |
+| `targeted_investigator` | Runs three parallel `kubectl` reads (`describe pod`, `get events`, `get deployments`) for a single failing resource and appends them to the snapshot, then routes back to the coordinator for the final answer. |
+| `subagent_executor` (× 4) | Domain specialist subagents — pod, metrics, logs, events. Each is a ReAct loop over the same tools, capped at 3–5 tool calls, returning a typed `AgentFinding`. |
+
+`route_coordinator` is the only conditional edge: it returns a string, `END`, or
+`list[Send]` for parallel fan-out (LangGraph's native fan-out mechanism). Fan-in
+back to the coordinator happens automatically once all four `Send` branches
+write into the `findings` reducer.
+
+---
+
+## Behaviors
 
 The KubeIntellect coordinator implements five additive behaviors that shape how
 it investigates Kubernetes issues. Each is feature-flagged in
@@ -150,6 +186,144 @@ anchor to stay on-track. Trivial single-call queries skip the plan (threshold:
 
 ---
 
+## Routing decision
+
+Every coordinator turn produces exactly one of three routing outcomes.
+
+| Outcome | When | What the coordinator emits |
+|---|---|---|
+| **direct** | Simple list / status / single-resource query, or a mutation. | A normal answer (with tool calls, possibly a plan, possibly a `TARGETED:` block). |
+| **TARGETED** | One specific resource is failing and needs deeper inspection. | `TARGETED: namespace=<ns>, pod=<pod>, issue=<one-line>` on its own line. The `targeted_investigator` runs three parallel reads (describe, events, deployments), appends them to the snapshot, and the coordinator answers with the enriched context. |
+| **RCA_REQUIRED** | Multi-pod / cross-namespace outage, unknown root cause, cascading failures. | The literal token `RCA_REQUIRED`. The router fans out to four specialist subagents in parallel; the coordinator then synthesizes their findings into one `RCAResult`. |
+
+The sentinel text is parsed out of the message stream — it never reaches the
+user. `TARGETED` should always be preferred over `RCA_REQUIRED` for
+single-resource issues; the four-subagent fan-out is reserved for genuinely
+ambiguous, cross-cutting failures.
+
+---
+
+## Always-on safety rules (in the coordinator prompt)
+
+These rules are not feature-flagged — they live in the coordinator system prompt
+and apply to every turn.
+
+### Mutation batching (HITL safety)
+
+At most **one mutation per response**. Reads (`get`, `describe`, `logs`, `top`)
+may still be batched in parallel — only `patch / apply / create / delete /
+scale / set / rollout` are restricted. Batching multiple mutations in one
+response causes redundant approval prompts and re-queues unapproved calls when
+HITL fires mid-batch. The `_fill_orphan_tool_calls` helper injects "skipped"
+placeholders for any `tool_call` without a matching `ToolMessage` so the LLM
+doesn't re-propose them on the next loop.
+
+### Fix verification (after every mutation)
+
+After every successful `kubectl patch / apply / create / delete`, the
+coordinator must perform one more `kubectl get` on the affected resource and
+report the actual post-fix state ("Pod is now Running (verified)"). The
+[reflexion subsystem](reflexion.md) re-runs this check independently — fix
+verification at the prompt level is the agent's contract; reflexion verification
+is the system's gate before promoting a pattern.
+
+### Service-endpoint cross-check (namespace-level queries)
+
+For any namespace-level investigation (*"check ns X", "what's wrong in X",
+"diagnose X"*), the coordinator must include `kubectl get endpoints -n <ns>`
+**and** `kubectl get services -n <ns>` in the initial parallel batch — alongside
+`get pods` and `get events`. A service whose `ENDPOINTS` column is `<none>`
+while its target pods are `Running` is a silent fault: no warning event fires
+for selector/label drift. This cross-check is the only reliable way to surface
+it.
+
+### Spec-before-logs for CrashLoopBackOff
+
+When diagnosing a CrashLoop pod, the coordinator must read
+`spec.containers[].command` and `spec.containers[].args` from
+`kubectl describe pod` *before* inferring a root cause from log output. A log
+line like `"DB not configured"` may be hardcoded in the container's `command`,
+in which case no env or secret patch will fix it.
+
+### Tool selection by time intent
+
+| Phrasing | Tool |
+|---|---|
+| "Current / active issues", "now", "today" | `kubectl get pods --all-namespaces` + `describe` for Last State |
+| "Last N hours/days", "yesterday", "last night" | `query_prometheus` with `range_minutes`, `query_loki` with `since=Nh` |
+| "Pods with issues" (no qualifier) | `kubectl get pods --all-namespaces` — pods not in Running/Completed/Succeeded right now |
+
+Using `range_minutes>0` for "current issues" surfaces already-resolved problems
+and produces false positives.
+
+### Shell-metacharacter constraints
+
+The runner blocks any `kubectl` command containing `;`, `&`, `` ` ``, `$`, or
+`\`. (Pipes and redirection are excluded — `|` is reimplemented in Python and
+`<` / `>` are harmless under `shell=False`.) The constraint applies to the full
+command string, including arguments inside `--patch '[...]'` or `-- sh -c "..."`.
+
+For container `command` / `args` changes (which usually contain shell
+metacharacters), the only reliable path is:
+
+1. `kubectl get <kind> <name> -n <ns> -o yaml` to fetch the current spec.
+2. Build the corrected manifest in the response.
+3. `kubectl apply -f -` with the manifest passed via stdin.
+
+`kubectl edit` is rejected outright — there is no interactive terminal in the
+container or the pip install.
+
+### Session-history compression
+
+The coordinator caps message history at the last 20 messages (about 5 prior
+exchanges). When the cap fires, the dropped messages are summarised
+deterministically (no extra LLM call) into a *Earlier Session Context
+(compressed)* block injected into the system prompt — preserving topics,
+commands run, and key tool results without bloating the context window.
+
+Tool output is also capped: `kubectl` table output keeps the header plus the
+first 30 rows plus any rows matching `error|warning|failed|pending|oomkilled|
+crashloop|backoff|imagepull|containercreating`; everything else is truncated
+at 2 000 characters with an explicit `[truncated]` marker that the coordinator
+must surface to the user.
+
+### Proactive Fix Mode (`auto_approve=true`)
+
+When the request body sets `auto_approve=true` (used by the evaluation harness
+and trusted automation), HITL gates are bypassed and a *Proactive Fix Mode*
+block is appended to the system prompt: the coordinator must apply identified
+fixes immediately, choose the safest default for ambiguous parameters, verify
+with a fresh `get`, and stop with an explicit "cannot determine" message rather
+than guessing.
+
+### Always-confirm gate (overrides `auto_approve`)
+
+A small set of cascading-blast actions ALWAYS prompt for confirmation, even on
+`auto_approve=true` sessions. The HITL interrupt fires with `risk_level=high`
+and `always_confirm=true`; there is no way to silently auto-approve them.
+
+| Verb pattern | Why it cannot auto-approve |
+|---|---|
+| `delete namespace\|ns` | Cascades to every resource in the namespace; no rollback. |
+| `delete pv\|persistentvolume` | Releases user data; CSI drivers may delete the underlying disk. |
+| `delete crd\|customresourcedefinition` | Cascades to every CR of that kind cluster-wide. |
+| `set image \|set resources` | Live mutation of running workloads; use `rollout undo` to revert. |
+| `drain` | Evicts every pod on the node; depends on PDB compliance. |
+
+Defined in `app/tools/kubectl_tool.py` (`_ALWAYS_CONFIRM_DELETE_TARGETS`,
+`_ALWAYS_CONFIRM_SET_SUBCOMMANDS`, `_requires_always_confirm`). Plain
+`delete pod`, `apply`, `patch`, `scale` continue to auto-approve under
+`auto_approve=true`.
+
+The role layer runs *before* the always-confirm gate, so existing role
+permissions still apply: `readonly` keys can't reach the gate at all,
+`operator` keys are still blocked on high-risk verbs (`delete`, `drain`,
+`replace`, `taint`) before HITL runs. The always-confirm gate only matters
+for `admin` and `superadmin` keys (and for `operator` running `set image|
+resources`, which is medium-risk but always-confirm).
+
+---
+
 ## How they compose
 
 A typical investigation of a CrashLoopBackOff pod, with all behaviors on:
@@ -167,6 +341,9 @@ A typical investigation of a CrashLoopBackOff pod, with all behaviors on:
    appended before the LLM sees it, avoiding retry loops.
 6. Final answer references each plan step and proposes a fix from the
    playbook's `recommended_fix_template`.
+7. **Reflexion outcome write** — if the answer ran a mutation, the
+   [reflexion subsystem](reflexion.md) verifies the cluster post-fix and records
+   the outcome (cluster-scoped, with cooldown).
 
 Each phase can be flipped independently if you need to roll one back.
 

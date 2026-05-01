@@ -2,14 +2,31 @@ name: CreateContainerConfigError
 triggers:
   - pod_status_regex: "CreateContainerConfigError|CreateContainerError"
   - event_reason_regex: "Failed"
+  - event_message_regex: "couldn't find key|not found in Secret|not found in ConfigMap"
 investigation_steps:
-  - "kubectl describe pod <pod> -n <ns> — read the exact missing key/secret name in Events."
-  - "kubectl get configmap,secret -n <ns> — confirm whether the referenced object exists."
-  - "Inspect the pod spec env/envFrom/volumeMounts referencing the missing object."
+  - "kubectl describe pod <pod> -n <ns> — read the kubelet Event message; it usually names the EXACT missing key (e.g. `couldn't find key DB_PASSWORD in Secret default/db-creds`)."
+  - "kubectl get secret <name> -n <ns> -o jsonpath='{.data}' | jq 'keys' (or `-o yaml`) — list the keys ACTUALLY present in the Secret/ConfigMap."
+  - "kubectl get pod <pod> -n <ns> -o jsonpath='{.spec.containers[*].env}' — list every secretKeyRef.key / configMapKeyRef.key the pod is asking for."
+  - "COMPARE the two key sets. The mismatch is almost always in the POD SPEC (typo / stale reference), not in the Secret. Only conclude 'Secret is missing the key' if the deployment intent clearly requires that key."
+  - "Containers in CreateContainerConfigError never started — there are no container logs. Do NOT assume 'no logs = mystery error'; the answer is in the event + spec + Secret comparison above."
 expected_evidence:
-  - "Event message naming a missing configmap or secret key"
-  - "kubectl get on the referenced object returns NotFound or missing key"
+  - "kubelet Event explicitly naming the missing key and the Secret/ConfigMap"
+  - "List of keys present in the referenced Secret/ConfigMap"
+  - "List of keys requested by the pod spec env/envFrom"
+  - "Side-by-side comparison showing which side is wrong"
 recommended_fix_template: |
-  The container cannot be created because a referenced ConfigMap/Secret key is missing.
-  Suggested fix: <ACTION> (create the missing key or update the pod spec to point at the
-  correct name).
+  The container failed `CreateContainerConfigError` because the pod spec references
+  a key that does not exist in the referenced Secret/ConfigMap.
+
+  Pod spec asks for: <KEY_REQUESTED> in <KIND>/<NAME>
+  Object actually has: <KEYS_PRESENT>
+
+  Most common fix (pod spec is wrong): patch the deployment to reference the correct key:
+    kubectl patch deployment <DEPLOY> -n <NS> --type='json' \
+      -p='[{"op":"replace","path":"/spec/template/spec/containers/0/env/<INDEX>/valueFrom/secretKeyRef/key","value":"<CORRECT_KEY>"}]'
+
+  Less common fix (Secret is wrong): add the missing key:
+    kubectl patch secret <NAME> -n <NS> --type='json' \
+      -p='[{"op":"add","path":"/data/<KEY>","value":"<BASE64_VALUE>"}]'
+
+  Choose based on which side reflects the deployment's intent.
