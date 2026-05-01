@@ -59,6 +59,10 @@ def _fmt_range(query: str, range_minutes: int, results: list[dict]) -> str:
 def query_prometheus(promql: str, range_minutes: int = 0) -> str:
     """Query Prometheus for cluster metrics using PromQL.
 
+    NOT for: events, warnings, resource specs (limits/requests), endpoints, or
+    "is this service reachable". Those are kubectl questions. Prometheus stores
+    *metrics over time* — usage, rates, restart counts — never spec or events.
+
     Args:
         promql: A PromQL expression. Examples:
             sum(rate(container_cpu_usage_seconds_total[5m])) by (pod)

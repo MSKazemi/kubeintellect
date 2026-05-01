@@ -32,8 +32,20 @@ logger = get_logger(__name__)
 # ── Risk tables ───────────────────────────────────────────────────────────────
 
 _HIGH_RISK = {"delete", "drain", "replace", "taint"}
-_MEDIUM_RISK = {"patch", "apply", "scale", "exec", "cordon", "uncordon", "create", "run"}
+_MEDIUM_RISK = {"patch", "apply", "scale", "exec", "cordon", "uncordon", "create", "run", "set"}
 DESTRUCTIVE_VERBS = _HIGH_RISK | _MEDIUM_RISK
+
+# (verb, target) pairs whose blast radius is too large to auto-approve.
+# These trigger a HITL prompt even when hitl_bypass=True is set on the session.
+# Reasoning: cascading deletes (namespace/pv/crd) and live workload mutations
+# (set image/resources, drain) can destroy data or take traffic down without
+# any rollback path — the user must confirm even on auto-approve sessions.
+_ALWAYS_CONFIRM_DELETE_TARGETS = {
+    "namespace", "namespaces", "ns",
+    "pv", "persistentvolume", "persistentvolumes",
+    "crd", "customresourcedefinition", "customresourcedefinitions",
+}
+_ALWAYS_CONFIRM_SET_SUBCOMMANDS = {"image", "resources"}
 
 # Verbs that have no side effects — allowed on all namespaces including protected ones.
 _READ_ONLY_VERBS = {
@@ -61,6 +73,24 @@ def _classify_risk(verb: str) -> str:
     if verb in _MEDIUM_RISK:
         return "medium"
     return "low"
+
+
+def _requires_always_confirm(verb: str, args: list[str]) -> bool:
+    """True for actions whose blast radius is too large to auto-approve.
+
+    Always-confirm actions trigger an HITL interrupt even when
+    `hitl_bypass=True` (auto-approve session). The user must explicitly
+    confirm; there is no way to silently auto-approve them.
+    """
+    if verb == "drain":
+        return True
+    if verb == "set" and len(args) >= 3 and args[2].lower() in _ALWAYS_CONFIRM_SET_SUBCOMMANDS:
+        return True
+    if verb == "delete" and len(args) >= 3:
+        target = args[2].split("/")[0].lower()
+        if target in _ALWAYS_CONFIRM_DELETE_TARGETS:
+            return True
+    return False
 
 
 def _normalise(command: str) -> str:
@@ -359,13 +389,19 @@ def run_kubectl(
             flag in args for flag in ("--dry-run=client", "--dry-run=server", "--dry-run")
         )
         hitl_bypass = bool((config.get("configurable") or {}).get("hitl_bypass", False)) if config else False
-        if not has_dry_run and not hitl_bypass:
-            risk = _classify_risk(verb)
+        always_confirm = _requires_always_confirm(verb, args)
+        if not has_dry_run and (not hitl_bypass or always_confirm):
+            risk = "high" if always_confirm else _classify_risk(verb)
+            if always_confirm and hitl_bypass:
+                logger.warning(
+                    f"run_kubectl: always-confirm override of auto-approve for {cmd!r}"
+                )
             approved = interrupt({
                 "type": "hitl",
                 "command": cmd,
                 "stdin": stdin,          # include YAML so the user sees what will be applied
                 "risk_level": risk,
+                "always_confirm": always_confirm,
                 "human_summary": f"About to run: `{cmd}`",
             })
             if not approved:

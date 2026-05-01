@@ -63,9 +63,14 @@ OPENAI_SUBAGENT_MODEL=gpt-4o-mini
 # Generate a key:  openssl rand -hex 20
 # kube-q uses:     KUBE_Q_API_KEY=<key>  in  ~/.kube-q/.env
 
+KUBEINTELLECT_SUPERADMIN_KEYS=          # all ops + infra-ns writes (HITL still applies)
 KUBEINTELLECT_ADMIN_KEYS=               # e.g. ki-admin-a1b2c3d4e5
 KUBEINTELLECT_OPERATOR_KEYS=
 KUBEINTELLECT_READONLY_KEYS=
+
+# Optional — HMAC-signed demo keys. Set both to enable.
+# AUTH_BACKEND=hmac
+# DEMO_KEY_HMAC_SECRET=                 # openssl rand -hex 32
 
 
 # ═══════════════════════════════════════════════════════
@@ -122,7 +127,7 @@ LOG_FORMAT=text
 |---|---|---|
 | `AZURE_OPENAI_API_KEY` | — | Azure OpenAI API key |
 | `AZURE_OPENAI_ENDPOINT` | — | Resource endpoint — must include protocol: `https://....openai.azure.com/` |
-| `AZURE_OPENAI_API_VERSION` | `2024-02-01` | API version |
+| `AZURE_OPENAI_API_VERSION` | `2024-10-01-preview` | API version. The default enables automatic prefix caching, which materially reduces cost on long coordinator prompts. |
 | `AZURE_COORDINATOR_DEPLOYMENT` | `gpt-4o` | Deployment name for coordinator |
 | `AZURE_SUBAGENT_DEPLOYMENT` | `gpt-4o-mini` | Deployment name for subagents |
 
@@ -183,17 +188,33 @@ kubeintellect, monitoring, kube-system, kube-public, kube-node-lease, ingress-ng
 
 ## Authentication (RBAC)
 
-Auth is optional. If no keys are set, all requests are accepted (open access).
+Auth is optional. If no keys are set in any of the four lists *and* no
+`DEMO_KEY_HMAC_SECRET` is configured, all requests are accepted (open access).
 
 | Variable | Default | Description |
 |---|---|---|
-| `KUBEINTELLECT_ADMIN_KEYS` | `""` | Comma-separated bearer tokens — full access, HITL-gated writes |
-| `KUBEINTELLECT_OPERATOR_KEYS` | `""` | Medium-risk ops only; delete/drain blocked |
-| `KUBEINTELLECT_READONLY_KEYS` | `""` | Read-only; all writes rejected |
+| `KUBEINTELLECT_SUPERADMIN_KEYS` | `""` | Comma-separated bearer tokens — admin capabilities + writes to infrastructure namespaces (still HITL-gated) |
+| `KUBEINTELLECT_ADMIN_KEYS` | `""` | High + medium risk ops, always HITL-gated; infra-namespace writes blocked |
+| `KUBEINTELLECT_OPERATOR_KEYS` | `""` | Medium-risk ops only (`patch`, `apply`, `scale`, `exec`, `create`, `run`); high-risk verbs (`delete`, `drain`, `replace`, `taint`) blocked |
+| `KUBEINTELLECT_READONLY_KEYS` | `""` | Read-only; all writes rejected before reaching the agent |
 
 Generate a key: `openssl rand -hex 20`
 
 Clients set the key via `Authorization: Bearer <key>` header, or `KUBE_Q_API_KEY` env var in kube-q.
+
+### HMAC-signed demo keys (`AUTH_BACKEND=hmac`)
+
+For public demo / browser-terminal deployments where you want anonymous
+read-only access without restarting the server to add new keys, set
+`AUTH_BACKEND=hmac` and `DEMO_KEY_HMAC_SECRET=<random>`. Keys of the form
+`ki-ro-<base64url(email:exp_unix)>.<hmac_sha256_hex[:32]>` are then validated by
+signature + expiry — no list lookup. Static `*_KEYS` continue to work; HMAC is
+only consulted for tokens that look like `ki-ro-*`.
+
+| Variable | Default | Description |
+|---|---|---|
+| `AUTH_BACKEND` | `static` | `static` (only the lists above) or `hmac` (also accept signed demo keys) |
+| `DEMO_KEY_HMAC_SECRET` | — | Secret used to sign and verify demo keys. Generate with `openssl rand -hex 32`. Rotate to invalidate all outstanding demo keys instantly. |
 
 ---
 
