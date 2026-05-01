@@ -100,6 +100,28 @@ class ErrorEvent(BaseModel):
     ts: float = Field(default_factory=time.time)
 
 
+class AgentTelemetryEvent(BaseModel):
+    """Per-turn agent-internal telemetry for the eval harness.
+
+    Only emitted when `EVAL_TELEMETRY_ENABLED=True`. Carries signals the eval
+    harness uses to learn how the agent worked internally — matched playbooks,
+    snapshot flags, routing path, kubectl error-hint matches, HITL risk
+    classifications, etc. Not consumed by the chat UI.
+    """
+    type: Literal["agent_telemetry"] = "agent_telemetry"
+    session_id: str
+    cluster_id: str | None = None
+    snapshot_has_issues: bool | None = None
+    snapshot_has_warnings: bool | None = None
+    snapshot_pod_count: int | None = None
+    matched_playbooks: list[str] = Field(default_factory=list)
+    investigation_plan: list[str] = Field(default_factory=list)
+    routing_path: list[str] = Field(default_factory=list)
+    kubectl_error_hints: list[str] = Field(default_factory=list)
+    hitl_classifications: list[dict] = Field(default_factory=list)
+    ts: float = Field(default_factory=time.time)
+
+
 Event = (
     StatusEvent
     | ToolCallEvent
@@ -109,6 +131,7 @@ Event = (
     | HitlRequestEvent
     | PlanEvent
     | ErrorEvent
+    | AgentTelemetryEvent
 )
 
 # ── Per-session registry ──────────────────────────────────────────────────────
