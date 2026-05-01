@@ -1,6 +1,0 @@
-The fix has been successfully applied:
-
-1. The `pod-reader` role was created in the `scenario-test` namespace, granting `get` and `list` permissions on the `pods` resource.
-2. The `limited-sa-pod-access` role binding was created, associating the `limited-sa` service account with the `pod-reader` role.
-
-Verification confirms the role binding is now active. The `rbac-app` application should be able to list pods without permission errors. Let me know if further assistance is needed!

@@ -1,1 +1,0 @@
-There is no recorded HTTP error rate for the `kubeintellect` service over the last 30 minutes. This could mean that the service has not encountered any HTTP errors during this period or that the relevant metrics are not being collected.

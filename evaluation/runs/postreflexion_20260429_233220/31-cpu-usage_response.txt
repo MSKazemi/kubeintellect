@@ -1,9 +1,0 @@
-The top 5 pods consuming the most CPU right now are:
-
-1. **langfuse-clickhouse-69bf5f8b54-chrqf** (namespace: monitoring) — 0.1115 CPU cores
-2. **langfuse-clickhouse-69bf5f8b54-chrqf** (namespace: monitoring) — 0.1030 CPU cores
-3. **kube-apiserver-testbed-v2-control-plane** (namespace: kube-system) — 0.0754 CPU cores
-4. **kube-apiserver-testbed-v2-control-plane** (namespace: kube-system) — 0.0726 CPU cores
-5. **etcd-testbed-v2-control-plane** (namespace: kube-system) — 0.0296 CPU cores
-
-Note: The first two entries are from the same pod (`langfuse-clickhouse-69bf5f8b54-chrqf`) but represent different container metrics.

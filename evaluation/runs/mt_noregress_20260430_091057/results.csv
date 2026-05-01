@@ -1,2 +1,0 @@
-index,scenario,query_preview,status,latency_ms,hitl,cluster_resolved,score_signal,score_judge,judge_result
-1,01-crashloop,"A pod in namespace scenario-test is crashing repeatedly. Find the root cause, ex",ok,20455,False,yes,0.96,36,pass
