@@ -117,10 +117,17 @@ async def context_fetcher(state: AgentState) -> dict:
         except Exception as exc:
             logger.warning(f"context_fetcher: playbook matching failed: {exc}")
 
-    logger.debug(
-        f"context_fetcher: snapshot built chars={len(cluster_snapshot)} "
-        f"pods={pod_count} issues={has_issues} warnings={has_warnings} "
-        f"playbooks={matched_playbooks} session={session_id}"
+    logger.info(
+        "context_fetcher: snapshot_complete",
+        extra={
+            "session_id": session_id,
+            "snapshot_chars": len(cluster_snapshot),
+            "snapshot_pod_count": pod_count,
+            "snapshot_has_issues": has_issues,
+            "snapshot_has_warnings": has_warnings,
+            "matched_playbooks": matched_playbooks,
+            "cluster_id": cluster_id,
+        },
     )
     # Resolve cluster identity (cached for the process lifetime).
     try:

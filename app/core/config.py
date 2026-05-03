@@ -154,12 +154,6 @@ class Settings(BaseSettings):
     REFLEXION_PATTERN_COOLDOWN_HOURS: int = 1
     REFLEXION_PATTERN_DECAY_DAYS: int = 30
 
-    # Eval telemetry — emit AgentTelemetryEvent per coordinator turn so the
-    # evaluation harness can capture agent-internal signals (matched playbooks,
-    # routing path, snapshot flags, kubectl error-hint matches, HITL risk
-    # classifications). Off in production; turn on for eval runs only.
-    EVAL_TELEMETRY_ENABLED: bool = False
-
     # ── Auth / RBAC ───────────────────────────────────────────────────────────
     # Four-tier role model (all comma-separated; empty = auth disabled):
     #   superadmin — admin capabilities + write access to all namespaces (no ns block)
