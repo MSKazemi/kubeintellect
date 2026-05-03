@@ -396,6 +396,11 @@ def run_kubectl(
                 logger.warning(
                     f"run_kubectl: always-confirm override of auto-approve for {cmd!r}"
                 )
+            session_id = (config.get("configurable") or {}).get("thread_id", "-") if config else "-"
+            logger.info(
+                f"run_kubectl: hitl_classification verb={verb} risk={risk}",
+                extra={"session_id": session_id, "hitl_verb": verb, "hitl_risk_level": risk, "hitl_cmd": cmd[:200]},
+            )
             approved = interrupt({
                 "type": "hitl",
                 "command": cmd,

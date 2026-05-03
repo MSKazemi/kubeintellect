@@ -30,15 +30,16 @@ class _HealthzFilter(logging.Filter):
 # ── Formatters ────────────────────────────────────────────────────────────────
 
 
+_LOG_RECORD_STANDARD_ATTRS = frozenset({
+    "args", "created", "exc_info", "exc_text", "filename", "funcName",
+    "levelname", "levelno", "lineno", "message", "module", "msecs", "msg",
+    "name", "pathname", "process", "processName", "relativeCreated",
+    "stack_info", "thread", "threadName", "request_id", "taskName",
+})
+
+
 class _JsonFormatter(logging.Formatter):
-    """
-    Emit one JSON object per line.
-
-    Fields: time, level, logger, request_id, msg
-    Optional extra fields are merged in when present on the record.
-    """
-
-    _EXTRA_FIELDS = ("duration_ms", "method", "path", "status", "user_id", "session_id")
+    """Emit one JSON object per line. All extra= fields are included automatically."""
 
     def format(self, record: logging.LogRecord) -> str:
         import json
@@ -50,10 +51,11 @@ class _JsonFormatter(logging.Formatter):
             "request_id": getattr(record, "request_id", "-"),
             "msg": record.getMessage(),
         }
-        for field in self._EXTRA_FIELDS:
-            val = getattr(record, field, None)
-            if val is not None:
-                payload[field] = val
+        extras = {
+            k: v for k, v in record.__dict__.items()
+            if k not in _LOG_RECORD_STANDARD_ATTRS and not k.startswith("_")
+        }
+        payload.update(extras)
         if record.exc_info:
             payload["exc"] = self.formatException(record.exc_info)
         return json.dumps(payload)

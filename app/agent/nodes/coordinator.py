@@ -603,9 +603,10 @@ async def coordinator(state: AgentState, config: RunnableConfig = None) -> dict:
     last = result["messages"][-1].content.strip()
     is_rca = last == "RCA_REQUIRED"
     targeted_match = _TARGETED_RE.search(last) if not is_rca else None
-    logger.debug(
-        f"coordinator: LLM responded in {elapsed:.2f}s session={session_id} "
-        f"decision={'RCA' if is_rca else 'TARGETED' if targeted_match else 'direct'}"
+    route = "RCA" if is_rca else "TARGETED" if targeted_match else "direct"
+    logger.info(
+        f"coordinator: routing_decision route={route} elapsed_ms={int(elapsed * 1000)}",
+        extra={"session_id": session_id, "routing_decision": route, "elapsed_ms": int(elapsed * 1000)},
     )
 
     if targeted_match:

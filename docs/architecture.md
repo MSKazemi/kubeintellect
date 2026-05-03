@@ -231,10 +231,32 @@ Every query runs as `asyncio.create_task(run_session(...))`. The task writes to 
 | `ToolCallEvent` | `on_tool_start` from LangGraph astream_events |
 | `ToolResultEvent` | `on_tool_end` from LangGraph astream_events (first 500 chars) |
 | `TokenEvent` | `on_chat_model_stream` — each LLM token chunk |
+| `PlanEvent` | Coordinator emits `INVESTIGATION_PLAN:` block; parsed out and re-emitted as structured steps |
 | `HitlRequestEvent` | HITL interrupt detected after stream ends |
 | `ErrorEvent` | Any unhandled exception in `run_session` |
 
 **Important**: `ToolResultEvent` uses the raw tool output from `on_tool_end` (fires BEFORE `_trim_tool_messages`). Users see full tool output; only the LLM re-ingestion is trimmed.
+
+---
+
+## Structured Logging and Observability
+
+All log output is JSON (`LOG_FORMAT=json`). Every line carries `time`, `level`, `logger`, `request_id`, and any `extra={}` fields the caller passes. The JSON formatter emits all extra fields — there is no fixed allowlist.
+
+Three key production events are logged at `INFO` level and carry a `session_id` field, making them queryable by session in Loki:
+
+| Logger event | Key fields | Source |
+|---|---|---|
+| `context_fetcher: snapshot_complete` | `session_id`, `cluster_id`, `snapshot_has_issues`, `snapshot_has_warnings`, `snapshot_pod_count`, `matched_playbooks` | `context_fetcher.py` |
+| `coordinator: routing_decision` | `session_id`, `routing_decision` (`direct`\|`TARGETED`\|`RCA`), `elapsed_ms` | `coordinator.py` |
+| `run_kubectl: hitl_classification` | `session_id`, `hitl_verb`, `hitl_risk_level`, `hitl_cmd` | `kubectl_tool.py` |
+
+**Querying by session in Loki:**
+```logql
+{app="kubeintellect"} |= "eval-1746295200-10-incident-rca" | json | level="INFO"
+```
+
+The `session_id` is the same value set in the SSE stream and stored in Langfuse traces, so all three observability signals (logs, traces, metrics) are correlatable by a single ID.
 
 ---
 
