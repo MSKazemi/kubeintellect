@@ -1,6 +1,6 @@
 [project]
 name = "kubeintellect"
-version = "2.0.1"
+version = "2.0.2"
 description = "AI-powered Kubernetes management — local server and CLI"
 readme = "README.md"
 license = {text = "MIT"}
@@ -22,22 +22,22 @@ dependencies = [
     "pydantic-settings>=2.6",
     "python-dotenv>=1.0",
     # LLM + Agent
-    "langchain>=0.3",
-    "langchain-openai>=0.2",
-    "langgraph>=0.2",
-    "langsmith>=0.2",
+    "langchain>=1.0",
+    "langchain-openai>=1.0",
+    "langgraph>=1.0",
+    "langsmith>=0.8",
     # Database
-    "asyncpg>=0.29",
-    "psycopg[binary,pool]>=3.1",
-    "langgraph-checkpoint-postgres>=2.0",
-    "langgraph-checkpoint-sqlite>=2.0",
+    "asyncpg>=0.30",
+    "psycopg[binary,pool]>=3.2",
+    "langgraph-checkpoint-postgres>=3.0",
+    "langgraph-checkpoint-sqlite>=3.0",
     # YAML validation
     "pyyaml>=6.0",
     # HTTP (Prometheus + Loki queries)
     "httpx>=0.28",
     # CLI client — bundled so pip install kubeintellect gives both server and kq
     "kube-q>=1.4.3",  # must stay in [project.dependencies]; do NOT add a [tool.uv.sources] override
-    "langfuse>=4.1.0",
+    "langfuse>=4.5",
 ]
 
 [project.urls]
@@ -47,7 +47,7 @@ Issues = "https://github.com/mskazemi/kubeintellect/issues"
 
 [project.optional-dependencies]
 tracing = [
-    "langfuse>=2.0",
+    "langfuse>=4.5",
     "opentelemetry-api>=1.0",
 ]
 metrics = [
@@ -60,14 +60,14 @@ all = [
 [dependency-groups]
 dev = [
     "pytest>=8",
-    "pytest-asyncio>=0.24",
+    "pytest-asyncio>=1.0",
     "pytest-mock>=3.14",
     "mkdocs-material>=9.5",
-    "mkdocstrings[python]>=0.26",
+    "mkdocstrings[python]>=1.0",
     "scipy>=1.13",
     "matplotlib>=3.9",
     "seaborn>=0.13",
-    "numpy>=1.26",
+    "numpy>=2.0",
 ]
 
 [tool.pytest.ini_options]

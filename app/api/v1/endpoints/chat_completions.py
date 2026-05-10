@@ -194,23 +194,14 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
         f"msg={user_message[:80]!r}"
     )
 
-    # Fire-and-forget audit record — never blocks the response
-    asyncio.create_task(_audit_log(
-        request_id=req_id,
-        session_id=session_id,
-        user_id=user_id,
-        user_role=user_role,
-        path=str(request.url.path),
-        method=request.method,
-        status_code=200,
-        duration_ms=0.0,   # streaming; duration not meaningful here
-    ))
-
     if not body.stream:
         raise HTTPException(status_code=422, detail="Only stream=true is supported")
 
+    t0 = time.monotonic()
     return StreamingResponse(
-        _stream(user_message, session_id, user_id, user_role, body.auto_approve),
+        _stream(user_message, session_id, user_id, user_role, body.auto_approve,
+                audit_meta=(req_id, session_id, user_id, user_role,
+                            str(request.url.path), request.method, t0)),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -225,6 +216,7 @@ async def _stream(
     user_id: str,
     user_role: str,
     auto_approve: bool = False,
+    audit_meta: tuple | None = None,
 ) -> AsyncIterator[str]:
     completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
 
@@ -267,3 +259,15 @@ async def _stream(
             await task
         except (asyncio.CancelledError, Exception):
             pass
+        if audit_meta:
+            req_id_, sid_, uid_, role_, path_, method_, t0_ = audit_meta
+            asyncio.create_task(_audit_log(
+                request_id=req_id_,
+                session_id=sid_,
+                user_id=uid_,
+                user_role=role_,
+                path=path_,
+                method=method_,
+                status_code=200,
+                duration_ms=round((time.monotonic() - t0_) * 1000, 1),
+            ))

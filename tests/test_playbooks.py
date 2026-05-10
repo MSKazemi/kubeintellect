@@ -47,7 +47,7 @@ default     app-1   1/1     Running   0          2h
 NO_EVENTS = "No resources found in default namespace."
 
 
-def test_all_ten_playbooks_load() -> None:
+def test_all_playbooks_load() -> None:
     names = {pb.name for pb in list_playbooks()}
     expected = {
         "CrashLoopBackOff",
@@ -62,6 +62,12 @@ def test_all_ten_playbooks_load() -> None:
         "ServiceUnreachable",
         "ServiceNoEndpoints",
         "CommandHardcodedFailure",
+        "InitContainerFailing",
+        "JobBackoffLimitExceeded",
+        "QuotaExceeded",
+        "Evicted",
+        "WebhookAdmissionRejected",
+        "NodeNotReady",
     }
     assert expected.issubset(names), f"missing playbooks: {expected - names}"
 
@@ -156,3 +162,93 @@ def test_get_playbook_returns_known() -> None:
 
 def test_get_playbook_returns_none_for_unknown() -> None:
     assert get_playbook("DoesNotExist") is None
+
+
+# ── New playbooks (B-track) ────────────────────────────────────────────────────
+
+INIT_CONTAINER_PODS = """\
+NAMESPACE   NAME    READY   STATUS      RESTARTS   AGE
+default     app-1   0/1     Init:0/1    0          2m
+"""
+
+JOB_BACKOFF_EVENTS = """\
+NAMESPACE   LAST SEEN   TYPE      REASON                  OBJECT    MESSAGE
+default     5s          Warning   BackoffLimitExceeded    job/etl   Job has reached the specified backoff limit
+"""
+
+QUOTA_EXCEEDED_EVENTS = """\
+NAMESPACE   LAST SEEN   TYPE      REASON        OBJECT                MESSAGE
+default     10s         Warning   FailedCreate  replicaset/app-rs-1  exceeded quota: default-quota, requested: cpu=500m, used: cpu=1900m, limited: cpu=2
+"""
+
+EVICTED_PODS = """\
+NAMESPACE   NAME    READY   STATUS    RESTARTS   AGE
+default     app-1   0/1     Evicted   0          10m
+"""
+
+WEBHOOK_EVENTS = """\
+NAMESPACE   LAST SEEN   TYPE      REASON        OBJECT        MESSAGE
+default     3s          Warning   FailedCreate  pod/app-pod   admission webhook "policy.example.com" denied the request: container must set runAsNonRoot
+"""
+
+NODE_NOT_READY_EVENTS = """\
+NAMESPACE   LAST SEEN   TYPE      REASON        OBJECT         MESSAGE
+default     1m          Warning   NodeNotReady  node/worker-1  Node worker-1 status is now: NodeNotReady
+"""
+
+
+def test_match_init_container_failing_by_pod_status() -> None:
+    matched = match_playbooks(INIT_CONTAINER_PODS, NO_EVENTS)
+    assert "InitContainerFailing" in matched
+
+
+def test_match_init_container_failing_by_event_message() -> None:
+    events = (
+        "NAMESPACE   LAST SEEN  TYPE     REASON   OBJECT     MESSAGE\n"
+        "default     30s        Warning  BackOff  pod/app-1  Back-off restarting failed init container\n"
+    )
+    matched = match_playbooks(HEALTHY_PODS, events)
+    assert "InitContainerFailing" in matched
+
+
+def test_match_job_backoff_limit_exceeded() -> None:
+    matched = match_playbooks(HEALTHY_PODS, JOB_BACKOFF_EVENTS)
+    assert "JobBackoffLimitExceeded" in matched
+
+
+def test_match_quota_exceeded_by_event_message() -> None:
+    matched = match_playbooks(HEALTHY_PODS, QUOTA_EXCEEDED_EVENTS)
+    assert "QuotaExceeded" in matched
+
+
+def test_match_evicted_by_pod_status() -> None:
+    matched = match_playbooks(EVICTED_PODS, NO_EVENTS)
+    assert "Evicted" in matched
+
+
+def test_match_evicted_by_event_message() -> None:
+    events = (
+        "NAMESPACE   LAST SEEN  TYPE     REASON   OBJECT     MESSAGE\n"
+        "default     5s         Warning  Evicted  pod/app-1  The node was low on resource: memory.\n"
+    )
+    matched = match_playbooks(HEALTHY_PODS, events)
+    assert "Evicted" in matched
+
+
+def test_match_webhook_admission_rejected() -> None:
+    matched = match_playbooks(HEALTHY_PODS, WEBHOOK_EVENTS)
+    assert "WebhookAdmissionRejected" in matched
+
+
+def test_match_node_not_ready_by_event_reason() -> None:
+    matched = match_playbooks(HEALTHY_PODS, NODE_NOT_READY_EVENTS)
+    assert "NodeNotReady" in matched
+
+
+def test_match_node_not_ready_by_event_message() -> None:
+    events = (
+        "NAMESPACE   LAST SEEN  TYPE     REASON   OBJECT        MESSAGE\n"
+        "default     2m         Warning  Unknown  node/node-1   Kubelet not posting node status. Node condition unknown\n"
+    )
+    matched = match_playbooks(HEALTHY_PODS, events)
+    assert "NodeNotReady" in matched

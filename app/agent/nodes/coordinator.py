@@ -233,8 +233,9 @@ def _extract_plan(messages: list[BaseMessage]) -> tuple[list[PlanStep], list[Bas
 _COORDINATOR_SYSTEM = """\
 You are KubeIntellect, an expert Kubernetes operations AI.
 
-You have access to three tools:
+You have access to four tools:
 - run_kubectl: run any kubectl command against the cluster
+- run_helm: inspect Helm release state (list, get values/manifest/notes, status, history) — use this whenever diagnosing workloads deployed via Helm
 - query_prometheus: query Prometheus metrics (PromQL)
 - query_loki: query Loki for application logs (LogQL)
 
@@ -689,7 +690,8 @@ async def _direct_answer(state: AgentState, config: RunnableConfig = None) -> di
                 session_id=session_id,
             ))
             logger.info(
-                f"investigation_plan_emitted session={session_id} step_count={len(plan)}"
+                f"investigation_plan_emitted session={session_id} step_count={len(plan)}",
+                extra={"session_id": session_id, "steps": [s.description for s in plan]},
             )
 
     tool_calls = sum(1 for m in new_messages if hasattr(m, "tool_calls") and m.tool_calls)
@@ -974,10 +976,15 @@ def _maybe_record_direct_outcome(state: AgentState, messages: list[BaseMessage])
             created_by_role=state.get("user_role"),
         ))
         logger.info(
-            f"reflexion(direct): recorded session={state.get('session_id', '-')} "
-            f"cluster={cluster_id} ns={namespace} verified={verified} "
-            f"confidence={confidence:.2f} mutations={len(pairs)} "
-            f"feedback={feedback}"
+            f"rca_outcome_written session={state.get('session_id', '-')} "
+            f"cluster={cluster_id} confidence={confidence:.2f}",
+            extra={
+                "session_id": state.get("session_id", "-"),
+                "cluster_id": cluster_id,
+                "namespace": namespace,
+                "confidence": confidence,
+                "verified": verified,
+            },
         )
     except Exception as exc:
         logger.warning(f"reflexion(direct): failed to schedule outcome write — {exc}")
@@ -1071,8 +1078,12 @@ Synthesize these into a single root-cause analysis. Respond with ONLY a JSON obj
                 outcome_feedback=None,
             ))
             logger.info(
-                f"reflexion: recorded RCA outcome session={state.get('session_id', '-')} "
-                f"confidence={rca.confidence:.2f}"
+                f"rca_outcome_written session={state.get('session_id', '-')} "
+                f"confidence={rca.confidence:.2f}",
+                extra={
+                    "session_id": state.get("session_id", "-"),
+                    "confidence": rca.confidence,
+                },
             )
         except Exception as exc:
             logger.warning(f"reflexion: failed to schedule outcome write — {exc}")

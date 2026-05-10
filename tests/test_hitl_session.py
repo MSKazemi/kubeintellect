@@ -68,16 +68,29 @@ class TestSessionIDHandling:
     LangGraph thread_id.  A missing header generates a fresh UUID.
     """
 
+    @pytest.fixture(autouse=True)
+    def _disable_auth(self, monkeypatch):
+        from app.core import config
+        monkeypatch.setattr(
+            type(config.settings), "auth_enabled",
+            property(lambda s: False),
+        )
+
     def _make_request(self, headers=None):
         from fastapi.testclient import TestClient
         from unittest.mock import patch, AsyncMock
 
-        # Patch stream_events so no real graph runs
-        async def fake_stream(*args, **kwargs):
+        async def fake_run(*args, **kwargs):
+            pass
+
+        async def fake_emitter(*args, **kwargs):
             return
             yield  # make it an async generator
 
-        with patch("app.api.v1.endpoints.chat_completions.stream_events", fake_stream):
+        with patch("app.api.v1.endpoints.chat_completions.run_session", fake_run), \
+             patch("app.api.v1.endpoints.chat_completions.prepare_session"), \
+             patch("app.api.v1.endpoints.chat_completions.emitter_stream", return_value=fake_emitter()), \
+             patch("app.api.v1.endpoints.chat_completions._audit_log", new_callable=AsyncMock):
             from app.main import app
             client = TestClient(app)
             resp = client.post(
@@ -88,16 +101,22 @@ class TestSessionIDHandling:
         return resp
 
     def test_session_id_from_header_is_used(self):
-        """When X-Session-ID is present, stream_events must receive that exact value."""
+        """When X-Session-ID is present, emitter_stream must receive that exact value."""
         from unittest.mock import patch, AsyncMock
         captured = {}
 
-        async def fake_stream(msg, session_id, user_id):
+        async def fake_run(*args, **kwargs):
+            pass
+
+        async def fake_emitter(session_id, **kwargs):
             captured["session_id"] = session_id
             return
             yield
 
-        with patch("app.api.v1.endpoints.chat_completions.stream_events", fake_stream):
+        with patch("app.api.v1.endpoints.chat_completions.run_session", fake_run), \
+             patch("app.api.v1.endpoints.chat_completions.prepare_session"), \
+             patch("app.api.v1.endpoints.chat_completions.emitter_stream", side_effect=fake_emitter), \
+             patch("app.api.v1.endpoints.chat_completions._audit_log", new_callable=AsyncMock):
             from fastapi.testclient import TestClient
             from app.main import app
             client = TestClient(app)
@@ -111,15 +130,21 @@ class TestSessionIDHandling:
     def test_missing_session_id_generates_uuid(self):
         """Without X-Session-ID, a fresh UUID must be generated per request."""
         import re
-        from unittest.mock import patch
+        from unittest.mock import patch, AsyncMock
         captured_ids = []
 
-        async def fake_stream(msg, session_id, user_id):
+        async def fake_run(*args, **kwargs):
+            pass
+
+        async def fake_emitter(session_id, **kwargs):
             captured_ids.append(session_id)
             return
             yield
 
-        with patch("app.api.v1.endpoints.chat_completions.stream_events", fake_stream):
+        with patch("app.api.v1.endpoints.chat_completions.run_session", fake_run), \
+             patch("app.api.v1.endpoints.chat_completions.prepare_session"), \
+             patch("app.api.v1.endpoints.chat_completions.emitter_stream", side_effect=fake_emitter), \
+             patch("app.api.v1.endpoints.chat_completions._audit_log", new_callable=AsyncMock):
             from fastapi.testclient import TestClient
             from app.main import app
             client = TestClient(app)

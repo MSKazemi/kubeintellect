@@ -58,10 +58,7 @@ _REJECTED_VERBS = {"edit"}
 
 # ── Shell injection guard ─────────────────────────────────────────────────────
 # Pipe (|) is intentionally excluded — it is handled in Python via _apply_pipes.
-# < and > are intentionally excluded — they are only dangerous for shell I/O
-# redirection, which is impossible with shell=False. Excluding them allows
-# --from-literal values that contain HTML / template content.
-_SHELL_METACHAR = re.compile(r"[;&`$\\]")
+_SHELL_METACHAR = re.compile(r"[;&`$\\<>]")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -138,7 +135,7 @@ def _apply_pipes(output: str, pipe_segments: list[str]) -> str:
         tokens = shlex.split(segment.strip())
         if not tokens or tokens[0] != "grep":
             raise ValueError(
-                f"Pipe segment {segment!r} is not supported. "
+                f"Pipe segment {segment!r} contains disallowed shell characters or unsupported command. "
                 "Only 'grep' is allowed after '|'."
             )
         # Parse simple grep flags: -v (invert), -i (case-insensitive), -E (extended regex)
@@ -234,12 +231,8 @@ def _check_protected_access(verb: str, args: list[str]) -> str | None:
     Return an error string if the command targets a protected namespace or
     resource type. Returns None if the command is allowed to proceed.
 
-    Read-only verbs (get, describe, logs, top…) are allowed on ALL namespaces
-    including protected ones — the agent needs to observe its own pod and the
-    observability stack to diagnose issues.
-
-    Write verbs (patch, apply, delete, scale…) are blocked on protected
-    namespaces to prevent self-modification or infrastructure damage.
+    All operations on infrastructure namespaces are blocked, including reads.
+    Secrets and serviceaccounts are blocked regardless of namespace.
     """
     resource = _extract_resource_type(verb, args)
     ns = _extract_namespace(args)
@@ -253,15 +246,12 @@ def _check_protected_access(verb: str, args: list[str]) -> str | None:
             "to protect cluster credentials."
         )
 
-    # Write operations on infrastructure namespaces are blocked.
-    # Read operations are allowed so the agent can observe its own state.
+    # All operations on infrastructure namespaces are blocked.
     if ns and ns in settings.kubectl_blocked_namespaces:
-        if verb not in _READ_ONLY_VERBS:
-            return (
-                f"[Protected] Write operations on namespace '{ns}' are not permitted. "
-                "This is an infrastructure namespace — read-only access is allowed "
-                "but modifications are blocked."
-            )
+        return (
+            f"[Protected] Access to namespace '{ns}' is not permitted. "
+            "This is an infrastructure namespace."
+        )
 
     return None
 
@@ -307,6 +297,15 @@ def run_kubectl(
     cmd = _normalise(raw_parts[0].strip())
     pipe_segments = [p.strip() for p in raw_parts[1:]]
 
+    # Validate pipe segments early so non-grep pipes fail before subprocess runs.
+    for seg in pipe_segments:
+        seg_tokens = shlex.split(seg) if seg else []
+        if seg_tokens and seg_tokens[0] != "grep":
+            raise ValueError(
+                f"Pipe segment {seg!r} contains disallowed shell characters or unsupported command. "
+                "Only 'grep' is allowed after '|'."
+            )
+
     # ── 1. Shell injection prevention ────────────────────────────────────────
     if _SHELL_METACHAR.search(cmd):
         raise ValueError(
@@ -322,16 +321,8 @@ def run_kubectl(
     # metacharacters in YAML/HTML content are harmless — no injection risk.
 
     # ── 2. YAML pre-validation ───────────────────────────────────────────────
-    # Python's yaml parser is stricter than kubectl's in some cases (e.g. certain
-    # flow-mapping constructs, vendor annotations).  We warn instead of hard-
-    # failing so kubectl can do its own validation and return a meaningful error.
     if stdin:
-        try:
-            _validate_stdin_yaml(stdin)
-        except ValueError as exc:
-            logger.warning(
-                f"YAML pre-validation warning (proceeding to let kubectl validate): {exc}"
-            )
+        _validate_stdin_yaml(stdin)
 
     # ── 3. Parse into arg list (shell=False) ─────────────────────────────────
     try:
@@ -453,7 +444,8 @@ def run_kubectl(
         if pattern_name:
             logger.info(
                 "kubectl_error_interpreted "
-                f"pattern={pattern_name} exit_code={proc.returncode} cmd={cmd!r}"
+                f"pattern={pattern_name} exit_code={proc.returncode} cmd={cmd!r}",
+                extra={"pattern": pattern_name, "exit_code": proc.returncode},
             )
 
     # ── 6. Pipe emulation (grep) ─────────────────────────────────────────────
@@ -469,7 +461,7 @@ def run_kubectl(
         omitted = len(output) - limit
         output = (
             output[:limit]
-            + f"\n\n[TRUNCATED: {omitted} chars omitted — output was cut short. "
+            + f"\n\n[truncated: {omitted} chars omitted — output was cut short. "
             "Inform the user that the list is incomplete and suggest narrowing with "
             "--tail, -n <namespace>, or -l <label> flags.]"
         )

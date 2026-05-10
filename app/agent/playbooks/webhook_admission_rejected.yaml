@@ -1,0 +1,21 @@
+name: WebhookAdmissionRejected
+triggers:
+  - event_reason_regex: "FailedCreate"
+  - event_message_regex: "admission webhook.*denied|webhook.*denied the request|failed calling webhook"
+investigation_steps:
+  - "kubectl get events -n <ns> --field-selector reason=FailedCreate to see the full webhook rejection message."
+  - "kubectl get validatingwebhookconfigurations,mutatingwebhookconfigurations to list active webhooks."
+  - "kubectl describe validatingwebhookconfiguration <name> to see rules, namespaceSelector, and failurePolicy."
+  - "Check if the webhook service is healthy: kubectl get pods -n <webhook-ns> and kubectl get svc -n <webhook-ns>."
+  - "kubectl logs -n <webhook-ns> <webhook-pod> --tail=50 to find the rejection reason from the webhook itself."
+expected_evidence:
+  - "Name of the webhook configuration that denied the request"
+  - "Specific rejection reason from the webhook response body"
+  - "Whether the webhook service is running and reachable"
+  - "failurePolicy value (Fail vs Ignore) of the webhook"
+recommended_fix_template: |
+  Admission webhook <WEBHOOK_NAME> denied the request: <REJECTION_REASON>.
+  Fix options:
+  1. Update the resource to comply with the webhook policy: <COMPLIANCE_FIX>.
+  2. If the webhook service is down, restore it at <WEBHOOK_NAMESPACE>/<WEBHOOK_SERVICE>.
+  3. If the webhook is misconfigured, patch the webhook configuration rules or namespaceSelector.
