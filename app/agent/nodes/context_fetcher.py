@@ -117,6 +117,14 @@ async def context_fetcher(state: AgentState) -> dict:
         except Exception as exc:
             logger.warning(f"context_fetcher: playbook matching failed: {exc}")
 
+    # Resolve cluster identity (cached for the process lifetime).
+    try:
+        from app.cluster_id import get_cluster_id
+        cluster_id = get_cluster_id()
+    except Exception as exc:
+        logger.warning(f"context_fetcher: cluster_id resolution failed: {exc}")
+        cluster_id = "unknown"
+
     logger.info(
         "context_fetcher: snapshot_complete",
         extra={
@@ -129,13 +137,6 @@ async def context_fetcher(state: AgentState) -> dict:
             "cluster_id": cluster_id,
         },
     )
-    # Resolve cluster identity (cached for the process lifetime).
-    try:
-        from app.cluster_id import get_cluster_id
-        cluster_id = get_cluster_id()
-    except Exception as exc:
-        logger.warning(f"context_fetcher: cluster_id resolution failed: {exc}")
-        cluster_id = "unknown"
 
     return {
         "cluster_snapshot": cluster_snapshot,

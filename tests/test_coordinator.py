@@ -279,3 +279,87 @@ class TestMutationDetector:
         msgs = [self._ai("kubectl top pods")]
         mutated, _ = _ran_mutation(msgs)
         assert mutated is False
+
+
+# ── A2: plan step annotation ───────────────────────────────────────────────────
+
+
+class TestAnnotatePlanSteps:
+    """_annotate_plan_steps marks N steps done and the rest skipped."""
+
+    def _plan(self, n: int):
+        from app.agent.state import PlanStep
+        return [PlanStep(description=f"step {i}") for i in range(1, n + 1)]
+
+    def _ai_with_tools(self, tool_count: int):
+        from langchain_core.messages import AIMessage
+        return AIMessage(
+            content="",
+            tool_calls=[
+                {"id": str(i), "name": "run_kubectl", "args": {"command": f"kubectl get pods {i}"}}
+                for i in range(tool_count)
+            ],
+        )
+
+    def _import(self):
+        from app.agent.nodes.coordinator import _annotate_plan_steps
+        return _annotate_plan_steps
+
+    def test_all_steps_done_when_tool_count_equals_steps(self):
+        fn = self._import()
+        plan = self._plan(3)
+        fn(plan, [self._ai_with_tools(3)])
+        assert all(s.status == "done" for s in plan)
+
+    def test_more_tools_than_steps_all_done(self):
+        fn = self._import()
+        plan = self._plan(2)
+        fn(plan, [self._ai_with_tools(5)])
+        assert all(s.status == "done" for s in plan)
+
+    def test_fewer_tools_marks_remainder_skipped(self):
+        fn = self._import()
+        plan = self._plan(4)
+        fn(plan, [self._ai_with_tools(2)])
+        assert plan[0].status == "done"
+        assert plan[1].status == "done"
+        assert plan[2].status == "skipped"
+        assert plan[3].status == "skipped"
+
+    def test_zero_tools_all_skipped(self):
+        fn = self._import()
+        from langchain_core.messages import AIMessage
+        plan = self._plan(3)
+        fn(plan, [AIMessage(content="no tools needed")])
+        assert all(s.status == "skipped" for s in plan)
+
+    def test_empty_messages_all_skipped(self):
+        fn = self._import()
+        plan = self._plan(3)
+        fn(plan, [])
+        assert all(s.status == "skipped" for s in plan)
+
+    def test_empty_plan_no_error(self):
+        fn = self._import()
+        fn([], [self._ai_with_tools(3)])  # must not raise
+
+    def test_multiple_ai_messages_counts_all_tool_calls(self):
+        fn = self._import()
+        plan = self._plan(5)
+        msgs = [self._ai_with_tools(2), self._ai_with_tools(2)]
+        fn(plan, msgs)
+        assert plan[0].status == "done"
+        assert plan[1].status == "done"
+        assert plan[2].status == "done"
+        assert plan[3].status == "done"
+        assert plan[4].status == "skipped"
+
+    def test_mutates_in_place(self):
+        fn = self._import()
+        plan = self._plan(2)
+        original_refs = plan[:]
+        fn(plan, [self._ai_with_tools(1)])
+        assert plan is not original_refs  # different list object would be wrong
+        # but the PlanStep objects ARE the same (mutated in place)
+        assert plan[0] is original_refs[0]
+        assert plan[0].status == "done"
