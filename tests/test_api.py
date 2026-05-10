@@ -162,6 +162,14 @@ class TestSSEFormat:
         "stream": True,
     }
 
+    @pytest.fixture(autouse=True)
+    def _disable_auth(self, monkeypatch):
+        from app.core import config
+        monkeypatch.setattr(
+            type(config.settings), "auth_enabled",
+            property(lambda s: False),
+        )
+
     def _stream_frames(self, client, extra_headers=None):
         """Collect all data: frames from the SSE stream."""
         headers = extra_headers or {}
