@@ -455,10 +455,34 @@ async def run_session(
     the SSE generator never blocks waiting for a sentinel that never arrives.
     """
     try:
+        # Buffer token events so intermediate LLM calls (planning steps inside
+        # create_react_agent's react loop) are not streamed to the client.
+        # Each on_tool_start signals that the preceding LLM call was a planning
+        # step — discard its tokens. Only the final synthesis tokens (no
+        # following tool call) are flushed after the loop ends.
+        token_buffer: list = []
+
         async for raw in stream_events(user_message, session_id, user_id, user_role, auto_approve=auto_approve):
+            kind = raw.get("event", "")
+
+            if kind == "on_chat_model_stream":
+                typed = _translate_raw_event(session_id, raw)
+                if typed is not None:
+                    token_buffer.append(typed)
+                continue
+
+            if kind == "on_tool_start":
+                # Previous LLM call was an intermediate planning step — drop its tokens.
+                token_buffer.clear()
+
             typed = _translate_raw_event(session_id, raw)
             if typed is not None:
                 await emit(session_id, typed)
+
+        # Flush the final synthesis tokens (no tool_start followed them).
+        for tok in token_buffer:
+            await emit(session_id, tok)
+
     except Exception as exc:
         logger.error(f"run_session error session={session_id}: {exc}", exc_info=False)
         user_msg = _llm_error_hint(exc)

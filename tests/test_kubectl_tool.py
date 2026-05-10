@@ -27,7 +27,6 @@ class TestShellInjectionGuard:
         "kubectl get pods $(whoami)",
         "kubectl get pods > /tmp/out",
         "kubectl get pods < /dev/null",
-        "kubectl get pods \\ evil",
     ])
     def test_rejects_shell_metacharacters(self, bad_cmd):
         with patch("subprocess.run"):
@@ -40,6 +39,18 @@ class TestShellInjectionGuard:
         proc.stderr = ""
         with patch("subprocess.run", return_value=proc):
             result = self._call("kubectl get pods -n default")
+        assert "nginx" in result
+
+    def test_accepts_jsonpath_with_backslash_separators(self):
+        # Backslashes are required for jsonpath {"\n"} separators and are safe
+        # because the tool runs with shell=False.
+        proc = MagicMock()
+        proc.stdout = "nginx\nredis\n"
+        proc.stderr = ""
+        with patch("subprocess.run", return_value=proc):
+            result = self._call(
+                r'kubectl get pods -A -o jsonpath={range .items[*]}{.metadata.name}{"\n"}{end}'
+            )
         assert "nginx" in result
 
     def test_prepends_kubectl_if_missing(self):
