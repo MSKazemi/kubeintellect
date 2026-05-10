@@ -58,7 +58,11 @@ _REJECTED_VERBS = {"edit"}
 
 # ── Shell injection guard ─────────────────────────────────────────────────────
 # Pipe (|) is intentionally excluded — it is handled in Python via _apply_pipes.
-_SHELL_METACHAR = re.compile(r"[;&`$\\<>]")
+# Backslash (\) is intentionally excluded: it appears in valid jsonpath
+# separators like {"\n"} and {"\t"}, and is harmless because we run with
+# shell=False (backslashes are passed literally to kubectl, not interpreted
+# by a shell).
+_SHELL_METACHAR = re.compile(r"[;&`$<>]")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -310,7 +314,9 @@ def run_kubectl(
     if _SHELL_METACHAR.search(cmd):
         raise ValueError(
             f"Command contains disallowed shell characters: {cmd!r}. "
-            "Use plain kubectl syntax only."
+            "Use plain kubectl syntax only. "
+            "Tip: -o jsonpath='...' with {\"\\n\"} separators is supported; "
+            "use -o json for complex extraction."
         )
     for seg in pipe_segments:
         if _SHELL_METACHAR.search(seg):
@@ -328,6 +334,15 @@ def run_kubectl(
     try:
         args = shlex.split(cmd)
     except ValueError as exc:
+        # "No closing quotation" usually means a jsonpath expression was
+        # truncated mid-generation. Provide an actionable error message
+        # rather than a raw shlex exception.
+        if "closing quotation" in str(exc).lower():
+            raise ValueError(
+                f"Could not parse command (unclosed quote): {cmd!r}. "
+                "The jsonpath expression appears to be truncated — use "
+                "-o custom-columns=COL:.path,COL2:.path2 or -o json instead."
+            ) from exc
         raise ValueError(f"Could not parse command: {exc}") from exc
 
     verb = _extract_verb(args)

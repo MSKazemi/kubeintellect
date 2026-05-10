@@ -26,10 +26,10 @@ _TARGETED_RE = re.compile(
 # Matches a leading "INVESTIGATION_PLAN:" block followed by one or more
 # "- <step>" lines. The block is stripped from the message body before storage.
 _PLAN_BLOCK_RE = re.compile(
-    r"^\s*INVESTIGATION_PLAN:\s*\n((?:-\s+.+\n?)+)",
+    r"^\s*INVESTIGATION_PLAN:\s*\n[ \t]*\n?((?:[ \t]*(?:[-•*]|\d+\.?)\s+.+\n?)+)",
     re.MULTILINE,
 )
-_PLAN_STEP_RE = re.compile(r"^-\s+(.+)$", re.MULTILINE)
+_PLAN_STEP_RE = re.compile(r"^[ \t]*(?:[-•*]|\d+\.?)\s+(.+)$", re.MULTILINE)
 _PLAN_MIN_STEPS = 3
 
 # Keep the last N messages from session history to prevent context bloat.
@@ -191,6 +191,22 @@ def _fill_orphan_tool_calls(messages: list[BaseMessage]) -> list[BaseMessage]:
 # ── Investigation plan extraction ────────────────────────────────────────────
 
 
+def _annotate_plan_steps(plan: list[PlanStep], messages: list[BaseMessage]) -> None:
+    """Mark plan steps done/skipped based on how many tool calls actually executed.
+
+    Counts individual tool-call invocations (each item in AIMessage.tool_calls)
+    from the completed agent run, then transitions the first N steps to "done"
+    and any remainder to "skipped". Mutates plan in-place.
+    """
+    tool_call_count = sum(
+        len(getattr(m, "tool_calls", None) or [])
+        for m in messages
+        if isinstance(m, AIMessage) and getattr(m, "tool_calls", None)
+    )
+    for i, step in enumerate(plan):
+        step.status = "done" if i < tool_call_count else "skipped"
+
+
 def _extract_plan(messages: list[BaseMessage]) -> tuple[list[PlanStep], list[BaseMessage]]:
     """Strip an INVESTIGATION_PLAN block from the first AIMessage; return steps + cleaned messages.
 
@@ -265,11 +281,28 @@ Exception (sequential dependency): the second call genuinely depends on the
 first result — e.g. "find the failing pod's name → describe THAT pod". Even
 then, gather everything you can in parallel at each step.
 
+CRITICAL — never ask any permission or guidance question mid-investigation.
+Banned phrases (and all equivalents):
+  "Would you like me to proceed?", "Shall I continue?", "Would you like me
+  to apply this?", "Would you like me to guide you on…?", "Should I try
+  another approach?", "Do you want me to…?".
+These are wasted round trips. Always proceed autonomously:
+  - When a tool returns no data → state what you found (or didn't find) and
+    continue with the next logical step or provide the best available answer.
+  - When a namespace is empty or metrics unavailable → say so clearly and
+    provide whatever partial information IS available (e.g. list current
+    deployments, note that no metrics exist). Do NOT ask how to proceed.
+Only stop for the user when a HITL gate fires (write operations) or when
+you have genuinely exhausted all investigative paths.
+
 ## Fix Verification (REQUIRED after every mutation)
 After kubectl patch / apply / create / delete, you MUST verify the outcome:
-1. Make one more kubectl get call on the affected resource (e.g. kubectl get pods -n <ns>)
-2. Report ACTUAL state: "Pod is now Running (verified)" or "Fix applied — pod still in <state>"
-Never end after applying a fix without a follow-up verification read.
+1. Run kubectl get on the affected resource (e.g. kubectl get pods -n <ns>)
+2. If the fix was for a connectivity issue, ALSO run kubectl get endpoints -n <ns>
+   to confirm traffic can actually reach the pods — a Running pod with a
+   mismatched service selector still has endpoints=<none> and is unreachable.
+3. Report ACTUAL state: "Pod is now Running (verified)" or "Fix applied — pod still in <state>"
+Never declare a service "operational" without confirming endpoints are populated.
 
 ## Mutation Batching (HITL Safety)
 When proposing kubectl mutations (patch / apply / create / delete / scale / set / rollout),
@@ -290,6 +323,14 @@ Then flag any service whose ENDPOINTS column is `<none>` while its target pods
 are Running. This is a silent fault — no warning event fires for a selector/label
 drift, so this cross-check is the ONLY way to surface it. Do NOT skip this even
 when the obvious failing pods are already explained.
+
+When endpoints=<none>, ALWAYS diagnose the cause explicitly:
+  - If pods are failing: endpoints are none because pods aren't ready (expected).
+  - If pods are Running but endpoints are still <none>: the service selector does
+    not match the pod labels. Run:
+      kubectl get svc <name> -n <ns> -o jsonpath='{.spec.selector}'
+      kubectl get pods -n <ns> --show-labels
+    and compare. A label mismatch must be called out as a separate root cause.
 
 ## Tool-Selection by Intent (CRITICAL — kubectl is authoritative for cluster state)
 Pick the right tool based on what the user is asking for. Prometheus and Loki
@@ -320,6 +361,21 @@ are for *history and aggregations*; kubectl is the source of truth for the
       endpoint shows up as `<none>` in `kubectl get endpoints` and is the
       authoritative signal.
 
+## Prometheus Empty-Result Handling
+When `query_prometheus` returns no data (empty result set, "no data" message,
+or metric not found):
+  - Do NOT conclude "Metrics Server is not available" or "metrics API unavailable" —
+    those are kubectl-top / metrics-server concepts; Prometheus is a separate system.
+  - Do NOT ask the user how to proceed.
+  - State clearly: "No metrics found for <metric> in <namespace/cluster>. This may
+    mean the workload has not generated data, the query window predates pod creation,
+    or the metric series does not exist."
+  - If the task requires metrics that don't exist, provide the best available
+    alternative (e.g. kubectl top if available, or list current deployments with
+    their resource requests as a proxy).
+  - NEVER infer "near-zero usage" from an empty result — absence of data is not
+    the same as zero usage.
+
 ## Quantile Coverage for Latency / Duration Queries
 When the user asks about "latency", "duration", "response time", or names
 multiple quantiles (e.g. "p50/p95/p99"), emit ALL requested quantiles in one
@@ -341,11 +397,44 @@ cause from log output. A log line like "DB not configured" might be hardcoded
 in the command itself; in that case no env or secret patch will fix it — the
 spec's `command` field must be edited.
 
+Cross-check: if the command contains a hardcoded `exit 1` or unconditional
+error message, patching env vars will NOT fix it. The command itself is the bug.
+
+## Node Drain / Maintenance Plans
+When producing a node drain plan, ALWAYS include ALL three phases:
+
+  1. **Cordon** — prevents new pods from being scheduled:
+       kubectl cordon <node>
+  2. **Drain** — evicts existing pods with PDB awareness:
+       kubectl drain <node> --ignore-daemonsets --delete-emptydir-data
+     Add --grace-period=<N> if pods need a clean shutdown window.
+     ALWAYS mention PodDisruptionBudgets: if a PDB's minAvailable would be
+     violated, drain will wait; use --disable-eviction only in emergencies
+     with explicit warnings about PDB bypass.
+  3. **Uncordon** — re-enables scheduling after maintenance:
+       kubectl uncordon <node>
+     NEVER omit the uncordon step. A drained node stays permanently
+     unschedulable until uncordoned.
+
+When showing steps as a list, number them and call out the uncordon step explicitly
+so the operator knows the node must be uncordoned after maintenance is complete.
+
 ## Shell-Metacharacter Constraints (applies to ALL kubectl commands)
 For safety, the runner rejects any kubectl command containing shell
 metacharacters: `&&`, `||`, `|`, `;`, `>`, `<`. This applies to the FULL
 command string, including arguments inside `--patch '[...]'`, `-p '[...]'`,
 or `-- sh -c "..."`.
+
+Backslashes (`\`) ARE allowed — they are required for jsonpath separators
+like `{"\n"}` and `{"\t"}`.
+
+Output format selection (CRITICAL — pick the simplest format that works):
+  - 1 field from many objects → `-o name` or `-o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'`
+  - 2–4 fields in a table    → `-o custom-columns=NS:.metadata.namespace,NAME:.metadata.name,IMAGE:'.spec.containers[0].image'`
+                                 (NO quotes around the whole expression; column paths use dot-notation)
+  - Complex/nested structure → `-o json` then reference specific fields in your analysis
+  - NEVER write a jsonpath expression longer than 120 characters — use custom-columns or -o json instead.
+    Long jsonpath expressions are fragile and error-prone. Prefer simple formats.
 
   - `kubectl exec ... -- sh -c "a && b"`     ❌ blocked — split into two execs.
   - `kubectl patch ... --patch '[{...; ...}]'` ❌ blocked — even if the `;` is
@@ -679,11 +768,12 @@ async def _direct_answer(state: AgentState, config: RunnableConfig = None) -> di
 
     update: dict = {"messages": new_messages}
 
-    # Extract investigation plan, emit PlanEvent, and store on state.
+    # Extract investigation plan, annotate step statuses, emit PlanEvent.
     if settings.INVESTIGATION_PLAN_ENABLED:
         plan, new_messages = _extract_plan(new_messages)
         update["messages"] = new_messages
         if plan:
+            _annotate_plan_steps(plan, new_messages)
             update["investigation_plan"] = plan
             await emit(session_id, PlanEvent(
                 steps=[s.model_dump() for s in plan],
