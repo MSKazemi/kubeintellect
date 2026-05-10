@@ -92,6 +92,10 @@ async def _load_failure_hints(conn: asyncpg.Connection) -> list[str]:
         )
         if not rows:
             return []
+        logger.info(
+            f"failure_hints_loaded count={len(rows)}",
+            extra={"hint_count": len(rows), "cluster_id": cluster_id},
+        )
         items = "\n".join(
             f"  - [{r['pattern_name']}] (seen {r['occurrence_count']}×) {r['description']}\n"
             f"    → Fix: {r['recommended_fix']}"
