@@ -5,13 +5,22 @@
 
   [![PyPI](https://img.shields.io/pypi/v/kubeintellect.svg)](https://pypi.org/project/kubeintellect/)
   [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
-  [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
   [![Docs](https://img.shields.io/badge/docs-mskazemi.github.io-0075C4?logo=materialformkdocs&logoColor=white)](https://mskazemi.github.io/kubeintellect/)
+  [![GitHub Stars](https://img.shields.io/github/stars/MSKazemi/kubeintellect?style=social)](https://github.com/MSKazemi/kubeintellect)
 
   **[Website](https://kubeintellect.com/)** · **[Live Demo](https://kubeintellect.com/demo)** · **[Docs](https://mskazemi.github.io/kubeintellect/)** · **[v1 (LibreChat backend)](https://github.com/MSKazemi/kubeintellect/tree/v1-legacy)**
 </div>
 
-Natural-language interface to diagnose faults, query cluster state, and execute remediation — with human approval gating all destructive actions.
+Ask KubeIntellect a question in plain English — it queries kubectl, Prometheus, and Loki live, then answers. Destructive operations pause for your explicit approval before anything runs.
+
+```bash
+kq "why is my api-server pod crashlooping?"
+kq "show me pods with high restart counts in the default namespace"
+kq "scale the frontend deployment to 5 replicas"   # pauses for your approval
+```
+
+> **Safe by default** — read-only queries run immediately; scale, delete, and restart operations require explicit human-in-the-loop approval.
 
 ---
 
@@ -310,4 +319,4 @@ The original KubeIntellect used a LibreChat frontend with a LangGraph multi-agen
 
 ## License
 
-AGPL-3.0. Commercial licenses available — see [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md).
+MIT. See [pyproject.toml](pyproject.toml) for the complete license declaration.
