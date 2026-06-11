@@ -1,4 +1,5 @@
 """HTTP middleware for KubeIntellect."""
+
 from __future__ import annotations
 
 import time
@@ -42,7 +43,11 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             logger.error(
                 f"{method} {path} — unhandled exception after {elapsed_ms:.1f}ms",
                 exc_info=exc,
-                extra={"method": method, "path": path, "duration_ms": round(elapsed_ms, 1)},
+                extra={
+                    "method": method,
+                    "path": path,
+                    "duration_ms": round(elapsed_ms, 1),
+                },
             )
             raise
         finally:

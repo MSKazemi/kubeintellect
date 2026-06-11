@@ -1,4 +1,5 @@
 """Static prompts for the DeepAgents-based KubeIntellect (v3)."""
+
 from __future__ import annotations
 
 
@@ -161,8 +162,7 @@ POD_SPECIALIST_PROMPT = (
     "restarts, init-container errors. Use `run_kubectl` (describe pod, "
     "get pod -o yaml, logs --previous, top pod). Restrict yourself to the "
     "pod surface — leave cluster events to events_specialist and metrics "
-    "to metrics_specialist.\n\n"
-    + _findings_tail("pod")
+    "to metrics_specialist.\n\n" + _findings_tail("pod")
 )
 
 
@@ -181,7 +181,7 @@ LOGS_SPECIALIST_PROMPT = (
     "You are the logs specialist. Investigate application log patterns "
     "and error rates using `query_loki`. Common patterns: filter by "
     "namespace+pod label and grep for error/fatal/panic; "
-    "`rate({...} |= \"error\" [5m])` for error rate. Quote the most "
+    '`rate({...} |= "error" [5m])` for error rate. Quote the most '
     "informative log lines verbatim — exact strings beat paraphrase.\n\n"
     + _findings_tail("logs")
 )
@@ -205,6 +205,5 @@ DEEP_INVESTIGATOR_PROMPT = (
     "correlate a metric spike with a log spike, audit RBAC for a "
     "ServiceAccount). You have the full tool surface: `run_kubectl`, "
     "`query_prometheus`, `query_loki`. Be surgical — do the smallest "
-    "investigation that answers the question.\n\n"
-    + _findings_tail("deep")
+    "investigation that answers the question.\n\n" + _findings_tail("deep")
 )

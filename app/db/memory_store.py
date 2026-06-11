@@ -10,6 +10,7 @@ Reads (in priority order, total ≤500 tokens):
 
 All reads are non-blocking; missing tables return empty strings gracefully.
 """
+
 from __future__ import annotations
 
 import asyncpg
@@ -19,7 +20,7 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-_MAX_CONTEXT_CHARS = 1_800   # ~500 tokens at ~3.6 chars/token
+_MAX_CONTEXT_CHARS = 1_800  # ~500 tokens at ~3.6 chars/token
 
 
 async def _get_conn() -> asyncpg.Connection:
@@ -29,7 +30,7 @@ async def _get_conn() -> asyncpg.Connection:
 async def load_memory_context(user_id: str, session_id: str) -> str:
     """Return a pinned context string ≤500 tokens for the coordinator SystemMessage."""
     if settings.USE_SQLITE:
-        return ""   # memory store requires PostgreSQL; silently skip in SQLite mode
+        return ""  # memory store requires PostgreSQL; silently skip in SQLite mode
 
     parts: list[str] = []
 
@@ -148,7 +149,12 @@ async def record_rca_outcome(
                   (session_id, user_id, root_cause, confidence, recommended_fix, outcome_feedback)
                 VALUES ($1, $2, $3, $4, $5, $6)
                 """,
-                session_id, user_id, root_cause, confidence, recommended_fix, outcome_feedback,
+                session_id,
+                user_id,
+                root_cause,
+                confidence,
+                recommended_fix,
+                outcome_feedback,
             )
             if confidence >= 0.9:
                 await _maybe_seed_pattern(conn, root_cause, recommended_fix, confidence)
@@ -176,7 +182,7 @@ async def _maybe_seed_pattern(
                   confidence       = GREATEST(failure_patterns.confidence, EXCLUDED.confidence),
                   recommended_fix  = EXCLUDED.recommended_fix
             """,
-            root_cause[:120],   # truncate for pattern_name
+            root_cause[:120],  # truncate for pattern_name
             recommended_fix,
             confidence,
         )

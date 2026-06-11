@@ -63,6 +63,7 @@ dev = [
     "pytest>=8",
     "pytest-asyncio>=0.24",
     "pytest-mock>=3.14",
+    "ruff>=0.15",
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=0.26",
 ]

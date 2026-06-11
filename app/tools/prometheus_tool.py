@@ -7,6 +7,7 @@ If range_minutes>0:           range query against /api/v1/query_range,
 
 Output is capped at 6 000 chars to stay within LLM context budgets.
 """
+
 from __future__ import annotations
 
 import time
@@ -31,7 +32,9 @@ def _fmt_instant(query: str, results: list[dict]) -> str:
         value = r.get("value", [None, "N/A"])[1]
         lines.append(f"  [{labels}] = {value}")
     if len(results) > _INSTANT_SERIES_CAP:
-        lines.append(f"  ... {len(results) - _INSTANT_SERIES_CAP} more series (narrow the query)")
+        lines.append(
+            f"  ... {len(results) - _INSTANT_SERIES_CAP} more series (narrow the query)"
+        )
     return "\n".join(lines)
 
 
@@ -42,11 +45,15 @@ def _fmt_range(query: str, range_minutes: int, results: list[dict]) -> str:
     ]
     for r in results[:_RANGE_SERIES_CAP]:
         labels = ", ".join(f"{k}={v}" for k, v in r.get("metric", {}).items())
-        values = [float(v[1]) for v in r.get("values", []) if v[1] not in ("NaN", "+Inf", "-Inf")]
+        values = [
+            float(v[1])
+            for v in r.get("values", [])
+            if v[1] not in ("NaN", "+Inf", "-Inf")
+        ]
         if values:
             lines.append(
                 f"  [{labels}]  min={min(values):.4f}  "
-                f"avg={sum(values)/len(values):.4f}  max={max(values):.4f}"
+                f"avg={sum(values) / len(values):.4f}  max={max(values):.4f}"
             )
         else:
             lines.append(f"  [{labels}] no numeric values")
@@ -131,7 +138,7 @@ def query_prometheus(promql: str, range_minutes: int = 0) -> str:
         return f"Prometheus error: {exc}"
 
     if len(output) > _OUTPUT_CAP:
-        output = output[:_OUTPUT_CAP] + f"\n... [truncated — use a more specific query]"
+        output = output[:_OUTPUT_CAP] + "\n... [truncated — use a more specific query]"
     return output
 
 

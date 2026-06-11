@@ -1,4 +1,5 @@
 """V1 API router — aggregates all endpoints."""
+
 from fastapi import APIRouter
 
 from app.api.v1.endpoints.chat_completions import router as chat_router

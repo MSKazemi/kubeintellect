@@ -21,9 +21,14 @@ description: >-
 
 ## 1. API authentication
 
-Auth is controlled by three env vars. Leave all three empty to disable auth (useful for local dev or trusted networks).
+Auth is controlled by the key env vars below. Leave **all** of them empty to disable
+auth (useful for local dev or trusted networks). `settings.auth_enabled` is true if
+**any** key tier *or* the HMAC demo secret is set — so to run fully unauthenticated,
+clear every one of them, including `KUBEINTELLECT_SUPERADMIN_KEYS` and
+`DEMO_KEY_HMAC_SECRET`.
 
 ```bash
+KUBEINTELLECT_SUPERADMIN_KEYS=ki-sa-root123
 KUBEINTELLECT_ADMIN_KEYS=ki-admin-abc123,ki-admin-def456
 KUBEINTELLECT_OPERATOR_KEYS=ki-op-xyz789
 KUBEINTELLECT_READONLY_KEYS=ki-ro-qwerty
@@ -35,19 +40,31 @@ KUBEINTELLECT_READONLY_KEYS=ki-ro-qwerty
 
 Generate a key: `openssl rand -hex 20`
 
+### Demo (HMAC) keys — `AUTH_BACKEND=hmac`
+
+For public demos, `readonly` keys can be issued without a server restart. With
+`AUTH_BACKEND=hmac` and a `DEMO_KEY_HMAC_SECRET` set, any token of the form
+`ki-ro-<base64url(email:exp_unix)>.<hmac_sha256_hex[:32]>` is accepted as `readonly`
+until it expires — validated by HMAC signature, no static list needed. Superadmin,
+admin, and operator keys are always checked against their static lists regardless of
+backend.
+
 ---
 
 ## 2. Role capabilities
 
-| Operation | admin | operator | readonly |
-|---|---|---|---|
-| `kubectl get`, `describe`, `logs`, `top`, `events` | ✅ | ✅ | ✅ |
-| `kubectl apply`, `scale`, `patch`, `create`, `run`, `exec` | ✅ HITL | ✅ HITL | ❌ Blocked |
-| `kubectl delete`, `drain`, `replace`, `taint` | ✅ HITL | ❌ Blocked | ❌ Blocked |
-| Prometheus / Loki queries | ✅ | ✅ | ✅ |
-| Receive HITL approval prompts | ✅ | ✅ (medium risk only) | ❌ |
+| Operation | superadmin | admin | operator | readonly |
+|---|---|---|---|---|
+| `kubectl get`, `describe`, `logs`, `top`, `events` | ✅ | ✅ | ✅ | ✅ |
+| `kubectl apply`, `scale`, `patch`, `create`, `run`, `exec` | ✅ HITL | ✅ HITL | ✅ HITL | ❌ Blocked |
+| `kubectl delete`, `drain`, `replace`, `taint` | ✅ HITL | ✅ HITL | ❌ Blocked | ❌ Blocked |
+| Write ops on protected/infra namespaces | ✅ HITL | ❌ Blocked | ❌ Blocked | ❌ Blocked |
+| Prometheus / Loki queries | ✅ | ✅ | ✅ | ✅ |
+| Receive HITL approval prompts | ✅ | ✅ | ✅ (medium risk only) | ❌ |
 
-**HITL = Human-in-the-Loop.** Even admin users cannot execute destructive commands without explicitly typing `yes` or `/approve` in the same session.
+**HITL = Human-in-the-Loop.** Even admin/superadmin users cannot execute destructive commands without explicitly typing `yes` or `/approve` in the same session.
+
+**superadmin** is the only tier that may *write* to protected/infrastructure namespaces; even it cannot read Secrets or ServiceAccount tokens — the resource block applies to every role.
 
 ---
 
@@ -121,9 +138,9 @@ The Azure OpenAI API key lives in a Kubernetes Secret (`kubeintellect-secrets`) 
 
 | Attack vector | Protection layer | Status |
 |---|---|---|
-| User asks: `get secrets in kubeintellect namespace` | **kubectl_tool blocked resources** — `secrets` is in `KUBECTL_BLOCKED_RESOURCES`; tool returns `[Protected]` before calling kubectl | ✅ Blocked in-app |
-| User asks: `list all resources in kubeintellect namespace` | **kubectl_tool blocked namespaces** — `kubeintellect` is in `KUBECTL_BLOCKED_NAMESPACES`; tool rejects `-n kubeintellect` | ✅ Blocked in-app |
-| User asks: `get secrets in monitoring namespace` | **kubectl_tool blocked namespaces** — `monitoring` is blocked (contains Langfuse keys) | ✅ Blocked in-app |
+| User asks: `get secrets in kubeintellect namespace` | **kubectl_tool blocked resources** — `secrets` is in `KUBECTL_BLOCKED_RESOURCES`; tool returns `[Protected]` before calling kubectl (the resource block applies in **every** namespace and to **every** role) | ✅ Blocked in-app |
+| User asks: `delete`/`patch`/`scale` in kubeintellect namespace | **kubectl_tool blocked namespaces** — `kubeintellect` is in `KUBECTL_BLOCKED_NAMESPACES`; **write** verbs are rejected (superadmin excepted) | ✅ Blocked in-app |
+| User asks: `get secrets in monitoring namespace` | **kubectl_tool blocked resources** — `secret`/`serviceaccount` are blocked regardless of namespace, so Langfuse credentials stay shielded | ✅ Blocked in-app |
 | User asks: `kubectl get serviceaccounts` | **kubectl_tool blocked resources** — SA tokens could impersonate the app | ✅ Blocked in-app |
 | `kubectl exec` into pod → `env` | **`rbac.allowExec: false`** in prod → Kubernetes API server rejects the exec call | ✅ Blocked by RBAC |
 | SSH into VM → read `.env` | `.env` owned by deploy user, `chmod 600` | ✅ Protected by OS |
@@ -131,22 +148,32 @@ The Azure OpenAI API key lives in a Kubernetes Secret (`kubeintellect-secrets`) 
 
 ### How the kubectl blocklist works
 
-`app/tools/kubectl_tool.py` runs two checks **before** calling kubectl and before showing any HITL prompt:
+`app/tools/kubectl_tool.py` runs `_check_protected_access()` **before** calling kubectl and before showing any HITL prompt. It enforces two distinct rules:
+
+- **Resource block** — `secret` / `serviceaccount` are refused for **every** verb, in **every** namespace, for **every** role (including superadmin). This is the control that actually protects credentials.
+- **Namespace block** — protected/infrastructure namespaces (`kubeintellect`, `monitoring`, `kube-system`, …) refuse **write** verbs only. Read-only verbs (`get`, `describe`, `logs`, `top`, …) are **allowed** so the agent can observe its own pod and the observability stack to diagnose issues. Superadmin may also write to these namespaces.
 
 ```
 User query → coordinator → run_kubectl("kubectl get secrets -n kubeintellect")
                                 │
                                 ▼ _check_protected_access()
-                           resource = "secrets"  → in KUBECTL_BLOCKED_RESOURCES?
-                                │                   YES → return "[Protected]..." immediately
-                                │                   kubectl never called
+                           resource = "secret"  → in KUBECTL_BLOCKED_RESOURCES?
+                                │                  YES → "[Protected]..." (any verb, any role)
+                                │                  kubectl never called
                                 ▼
                            namespace = "kubeintellect" → in KUBECTL_BLOCKED_NAMESPACES?
-                                │                        YES → return "[Protected]..."
-                                │
+                                │   read-only verb  → allowed (observe own/infra state)
+                                │   write verb      → "[Protected]..." (superadmin excepted)
                                 ▼  (only reaches here if both checks pass)
                            role check → HITL → subprocess kubectl
 ```
+
+> **Why allow protected-namespace reads?** A diagnostic agent must see its own pod
+> and the Prometheus/Loki/Langfuse stack (all in `monitoring`) to do root-cause
+> analysis. Reads are low-risk; the credential-bearing surface — Secrets and SA
+> tokens — stays fully blocked by the resource rule above. If your threat model
+> requires blocking reads too, narrow the agent's Kubernetes RBAC (cluster-ro) so
+> the API server itself denies them.
 
 The blocklists are configured in `app/core/config.py` and can be overridden per-deployment via env vars:
 
@@ -179,25 +206,34 @@ This is logged as a future roadmap item. The current model is pragmatic and secu
 
 ```
 Layer 1 — metacharacter guard
-  Reject any command containing: ; & ` $ > < \
+  Reject any command containing: ; & ` $ \
   Pipe (|) is allowed and handled in Python (not the shell).
+  < and > are NOT rejected: under shell=False they are harmless literal argv
+  (kubectl rejects them itself), and excluding them lets --from-literal values
+  contain HTML / template content with angle brackets.
 
 Layer 2 — shlex.split (shell=False)
   subprocess is called with a list of args, never a shell string.
-  The shell is never invoked. No interpolation possible.
+  The shell is never invoked. No interpolation possible — so $(...) / backticks
+  cannot execute even if they slipped past Layer 1.
 
 Layer 3 — pipe emulation
   Only `grep` is supported after `|`. Any other command is rejected.
   grep is reimplemented in Python using re — no subprocess involved.
 
-Layer 4 — YAML pre-validation
-  stdin YAML is parsed with yaml.safe_load_all before being passed to kubectl.
-  Malformed YAML that might confuse kubectl's parser is caught early.
+Layer 4 — YAML pre-validation (advisory)
+  stdin YAML is parsed with yaml.safe_load_all and a warning is logged if it
+  looks malformed, but the command still proceeds so kubectl — which is more
+  lenient than Python's parser — can do the authoritative validation.
 
 Layer 5 — output cap
   Output is truncated at 8,000 characters regardless of what kubectl returns.
   Prevents memory exhaustion from pathological outputs.
 ```
+
+> Note: `$(...)` and backtick interpolation are blocked at **two** layers — the
+> Layer 1 guard rejects `$` and `` ` `` outright, and even without that, `shell=False`
+> means the substitution would never be evaluated by a shell.
 
 ---
 

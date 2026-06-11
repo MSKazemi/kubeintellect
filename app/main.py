@@ -1,4 +1,5 @@
 """KubeIntellect V2 — FastAPI application entry point."""
+
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -18,12 +19,15 @@ setup_logging()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import sys
+
     logger.info("KubeIntellect V2 starting up")
     from app.core.llm import get_coordinator_llm, get_subagent_llm
+
     get_coordinator_llm()
     get_subagent_llm()
     logger.info(f"LLM provider: {settings.LLM_PROVIDER}")
     from app.agent.main_agent import init_graph
+
     try:
         await init_graph()
     except Exception as exc:
@@ -31,6 +35,7 @@ async def lifespan(app: FastAPI):
         logger.error(f"Startup failed: {exc}\n\n{_hint}")
         sys.exit(1)
     from app.db.audit import init_audit_pool
+
     try:
         await init_audit_pool()
     except Exception as exc:
@@ -40,8 +45,10 @@ async def lifespan(app: FastAPI):
     yield
     logger.info("KubeIntellect V2 shutting down")
     from app.agent.main_agent import close_graph
+
     await close_graph()
     from app.db.audit import close_audit_pool
+
     await close_audit_pool()
 
 
@@ -54,7 +61,11 @@ def _startup_hint(exc: Exception) -> str:
             "Fix: POSTGRES_PASSWORD in ~/.kubeintellect/.env does not match your postgres user.\n"
             "     Check the password, then run: kubeintellect status"
         )
-    if "connection refused" in msg or "connection failed" in msg or "nodename nor servname" in msg:
+    if (
+        "connection refused" in msg
+        or "connection failed" in msg
+        or "nodename nor servname" in msg
+    ):
         return (
             "Fix: postgres is not running or unreachable.\n"
             "     Option 1 — start with Docker:\n"
@@ -83,7 +94,11 @@ def _startup_hint(exc: Exception) -> str:
         )
 
     # LLM / API errors
-    if "authenticationerror" in msg or "invalid api key" in msg or "incorrect api key" in msg:
+    if (
+        "authenticationerror" in msg
+        or "invalid api key" in msg
+        or "incorrect api key" in msg
+    ):
         provider = settings.LLM_PROVIDER
         if provider == "openai":
             return (
@@ -138,6 +153,7 @@ app.add_middleware(
 )
 app.add_middleware(RequestLoggingMiddleware)
 
-from app.api.v1.endpoints.health import router as health_router
-app.include_router(health_router)          # /healthz — probe path (no version prefix)
+from app.api.v1.endpoints.health import router as health_router  # noqa: E402
+
+app.include_router(health_router)  # /healthz — probe path (no version prefix)
 app.include_router(api_router, prefix=settings.API_V1_STR)

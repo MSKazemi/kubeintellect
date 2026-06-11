@@ -16,10 +16,16 @@ os.environ.setdefault("LLM_PROVIDER", "openai")
 os.environ.setdefault("OPENAI_API_KEY", "sk-test-dummy")
 
 # Force auth off by default so tests without the auth_settings fixture get
-# role="admin" without needing a Bearer token.
+# role="admin" without needing a Bearer token. settings.auth_enabled is True if
+# ANY key tier OR the HMAC demo secret is set, so every auth input the local .env
+# might define must be force-cleared here — including the superadmin tier and the
+# HMAC demo-key secret added in v3.
+os.environ["KUBEINTELLECT_SUPERADMIN_KEYS"] = ""
 os.environ["KUBEINTELLECT_ADMIN_KEYS"] = ""
 os.environ["KUBEINTELLECT_OPERATOR_KEYS"] = ""
 os.environ["KUBEINTELLECT_READONLY_KEYS"] = ""
+os.environ["DEMO_KEY_HMAC_SECRET"] = ""
+os.environ["AUTH_BACKEND"] = "static"
 
 # ── Stub langgraph postgres checkpointer ─────────────────────────────────────
 # AsyncPostgresSaver.from_conn_string is called inside init_graph() at startup.

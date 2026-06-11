@@ -43,6 +43,7 @@ LLM_PROVIDER=openai                     # openai  or  azure
 OPENAI_API_KEY=sk-...                   # ← your key (platform.openai.com/api-keys)
 OPENAI_COORDINATOR_MODEL=gpt-4o
 OPENAI_SUBAGENT_MODEL=gpt-4o-mini
+# OPENAI_BASE_URL=http://localhost:11434/v1   # ← optional: self-hosted / Ollama endpoint
 
 # ── Option B: Azure OpenAI ───────────────────────────────────────────────────
 # Comment out the OpenAI lines above and uncomment these:
@@ -112,9 +113,26 @@ LOG_FORMAT=text
 
 | Variable | Default | Description |
 |---|---|---|
-| `OPENAI_API_KEY` | — | Your OpenAI API key |
+| `OPENAI_API_KEY` | — | Your OpenAI API key (any non-empty value for self-hosted endpoints) |
 | `OPENAI_COORDINATOR_MODEL` | `gpt-4o` | Model for the coordinator agent |
 | `OPENAI_SUBAGENT_MODEL` | `gpt-4o-mini` | Model for domain subagents |
+| `OPENAI_BASE_URL` | — | Override for any OpenAI-compatible endpoint. Empty = real OpenAI |
+
+**Self-hosted / local models.** `OPENAI_BASE_URL` lets you point the OpenAI
+provider at any OpenAI-compatible server — [Ollama](https://ollama.com), vLLM,
+or LM Studio — so you can run KubeIntellect fully offline on your own hardware.
+For a local Ollama with a tool-calling model:
+
+```bash
+LLM_PROVIDER=openai
+OPENAI_BASE_URL=http://localhost:11434/v1
+OPENAI_API_KEY=ollama                    # any non-empty placeholder
+OPENAI_COORDINATOR_MODEL=qwen3:30b-a3b   # must support tool calling
+OPENAI_SUBAGENT_MODEL=qwen3:8b
+```
+
+Answer quality depends heavily on the model — small local models are noticeably
+weaker at the multi-step investigation discipline than `gpt-4o`/`gpt-4o-mini`.
 
 **Azure OpenAI:**
 

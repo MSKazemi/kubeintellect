@@ -1,4 +1,5 @@
 """LLM factory — returns a configured chat model based on LLM_PROVIDER setting."""
+
 from __future__ import annotations
 
 import logging
@@ -22,10 +23,13 @@ def _resolve_langfuse() -> Type[Any] | None:
         return None if _LangfuseCallbackHandler is False else _LangfuseCallbackHandler  # type: ignore[return-value]
     try:
         from langfuse.langchain import CallbackHandler
+
         _LangfuseCallbackHandler = CallbackHandler
         return CallbackHandler
     except ImportError:
-        logger.warning("LANGFUSE_ENABLED=true but 'langfuse' is not installed. Run: uv add langfuse")
+        logger.warning(
+            "LANGFUSE_ENABLED=true but 'langfuse' is not installed. Run: uv add langfuse"
+        )
         _LangfuseCallbackHandler = False
         return None
 
@@ -39,7 +43,9 @@ def get_langfuse_callbacks() -> List[Any]:
     if not settings.LANGFUSE_ENABLED:
         return []
     if not settings.LANGFUSE_PUBLIC_KEY or not settings.LANGFUSE_SECRET_KEY:
-        logger.warning("LANGFUSE_ENABLED=true but PUBLIC_KEY or SECRET_KEY is missing — tracing disabled.")
+        logger.warning(
+            "LANGFUSE_ENABLED=true but PUBLIC_KEY or SECRET_KEY is missing — tracing disabled."
+        )
         return []
     CallbackHandler = _resolve_langfuse()
     if CallbackHandler is None:
@@ -47,18 +53,23 @@ def get_langfuse_callbacks() -> List[Any]:
     # Pass keys explicitly for compatibility with both langfuse v2 (keyword args)
     # and v3+ (reads LANGFUSE_* env vars automatically — no kwargs needed).
     try:
-        return [CallbackHandler(
-            public_key=settings.LANGFUSE_PUBLIC_KEY,
-            secret_key=settings.LANGFUSE_SECRET_KEY,
-            host=settings.LANGFUSE_HOST,
-        )]
+        return [
+            CallbackHandler(
+                public_key=settings.LANGFUSE_PUBLIC_KEY,
+                secret_key=settings.LANGFUSE_SECRET_KEY,
+                host=settings.LANGFUSE_HOST,
+            )
+        ]
     except TypeError:
         # langfuse v3+: env vars are already set — CallbackHandler picks them up.
         return [CallbackHandler()]
 
 
-def _make_azure(deployment: str, temperature: float = 0.0, max_tokens: int = 4096) -> BaseChatModel:
+def _make_azure(
+    deployment: str, temperature: float = 0.0, max_tokens: int = 4096
+) -> BaseChatModel:
     from langchain_openai import AzureChatOpenAI
+
     endpoint = settings.AZURE_OPENAI_ENDPOINT or ""
     if endpoint and not endpoint.startswith(("http://", "https://")):
         logger.warning(
@@ -81,11 +92,15 @@ def _make_azure(deployment: str, temperature: float = 0.0, max_tokens: int = 409
     )
 
 
-def _make_openai(model: str, temperature: float = 0.0, max_tokens: int = 4096) -> BaseChatModel:
+def _make_openai(
+    model: str, temperature: float = 0.0, max_tokens: int = 4096
+) -> BaseChatModel:
     from langchain_openai import ChatOpenAI
+
     return ChatOpenAI(
         model=model,
         api_key=settings.OPENAI_API_KEY,
+        base_url=settings.OPENAI_BASE_URL or None,
         temperature=temperature,
         max_tokens=max_tokens,
         streaming=True,

@@ -11,6 +11,7 @@ Match strategy (cheap, in order):
   3. Trigger regex match — feed the symptom string as both the
      pod-status and event-message corpus to `match_playbooks`.
 """
+
 from __future__ import annotations
 
 from langchain_core.tools import tool
@@ -78,10 +79,7 @@ def lookup_playbook(symptom: str) -> str:
     matches = _find_matches(symptom)
     if not matches:
         names = ", ".join(sorted(pb.name for pb in list_playbooks()))
-        return (
-            f"No playbook matched symptom={symptom!r}.\n"
-            f"Available playbooks: {names}"
-        )
+        return f"No playbook matched symptom={symptom!r}.\nAvailable playbooks: {names}"
 
     if len(matches) == 1:
         return _render(matches[0])

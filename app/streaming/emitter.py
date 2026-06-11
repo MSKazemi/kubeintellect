@@ -21,6 +21,7 @@ Per-session lifecycle
                            yields None on 15 s heartbeat timeout.
   get_history(sid)       – returns all events recorded for the session.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -40,7 +41,7 @@ _DONE: object = object()
 
 class StatusEvent(BaseModel):
     type: Literal["status"] = "status"
-    phase: str       # loading | analyzing | investigating | dispatching | synthesizing
+    phase: str  # loading | analyzing | investigating | dispatching | synthesizing
     message: str
     session_id: str
     ts: float = Field(default_factory=time.time)
@@ -49,7 +50,7 @@ class StatusEvent(BaseModel):
 class ToolCallEvent(BaseModel):
     type: Literal["tool_call"] = "tool_call"
     tool: str
-    command: str | None = None   # populated for run_kubectl
+    command: str | None = None  # populated for run_kubectl
     session_id: str
     ts: float = Field(default_factory=time.time)
 
@@ -57,7 +58,7 @@ class ToolCallEvent(BaseModel):
 class ToolResultEvent(BaseModel):
     type: Literal["tool_result"] = "tool_result"
     tool: str
-    output: str      # first 500 chars of tool output
+    output: str  # first 500 chars of tool output
     session_id: str
     ts: float = Field(default_factory=time.time)
 
@@ -87,8 +88,9 @@ class HitlRequestEvent(BaseModel):
 
 class PlanEvent(BaseModel):
     """Emitted by the coordinator when an investigation plan is produced."""
+
     type: Literal["plan"] = "plan"
-    steps: list[dict]   # list of {description, status}
+    steps: list[dict]  # list of {description, status}
     session_id: str
     ts: float = Field(default_factory=time.time)
 
@@ -178,7 +180,7 @@ async def stream(session_id: str, heartbeat_interval: float = 15.0):
         try:
             item = await asyncio.wait_for(q.get(), timeout=heartbeat_interval)
         except asyncio.TimeoutError:
-            yield None   # caller emits ": heartbeat\n\n"
+            yield None  # caller emits ": heartbeat\n\n"
             continue
         if item is _DONE:
             break
