@@ -7,6 +7,7 @@ on simple turns, real recall on the turns where it matters.
 Both wrap `app.db.memory_store`. In SQLite mode (no PostgreSQL configured)
 we no-op gracefully — read returns a notice, write logs and returns.
 """
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -26,7 +27,7 @@ _TOPIC_INDEX = (
     "  - failure_hints    — auto-seeded patterns from past RCAs\n"
     "  - past_rca         — last few root-cause outcomes for this user\n"
     "  - session_notes    — notes from the current session\n"
-    "Call read_memory(topic=\"<topic>\") to drill in."
+    'Call read_memory(topic="<topic>") to drill in.'
 )
 
 

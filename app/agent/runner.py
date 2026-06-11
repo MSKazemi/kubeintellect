@@ -11,6 +11,7 @@ Per turn:
      emit a HitlRequestEvent.
   5. Always close_session() in finally.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -45,9 +46,13 @@ logger = get_logger(__name__)
 # intentionally excluded — they're plumbing. write_todos and HITL get
 # their own translations below.
 _USER_VISIBLE_TOOLS = {
-    "run_kubectl", "query_prometheus", "query_loki",
-    "refresh_snapshot", "lookup_playbook",
-    "read_memory", "write_memory",
+    "run_kubectl",
+    "query_prometheus",
+    "query_loki",
+    "refresh_snapshot",
+    "lookup_playbook",
+    "read_memory",
+    "write_memory",
 }
 
 
@@ -61,7 +66,9 @@ def _llm_error_hint(exc: Exception) -> str:
     if "authentication" in msg or "401" in msg or "api key" in msg:
         return "LLM authentication failed: check your API key in ~/.kubeintellect/.env."
     if "connection error" in msg or "connection refused" in msg:
-        return "LLM connection failed: check your endpoint URL and network connectivity."
+        return (
+            "LLM connection failed: check your endpoint URL and network connectivity."
+        )
     if "rate limit" in msg or "429" in msg:
         return "LLM rate limit hit — please try again in a moment."
     if "disallowed shell characters" in msg or "shell metachar" in msg:
@@ -71,7 +78,11 @@ def _llm_error_hint(exc: Exception) -> str:
             "first `kubectl get pods -n <ns> -l <selector> -o jsonpath='{.items[0].metadata.name}'` "
             "then `kubectl exec -n <ns> -it <pod-name> -- <cmd>`."
         )
-    if "content_filter" in msg or "content management policy" in msg or "responsibleaipolicyviolation" in msg:
+    if (
+        "content_filter" in msg
+        or "content management policy" in msg
+        or "responsibleaipolicyviolation" in msg
+    ):
         return (
             "Azure content filter blocked this request. "
             "Try rephrasing — if the issue persists, start a new session (/new) to reset conversation history."
@@ -112,10 +123,12 @@ def _normalise_todos(raw_output: Any) -> list[dict] | None:
             )
             if not desc:
                 continue
-            steps.append({
-                "description": str(desc),
-                "status": str(item.get("status", "pending")),
-            })
+            steps.append(
+                {
+                    "description": str(desc),
+                    "status": str(item.get("status", "pending")),
+                }
+            )
     return steps or None
 
 
@@ -138,22 +151,32 @@ async def _emit_event(session_id: str, raw: dict) -> None:
             return  # subagent — skip
         chunk = raw.get("data", {}).get("chunk")
         if chunk and getattr(chunk, "content", None):
-            await emit(session_id, TokenEvent(content=chunk.content, session_id=session_id))
+            await emit(
+                session_id, TokenEvent(content=chunk.content, session_id=session_id)
+            )
         return
 
     if kind == "on_tool_start":
         input_data = raw.get("data", {}).get("input", {})
         if name in _USER_VISIBLE_TOOLS:
-            command = input_data.get("command") if isinstance(input_data, dict) else None
-            await emit(session_id, ToolCallEvent(tool=name, command=command, session_id=session_id))
+            command = (
+                input_data.get("command") if isinstance(input_data, dict) else None
+            )
+            await emit(
+                session_id,
+                ToolCallEvent(tool=name, command=command, session_id=session_id),
+            )
             return
         if name == "task" and isinstance(input_data, dict):
             target = input_data.get("subagent_type") or "subagent"
-            await emit(session_id, StatusEvent(
-                phase="dispatching",
-                message=f"→ {target}",
-                session_id=session_id,
-            ))
+            await emit(
+                session_id,
+                StatusEvent(
+                    phase="dispatching",
+                    message=f"→ {target}",
+                    session_id=session_id,
+                ),
+            )
             return
         return
 
@@ -162,11 +185,14 @@ async def _emit_event(session_id: str, raw: dict) -> None:
             output: Any = raw.get("data", {}).get("output", "")
             if hasattr(output, "content"):
                 output = output.content
-            await emit(session_id, ToolResultEvent(
-                tool=name,
-                output=str(output)[:500],
-                session_id=session_id,
-            ))
+            await emit(
+                session_id,
+                ToolResultEvent(
+                    tool=name,
+                    output=str(output)[:500],
+                    session_id=session_id,
+                ),
+            )
             return
         if name == "write_todos":
             steps = _normalise_todos(raw.get("data", {}).get("output"))
@@ -178,17 +204,20 @@ async def _emit_event(session_id: str, raw: dict) -> None:
             path = input_data.get("file_path") if isinstance(input_data, dict) else None
             if path and path.startswith("/findings/"):
                 stem = path.rsplit("/", 1)[-1].removesuffix(".md")
-                await emit(session_id, StatusEvent(
-                    phase="investigating",
-                    message=f"{stem} findings saved",
-                    session_id=session_id,
-                ))
+                await emit(
+                    session_id,
+                    StatusEvent(
+                        phase="investigating",
+                        message=f"{stem} findings saved",
+                        session_id=session_id,
+                    ),
+                )
 
 
 def _extract_pending_interrupt(state) -> dict | None:
     """Return the first HITL interrupt payload on the thread, or None."""
-    for task in (state.tasks or ()):
-        for intr in (task.interrupts or ()):
+    for task in state.tasks or ():
+        for intr in task.interrupts or ():
             val = intr.value if hasattr(intr, "value") else intr
             if isinstance(val, dict) and val.get("type") == "hitl":
                 return val
@@ -210,11 +239,14 @@ async def run_session(
     try:
         graph = await get_graph()
 
-        await emit(session_id, StatusEvent(
-            phase="loading",
-            message="Thinking…",
-            session_id=session_id,
-        ))
+        await emit(
+            session_id,
+            StatusEvent(
+                phase="loading",
+                message="Thinking…",
+                session_id=session_id,
+            ),
+        )
 
         # "approve all" arms session-wide HITL bypass for this and future turns.
         if _is_auto_approve_request(user_message):
@@ -256,14 +288,17 @@ async def run_session(
             # Pre-seed /snapshot.md so the agent starts informed about the cluster.
             fm = await seed_snapshot_state(graph, config)
             if fm:
-                await emit(session_id, StatusEvent(
-                    phase="snapshot",
-                    message=(
-                        f"Snapshot seeded: {fm['pod_count']} pods, "
-                        f"issues={fm['has_issues']}, warnings={fm['has_warnings']}"
+                await emit(
+                    session_id,
+                    StatusEvent(
+                        phase="snapshot",
+                        message=(
+                            f"Snapshot seeded: {fm['pod_count']} pods, "
+                            f"issues={fm['has_issues']}, warnings={fm['has_warnings']}"
+                        ),
+                        session_id=session_id,
                     ),
-                    session_id=session_id,
-                ))
+                )
             input_data = {"messages": [HumanMessage(content=user_message)]}
 
         async for raw in graph.astream_events(input_data, config=config, version="v2"):
@@ -273,19 +308,25 @@ async def run_session(
         new_state = await graph.aget_state(config)
         new_pending = _extract_pending_interrupt(new_state)
         if new_pending is not None:
-            await emit(session_id, HitlRequestEvent(
-                risk_level=new_pending.get("risk_level", "medium"),
-                command=new_pending.get("command", "destructive action"),
-                stdin_yaml=new_pending.get("stdin"),
-                session_id=session_id,
-            ))
+            await emit(
+                session_id,
+                HitlRequestEvent(
+                    risk_level=new_pending.get("risk_level", "medium"),
+                    command=new_pending.get("command", "destructive action"),
+                    stdin_yaml=new_pending.get("stdin"),
+                    session_id=session_id,
+                ),
+            )
 
     except Exception as exc:
         logger.error(f"run_session error session={session_id}: {exc}", exc_info=False)
-        await emit(session_id, ErrorEvent(
-            session_id=session_id,
-            error=_llm_error_hint(exc),
-        ))
+        await emit(
+            session_id,
+            ErrorEvent(
+                session_id=session_id,
+                error=_llm_error_hint(exc),
+            ),
+        )
     finally:
         try:
             await close_session(session_id)

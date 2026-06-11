@@ -7,6 +7,7 @@ this module only produces the diagnostic suggestion.
 Designed for non-zero exit codes only. Successful kubectl output is never
 interpreted.
 """
+
 from __future__ import annotations
 
 import re
@@ -15,7 +16,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class _Pattern:
-    name: str           # short identifier for structured logs / metrics
+    name: str  # short identifier for structured logs / metrics
     regex: re.Pattern
     hint: str
 
@@ -28,7 +29,9 @@ _PATTERNS: tuple[_Pattern, ...] = (
     ),
     _Pattern(
         "container_not_found",
-        re.compile(r"container\s+\S+\s+is\s+not\s+valid|container\s+not\s+found", re.IGNORECASE),
+        re.compile(
+            r"container\s+\S+\s+is\s+not\s+valid|container\s+not\s+found", re.IGNORECASE
+        ),
         "→ Multi-container pod — specify the container with `-c <name>`.",
     ),
     _Pattern(
@@ -88,7 +91,9 @@ _PATTERNS: tuple[_Pattern, ...] = (
     ),
     _Pattern(
         "yaml_parse_error",
-        re.compile(r"error converting YAML to JSON|yaml: unmarshal errors", re.IGNORECASE),
+        re.compile(
+            r"error converting YAML to JSON|yaml: unmarshal errors", re.IGNORECASE
+        ),
         "→ YAML syntax error — validate with `kubectl apply --dry-run=client`.",
     ),
     _Pattern(

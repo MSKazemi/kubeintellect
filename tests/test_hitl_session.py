@@ -66,68 +66,51 @@ class TestSessionIDHandling:
     """
     The endpoint must use X-Session-ID from the request header as the
     LangGraph thread_id.  A missing header generates a fresh UUID.
+
+    In v3 the endpoint launches the workflow via run_session(user_message,
+    session_id, user_id, user_role, ...) as a background task and streams the
+    queue via emitter_stream(session_id). We capture the session_id from the
+    run_session call (recorded synchronously when the coroutine is created).
     """
 
-    def _make_request(self, headers=None):
-        from fastapi.testclient import TestClient
+    @staticmethod
+    def _post(headers=None, count=1):
         from unittest.mock import patch, AsyncMock
+        from fastapi.testclient import TestClient
 
-        # Patch stream_events so no real graph runs
-        async def fake_stream(*args, **kwargs):
+        # AsyncMock records call args synchronously when the coroutine is created,
+        # so we don't depend on the background task actually running before it is
+        # cancelled. session_id is the 2nd positional arg of run_session(...).
+        mock_run = AsyncMock()
+
+        async def empty_stream(*args, **kwargs):
             return
             yield  # make it an async generator
 
-        with patch("app.api.v1.endpoints.chat_completions.stream_events", fake_stream):
+        with patch("app.api.v1.endpoints.chat_completions.run_session", mock_run), \
+             patch("app.api.v1.endpoints.chat_completions.emitter_stream", side_effect=empty_stream), \
+             patch("app.api.v1.endpoints.chat_completions.prepare_session"), \
+             patch("app.api.v1.endpoints.chat_completions._audit_log", new_callable=AsyncMock):
             from app.main import app
             client = TestClient(app)
-            resp = client.post(
-                "/v1/chat/completions",
-                json={"messages": [{"role": "user", "content": "get pods"}], "stream": True},
-                headers=headers or {},
-            )
-        return resp
+            for _ in range(count):
+                client.post(
+                    "/v1/chat/completions",
+                    json={"messages": [{"role": "user", "content": "test"}], "stream": True},
+                    headers=headers or {},
+                )
+        return [call.args[1] for call in mock_run.call_args_list]
 
     def test_session_id_from_header_is_used(self):
-        """When X-Session-ID is present, stream_events must receive that exact value."""
-        from unittest.mock import patch, AsyncMock
-        captured = {}
-
-        async def fake_stream(msg, session_id, user_id):
-            captured["session_id"] = session_id
-            return
-            yield
-
-        with patch("app.api.v1.endpoints.chat_completions.stream_events", fake_stream):
-            from fastapi.testclient import TestClient
-            from app.main import app
-            client = TestClient(app)
-            client.post(
-                "/v1/chat/completions",
-                json={"messages": [{"role": "user", "content": "test"}], "stream": True},
-                headers={"X-Session-ID": "my-fixed-session-123"},
-            )
-        assert captured.get("session_id") == "my-fixed-session-123"
+        """When X-Session-ID is present, run_session must receive that exact value."""
+        captured_ids = self._post(headers={"X-Session-ID": "my-fixed-session-123"})
+        assert captured_ids == ["my-fixed-session-123"]
 
     def test_missing_session_id_generates_uuid(self):
         """Without X-Session-ID, a fresh UUID must be generated per request."""
         import re
-        from unittest.mock import patch
-        captured_ids = []
 
-        async def fake_stream(msg, session_id, user_id):
-            captured_ids.append(session_id)
-            return
-            yield
-
-        with patch("app.api.v1.endpoints.chat_completions.stream_events", fake_stream):
-            from fastapi.testclient import TestClient
-            from app.main import app
-            client = TestClient(app)
-            for _ in range(2):
-                client.post(
-                    "/v1/chat/completions",
-                    json={"messages": [{"role": "user", "content": "test"}], "stream": True},
-                )
+        captured_ids = self._post(count=2)
         assert len(captured_ids) == 2
         # Both must be valid UUIDs
         uuid_re = re.compile(r"^[0-9a-f-]{36}$")

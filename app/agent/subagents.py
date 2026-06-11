@@ -8,6 +8,7 @@ coordinator model, matching v2's cost profile. They share the virtual
 filesystem (read_file / write_file / ls are added automatically by the
 framework) and write their output to `/findings/<name>.md`.
 """
+
 from __future__ import annotations
 
 from deepagents.middleware.subagents import SubAgent

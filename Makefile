@@ -367,7 +367,7 @@ lint: ## Run ruff linter and format check
 	uv run ruff format --check app/
 
 test: ## Run the pytest test suite
-	uv run pytest tests/ -v
+	uv run python -m pytest tests/ -v
 
 cli: ## Open the interactive REPL against the local Kind deployment
 	KUBE_Q_URL=http://api.kubeintellect.local uv run kq

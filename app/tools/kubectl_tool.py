@@ -10,6 +10,7 @@ Safety layers (in order):
   6. Namespace output filter     — strip blocked namespaces from get-namespaces output
   7. Output cap                  — truncate at 8 000 chars
 """
+
 from __future__ import annotations
 
 import os
@@ -32,13 +33,32 @@ logger = get_logger(__name__)
 # ── Risk tables ───────────────────────────────────────────────────────────────
 
 _HIGH_RISK = {"delete", "drain", "replace", "taint"}
-_MEDIUM_RISK = {"patch", "apply", "scale", "exec", "cordon", "uncordon", "create", "run"}
+_MEDIUM_RISK = {
+    "patch",
+    "apply",
+    "scale",
+    "exec",
+    "cordon",
+    "uncordon",
+    "create",
+    "run",
+}
 DESTRUCTIVE_VERBS = _HIGH_RISK | _MEDIUM_RISK
 
 # Verbs that have no side effects — allowed on all namespaces including protected ones.
 _READ_ONLY_VERBS = {
-    "get", "describe", "logs", "top", "diff", "explain",
-    "auth", "version", "cluster-info", "api-resources", "api-versions", "rollout",
+    "get",
+    "describe",
+    "logs",
+    "top",
+    "diff",
+    "explain",
+    "auth",
+    "version",
+    "cluster-info",
+    "api-resources",
+    "api-versions",
+    "rollout",
 }
 
 # kubectl edit requires an interactive terminal that is never available in the container.
@@ -156,8 +176,16 @@ def _extract_resource_type(verb: str, args: list[str]) -> str | None:
     (e.g. 'logs', 'exec', 'rollout') — those are safe to skip.
     """
     _resource_verbs = {
-        "get", "describe", "delete", "edit", "patch",
-        "apply", "create", "replace", "label", "annotate",
+        "get",
+        "describe",
+        "delete",
+        "edit",
+        "patch",
+        "apply",
+        "create",
+        "replace",
+        "label",
+        "annotate",
     }
     if verb not in _resource_verbs or len(args) < 3:
         return None
@@ -184,7 +212,7 @@ def _filter_namespace_output(args: list[str], output: str) -> str:
     lines = output.splitlines(keepends=True)
 
     if out_format == "name":
-        return "".join(l for l in lines if l.strip().split("/")[-1] not in blocked)
+        return "".join(ln for ln in lines if ln.strip().split("/")[-1] not in blocked)
     if out_format in ("json", "yaml"):
         return output  # too complex to strip reliably; blocked at execution anyway
     if out_format and "jsonpath" in out_format:
@@ -356,18 +384,25 @@ def run_kubectl(
     # ── 4c. Risk classification → HITL interrupt ─────────────────────────────
     if verb in DESTRUCTIVE_VERBS:
         has_dry_run = any(
-            flag in args for flag in ("--dry-run=client", "--dry-run=server", "--dry-run")
+            flag in args
+            for flag in ("--dry-run=client", "--dry-run=server", "--dry-run")
         )
-        hitl_bypass = bool((config.get("configurable") or {}).get("hitl_bypass", False)) if config else False
+        hitl_bypass = (
+            bool((config.get("configurable") or {}).get("hitl_bypass", False))
+            if config
+            else False
+        )
         if not has_dry_run and not hitl_bypass:
             risk = _classify_risk(verb)
-            approved = interrupt({
-                "type": "hitl",
-                "command": cmd,
-                "stdin": stdin,          # include YAML so the user sees what will be applied
-                "risk_level": risk,
-                "human_summary": f"About to run: `{cmd}`",
-            })
+            approved = interrupt(
+                {
+                    "type": "hitl",
+                    "command": cmd,
+                    "stdin": stdin,  # include YAML so the user sees what will be applied
+                    "risk_level": risk,
+                    "human_summary": f"About to run: `{cmd}`",
+                }
+            )
             if not approved:
                 return "Action cancelled by user."
         elif not has_dry_run and hitl_bypass:
@@ -410,7 +445,9 @@ def run_kubectl(
         )
 
     output = proc.stdout or proc.stderr or "(no output)"
-    logger.debug(f"run_kubectl: exit={proc.returncode} output_len={len(output)} cmd={cmd}")
+    logger.debug(
+        f"run_kubectl: exit={proc.returncode} output_len={len(output)} cmd={cmd}"
+    )
 
     # ── 5b. Error interpretation ──────────────────────────────────────────────
     # Append a single-line hint when kubectl exits non-zero and the stderr

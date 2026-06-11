@@ -10,6 +10,7 @@ The pool is initialised once at app startup (init_audit_pool) and closed
 at shutdown (close_audit_pool).  log_request is fire-and-forget: failures
 are logged as warnings and never propagate to the caller.
 """
+
 from __future__ import annotations
 
 import asyncpg
@@ -36,7 +37,9 @@ async def init_audit_pool() -> None:
         )
         logger.info("audit: pool ready")
     except Exception as exc:
-        logger.warning(f"audit: could not connect to Postgres — audit logging disabled ({exc})")
+        logger.warning(
+            f"audit: could not connect to Postgres — audit logging disabled ({exc})"
+        )
         _pool = None
 
 
@@ -69,12 +72,20 @@ async def log_request(
                path, method, status_code, duration_ms)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             """,
-            request_id, session_id, user_id, user_role,
-            path, method, status_code, duration_ms,
+            request_id,
+            session_id,
+            user_id,
+            user_role,
+            path,
+            method,
+            status_code,
+            duration_ms,
         )
     except Exception as exc:
         msg = str(exc)
         if "request_log" in msg and "does not exist" in msg:
-            logger.warning("audit: 'request_log' table missing — run: kubeintellect db-init")
+            logger.warning(
+                "audit: 'request_log' table missing — run: kubeintellect db-init"
+            )
         else:
             logger.warning(f"audit: failed to write request_log row: {exc}")

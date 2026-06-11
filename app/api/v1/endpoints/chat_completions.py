@@ -14,6 +14,7 @@ Phase 2 additions:
 HITL side-channel fields (on the choices entry):
   "hitl_required": true, "action_id": "...", "risk_level": "...", "human_summary": "..."
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -51,7 +52,9 @@ class ChatCompletionRequest(BaseModel):
     messages: list[ChatMessage]
     stream: bool = True
     user: str = "default"
-    auto_approve: bool = False   # skip HITL gates for this request (testing / trusted sessions)
+    auto_approve: bool = (
+        False  # skip HITL gates for this request (testing / trusted sessions)
+    )
 
 
 # ── SSE chunk builders ────────────────────────────────────────────────────────
@@ -108,37 +111,49 @@ def _serialise_event(completion_id: str, event: dict) -> str | None:
     event_type = event.get("type")
 
     if event_type == "status":
-        return _make_ki_event_chunk(completion_id, {
-            "type": "status",
-            "phase": event["phase"],
-            "message": event["message"],
-        })
+        return _make_ki_event_chunk(
+            completion_id,
+            {
+                "type": "status",
+                "phase": event["phase"],
+                "message": event["message"],
+            },
+        )
 
     if event_type == "tool_call":
         command = event.get("command")
         message = f"Running: {command}" if command else f"Calling {event['tool']}"
-        return _make_ki_event_chunk(completion_id, {
-            "type": "tool_call",
-            "tool": event["tool"],
-            "message": message,
-        })
+        return _make_ki_event_chunk(
+            completion_id,
+            {
+                "type": "tool_call",
+                "tool": event["tool"],
+                "message": message,
+            },
+        )
 
     if event_type == "tool_result":
         # New in Phase 2 — kube_q ignores unknown ki_event types
-        return _make_ki_event_chunk(completion_id, {
-            "type": "tool_result",
-            "tool": event["tool"],
-            "output": event["output"],
-        })
+        return _make_ki_event_chunk(
+            completion_id,
+            {
+                "type": "tool_result",
+                "tool": event["tool"],
+                "output": event["output"],
+            },
+        )
 
     if event_type == "token":
         return _make_chunk(completion_id, event["content"])
 
     if event_type == "plan":
-        return _make_ki_event_chunk(completion_id, {
-            "type": "plan",
-            "steps": event["steps"],
-        })
+        return _make_ki_event_chunk(
+            completion_id,
+            {
+                "type": "plan",
+                "steps": event["steps"],
+            },
+        )
 
     if event_type == "hitl_request":
         action_id = event.get("action_id", str(uuid.uuid4()))
@@ -159,13 +174,21 @@ def _serialise_event(completion_id: str, event: dict) -> str | None:
             f"**Command:**\n```\n{command}\n```\n"
         )
         if stdin_yaml:
-            preview = stdin_yaml if len(stdin_yaml) <= 3_000 else stdin_yaml[:3_000] + "\n... [truncated]"
+            preview = (
+                stdin_yaml
+                if len(stdin_yaml) <= 3_000
+                else stdin_yaml[:3_000] + "\n... [truncated]"
+            )
             message += f"\n**YAML to apply:**\n```yaml\n{preview}\n```\n"
-        message += "\n**Type `yes` or `/approve` to proceed, or `no` / `/deny` to cancel.**"
+        message += (
+            "\n**Type `yes` or `/approve` to proceed, or `no` / `/deny` to cancel.**"
+        )
         return _make_chunk(completion_id, message, hitl_data=hitl_payload)
 
     if event_type == "error":
-        return _make_chunk(completion_id, f"\n\n**Error:** {event['error']}", finish_reason="stop")
+        return _make_chunk(
+            completion_id, f"\n\n**Error:** {event['error']}", finish_reason="stop"
+        )
 
     # FinalEvent (type == "final") is handled by the stream loop exit; skip it.
     return None
@@ -195,16 +218,18 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
     )
 
     # Fire-and-forget audit record — never blocks the response
-    asyncio.create_task(_audit_log(
-        request_id=req_id,
-        session_id=session_id,
-        user_id=user_id,
-        user_role=user_role,
-        path=str(request.url.path),
-        method=request.method,
-        status_code=200,
-        duration_ms=0.0,   # streaming; duration not meaningful here
-    ))
+    asyncio.create_task(
+        _audit_log(
+            request_id=req_id,
+            session_id=session_id,
+            user_id=user_id,
+            user_role=user_role,
+            path=str(request.url.path),
+            method=request.method,
+            status_code=200,
+            duration_ms=0.0,  # streaming; duration not meaningful here
+        )
+    )
 
     if not body.stream:
         raise HTTPException(status_code=422, detail="Only stream=true is supported")
@@ -236,7 +261,9 @@ async def _stream(
 
     # ── Start workflow as background task ─────────────────────────────────────
     task = asyncio.create_task(
-        run_session(user_message, session_id, user_id, user_role, auto_approve=auto_approve)
+        run_session(
+            user_message, session_id, user_id, user_role, auto_approve=auto_approve
+        )
     )
 
     try:

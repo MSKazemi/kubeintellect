@@ -18,6 +18,7 @@ AUTH_BACKEND modes:
            validated via HMAC-SHA256 so new keys are valid instantly without a restart.
            Key format: ki-ro-<base64url(email:exp_unix)>.<hmac_sha256_hex[:32]>
 """
+
 from __future__ import annotations
 
 import base64

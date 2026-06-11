@@ -9,6 +9,7 @@ Covers everything kubectl logs cannot:
 
 Output is capped at 6 000 chars to stay within LLM context budgets.
 """
+
 from __future__ import annotations
 
 import time
@@ -51,7 +52,9 @@ def query_loki(logql: str, limit: int = 100, since: str = "1h") -> str:
         Formatted log lines or metric values, capped at 6 000 characters.
     """
     if not settings.LOKI_URL:
-        return "Loki is not configured. Set LOKI_URL in ~/.kubeintellect/.env and restart."
+        return (
+            "Loki is not configured. Set LOKI_URL in ~/.kubeintellect/.env and restart."
+        )
 
     loki_url = settings.LOKI_URL.strip()
     if not loki_url.startswith(("http://", "https://")):
@@ -83,16 +86,32 @@ def query_loki(logql: str, limit: int = 100, since: str = "1h") -> str:
         return f"Loki error: {exc}"
 
     if len(output) > _OUTPUT_CAP:
-        output = output[:_OUTPUT_CAP] + "\n... [truncated — use a narrower query or shorter since]"
+        output = (
+            output[:_OUTPUT_CAP]
+            + "\n... [truncated — use a narrower query or shorter since]"
+        )
     return output
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
+
 def _is_metric_query(logql: str) -> bool:
     """Return True for LogQL metric expressions (start with an aggregation function)."""
     stripped = logql.strip().lower()
-    return any(stripped.startswith(fn) for fn in ("rate(", "count_over_time(", "sum(", "avg(", "max(", "min(", "bytes_rate(", "bytes_over_time("))
+    return any(
+        stripped.startswith(fn)
+        for fn in (
+            "rate(",
+            "count_over_time(",
+            "sum(",
+            "avg(",
+            "max(",
+            "min(",
+            "bytes_rate(",
+            "bytes_over_time(",
+        )
+    )
 
 
 def _parse_duration_ns(since: str) -> int:
@@ -143,7 +162,9 @@ def _log_query(
             lines.append(f"  {ts}  {log_line}")
             total += 1
             if total >= _LOG_LINE_CAP:
-                lines.append(f"  ... (capped at {_LOG_LINE_CAP} lines — use a shorter since or lower limit)")
+                lines.append(
+                    f"  ... (capped at {_LOG_LINE_CAP} lines — use a shorter since or lower limit)"
+                )
                 return "\n".join(lines)
 
     return "\n".join(lines)
@@ -183,7 +204,7 @@ def _range_query(
         if values:
             lines.append(
                 f"  [{labels}]  min={min(values):.4f}  "
-                f"avg={sum(values)/len(values):.4f}  max={max(values):.4f}"
+                f"avg={sum(values) / len(values):.4f}  max={max(values):.4f}"
             )
     return "\n".join(lines)
 
@@ -191,5 +212,6 @@ def _range_query(
 def _fmt_ts(ts_ns: int) -> str:
     """Format a nanosecond timestamp as HH:MM:SS."""
     import datetime
+
     dt = datetime.datetime.fromtimestamp(ts_ns / 1e9, tz=datetime.timezone.utc)
     return dt.strftime("%H:%M:%S")

@@ -7,6 +7,7 @@ memory/playbook/snapshot tools land in M3.
 Provides init_graph / close_graph / get_graph as a singleton lifecycle
 that `app/main.py` boots at startup and tears down at shutdown.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -34,9 +35,12 @@ def build_agent(checkpointer):
     return create_deep_agent(
         model=get_coordinator_llm(),
         tools=[
-            run_kubectl, query_prometheus, query_loki,
+            run_kubectl,
+            query_prometheus,
+            query_loki,
             refresh_snapshot,
-            read_memory, write_memory,
+            read_memory,
+            write_memory,
             lookup_playbook,
         ],
         system_prompt=MAIN_INSTRUCTIONS,
@@ -49,8 +53,8 @@ def build_agent(checkpointer):
 # ── Compiled-graph singleton ─────────────────────────────────────────────────
 
 _graph = None
-_checkpointer_cm = None   # context manager (holds the connection)
-_checkpointer = None      # AsyncPostgresSaver / AsyncSqliteSaver instance
+_checkpointer_cm = None  # context manager (holds the connection)
+_checkpointer = None  # AsyncPostgresSaver / AsyncSqliteSaver instance
 _graph_lock = asyncio.Lock()
 
 
@@ -63,14 +67,20 @@ async def init_graph() -> None:
         if settings.USE_SQLITE:
             from pathlib import Path
             from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
             db_path = str(Path(settings.SQLITE_PATH).expanduser())
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Building DeepAgents workflow with AsyncSqliteSaver ({db_path})")
+            logger.info(
+                f"Building DeepAgents workflow with AsyncSqliteSaver ({db_path})"
+            )
             _checkpointer_cm = AsyncSqliteSaver.from_conn_string(db_path)
         else:
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
             logger.info("Building DeepAgents workflow with AsyncPostgresSaver")
-            _checkpointer_cm = AsyncPostgresSaver.from_conn_string(settings.POSTGRES_DSN)
+            _checkpointer_cm = AsyncPostgresSaver.from_conn_string(
+                settings.POSTGRES_DSN
+            )
         _checkpointer = await _checkpointer_cm.__aenter__()
         await _checkpointer.setup()
         _graph = build_agent(_checkpointer)

@@ -32,7 +32,9 @@ class Settings(BaseSettings):
     # Azure OpenAI
     AZURE_OPENAI_API_KEY: Optional[str] = None
     AZURE_OPENAI_ENDPOINT: Optional[str] = None
-    AZURE_OPENAI_API_VERSION: str = "2024-10-01-preview"  # enables automatic prefix caching
+    AZURE_OPENAI_API_VERSION: str = (
+        "2024-10-01-preview"  # enables automatic prefix caching
+    )
     AZURE_COORDINATOR_DEPLOYMENT: str = "gpt-4o"
     AZURE_SUBAGENT_DEPLOYMENT: str = "gpt-4o-mini"
 
@@ -40,6 +42,9 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_COORDINATOR_MODEL: str = "gpt-4o"
     OPENAI_SUBAGENT_MODEL: str = "gpt-4o-mini"
+    # Optional override for any OpenAI-compatible endpoint (e.g. a self-hosted
+    # Ollama at http://localhost:11434/v1, vLLM, LM Studio). Empty = real OpenAI.
+    OPENAI_BASE_URL: str = ""
 
     # ── PostgreSQL ────────────────────────────────────────────────────────────
     # When DATABASE_URL is set (e.g. external managed DB), it takes precedence
@@ -100,9 +105,7 @@ class Settings(BaseSettings):
     @property
     def kubectl_blocked_resources(self) -> frozenset[str]:
         return frozenset(
-            r.strip()
-            for r in self.KUBECTL_BLOCKED_RESOURCES.split(",")
-            if r.strip()
+            r.strip() for r in self.KUBECTL_BLOCKED_RESOURCES.split(",") if r.strip()
         )
 
     # ── Observability ─────────────────────────────────────────────────────────
@@ -154,23 +157,39 @@ class Settings(BaseSettings):
 
     @property
     def superadmin_keys(self) -> set[str]:
-        return {k.strip() for k in self.KUBEINTELLECT_SUPERADMIN_KEYS.split(",") if k.strip()}
+        return {
+            k.strip()
+            for k in self.KUBEINTELLECT_SUPERADMIN_KEYS.split(",")
+            if k.strip()
+        }
 
     @property
     def admin_keys(self) -> set[str]:
-        return {k.strip() for k in self.KUBEINTELLECT_ADMIN_KEYS.split(",") if k.strip()}
+        return {
+            k.strip() for k in self.KUBEINTELLECT_ADMIN_KEYS.split(",") if k.strip()
+        }
 
     @property
     def operator_keys(self) -> set[str]:
-        return {k.strip() for k in self.KUBEINTELLECT_OPERATOR_KEYS.split(",") if k.strip()}
+        return {
+            k.strip() for k in self.KUBEINTELLECT_OPERATOR_KEYS.split(",") if k.strip()
+        }
 
     @property
     def readonly_keys(self) -> set[str]:
-        return {k.strip() for k in self.KUBEINTELLECT_READONLY_KEYS.split(",") if k.strip()}
+        return {
+            k.strip() for k in self.KUBEINTELLECT_READONLY_KEYS.split(",") if k.strip()
+        }
 
     @property
     def auth_enabled(self) -> bool:
-        return bool(self.superadmin_keys or self.admin_keys or self.operator_keys or self.readonly_keys or self.DEMO_KEY_HMAC_SECRET)
+        return bool(
+            self.superadmin_keys
+            or self.admin_keys
+            or self.operator_keys
+            or self.readonly_keys
+            or self.DEMO_KEY_HMAC_SECRET
+        )
 
     @model_validator(mode="after")
     def _validate_provider(self) -> Settings:
@@ -182,10 +201,12 @@ class Settings(BaseSettings):
             )
         if self.LLM_PROVIDER == "azure":
             missing = [
-                k for k, v in {
+                k
+                for k, v in {
                     "AZURE_OPENAI_API_KEY": self.AZURE_OPENAI_API_KEY,
                     "AZURE_OPENAI_ENDPOINT": self.AZURE_OPENAI_ENDPOINT,
-                }.items() if not v
+                }.items()
+                if not v
             ]
             if missing:
                 logging.warning(
@@ -204,6 +225,7 @@ class Settings(BaseSettings):
 def _load_settings() -> "Settings":
     """Load Settings, converting Pydantic validation errors into readable messages."""
     import sys as _sys
+
     try:
         return Settings()
     except Exception as exc:

@@ -21,18 +21,40 @@ class TestShellInjectionGuard:
 
     @pytest.mark.parametrize("bad_cmd", [
         "kubectl get pods; rm -rf /",
-        "kubectl get pods | cat /etc/passwd",
         "kubectl get pods && echo pwned",
         "kubectl get pods `id`",
         "kubectl get pods $(whoami)",
-        "kubectl get pods > /tmp/out",
-        "kubectl get pods < /dev/null",
         "kubectl get pods \\ evil",
     ])
     def test_rejects_shell_metacharacters(self, bad_cmd):
+        # `;`, `&`, backtick, `$`, and `\` are always rejected — there is no safe
+        # use for them and shell=False would pass them through as literal argv.
         with patch("subprocess.run"):
             with pytest.raises(Exception, match="disallowed shell characters"):
                 self._call(bad_cmd)
+
+    def test_non_grep_pipe_is_rejected(self):
+        # `|` is supported only for grep emulation (handled in Python, no shell).
+        # Any other piped command is rejected so the LLM can't smuggle execution.
+        proc = MagicMock(); proc.stdout = "pod list"; proc.stderr = ""; proc.returncode = 0
+        with patch("subprocess.run", return_value=proc):
+            with pytest.raises(Exception, match="not supported"):
+                self._call("kubectl get pods | cat /etc/passwd")
+
+    @pytest.mark.parametrize("redirect_cmd", [
+        "kubectl get pods > /tmp/out",
+        "kubectl get pods < /dev/null",
+    ])
+    def test_redirection_chars_are_passed_as_literal_args(self, redirect_cmd):
+        # `<` / `>` are harmless under shell=False — they become literal argv that
+        # kubectl rejects itself. They are intentionally NOT in the metachar guard
+        # so that --from-literal values containing HTML/templates are allowed.
+        proc = MagicMock(); proc.stdout = "error: unknown flag"; proc.stderr = ""
+        proc.returncode = 1
+        with patch("subprocess.run", return_value=proc) as mock_run:
+            self._call(redirect_cmd)
+        # The command reached subprocess (was not rejected by the shell guard).
+        mock_run.assert_called_once()
 
     def test_accepts_clean_command(self):
         proc = MagicMock()
@@ -77,13 +99,18 @@ class TestYamlValidation:
         result = self._apply(yaml)
         assert "applied" in result
 
-    def test_invalid_yaml_raises(self):
-        with pytest.raises(Exception, match="Invalid YAML"):
-            self._apply("{ not: valid: yaml: at all")
+    def test_invalid_yaml_warns_but_proceeds(self):
+        # v3 no longer hard-fails on YAML that Python's parser dislikes — Python is
+        # stricter than kubectl in some cases (flow mappings, vendor annotations).
+        # The tool logs a warning and lets kubectl do the authoritative validation.
+        result = self._apply("{ not: valid: yaml: at all")
+        assert "applied" in result
 
-    def test_empty_yaml_raises(self):
-        with pytest.raises(Exception, match="empty or null"):
-            self._apply("# just a comment\n")
+    def test_empty_yaml_warns_but_proceeds(self):
+        # Same policy: an empty/comment-only document is passed through to kubectl,
+        # which returns its own "error: no objects passed to apply" message.
+        result = self._apply("# just a comment\n")
+        assert "applied" in result
 
     def test_html_content_in_yaml_is_allowed(self):
         """HTML in a ConfigMap value must not be rejected — the old bug."""
@@ -189,26 +216,26 @@ class TestProtectedAccess:
         # 'sa' is not in the blocklist (kubectl expands it) — just verify no crash
         assert resource == "sa"
 
-    # ── Blocked namespaces ────────────────────────────────────────────────────
+    # ── Protected namespaces: reads allowed, writes blocked ───────────────────
+    # v3 policy: the agent must observe its own pod and the observability stack to
+    # diagnose issues, so read-only verbs (get/describe/logs/top) are permitted on
+    # protected namespaces. Write verbs remain blocked (see write tests below).
 
-    def test_get_pods_in_kubeintellect_ns_is_blocked(self):
-        result = self._call("kubectl get pods -n kubeintellect")
-        assert "[Protected]" in result
+    @pytest.mark.parametrize("ns", ["kubeintellect", "kube-system", "monitoring", "ingress-nginx"])
+    def test_read_on_protected_ns_is_allowed(self, ns):
+        result = self._call(f"kubectl get pods -n {ns}")
+        assert "[Protected]" not in result
 
-    def test_get_pods_in_kube_system_is_blocked(self):
-        result = self._call("kubectl get pods -n kube-system")
-        assert "[Protected]" in result
-
-    def test_get_pods_in_monitoring_is_blocked(self):
-        result = self._call("kubectl get pods -n monitoring")
-        assert "[Protected]" in result
-
-    def test_get_pods_in_ingress_nginx_is_blocked(self):
-        result = self._call("kubectl get pods -n ingress-nginx")
-        assert "[Protected]" in result
-
-    def test_namespace_long_flag_is_blocked(self):
+    def test_read_with_namespace_long_flag_is_allowed(self):
         result = self._call("kubectl get pods --namespace=kubeintellect")
+        assert "[Protected]" not in result
+
+    def test_write_on_protected_ns_is_blocked(self):
+        result = self._call("kubectl delete pod foo -n kube-system")
+        assert "[Protected]" in result
+
+    def test_scale_on_protected_ns_is_blocked(self):
+        result = self._call("kubectl scale deployment app --replicas=0 -n monitoring")
         assert "[Protected]" in result
 
     # ── Allowed commands still pass through ───────────────────────────────────
@@ -228,14 +255,15 @@ class TestProtectedAccess:
             result = run_kubectl.invoke({"command": "kubectl get deployments -n production"})
         assert "[Protected]" not in result
 
-    def test_logs_do_not_trigger_blocklist(self):
-        """kubectl logs has no resource-type argument — must not be blocked."""
-        proc = MagicMock(); proc.stdout = "log output"; proc.stderr = ""
+    def test_logs_on_protected_ns_are_allowed(self):
+        """kubectl logs is read-only — allowed even on protected namespaces so the
+        agent can read its own and the observability stack's logs to diagnose."""
+        proc = MagicMock(); proc.stdout = "log output"; proc.stderr = ""; proc.returncode = 0
         with patch("subprocess.run", return_value=proc):
             from app.tools.kubectl_tool import run_kubectl
             result = run_kubectl.invoke({"command": "kubectl logs my-pod -n kubeintellect"})
-        # namespace check still fires for logs (has -n flag)
-        assert "[Protected]" in result  # blocked because namespace is kubeintellect
+        assert "[Protected]" not in result
+        assert "log output" in result
 
     # ── Unit tests for helpers ────────────────────────────────────────────────
 
@@ -269,9 +297,9 @@ class TestProtectedAccess:
 class TestOutputCap:
     def test_long_output_is_truncated(self):
         big = "x" * 10_000
-        proc = MagicMock(); proc.stdout = big; proc.stderr = ""
+        proc = MagicMock(); proc.stdout = big; proc.stderr = ""; proc.returncode = 0
         with patch("subprocess.run", return_value=proc):
             from app.tools.kubectl_tool import run_kubectl
             result = run_kubectl.invoke({"command": "kubectl get pods"})
         assert len(result) < 9_000
-        assert "truncated" in result
+        assert "truncated" in result.lower()

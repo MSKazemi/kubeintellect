@@ -1,4 +1,5 @@
 """GET /v1/events/replay/{session_id} — replay stored events for debugging."""
+
 from __future__ import annotations
 
 import json

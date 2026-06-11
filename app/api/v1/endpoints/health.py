@@ -1,4 +1,5 @@
 """GET /healthz — liveness probe."""
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 

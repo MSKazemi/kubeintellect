@@ -10,6 +10,11 @@ The KubeIntellect coordinator implements five additive behaviors that shape how
 it investigates Kubernetes issues. Each is feature-flagged in
 [Configuration → Agent behavior flags](configuration.md#agent-behavior-flags).
 
+These behaviors live in the **coordinator** of the v3 DeepAgents topology — the
+same agent that dispatches the five specialist subagents and synthesises their
+findings. For how the coordinator, subagents, snapshot, and streaming fit
+together, see [Architecture](architecture.md).
+
 | Behavior | Default |
 |----------|---------|
 | [kubectl error interpreter](#kubectl-error-interpreter) | on |

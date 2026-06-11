@@ -12,6 +12,7 @@ Two entry points share `_collect_snapshot()`:
 Both routes use the same markdown shape (front-matter + pod table + warning
 events block) and the same FileData wrapper as the framework's write_file.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -126,11 +127,16 @@ async def _collect_snapshot() -> tuple[str, dict]:
     """Run both kubectl probes in parallel and return (markdown, front_matter)."""
     pods_out, events_out = await asyncio.gather(
         asyncio.to_thread(_run_kubectl_snapshot, ["get", "pods", "--all-namespaces"]),
-        asyncio.to_thread(_run_kubectl_snapshot, [
-            "get", "events", "--all-namespaces",
-            "--sort-by=.lastTimestamp",
-            "--field-selector=type=Warning",
-        ]),
+        asyncio.to_thread(
+            _run_kubectl_snapshot,
+            [
+                "get",
+                "events",
+                "--all-namespaces",
+                "--sort-by=.lastTimestamp",
+                "--field-selector=type=Warning",
+            ],
+        ),
     )
     return _build_snapshot_markdown(pods_out, events_out)
 
@@ -154,10 +160,14 @@ async def refresh_snapshot(tool_call_id: Annotated[str, InjectedToolCallId]) -> 
         f"has_issues={fm['has_issues']}, has_warnings={fm['has_warnings']}"
     )
     logger.debug(f"refresh_snapshot: {summary}")
-    return Command(update={
-        "files": {SNAPSHOT_PATH: create_file_data(content)},
-        "messages": [{"role": "tool", "content": summary, "tool_call_id": tool_call_id}],
-    })
+    return Command(
+        update={
+            "files": {SNAPSHOT_PATH: create_file_data(content)},
+            "messages": [
+                {"role": "tool", "content": summary, "tool_call_id": tool_call_id}
+            ],
+        }
+    )
 
 
 async def seed_snapshot_state(graph, config: dict) -> dict:

@@ -15,6 +15,7 @@ Schema (one .yaml file per playbook):
       The pod's container is crashing. Likely cause is <CAUSE>; suggested
       fix: <ACTION>.
 """
+
 from __future__ import annotations
 
 import re
