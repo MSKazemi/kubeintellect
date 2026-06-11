@@ -100,6 +100,11 @@ nav:
   - Home: index.md
   - Quickstart: quickstart.md
 
+  - Use:
+    - What you can ask: capabilities.md
+    - CLI Reference: cli-reference.md
+    - Troubleshooting: troubleshooting.md
+
   - Install:
     - No cluster (quick try): install/no-cluster.md
     - Existing cluster: install/existing-cluster.md
@@ -117,6 +122,12 @@ nav:
     - Agent Behaviors: agent-behaviors.md
     - Reflexion Subsystem: reflexion.md
     - Security: security.md
+    - API Reference: api-reference.md
+    - Glossary: glossary.md
+
+  - Operations:
+    - Operations Guide: operations.md
+    - Evaluation Harness: evaluation.md
 
   - KubeIntellect v1 (Legacy):
     - Overview: v1/index.md

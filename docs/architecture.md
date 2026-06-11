@@ -99,7 +99,7 @@ Two modes, same node:
 **Decision mode** (no findings yet):
 - Builds system prompt from: `_COORDINATOR_SYSTEM` + optional `memory_context` + `cluster_snapshot`.
 - Trims session history to last `_MAX_SESSION_MESSAGES = 20` messages (prevents Azure 400 errors from context overflow).
-- Calls `create_react_agent` (LangGraph prebuilt) with 3 tools: `run_kubectl`, `query_prometheus`, `query_loki`.
+- Calls `create_react_agent` (LangGraph prebuilt) with 4 tools: `run_kubectl`, `run_helm`, `query_prometheus`, `query_loki`.
 - Instructs LLM to emit parallel tool calls in one response for independent operations.
 - Parses response for sentinels: `RCA_REQUIRED` or `TARGETED: namespace=X, pod=Y, issue=Z`.
 - Applies `_trim_tool_messages()` to all new `ToolMessage` objects before writing to state (caps at 2,000 chars per message).
@@ -170,6 +170,12 @@ All tools live in `app/tools/`. Registered in `app/tools/registry.py` as `ALL_TO
 - **Namespace block**: `KUBECTL_BLOCKED_NAMESPACES` env var (default: kubeintellect, monitoring, kube-system, etc.)
 - **Resource block**: `KUBECTL_BLOCKED_RESOURCES` env var (default: secret, serviceaccount)
 - **HITL gate**: destructive commands trigger `interrupt()` → `HITLRequired` → pauses graph → resumes via `Command(resume=bool)`
+
+### `run_helm`
+
+- Read-only Helm inspection: `list`, `get`, `status`, `history`, `env`, `version`, `show`, `search`.
+- Write verbs (`install`, `upgrade`, `rollback`, `uninstall`, `repo`, …) are blocked — KubeIntellect never mutates releases through Helm.
+- Output is capped at 6,000 characters.
 
 ### `query_prometheus`
 
@@ -420,7 +426,7 @@ app/
 │   │   ├── coordinator.py        — LLM decision + synthesis, tool trimmer, reflexion writes
 │   │   ├── memory_loader.py      — load pinned cluster context + failure-pattern hints
 │   │   └── subagent.py           — 4 specialist subagent runners
-│   ├── playbooks/                — YAML playbook library + loader (10 playbooks)
+│   ├── playbooks/                — YAML playbook library + loader (18 playbooks)
 │   ├── state.py                  — AgentState, SubagentInput, AgentFinding, RCAResult
 │   ├── workflow.py               — LangGraph graph, targeted_investigator, route_coordinator
 │   └── hitl.py                   — HITL approval/denial detection
