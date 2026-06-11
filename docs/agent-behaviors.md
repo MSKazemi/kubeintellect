@@ -29,7 +29,7 @@ START → memory_loader → context_fetcher → coordinator
 |---|---|
 | `memory_loader` | Loads pinned context from Postgres (user prefs, failure hints, recent RCA, session notes). SQLite mode skips this silently. |
 | `context_fetcher` | Runs `kubectl get pods --all-namespaces` + `get events --field-selector=type=Warning` in parallel. Sets `snapshot_has_issues`, `snapshot_has_warnings`, `snapshot_pod_count`, `snapshot_built_at`, `cluster_id`, and matches playbooks against the snapshot. |
-| `coordinator` | LLM with the three tools. Decides: direct answer, `TARGETED`, or `RCA_REQUIRED`. On synthesis turns, merges subagent findings into one `RCAResult`. |
+| `coordinator` | LLM with the four tools (`run_kubectl`, `run_helm`, `query_prometheus`, `query_loki`). Decides: direct answer, `TARGETED`, or `RCA_REQUIRED`. On synthesis turns, merges subagent findings into one `RCAResult`. |
 | `targeted_investigator` | Runs three parallel `kubectl` reads (`describe pod`, `get events`, `get deployments`) for a single failing resource and appends them to the snapshot, then routes back to the coordinator for the final answer. |
 | `subagent_executor` (× 4) | Domain specialist subagents — pod, metrics, logs, events. Each is a ReAct loop over the same tools, capped at 3–5 tool calls, returning a typed `AgentFinding`. |
 
@@ -123,18 +123,34 @@ detects a matching pattern in the snapshot, the coordinator's system prompt
 includes the playbook(s) inline — guiding it to follow proven steps before
 improvising.
 
-**Playbooks shipped (10):**
+**Playbooks shipped (18):**
+
+*Pod / container lifecycle*
 
 - `CrashLoopBackOff`
 - `OOMKilled`
 - `ImagePullBackOff` / `ErrImagePull`
+- `CreateContainerConfigError` (missing ConfigMap / Secret refs)
+- `ContainerCreatingStuck` (volume / CSI)
+- `InitContainerFailing`
+- `ReadinessProbeFailing` (also covers liveness)
+- `CommandHardcodedFailure` (hardcoded `exit 1` / error in container command)
+- `Evicted` (node-pressure eviction)
+- `TerminatingStuck` (finalizers)
+
+*Scheduling / capacity*
+
 - `PendingInsufficientResources`
 - `PendingSchedulingConstraints` (taints / affinity / nodeSelector)
-- `CreateContainerConfigError`
-- `ContainerCreatingStuck` (volume / CSI)
-- `TerminatingStuck` (finalizers)
-- `ReadinessProbeFailing` (also covers liveness)
+- `QuotaExceeded` (ResourceQuota)
+- `NodeNotReady`
+
+*Workloads, networking & admission*
+
+- `JobBackoffLimitExceeded`
+- `ServiceNoEndpoints` (selector / label drift)
 - `ServiceUnreachable`
+- `WebhookAdmissionRejected`
 
 **Schema** (drop a YAML file into `app/agent/playbooks/`):
 

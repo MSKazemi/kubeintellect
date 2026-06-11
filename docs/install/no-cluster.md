@@ -74,7 +74,7 @@ kq
 
 !!! note "Read-only access"
     The demo cluster is shared. Destructive operations (delete, restart, scale) are disabled.
-    For full access use [Option B](#option-b--local-cluster) or
+    For full access use [Option B](#option-b-local-cluster) or
     [connect to your own cluster](existing-cluster.md).
 
 ---
