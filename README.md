@@ -9,7 +9,7 @@
   [![Docs](https://img.shields.io/badge/docs-mskazemi.github.io-0075C4?logo=materialformkdocs&logoColor=white)](https://mskazemi.github.io/kubeintellect/)
   [![GitHub Stars](https://img.shields.io/github/stars/MSKazemi/kubeintellect?style=social)](https://github.com/MSKazemi/kubeintellect)
 
-  **[Website](https://kubeintellect.com/)** · **[Live Demo](https://kubeintellect.com/demo)** · **[Docs](https://mskazemi.github.io/kubeintellect/)** · **[v1 (LibreChat backend)](https://github.com/MSKazemi/kubeintellect/tree/v1-legacy)**
+  **[Website](https://kubeintellect.com/)** · **[Live Demo](https://kubeintellect.com/demo)** · **[Docs](https://mskazemi.github.io/kubeintellect/)** · **[v1 (legacy)](https://github.com/MSKazemi/kubeintellect/tree/v1-legacy)**
 </div>
 
 Ask KubeIntellect a question in plain English — it queries kubectl, Prometheus, and Loki live, then answers. Destructive operations pause for your explicit approval before anything runs.
