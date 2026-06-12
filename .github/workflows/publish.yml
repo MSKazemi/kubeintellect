@@ -31,6 +31,6 @@ jobs:
 
       - name: Upload to PyPI
         if: ${{ !inputs.dry_run }}
-        uses: pypa/gh-action-pypi-publish@6733eb7d741f0b11ec6a39b58540dab7590f9b7d  # v1.14.0
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b  # v1.14.0
         with:
           skip-existing: true   # re-running on an already-published version is a no-op, not a failure
