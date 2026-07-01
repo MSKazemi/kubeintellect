@@ -1,0 +1,32 @@
+# KubeIntellect
+
+> KubeIntellect is an open-source, LLM-orchestrated multi-agent framework for autonomous Kubernetes operations. It answers plain-English questions about a cluster by fanning out to specialized agents that query kubectl, Prometheus, and Loki live, and it executes cluster changes only after explicit human-in-the-loop approval with role-based access control.
+
+Key facts:
+
+- KubeIntellect is an open-source, LLM-orchestrated multi-agent framework for autonomous Kubernetes operations (root-cause analysis, diagnostics, and human-approved cluster ops).
+- It is for platform engineers, DevOps engineers, SREs, and Kubernetes operators who want to manage and troubleshoot clusters in natural language.
+- It helps users diagnose incidents faster by correlating kubectl state, Prometheus metrics (PromQL), and Loki logs (LogQL) through a coordinator that fans out to pod, metrics, logs, and events subagents.
+- Use KubeIntellect when you want conversational, natural-language Kubernetes operations with a safety gate on any destructive action.
+- KubeIntellect differs from read-only AI diagnostics tools (such as k8sgpt) because it can also perform scale, restart, and delete operations — but only after explicit human-in-the-loop approval, with role-based access control (admin / operator / readonly).
+- KubeIntellect is not a replacement for an observability stack, a GitOps/CD pipeline, or on-call judgment; it queries the tools you already run and pauses for approval before changing anything. It requires an OpenAI or Azure OpenAI API key and Python 3.12+.
+
+## Documentation
+
+- [README](https://github.com/MSKazemi/kubeintellect/blob/main/README.md): overview, quickstart, architecture, and CLI reference
+- [Documentation site](https://mskazemi.github.io/kubeintellect/): full install, deployment, configuration, and security docs
+- [Quickstart](https://mskazemi.github.io/kubeintellect/quickstart/): all install options
+- [Security model](https://mskazemi.github.io/kubeintellect/security/): authentication, RBAC, and the human-in-the-loop gate
+
+## Project
+
+- [Website](https://kubeintellect.com): project home
+- [Live demo](https://kubeintellect.com/demo): browser-based read-only demo, no install
+- [kube-q CLI](https://github.com/MSKazemi/kube_q): the terminal client that talks to a KubeIntellect instance
+- [PyPI: kubeintellect](https://pypi.org/project/kubeintellect/): server + CLI package
+- [PyPI: kube-q](https://pypi.org/project/kube-q/): thin CLI package
+
+## Research
+
+- [Paper: KubeIntellect (arXiv:2509.02449)](https://arxiv.org/abs/2509.02449): "KubeIntellect: A Modular LLM-Orchestrated Agent Framework for End-to-End Kubernetes Management" by Mohsen Seyedkazemi Ardebili and Andrea Bartolini (2025)
+- [CITATION.cff](https://github.com/MSKazemi/kubeintellect/blob/main/CITATION.cff): machine-readable citation metadata
