@@ -1,80 +1,39 @@
 cff-version: 1.2.0
-message: "If you use GRAAFE in your research, please cite the paper below."
-title: "GRAAFE: GRaph Anomaly Anticipation Framework for Exascale HPC systems"
-abstract: >-
-  GRAAFE is a graph neural network (GNN) framework for anticipating compute-node
-  anomalies in exascale-class high-performance computing (HPC) systems. It trains
-  a GNN on historical telemetry from the CINECA Marconi100 supercomputer to predict
-  the probability of node anomalies within a future time window, and deploys the
-  trained model online through a Kubernetes/Kubeflow MLOps pipeline connected to the
-  ExaMon monitoring system.
+message: "If you use KubeIntellect in your research, please cite the paper below."
+title: "KubeIntellect"
+abstract: "An open-source, LLM-orchestrated multi-agent framework for autonomous Kubernetes operations: natural-language root-cause analysis, live diagnostics across kubectl, Prometheus, and Loki, and human-in-the-loop-gated cluster operations."
 type: software
 authors:
-  - family-names: Molan
-    given-names: Martin
-    orcid: "https://orcid.org/0000-0002-6805-2232"
   - family-names: "Seyedkazemi Ardebili"
-    given-names: Mohsen
-    orcid: "https://orcid.org/0000-0002-1166-6559"
-  - family-names: Khan
-    given-names: "Junaid Ahmed"
-    orcid: "https://orcid.org/0009-0007-6131-7473"
-  - family-names: Beneventi
-    given-names: Francesco
-    orcid: "https://orcid.org/0009-0009-5454-4197"
-  - family-names: Cesarini
-    given-names: Daniele
-    orcid: "https://orcid.org/0000-0003-1294-372X"
-  - family-names: Borghesi
-    given-names: Andrea
-    orcid: "https://orcid.org/0000-0002-2298-2944"
-  - family-names: Bartolini
-    given-names: Andrea
-license: Apache-2.0
-repository-code: "https://github.com/MSKazemi/GRAAFE"
-url: "https://doi.org/10.1016/j.future.2024.06.032"
+    given-names: "Mohsen"
+  - family-names: "Bartolini"
+    given-names: "Andrea"
+license: MIT
+repository-code: "https://github.com/MSKazemi/kubeintellect"
+url: "https://kubeintellect.com"
 keywords:
-  - graph neural networks
-  - anomaly detection
-  - anomaly anticipation
-  - high-performance computing
-  - exascale
-  - MLOps
-  - Kubernetes
-  - Kubeflow
-  - predictive maintenance
+  - kubernetes
+  - llm
+  - multi-agent-systems
+  - ai-agents
+  - devops
+  - platform-engineering
+  - observability
+  - root-cause-analysis
+  - aiops
+  - langgraph
 preferred-citation:
   type: article
-  title: "GRAAFE: GRaph Anomaly Anticipation Framework for Exascale HPC systems"
+  title: "KubeIntellect: A Modular LLM-Orchestrated Agent Framework for End-to-End Kubernetes Management"
   authors:
-    - family-names: Molan
-      given-names: Martin
-      orcid: "https://orcid.org/0000-0002-6805-2232"
     - family-names: "Seyedkazemi Ardebili"
-      given-names: Mohsen
-      orcid: "https://orcid.org/0000-0002-1166-6559"
-    - family-names: Khan
-      given-names: "Junaid Ahmed"
-      orcid: "https://orcid.org/0009-0007-6131-7473"
-    - family-names: Beneventi
-      given-names: Francesco
-      orcid: "https://orcid.org/0009-0009-5454-4197"
-    - family-names: Cesarini
-      given-names: Daniele
-      orcid: "https://orcid.org/0000-0003-1294-372X"
-    - family-names: Borghesi
-      given-names: Andrea
-      orcid: "https://orcid.org/0000-0002-2298-2944"
-    - family-names: Bartolini
-      given-names: Andrea
-  journal: "Future Generation Computer Systems"
-  publisher:
-    name: Elsevier
-  volume: 160
-  start: 644
-  end: 653
-  year: 2024
-  month: 11
-  issn: "0167-739X"
-  doi: "10.1016/j.future.2024.06.032"
-  url: "https://doi.org/10.1016/j.future.2024.06.032"
+      given-names: "Mohsen"
+    - family-names: "Bartolini"
+      given-names: "Andrea"
+  year: 2025
+  journal: "arXiv preprint"
+  identifiers:
+    - type: other
+      value: "arXiv:2509.02449"
+      description: "arXiv identifier"
+  url: "https://arxiv.org/abs/2509.02449"
