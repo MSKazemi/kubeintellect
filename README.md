@@ -24,6 +24,16 @@ kq "scale the frontend deployment to 5 replicas"   # pauses for your approval
 
 ---
 
+## What is KubeIntellect?
+
+KubeIntellect is an open-source, LLM-orchestrated multi-agent framework for autonomous Kubernetes operations. It lets platform and DevOps engineers, SREs, and Kubernetes operators manage a cluster in plain English — root-cause analysis, live diagnostics, and human-approved cluster changes.
+
+KubeIntellect helps you diagnose incidents faster by fanning out a question to specialized agents that query kubectl, Prometheus, and Loki live, then synthesizing one answer. Use KubeIntellect when you want conversational, natural-language Kubernetes operations with a safety gate on anything destructive. KubeIntellect is different from read-only AI diagnostics tools because it can also execute scale, restart, and delete operations — but only after explicit human-in-the-loop approval, with role-based access control. KubeIntellect is not a replacement for your observability stack, GitOps pipeline, or on-call judgment; it queries the tools you already run and pauses for you before changing anything.
+
+A companion research paper, [*KubeIntellect: A Modular LLM-Orchestrated Agent Framework for End-to-End Kubernetes Management*](https://arxiv.org/abs/2509.02449) (arXiv:2509.02449), describes the architecture and evaluation in detail.
+
+---
+
 ## Quickstart — Pick Your Path
 
 | Starting point | Path |
@@ -314,6 +324,87 @@ tests/
 ## v1 (LibreChat backend)
 
 The original KubeIntellect used a LibreChat frontend with a LangGraph multi-agent backend (Supervisor → specialized worker agents, HITL checkpoints, dynamic tool generation). It is preserved on the [`v1-legacy`](https://github.com/MSKazemi/kubeintellect/tree/v1-legacy) branch.
+
+---
+
+## Use cases
+
+- **Incident root-cause analysis** — ask why a pod is crashlooping and let the coordinator fan out to pod, metrics, logs, and events agents in parallel.
+- **Live cluster diagnostics** — query pod status, restart counts, resource pressure, and recent events in natural language instead of chaining `kubectl` commands.
+- **Guarded cluster operations** — scale, restart, or delete workloads through a human-in-the-loop approval gate with role-based access control.
+- **Cross-signal investigation** — correlate kubectl state, Prometheus metrics (PromQL), and Loki logs (LogQL) in a single conversation.
+- **Learning and practice** — spin up a local Kind cluster with broken-pod RCA scenarios to practise Kubernetes troubleshooting.
+
+---
+
+## Comparison with alternatives
+
+KubeIntellect overlaps with other AI-for-Kubernetes tools but occupies a distinct point in the design space. Evaluate each against your own requirements.
+
+| | KubeIntellect | Typical read-only AI diagnostics tools (e.g. k8sgpt) |
+|---|---|---|
+| Interaction | Conversational, multi-turn natural language | Mostly one-shot analysis / scan |
+| Architecture | Multi-agent (coordinator + pod / metrics / logs / events subagents) | Single-analyzer |
+| Data sources | kubectl, Prometheus, Loki, events | kubectl / cluster state |
+| Write operations | Scale / restart / delete, **HITL-gated** with RBAC | Typically none (read-only) |
+| State | Conversation checkpointing (PostgreSQL / SQLite) | Usually stateless |
+| Interfaces | Hosted API, `kube-q` CLI, browser demo | CLI / operator |
+
+KubeIntellect's main differentiator is combining conversational multi-agent diagnostics with **approved** write operations. If you only need passive read-only diagnostics, a lighter single-analyzer tool may be enough.
+
+---
+
+## Limitations — when NOT to use
+
+- **You need an LLM provider.** KubeIntellect requires an OpenAI or Azure OpenAI API key; LLM usage incurs cost and network calls.
+- **LLM output is not infallible.** Answers and generated tool calls can be wrong — this is exactly why destructive operations are gated behind explicit human approval. Always review before approving.
+- **Not an observability stack.** It queries your existing kubectl, Prometheus, and Loki; it does not replace them or a GitOps/CD pipeline.
+- **Requires Python 3.12+.**
+- **Shared demo paths are read-only and rate-limited.** The hosted browser demo and `ki-ro-dev` CLI key run against a shared, read-only cluster.
+- **Actively developed.** APIs and behaviour may change between releases.
+
+---
+
+## FAQ
+
+**What is KubeIntellect?**
+An open-source, LLM-orchestrated multi-agent framework for autonomous Kubernetes operations — root-cause analysis, live diagnostics, and human-approved cluster changes, driven by plain-English questions.
+
+**Does it make changes to my cluster?**
+Read-only queries run immediately. Scale, restart, and delete operations pause for explicit human-in-the-loop approval, subject to role-based access (admin / operator / readonly).
+
+**KubeIntellect vs k8sgpt?**
+Both apply LLMs to Kubernetes. KubeIntellect adds multi-turn conversation, a multi-agent coordinator that correlates kubectl/Prometheus/Loki, conversation checkpointing, and HITL-gated write operations. Read-only tools like k8sgpt focus on passive diagnostics. Pick based on whether you need guarded write actions and cross-signal investigation.
+
+**Which LLM providers are supported?**
+OpenAI and Azure OpenAI (e.g. GPT-4o), configured during `kubeintellect init`.
+
+**Do I need a cluster to try it?**
+No. Use the [browser demo](https://kubeintellect.com/demo) or the read-only [`kube-q` CLI](#a--kube-q-cli-no-install-except-pip). For full features, create a local Kind cluster with `kubeintellect init`.
+
+**Is it production-ready?**
+It ships a Helm chart, PostgreSQL-backed checkpointing, authentication, and RBAC for production deployment, and gates all destructive operations behind human approval. As with any tool that can act on a cluster, validate it in a non-production environment first and keep approvals in the loop.
+
+**Is there a research paper?**
+Yes — [arXiv:2509.02449](https://arxiv.org/abs/2509.02449). See [Citation](#citation).
+
+---
+
+## Citation
+
+If you use KubeIntellect in your research, please cite the paper:
+
+```bibtex
+@article{seyedkazemi2025kubeintellect,
+  title   = {KubeIntellect: A Modular LLM-Orchestrated Agent Framework for End-to-End Kubernetes Management},
+  author  = {Seyedkazemi Ardebili, Mohsen and Bartolini, Andrea},
+  journal = {arXiv preprint arXiv:2509.02449},
+  year    = {2025},
+  url     = {https://arxiv.org/abs/2509.02449}
+}
+```
+
+A machine-readable [`CITATION.cff`](CITATION.cff) is also available in the repository root.
 
 ---
 
