@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use KubeIntellect in your research, please cite the paper below."
+message: "If you use KubeIntellect in your research, please cite the published paper below."
 title: "KubeIntellect"
 abstract: "An open-source, LLM-orchestrated multi-agent framework for autonomous Kubernetes operations: natural-language root-cause analysis, live diagnostics across kubectl, Prometheus, and Loki, and human-in-the-loop-gated cluster operations."
 type: software
@@ -30,10 +30,18 @@ preferred-citation:
       given-names: "Mohsen"
     - family-names: "Bartolini"
       given-names: "Andrea"
-  year: 2025
-  journal: "arXiv preprint"
+  year: 2026
+  journal: "Journal of Grid Computing"
+  publisher:
+    name: "Springer"
+  volume: 24
+  issue: 3
+  doi: "10.1007/s10723-026-09837-6"
+  issn: "1572-9184"
+  url: "https://doi.org/10.1007/s10723-026-09837-6"
   identifiers:
+    - type: doi
+      value: "10.1007/s10723-026-09837-6"
     - type: other
       value: "arXiv:2509.02449"
-      description: "arXiv identifier"
-  url: "https://arxiv.org/abs/2509.02449"
+      description: "arXiv preprint version"
