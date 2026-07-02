@@ -30,7 +30,7 @@ KubeIntellect is an open-source, LLM-orchestrated multi-agent framework for auto
 
 KubeIntellect helps you diagnose incidents faster by fanning out a question to specialized agents that query kubectl, Prometheus, and Loki live, then synthesizing one answer. Use KubeIntellect when you want conversational, natural-language Kubernetes operations with a safety gate on anything destructive. KubeIntellect is different from read-only AI diagnostics tools because it can also execute scale, restart, and delete operations — but only after explicit human-in-the-loop approval, with role-based access control. KubeIntellect is not a replacement for your observability stack, GitOps pipeline, or on-call judgment; it queries the tools you already run and pauses for you before changing anything.
 
-A companion research paper, [*KubeIntellect: A Modular LLM-Orchestrated Agent Framework for End-to-End Kubernetes Management*](https://arxiv.org/abs/2509.02449) (arXiv:2509.02449), describes the architecture and evaluation in detail.
+A companion research paper, [*KubeIntellect: A Modular LLM-Orchestrated Agent Framework for End-to-End Kubernetes Management*](https://doi.org/10.1007/s10723-026-09837-6), published in the *Journal of Grid Computing* (Springer, 2026; arXiv preprint [arXiv:2509.02449](https://arxiv.org/abs/2509.02449)), describes the architecture and evaluation in detail.
 
 ---
 
@@ -386,7 +386,7 @@ No. Use the [browser demo](https://kubeintellect.com/demo) or the read-only [`ku
 It ships a Helm chart, PostgreSQL-backed checkpointing, authentication, and RBAC for production deployment, and gates all destructive operations behind human approval. As with any tool that can act on a cluster, validate it in a non-production environment first and keep approvals in the loop.
 
 **Is there a research paper?**
-Yes — [arXiv:2509.02449](https://arxiv.org/abs/2509.02449). See [Citation](#citation).
+Yes — published in the *Journal of Grid Computing* (Springer, 2026): [doi:10.1007/s10723-026-09837-6](https://doi.org/10.1007/s10723-026-09837-6) (preprint [arXiv:2509.02449](https://arxiv.org/abs/2509.02449)). See [Citation](#citation).
 
 ---
 
@@ -395,12 +395,16 @@ Yes — [arXiv:2509.02449](https://arxiv.org/abs/2509.02449). See [Citation](#ci
 If you use KubeIntellect in your research, please cite the paper:
 
 ```bibtex
-@article{seyedkazemi2025kubeintellect,
-  title   = {KubeIntellect: A Modular LLM-Orchestrated Agent Framework for End-to-End Kubernetes Management},
-  author  = {Seyedkazemi Ardebili, Mohsen and Bartolini, Andrea},
-  journal = {arXiv preprint arXiv:2509.02449},
-  year    = {2025},
-  url     = {https://arxiv.org/abs/2509.02449}
+@article{seyedkazemi2026kubeintellect,
+  title     = {KubeIntellect: A Modular LLM-Orchestrated Agent Framework for End-to-End Kubernetes Management},
+  author    = {Seyedkazemi Ardebili, Mohsen and Bartolini, Andrea},
+  journal   = {Journal of Grid Computing},
+  publisher = {Springer},
+  volume    = {24},
+  number    = {3},
+  year      = {2026},
+  doi       = {10.1007/s10723-026-09837-6},
+  url       = {https://doi.org/10.1007/s10723-026-09837-6}
 }
 ```
 
