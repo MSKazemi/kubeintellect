@@ -135,6 +135,62 @@ class TestEngineStateMachine:
         assert payload["playbook"] == "TestPB"
 
 
+TERMINATING = {
+    "watch_predicates": [{"kind": "Pod", "status_regex": "^Terminating$"}],
+    "debounce_seconds": 600,
+}
+
+
+class TestTerminatingStuckReliability:
+    """Regression tests for the churn false-positive (E3a).
+
+    A normal termination arms the Terminating key, then the pod is removed; its
+    *final* watch document is a DELETED event whose object still carries
+    deletionTimestamp, so status still computes 'Terminating' and still matches.
+    Before the fix the armed key lingered and tick() fired it at debounce → 66
+    false firings under 20 min of churn. A DELETED event must disarm the key.
+    """
+
+    def test_deleted_pod_clears_terminating_arm(self, mocker):
+        mocker.patch("app.detectors.engine.flight_recorder.record")
+        engine = _engine(TERMINATING)
+        t0 = 1000.0
+        assert engine.process(_obs(status="Terminating", ts=t0, watch_type="MODIFIED")) == []
+        # pod finishes terminating and is removed (final event still Terminating)
+        assert engine.process(
+            _obs(status="Terminating", ts=t0 + 30, watch_type="DELETED")
+        ) == []
+        # long past the 600s debounce: must NOT fire — the object is gone
+        assert engine.tick(now=t0 + 601) == []
+
+    def test_genuinely_stuck_terminating_still_fires(self, mocker):
+        mocker.patch("app.detectors.engine.flight_recorder.record")
+        engine = _engine(TERMINATING)
+        t0 = 1000.0
+        # stuck pod: Terminating persists via MODIFIED heartbeats, never DELETED
+        assert engine.process(_obs(status="Terminating", ts=t0, watch_type="MODIFIED")) == []
+        assert engine.process(
+            _obs(status="Terminating", ts=t0 + 300, watch_type="MODIFIED")
+        ) == []
+        fired = engine.tick(now=t0 + 601)
+        assert len(fired) == 1
+
+    def test_churn_many_normal_terminations_no_false_fire(self, mocker):
+        mocker.patch("app.detectors.engine.flight_recorder.record")
+        engine = _engine(TERMINATING)
+        t0 = 1000.0
+        # 66 pods each churn Terminating -> DELETED within grace (mirrors the
+        # 20-min churn workload that produced 66 false firings)
+        for i in range(66):
+            name = f"job-pod-{i}"
+            engine.process(_obs(status="Terminating", name=name, ts=t0 + i, watch_type="ADDED"))
+            engine.process(
+                _obs(status="Terminating", name=name, ts=t0 + i + 20, watch_type="DELETED")
+            )
+        # well past debounce for every armed key
+        assert engine.tick(now=t0 + 66 + 700) == []
+
+
 class TestPlaybookDetectorLoading:
     def test_sixteen_compiled_two_llm_only(self):
         detectors = load_detectors()

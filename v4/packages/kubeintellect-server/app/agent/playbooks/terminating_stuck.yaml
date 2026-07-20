@@ -1,10 +1,16 @@
 name: TerminatingStuck
 detect:
+  # A pod is "stuck" only if it stays Terminating well past any reasonable grace
+  # period AND is never actually removed. The engine arms on the Terminating
+  # status and fires only after debounce_seconds of the condition *persisting*;
+  # a DELETED watch event (normal termination completing) disarms the key, so
+  # ordinary churn (jobs, rollouts, drains) no longer produces false firings.
+  # debounce_seconds is the grace-overrun proxy — 600s is far beyond the default
+  # 30s grace and typical graceful-shutdown windows, so only genuinely stuck
+  # pods survive it.
   watch_predicates:
     - kind: Pod
       status_regex: "^Terminating$"
-  promql:
-    - '(time() - kube_pod_deletion_timestamp) > 300'
   debounce_seconds: 600
 triggers:
   - pod_status_regex: "Terminating"

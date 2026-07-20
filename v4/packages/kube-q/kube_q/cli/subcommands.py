@@ -50,6 +50,26 @@ _SUBCOMMANDS: dict[str, tuple[str, str]] = {
         "kube_q.cli.v5_status_cmd",
         "Show v5 trust-plane status (flags, kill switch, spend cap)",
     ),
+    "completion": (
+        "kube_q.cli.completion_cmd",
+        "Print a shell completion script (bash, zsh, or fish)",
+    ),
+}
+
+# Per-command completion hints — second-level verbs and notable flags, used to
+# generate shell completion (`kq completion`). Global flags are handled
+# separately (see completion_cmd.GLOBAL_FLAGS). Keep in sync with each command's
+# own argparse; `-h/--help` is implied everywhere and need not be listed.
+_COMPLETION_HINTS: dict[str, dict[str, list[str]]] = {
+    "config": {"verbs": ["show", "set", "reset", "profile"], "flags": []},
+    "findings": {"verbs": [], "flags": ["--limit"]},
+    "digest": {"verbs": [], "flags": ["--hours"]},
+    "replay": {"verbs": [], "flags": []},
+    "postmortem": {"verbs": [], "flags": []},
+    "detector": {"verbs": ["new", "list", "promote"], "flags": ["--status"]},
+    "preference": {"verbs": [], "flags": ["--user"]},
+    "v5-status": {"verbs": [], "flags": []},
+    "completion": {"verbs": ["bash", "zsh", "fish"], "flags": []},
 }
 
 # Extra tokens that list the commands rather than dispatch one.
@@ -69,6 +89,16 @@ def describe() -> list[tuple[str, str]]:
 def is_help_alias(token: str) -> bool:
     """Whether *token* (e.g. ``help``, ``commands``) should list the commands."""
     return token in _HELP_ALIASES
+
+
+def help_alias_names() -> tuple[str, ...]:
+    """The tokens that list commands (``help``, ``commands``)."""
+    return _HELP_ALIASES
+
+
+def completion_hints(name: str) -> dict[str, list[str]]:
+    """Return ``{"verbs": [...], "flags": [...]}`` completion hints for *name*."""
+    return _COMPLETION_HINTS.get(name, {"verbs": [], "flags": []})
 
 
 def get_runner(name: str) -> Callable[[list[str]], int] | None:
