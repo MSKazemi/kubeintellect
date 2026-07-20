@@ -13,20 +13,20 @@ Key facts:
 
 ## Documentation
 
-- [README](https://github.com/MSKazemi/kubeintellect/blob/main/README.md): overview, quickstart, architecture, and CLI reference
-- [Documentation site](https://mskazemi.github.io/kubeintellect/): full install, deployment, configuration, and security docs
-- [Quickstart](https://mskazemi.github.io/kubeintellect/quickstart/): all install options
-- [Security model](https://mskazemi.github.io/kubeintellect/security/): authentication, RBAC, and the human-in-the-loop gate
+- [README](https://github.com/kubeintellect/kubeintellect/blob/main/README.md): overview, quickstart, architecture, and CLI reference
+- [Website & docs](https://kubeintellect.com/): project home, live demo, and hosted API
+- [Quickstart](https://github.com/kubeintellect/kubeintellect/blob/main/v4/docs/quickstart.md): all install options
+- [Security model](https://github.com/kubeintellect/kubeintellect/blob/main/v4/docs/security.md): authentication, RBAC, and the human-in-the-loop gate
 
 ## Project
 
 - [Website](https://kubeintellect.com): project home
 - [Live demo](https://kubeintellect.com/demo): browser-based read-only demo, no install
-- [kube-q CLI](https://github.com/MSKazemi/kube_q): the terminal client that talks to a KubeIntellect instance
+- [kube-q CLI](https://pypi.org/project/kube-q/): the terminal client that talks to a KubeIntellect instance
 - [PyPI: kubeintellect](https://pypi.org/project/kubeintellect/): server + CLI package
 - [PyPI: kube-q](https://pypi.org/project/kube-q/): thin CLI package
 
 ## Research
 
 - [Paper: KubeIntellect (arXiv:2509.02449)](https://arxiv.org/abs/2509.02449): "KubeIntellect: A Modular LLM-Orchestrated Agent Framework for End-to-End Kubernetes Management" by Mohsen Seyedkazemi Ardebili and Andrea Bartolini (2025)
-- [CITATION.cff](https://github.com/MSKazemi/kubeintellect/blob/main/CITATION.cff): machine-readable citation metadata
+- [CITATION.cff](https://github.com/kubeintellect/kubeintellect/blob/main/CITATION.cff): machine-readable citation metadata

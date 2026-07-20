@@ -9,7 +9,7 @@ authors:
   - family-names: "Bartolini"
     given-names: "Andrea"
 license: AGPL-3.0-or-later
-repository-code: "https://github.com/MSKazemi/kubeintellect"
+repository-code: "https://github.com/kubeintellect/kubeintellect"
 url: "https://kubeintellect.com"
 keywords:
   - kubernetes
