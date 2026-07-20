@@ -8,7 +8,7 @@ authors:
     given-names: "Mohsen"
   - family-names: "Bartolini"
     given-names: "Andrea"
-license: MIT
+license: AGPL-3.0-or-later
 repository-code: "https://github.com/MSKazemi/kubeintellect"
 url: "https://kubeintellect.com"
 keywords:
