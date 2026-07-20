@@ -1,0 +1,55 @@
+"""`kq v5-status` — show the v5 trust-plane state (version, active flags, safety brakes).
+
+Reads GET /v1/v5/status: which v5 slices are active, and whether the fail-closed brakes
+(kill switch, change freeze) are engaged. Zero LLM tokens.
+
+Usage:
+  kq v5-status
+"""
+from __future__ import annotations
+
+import uuid
+
+from rich.console import Console
+from rich.table import Table
+
+from kube_q.core.config import load_config
+from kube_q.core.transport import build_headers, make_client
+
+
+def run(argv: list[str]) -> int:
+    if argv and argv[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
+    if argv:
+        print(__doc__)
+        return 2
+
+    cfg = load_config()
+    console = Console()
+    url = f"{cfg.url.rstrip('/')}/v1/v5/status"
+    headers = build_headers(cfg.api_key, "v5-status", str(uuid.uuid4()))
+
+    try:
+        with make_client(None, timeout=cfg.timeout) as client:
+            response = client.get(url, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+    except Exception as exc:  # noqa: BLE001 — surface any transport/HTTP error to the user
+        console.print(f"[red]v5-status error: {exc}[/red]")
+        return 1
+
+    table = Table(title="KubeIntellect v5 — trust plane")
+    table.add_column("field", style="cyan")
+    table.add_column("value")
+    table.add_row("arm", str(data.get("arm")))
+    table.add_row("version", str(data.get("version")))
+    table.add_row("cortex_v5_enabled", str(data.get("cortex_v5_enabled")))
+    kill = data.get("kill_switch_engaged")
+    table.add_row("kill_switch_engaged", f"[red]{kill}[/red]" if kill else str(kill))
+    table.add_row("change_freeze", str(data.get("change_freeze")))
+    table.add_row("spend_cap_usd", str(data.get("spend_cap_usd")))
+    flags = data.get("active_flags") or []
+    table.add_row("active_flags", "\n".join(flags) if flags else "(none — v4 baseline)")
+    console.print(table)
+    return 0

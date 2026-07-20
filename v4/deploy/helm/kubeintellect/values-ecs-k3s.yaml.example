@@ -1,0 +1,87 @@
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║   KubeIntellect — single Alibaba ECS + k3s (coupon-friendly) values          ║
+# ║                                                                              ║
+# ║  The CHEAP path: one small ECS running single-node k3s, in-cluster Postgres, ║
+# ║  no managed ACK / no ApsaraDB RDS / no Server Load Balancer (those are the    ║
+# ║  costly parts). Designed to run comfortably on a 2 vCPU / 4 GB instance and   ║
+# ║  stay well inside a small credit/coupon. Qwen/DashScope is the LLM.           ║
+# ║                                                                              ║
+# ║  Usage (on the ECS, from the repo's v4/ dir):                                ║
+# ║    cp deploy/helm/kubeintellect/values-ecs-k3s.yaml.example \                ║
+# ║       deploy/helm/kubeintellect/values-ecs-k3s.yaml                          ║
+# ║    scripts/alibaba_ecs_k3s_bootstrap.sh      # installs k3s+helm, deploys     ║
+# ║  Secrets (DashScope key, DB password, admin key) come from v4/.env — never    ║
+# ║  put them in this file.                                                       ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+# ── Image — pull GHCR directly ────────────────────────────────────────────────
+# An intl-region ECS (e.g. Singapore ap-southeast-1) reaches GHCR fine, so no ACR
+# mirror is needed for the cheap path. (Only mainland-China regions need ACR.)
+image:
+  repository: ghcr.io/mskazemi/kubeintellect
+  tag: dev-latest
+  pullPolicy: IfNotPresent
+
+# amd64 only — the Dockerfile fetches linux/amd64 kubectl. Pick an amd64 ECS.
+nodeSelector:
+  kubernetes.io/arch: amd64
+
+replicaCount: 1
+
+# ── Access — no LoadBalancer ─────────────────────────────────────────────────
+# Keep it ClusterIP and reach it over SSH with `kubectl port-forward` (see the
+# runbook). This opens NO extra ports and adds NO SLB cost. Flip to NodePort +
+# a security-group rule only if you want a public URL.
+service:
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: false
+
+# ── LLM Provider — Qwen Cloud / DashScope (OpenAI-compatible) ─────────────────
+config:
+  llmProvider: openai      # DashScope is OpenAI-compatible → use the openai path
+  # Endpoint/key/models are injected from v4/.env by the bootstrap script:
+  #   LLM_PROVIDER=qwen  (or openai)
+  #   OPENAI_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+  #   OPENAI_API_KEY / DASHSCOPE_API_KEY=<DashScope key>
+  #   OPENAI_COORDINATOR_MODEL=qwen-max
+  #   OPENAI_SUBAGENT_MODEL=qwen-plus
+  # Monitoring is off by default to save RAM on a 2C4G box; enable if you sized up.
+  prometheusUrl: ""
+  lokiUrl: ""
+
+# ── Database — in-cluster Postgres on k3s local-path (no RDS) ─────────────────
+postgres:
+  external:
+    enabled: false
+  image: postgres:16-alpine
+  storage: 10Gi
+  storageClass: local-path   # k3s built-in local-path provisioner (no cloud disk)
+  database: kubeintellect
+  user: kubeintellect
+  # password supplied via --set postgres.password=$POSTGRES_PASSWORD (from .env)
+  password: ""
+
+# ── RBAC — least privilege (read + gated ops, no cluster-admin, no exec) ──────
+rbac:
+  clusterAdmin: false
+  createClusterReadOnly: true
+  createClusterOps: true
+  allowExec: false
+  enableNamespaceManagement: false
+
+# ── Resources — trimmed to share a 2 vCPU / 4 GB box with Postgres + k3s ──────
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+# ── LLM Tracing — Langfuse off (heavy for a small box) ────────────────────────
+langfuse:
+  enabled: false
+  selfHosted: false

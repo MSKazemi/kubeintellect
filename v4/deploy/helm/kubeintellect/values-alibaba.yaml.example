@@ -1,0 +1,91 @@
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║   KubeIntellect — Alibaba Cloud ACK values (Qwen/DashScope LLM)            ║
+# ║                                                                              ║
+# ║  Deploy KubeIntellect to Alibaba Cloud Container Service for Kubernetes      ║
+# ║  (ACK), using Qwen models on Qwen Cloud / DashScope purely as the LLM        ║
+# ║  backend. Steps:                                                             ║
+# ║   1. cp values-alibaba.yaml.example values-alibaba.yaml                      ║
+# ║   2. Fill in the image (ACR), domain, and RDS host below                     ║
+# ║   3. Put secrets (DashScope key, DB URL) in v4/.env — never in this file     ║
+# ║   4. make alibaba-deploy-kubeintellect                                       ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+# ── Image — Alibaba Container Registry (ACR) ──────────────────────────────────
+# The CI image lives on GHCR (ghcr.io/mskazemi/kubeintellect). Pulling GHCR from
+# China-region ACK nodes is slow/unreliable, so mirror it to ACR and point here.
+# See docs/deploy/alibaba.md for the one-time `docker pull → tag → push` mirror.
+image:
+  repository: registry-intl.<region>.aliyuncs.com/<namespace>/kubeintellect  # ← ACR path
+  tag: dev-latest
+  pullPolicy: Always
+
+# amd64 only — the Dockerfile fetches linux/amd64 kubectl. Use an amd64 ACK node pool.
+nodeSelector:
+  kubernetes.io/arch: amd64
+
+replicaCount: 2
+
+# ── Ingress — ACK ─────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: nginx        # ACK: nginx (ack-ingress-nginx) | alb (ALB Ingress Controller)
+  hosts:
+    - api.your-domain.com    # ← replace with your public domain (or an ACK SLB hostname)
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod   # requires cert-manager on the cluster
+  tls:
+    - secretName: kubeintellect-tls
+      hosts:
+        - api.your-domain.com
+
+# ── LLM Provider — Qwen Cloud / DashScope (OpenAI-compatible) ─────────────────
+config:
+  llmProvider: openai      # DashScope is OpenAI-compatible → use the openai path
+  # The actual endpoint/key/models are injected from v4/.env by the Makefile:
+  #   LLM_PROVIDER=openai
+  #   OPENAI_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1   (CN: dashscope.aliyuncs.com)
+  #   OPENAI_API_KEY=<DashScope API key>
+  #   OPENAI_COORDINATOR_MODEL=qwen-max     # synthesis / large tier
+  #   OPENAI_SUBAGENT_MODEL=qwen-plus       # parallel RCA subagents / small tier
+
+  # ── Observability — point at in-cluster services if installed (optional) ────
+  prometheusUrl: ""   # e.g. http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+  lokiUrl: ""         # e.g. http://loki.monitoring.svc.cluster.local:3100
+
+# ── Database — ApsaraDB RDS for PostgreSQL (recommended) ──────────────────────
+# The memory hierarchy, reflexion, preference memory, and the flight recorder all
+# persist here — a managed, durable DB is on-message for a MemoryAgent entry.
+postgres:
+  external:
+    enabled: true
+    url: ""    # postgresql://user:password@<rds-host>.pg.rds.aliyuncs.com:5432/kubeintellect
+               # (or set DATABASE_URL in v4/.env — the Makefile passes it via --set)
+# In-cluster Postgres fallback (uses an Alibaba cloud disk):
+# postgres:
+#   external:
+#     enabled: false
+#   storage: 50Gi
+#   storageClass: alicloud-disk-essd   # Alibaba ESSD cloud disk
+#   password: ""
+
+# ── RBAC ──────────────────────────────────────────────────────────────────────
+rbac:
+  clusterAdmin: false
+  createClusterReadOnly: true
+  createClusterOps: true
+  allowExec: false
+  enableNamespaceManagement: false
+
+# ── Resources ─────────────────────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+# ── LLM Tracing — Langfuse (optional) ────────────────────────────────────────
+langfuse:
+  enabled: false
+  selfHosted: false

@@ -1,0 +1,55 @@
+{{/* templates/gdpr-retention.yaml */}}
+{{- $ns := .Values.namespace | default .Release.Namespace -}}
+{{- with .Values.gdprRetention }}
+{{- if .enabled }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: gdpr-retention
+  namespace: {{ $ns | quote }}
+  labels:
+    app: gdpr-retention
+spec:
+  schedule: {{ .schedule | default "0 2 * * *" | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: purge
+              image: mongo:6
+              # MONGO_URI is injected from librechat-secret so it includes the
+              # MongoDB password without exposing it in values or ConfigMap.
+              env:
+                - name: MONGO_URI
+                  valueFrom:
+                    secretKeyRef:
+                      name: librechat-secret
+                      key: MONGO_URI
+              command:
+                - sh
+                - -c
+                - |
+                  mongosh "$MONGO_URI" --eval "
+                    var cutoff = new Date(Date.now() - {{ .retentionDays | default 365 }} * 24 * 60 * 60 * 1000);
+                    var msgs  = db.messages.deleteMany({ createdAt: { \$lt: cutoff } });
+                    var convs = db.conversations.deleteMany({ createdAt: { \$lt: cutoff } });
+                    var files = db.files.deleteMany({ createdAt: { \$lt: cutoff } });
+                    print('GDPR purge complete — messages:', msgs.deletedCount,
+                          'conversations:', convs.deletedCount,
+                          'files:', files.deletedCount);
+                  "
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 200m
+                  memory: 128Mi
+{{- end }}
+{{- end }}

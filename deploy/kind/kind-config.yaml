@@ -13,6 +13,6 @@ nodes:
     extraMounts:
       - hostPath: ${PROJECT_ROOT}/.local-data/postgres
         containerPath: /mnt/data/postgres
-      - hostPath: ${PROJECT_ROOT}/app
+      - hostPath: ${PROJECT_ROOT}/packages/kubeintellect-server/app
         containerPath: /mnt/code/app
   - role: worker

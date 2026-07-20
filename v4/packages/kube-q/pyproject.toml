@@ -1,0 +1,84 @@
+[project]
+name = "kube-q"
+# Static since the monorepo merge (ADR-004): hatch-vcs would read kubeintellect's
+# tags here. Last standalone tag was v1.4.3; 1.5.0 adds --auto-approve + plan rendering.
+version = "1.5.0"
+requires-python = ">=3.12"
+description = "Interactive terminal CLI for chatting with your Kubernetes cluster via an AI backend."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Mohsen Seyedkazemi Ardebili", email = "mskazemi@gmail.com" },
+]
+keywords = ["kubernetes", "cli", "ai", "kubectl", "llm", "repl"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "httpx>=0.28",
+    "rich>=14.3.3",
+    "prompt_toolkit>=3.0",
+    "pygments>=2.18",
+    "pydantic>=2.0",
+    "ki-protocol>=1.0.0",
+]
+
+[tool.uv.sources]
+ki-protocol = { workspace = true }
+
+[project.urls]
+Homepage = "https://github.com/MSKazemi/kube_q"
+Repository = "https://github.com/MSKazemi/kube_q"
+"Bug Tracker" = "https://github.com/MSKazemi/kube_q/issues"
+
+[project.scripts]
+kq = "kube_q.cli.main:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "respx>=0.21",
+    "pytest-mock>=3.14",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["kube_q"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# Long Rich help-text string literals — readability beats the line limit here.
+"kube_q/cli/renderer.py" = ["E501"]
+"kube_q/cli/repl.py" = ["E501"]
+"kube_q/cli/help_text.py" = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = false
+ignore_missing_imports = true
+disallow_untyped_defs = true

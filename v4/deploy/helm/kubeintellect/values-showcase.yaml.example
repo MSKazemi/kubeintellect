@@ -1,0 +1,26 @@
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║   KubeIntellect — full MemoryAgent showcase flags                            ║
+# ║                                                                              ║
+# ║  Layer this on top of ANY base + cloud overlay to light up every V4 layer    ║
+# ║  for the demo. All flags are opt-in and fail-open (a failure in any layer     ║
+# ║  never breaks a user response).                                              ║
+# ║                                                                              ║
+# ║  Example (Alibaba ECS + full showcase):                                      ║
+# ║    helm upgrade --install kubeintellect deploy/helm/kubeintellect \          ║
+# ║      -f deploy/helm/kubeintellect/values.yaml \                              ║
+# ║      -f deploy/helm/kubeintellect/values-ecs-k3s.yaml \                      ║
+# ║      -f deploy/helm/kubeintellect/values-showcase.yaml  ...                  ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+config:
+  # Tiered Cortex graph (triage → gather ⇄ tools → synthesize → remember).
+  # On Qwen this runs qwen-max synthesis + qwen-plus subagents.
+  cortexV4Enabled: true
+  # Watchtower + autonomy: detector firings open A1 investigations (never auto-fix).
+  watchtowerEnabled: true
+  autonomyLevel: "A1"
+  # Anticipatory detection: OLS/ETA trend → severity="predicted" BEFORE the failure.
+  predictiveDetectionEnabled: true
+  # Natural-language detector authoring: `kq detector new "..."` → shadow → promote.
+  nlDetectorAuthoringEnabled: true
+  # Narrated (but event-grounded, seq-cited) incident postmortems.
+  postmortemLlmNarrative: true

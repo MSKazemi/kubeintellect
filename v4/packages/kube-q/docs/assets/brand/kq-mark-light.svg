@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="kq logo mark (light background)">
+  <title>kq — KubeIntellect CLI (light variant)</title>
+  <defs>
+    <linearGradient id="kqAccentL" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#4338ca"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded square with subtle border only -->
+  <rect x="4" y="4" width="248" height="248" rx="56" ry="56" fill="#ffffff"/>
+  <rect x="5" y="5" width="246" height="246" rx="55" ry="55" fill="none" stroke="#e2e8f0" stroke-width="1.5"/>
+
+  <!-- Terminal prompt chevron -->
+  <path d="M 52 96 L 86 128 L 52 160"
+        fill="none"
+        stroke="url(#kqAccentL)"
+        stroke-width="14"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <!-- kq wordmark -->
+  <g font-family="'JetBrains Mono', 'SF Mono', 'Menlo', monospace" font-weight="700" fill="#0f172a">
+    <text x="104" y="170" font-size="112" letter-spacing="-4">kq</text>
+  </g>
+
+  <!-- Cursor block -->
+  <rect x="214" y="140" width="18" height="30" rx="2" fill="url(#kqAccentL)"/>
+</svg>

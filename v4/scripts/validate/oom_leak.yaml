@@ -1,0 +1,37 @@
+# A workload that gradually fills memory toward its limit so predictive detection
+# (ADR-010) can project an OOM crossing BEFORE the kill, then actually OOMKills so
+# the reactive detector fires too — letting f1_lead_time.py measure the lead time.
+#
+#   kubectl create namespace predictive-test
+#   kubectl apply -f oom_leak.yaml
+#   uv run python scripts/validate/f1_lead_time.py
+#   kubectl delete namespace predictive-test    # cleanup
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mem-leak
+  namespace: predictive-test
+  labels: { app: mem-leak }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: mem-leak } }
+  template:
+    metadata: { labels: { app: mem-leak } }
+    spec:
+      containers:
+        - name: leak
+          image: busybox:1.36
+          # Allocate ~6Mi every 20s into tmpfs (counts against the memory limit).
+          # 128Mi limit → crosses ~100% in ~7 min, then OOMKills.
+          command: ["sh", "-c"]
+          args:
+            - |
+              i=0
+              while true; do
+                dd if=/dev/zero of=/dev/shm/block.$i bs=1M count=6 2>/dev/null
+                i=$((i+1))
+                sleep 20
+              done
+          resources:
+            limits: { memory: "128Mi" }
+            requests: { memory: "32Mi" }

@@ -1,0 +1,81 @@
+[project]
+name = "kubeintellect"
+version = "2.1.0"
+description = "AI-powered Kubernetes management — local server and CLI"
+readme = "README.md"
+license = {text = "AGPL-3.0-or-later"}
+requires-python = ">=3.12"
+keywords = ["kubernetes", "llm", "ai", "devops", "k8s", "kubectl"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Systems Administration",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+]
+dependencies = [
+    # API
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.6",
+    "python-dotenv>=1.0",
+    # LLM + Agent
+    "langchain>=1.0",
+    "langchain-openai>=1.0",
+    "langgraph>=1.0",
+    "langsmith>=0.8",
+    # Database
+    "asyncpg>=0.30",
+    "psycopg[binary,pool]>=3.2",
+    "langgraph-checkpoint-postgres>=3.0",
+    "langgraph-checkpoint-sqlite>=3.0",
+    # YAML validation
+    "pyyaml>=6.0",
+    # HTTP (Prometheus + Loki queries)
+    "httpx>=0.28",
+    # Workspace members (ADR-004) — published together with the server
+    "kube-q>=1.5.0",
+    "ki-protocol>=1.0.0",
+    "langfuse>=4.5",
+]
+
+[tool.uv.sources]
+kube-q = { workspace = true }
+ki-protocol = { workspace = true }
+
+[project.urls]
+Homepage = "https://github.com/mskazemi/kubeintellect"
+Documentation = "https://github.com/mskazemi/kubeintellect#readme"
+Issues = "https://github.com/mskazemi/kubeintellect/issues"
+
+[project.optional-dependencies]
+tracing = [
+    "langfuse>=4.5",
+    "opentelemetry-api>=1.0",
+]
+metrics = [
+    "prometheus-fastapi-instrumentator>=7.1.0",
+]
+all = [
+    "kubeintellect[tracing,metrics]",
+]
+
+[project.scripts]
+kubeintellect = "app.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+artifacts = ["app/db/schema.sql"]
+
+# Pre-existing V2 style in files the P4 cortex rebuild will replace — scoped
+# ignores instead of churn. New V4 code gets no exemptions.
+[tool.ruff.lint.per-file-ignores]
+"app/cli.py" = ["E731", "E741", "E701"]
+"app/main.py" = ["E402"]
+"app/tools/kubectl_tool.py" = ["E741"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

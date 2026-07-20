@@ -1,0 +1,223 @@
+{{- $ns := (.Values.namespace | default .Release.Namespace) -}}
+{{- $sa := .Values.serviceAccount.name -}}
+
+{{/* Full cluster-admin binding — disable once RBAC is properly scoped */}}
+{{- if .Values.rbac.clusterAdmin }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}-cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: {{ $sa }}
+  namespace: {{ $ns }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+{{- end }}
+
+{{/* Namespaced read-only Role + Binding */}}
+{{- if .Values.rbac.createNamespaced }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}-role
+  namespace: {{ $ns }}
+rules:
+- apiGroups: [""]
+  resources:
+    - pods
+    - pods/log
+    - services
+    - configmaps
+    - endpoints
+    - events
+    - persistentvolumeclaims
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources:
+    - deployments
+    - daemonsets
+    - statefulsets
+    - replicasets
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}-rolebinding
+  namespace: {{ $ns }}
+subjects:
+- kind: ServiceAccount
+  name: {{ $sa }}
+  namespace: {{ $ns }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "kubeintellect.fullname" . }}-role
+{{- end }}
+
+{{/* Cluster-scope read-only ClusterRole + Binding (nodes, PVs, all namespaces) */}}
+{{- if .Values.rbac.createClusterReadOnly }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}-cluster-ro
+rules:
+- apiGroups: [""]
+  resources:
+    - nodes
+    - persistentvolumes
+    - namespaces
+    - pods
+    - pods/log
+    - services
+    - configmaps
+    - endpoints
+    - events
+    - persistentvolumeclaims
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses", "networkpolicies"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["batch"]
+  resources: ["jobs", "cronjobs"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["nodes", "pods"]
+  verbs: ["get", "list"]
+# SubjectAccessReview — lets the agent check permissions for arbitrary subjects
+- apiGroups: ["authorization.k8s.io"]
+  resources: ["subjectaccessreviews"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}-cluster-ro-binding
+subjects:
+- kind: ServiceAccount
+  name: {{ $sa }}
+  namespace: {{ $ns }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kubeintellect.fullname" . }}-cluster-ro
+{{- end }}
+
+{{/* Namespace + RBAC management ClusterRole (for eval/test scenario setup) */}}
+{{- if .Values.rbac.enableNamespaceManagement }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}-namespace-manager
+rules:
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["create", "get", "list", "watch", "delete", "patch", "update"]
+- apiGroups: [""]
+  resources: ["resourcequotas", "limitranges"]
+  verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["roles", "rolebindings"]
+  verbs: ["create", "get", "list", "watch", "patch", "update", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}-namespace-manager-binding
+subjects:
+- kind: ServiceAccount
+  name: {{ $sa }}
+  namespace: {{ $ns }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kubeintellect.fullname" . }}-namespace-manager
+{{- end }}
+
+{{/* Cluster-scope ops ClusterRole + Binding — write actions allowed after HITL approval */}}
+{{- if .Values.rbac.createClusterOps }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}-cluster-ops
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["delete"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["create", "update", "patch", "delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "daemonsets", "statefulsets"]
+  verbs: ["create", "patch", "update", "delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments/scale", "statefulsets/scale"]
+  verbs: ["patch", "update"]
+- apiGroups: [""]
+  resources: ["services", "persistentvolumeclaims"]
+  verbs: ["create", "patch", "update", "delete"]
+- apiGroups: ["batch"]
+  resources: ["jobs", "cronjobs"]
+  verbs: ["create", "delete"]
+- apiGroups: ["autoscaling"]
+  resources: ["horizontalpodautoscalers"]
+  verbs: ["create", "patch", "update", "delete"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["create", "patch", "update", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}-cluster-ops-binding
+subjects:
+- kind: ServiceAccount
+  name: {{ $sa }}
+  namespace: {{ $ns }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kubeintellect.fullname" . }}-cluster-ops
+{{- end }}
+
+{{/* pods/exec — separate opt-in role (default off in prod) */}}
+{{/* Security: without this, a user could exec into the app pod and run `env` to read secrets */}}
+{{- if .Values.rbac.allowExec }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}-cluster-exec
+rules:
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}-cluster-exec-binding
+subjects:
+- kind: ServiceAccount
+  name: {{ $sa }}
+  namespace: {{ $ns }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kubeintellect.fullname" . }}-cluster-exec
+{{- end }}
