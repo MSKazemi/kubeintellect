@@ -1,0 +1,33 @@
+name: InitContainerFailing
+detect:
+  watch_predicates:
+    - kind: Pod
+      status_regex: "^Init:(CrashLoopBackOff|Error)$"   # immediate-fire arm
+    - kind: Pod
+      status_regex: "^Init:[0-9]+/[0-9]+$"              # stuck-progress arm — needs debounce
+    - kind: Event
+      reason_regex: "^BackOff$"
+      message_regex: "back-off restarting failed init|init container"
+  promql:
+    - 'increase(kube_pod_init_container_status_restarts_total[10m]) > 3'
+  debounce_seconds: 180
+triggers:
+  - pod_status_regex: "Init:[0-9]+/[0-9]+"
+  - event_reason_regex: "BackOff"
+  - event_message_regex: "back-off restarting failed init|init container.*failed"
+investigation_steps:
+  - "kubectl get pods -n <ns> -o wide to confirm Init: status and which init container is failing."
+  - "kubectl describe pod <pod> -n <ns> — inspect the Init Containers section for exit codes, last state, and reason."
+  - "kubectl logs <pod> -n <ns> -c <init-container-name> --previous --tail=50 to capture crash output."
+  - "Check the init container image, command, env vars, and volume mounts for misconfiguration."
+  - "kubectl get events -n <ns> --sort-by=.lastTimestamp — confirm the BackOff event sequence."
+expected_evidence:
+  - "Init container name and its exit code from Last State"
+  - "Error output or fatal log from the init container"
+  - "Whether the failure is due to command error, missing secret/configmap, or image issue"
+recommended_fix_template: |
+  Init container <INIT_CONTAINER_NAME> is failing before the main container starts.
+  Exit code: <EXIT_CODE>. Root cause: <CAUSE>.
+  Fix: <ACTION> (e.g. correct the command, ensure <SECRET_OR_CONFIGMAP> exists in <NAMESPACE>,
+  or fix image <IMAGE> pull credentials).
+  After fixing: kubectl rollout restart deployment/<DEPLOYMENT> -n <NAMESPACE>

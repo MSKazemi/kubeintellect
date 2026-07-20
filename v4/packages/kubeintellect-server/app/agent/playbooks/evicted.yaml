@@ -1,0 +1,33 @@
+name: Evicted
+detect:
+  watch_predicates:
+    - kind: Pod
+      status_regex: "^Evicted$"
+    - kind: Event
+      reason_regex: "^Evicted$"
+      message_regex: "evicted|disk.*pressure|memory.*pressure|node.*pressure|low.*inodes"
+  promql:
+    - 'kube_pod_status_reason{reason="Evicted"} == 1'
+  debounce_seconds: 30
+triggers:
+  - pod_status_regex: "Evicted"
+  - event_reason_regex: "Evicted|Evicting"
+  - event_message_regex: "evicted|disk.*pressure|memory.*pressure|node.*pressure|low.*inodes"
+investigation_steps:
+  - "kubectl get pods -n <ns> --field-selector status.phase=Failed to list all evicted pods."
+  - "kubectl describe pod <evicted-pod> -n <ns> — check the Message field for eviction reason and threshold."
+  - "kubectl describe node <node> — check Conditions for MemoryPressure, DiskPressure, PIDPressure."
+  - "kubectl top nodes to see current CPU/memory utilization across all nodes."
+  - "Check kubelet eviction thresholds: kubectl get --raw /api/v1/nodes/<node>/proxy/configz | grep eviction"
+expected_evidence:
+  - "Eviction reason (memory pressure, disk pressure, pid pressure, low inodes)"
+  - "Node name where eviction occurred and its current condition"
+  - "Resource that breached the eviction threshold"
+recommended_fix_template: |
+  Pod <POD_NAME> was evicted from node <NODE_NAME> due to <EVICTION_REASON>.
+  Clean up evicted pods: kubectl delete pods --field-selector status.phase=Failed -n <NAMESPACE>
+  Address root cause:
+  - Memory pressure: reduce pod memory requests/limits, or add cluster capacity.
+  - Disk pressure: clean up unused container images or increase node disk.
+  - PID pressure: investigate processes leaking PIDs in containers on <NODE_NAME>.
+  To prevent recurrence: set explicit resource requests so the scheduler avoids tight nodes.

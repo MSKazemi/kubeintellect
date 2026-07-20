@@ -1,0 +1,54 @@
+# ── Secrets — never bake into an image ────────────────────────────────────────
+.env
+.env.*
+*.local
+
+# ── Git / VCS ──────────────────────────────────────────────────────────────────
+.git
+.gitignore
+.gitattributes
+
+# ── Claude Code artifacts ──────────────────────────────────────────────────────
+.claude/
+
+# ── Python build / cache ───────────────────────────────────────────────────────
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Editor / OS ────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+
+# ── Project meta — not needed at runtime ──────────────────────────────────────
+PROGRESS.md
+*.plan.md
+LICENSE
+CLAUDE.md
+docs/
+mkdocs.yml
+site/
+
+# ── Local data — never ship persistent data volumes into an image ──────────────
+.local-data/
+
+# ── Deployment assets — deploy the image, not these artefacts inside it ────────
+deploy/
+docker-compose.yaml
+docker-compose.yml
+Makefile
+scripts/
+
+# ── Tests — not part of the runtime image ─────────────────────────────────────
+tests/
+
+# ── CI ─────────────────────────────────────────────────────────────────────────
+.github/

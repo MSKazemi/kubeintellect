@@ -1,0 +1,20 @@
+# Re-export shim — real implementation is in kube_q.cli.renderer
+from kube_q.cli.renderer import (  # noqa: F401
+    BOLD,
+    CYAN,
+    DIM,
+    GREEN,
+    RED,
+    RESET,
+    YELLOW,
+    _fmt_help,
+    _plain_output,
+    _print_logo,
+    _should_use_pager,
+    c,
+    console,
+    format_branches,
+    format_search_results,
+    print_response,
+    set_output_plain,
+)

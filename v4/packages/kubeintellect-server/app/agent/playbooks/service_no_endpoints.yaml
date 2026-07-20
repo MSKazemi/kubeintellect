@@ -1,0 +1,27 @@
+name: ServiceNoEndpoints
+detect:
+  watch_predicates:
+    - kind: Event
+      reason_regex: "^(FailedToUpdateEndpoint|FailedToUpdateEndpointSlices)$"   # rare; low-recall arm
+  promql:
+    - >-
+      kube_service_spec_type{type!="ExternalName"}
+      unless on(namespace, service)
+      label_replace(kube_endpoint_address{ready="true"}, "service", "$1", "endpoint", "(.*)")
+  debounce_seconds: 300
+triggers:
+  - event_reason_regex: "FailedToUpdateEndpoint|EndpointSliceMismatch"
+  - event_message_regex: "no endpoints|0 endpoints|empty endpoints"
+investigation_steps:
+  - "kubectl get endpoints -n <ns> — list all services and check which have ENDPOINTS=<none>."
+  - "kubectl describe service <svc> -n <ns> — capture spec.selector."
+  - "kubectl get pods -n <ns> --show-labels — compare pod labels against the service selector."
+  - "Identify the mismatch — most common cause is a label/version drift (e.g. v1 vs v2)."
+expected_evidence:
+  - "Service ENDPOINTS column shows <none>"
+  - "Pod labels do not match service spec.selector"
+recommended_fix_template: |
+  Service <SVC> in namespace <NS> selects <SELECTOR_LABELS> but no pod carries those
+  labels. Either patch the service selector to match the existing pods, or update the
+  pod template labels to match the selector. Prefer the safer option for the workload's
+  risk profile.

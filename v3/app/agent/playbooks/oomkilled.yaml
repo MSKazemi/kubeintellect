@@ -1,0 +1,15 @@
+name: OOMKilled
+triggers:
+  - pod_status_regex: "OOMKilled"
+  - event_reason_regex: "OOMKilling"
+investigation_steps:
+  - "kubectl describe pod <pod> -n <ns> — confirm Last State.Reason=OOMKilled and check resources.limits.memory."
+  - "query_prometheus container_memory_working_set_bytes for the pod over the last 30 minutes — find the spike."
+  - "kubectl logs <pod> -n <ns> --previous --tail=50 — look for memory-pressure messages just before the kill."
+expected_evidence:
+  - "Last State.Reason=OOMKilled"
+  - "Memory usage approached or exceeded limits.memory just before termination"
+  - "Application logs show heavy allocation right before death"
+recommended_fix_template: |
+  Container was killed for exceeding its memory limit. Increase resources.limits.memory,
+  add a memory-aware GC tuning, or fix the underlying leak. Suggested fix: <ACTION>.

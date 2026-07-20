@@ -1,0 +1,649 @@
+# values-kind.yaml
+
+namespace: kubeintellect
+createNamespace: false
+
+# cert-manager — disabled on Kind (no public DNS; Let's Encrypt not used locally).
+certManager:
+  createClusterIssuer: false
+
+# HPA — disabled on Kind; Kind uses a single node so scaling is not useful.
+hpa:
+  enabled: false
+
+# PostgreSQL backup — disabled on Kind (local dev; backups not needed).
+pgBackup:
+  enabled: false
+
+# ---------- GDPR / Chat Log Retention ----------
+gdprRetention:
+  enabled: true
+  retentionDays: 365
+  schedule: "0 2 * * *"   # 02:00 UTC daily
+  mongoUri: "mongodb://mongodb:27017/LibreChat"
+
+# ---------- DB Exporters (Prometheus metrics for MongoDB and PostgreSQL) ----------
+# Deployed as Deployments + Services + ServiceMonitors alongside existing DBs.
+# Requires kube-prometheus-stack to be installed (make install-prometheus-kind).
+# Grafana dashboards: MongoDB 7353, PostgreSQL 9628
+exporters:
+  enabled: true
+  mongodb:
+    image: percona/mongodb_exporter:0.40
+  postgres:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+
+rbac:
+  # Always create the namespaced Role/RoleBinding (read-only)
+  createNamespaced: true
+
+  # Create a read-only ClusterRole/Binding (for nodes, PVs, other namespaces)
+  createClusterReadOnly: true   # set to false if you don’t need cluster-scope reads
+
+  # Enable minimal privileges for namespace/pod management by kubeintellect-sa (off by default)
+  enableNamespaceManagement: true
+
+  # Dangerous: grant cluster-admin. Keep false by default; enable only temporarily.
+  createClusterAdmin: true
+
+# This section builds out the service account more information can be found here: https://kubernetes.io/docs/concepts/security/service-accounts/
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Automatically mount a ServiceAccount's API credentials?
+  automount: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: kubeintellect-sa
+
+
+
+
+
+# ---------- PVCs ----------
+pvcs:
+  - name: librechat-pvc
+    accessModes: [ReadWriteOnce]
+    storage: 10Gi
+    storageClassName: ""     # set if you have a SC; omit to use default
+  - name: meili-data-pvc
+    accessModes: [ReadWriteOnce]
+    storage: 10Gi
+  - name: mongo-data-pvc
+    accessModes: [ReadWriteOnce]
+    storage: 10Gi
+  - name: postgres-pvc
+    accessModes: [ReadWriteOnce]
+    storage: 5Gi
+    storageClassName: ""    # <— blank to bind to the static PV above
+  - name: kubeintellect-runtime-tools-pvc
+    accessModes: [ReadWriteOnce]
+    storage: 5Gi
+    storageClassName: ""
+
+
+persistentVolumes:
+  - name: postgres-pv
+    enabled: true
+    component: postgres
+    storage: 5Gi
+    accessModes: [ReadWriteOnce]
+    reclaimPolicy: Retain
+    storageClassName: "" # <— blank for manual binding on Kind
+    hostPath: /mnt/data/postgres
+
+
+# ---------- Apps (Deployments) ----------
+apps:
+  - name: kubeintellect-core
+    enabled: true
+    replicas: 1
+    labels: { app: kubeintellect-core }
+    image: ghcr.io/mskazemi/kubeintellect-release:latest
+    imagePullSecrets: []  # GHCR images are public
+    imagePullPolicy: Always
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1001
+      capabilities: { drop: ["ALL"] }
+    ports:
+      - name: http
+        containerPort: 8000
+    initContainers:
+      - name: fix-runtime-tools-perms
+        image: busybox:1.36
+        securityContext:
+          runAsUser: 0
+          runAsGroup: 0
+        command: ["sh", "-c"]
+        args:
+          - |
+            set -eux
+            mkdir -p /mnt/runtime-tools/tools
+            chown 1001:1001 /mnt/runtime-tools/tools
+            chmod 755 /mnt/runtime-tools/tools
+        volumeMounts:
+          - name: runtime-tools-storage
+            mountPath: /mnt/runtime-tools
+    envFrom:
+      - configMapRef:
+          name: kubeintellect-core-config
+      - secretRef:
+          name: kubeintellect-core-secret
+    volumeMounts:
+      - name: runtime-tools-storage
+        mountPath: /mnt/runtime-tools
+    volumes:
+      - name: runtime-tools-storage
+        pvc: kubeintellect-runtime-tools-pvc
+    livenessProbe:
+      enabled: true
+      httpGet:
+        path: /healthz
+        port: http
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      failureThreshold: 3
+    readinessProbe:
+      enabled: true
+      httpGet:
+        path: /health
+        port: http
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      failureThreshold: 3
+
+  - name: mongodb
+    enabled: true
+    replicas: 1
+    labels: { app: mongodb }
+    image: mongo:6
+    command: ["mongod","--noauth","--bind_ip_all"]
+    ports:
+      - name: mongo
+        containerPort: 27017
+    volumeMounts:
+      - name: mongo-data
+        mountPath: /data/db
+    volumes:
+      - name: mongo-data
+        pvc: mongo-data-pvc
+    # nodeSelector: { kubernetes.io/hostname: w3 }
+
+  - name: meilisearch
+    enabled: true
+    replicas: 1
+    labels: { app: meilisearch }
+    image: getmeili/meilisearch:v1.12.3
+    envFrom:
+      - configMapRef: 
+          name: librechat-env
+    ports:
+      - name: http
+        containerPort: 7700
+    volumeMounts:
+      - name: meili-data
+        mountPath: /meili_data
+    volumes:
+      - name: meili-data
+        pvc: meili-data-pvc
+
+  - name: librechat
+    enabled: true
+    replicas: 1
+    labels: { app: librechat }
+    image: ghcr.io/mskazemi/kubeintellect-frontend:latest
+    imagePullSecrets: []  # GHCR images are public
+    imagePullPolicy: Always
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      capabilities: { drop: ["ALL"] }
+    envFrom:
+      - configMapRef: 
+          name: librechat-env
+      - configMapRef: 
+          name: librechat-config
+      - secretRef: 
+          name: librechat-secret
+    env:
+      - name: PASS_CONVERSATION_ID
+        value: "true"
+      - name: DEBUG_CUSTOM_ENDPOINTS
+        value: "true"
+    ports:
+      - name: http
+        containerPort: 3080
+    volumeMounts:
+      - name: chat-volume
+        mountPath: /app/client/public/images
+      - name: librechat-config
+        mountPath: /app/config/config.yaml
+        subPath: config.yaml
+      - name: librechat-config
+        mountPath: /app/librechat.yaml
+        subPath: librechat.yaml
+    volumes:
+      - name: chat-volume
+        pvc: librechat-pvc
+      - name: librechat-config
+        configMap: 
+          name: librechat-config
+  
+  # KubeIntellect checkpoints: Create a PostgreSQL deployment with persistent storage in Kubernetes for KubeIntellect checkpoints
+  - name: postgres
+    enabled: true
+    replicas: 1
+    labels: { app: postgres }
+    image: postgres:15
+    ports:
+      - name: postgres
+        containerPort: 5432
+    env:
+      - name: POSTGRES_DB
+        value: kubeintellectdb
+      - name: POSTGRES_USER
+        value: kubeuser
+      - name: POSTGRES_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: postgres-secret
+            key: password
+    volumeMounts:
+      - name: postgres-storage
+        mountPath: /var/lib/postgresql/data
+    volumes:
+      - name: postgres-storage
+        pvc: postgres-pvc
+
+
+# ---------- Services ----------
+services:
+  # Core web service (defaults shown)
+  - name: kubeintellect-core-service
+    enabled: true
+    type: ClusterIP
+    selector:
+      app: kubeintellect-core
+    ports:
+      - name: http
+        port: 80
+        targetPort: 8000        # or 8000; must match container
+        protocol: TCP
+
+  # LibreChat UI
+  - name: librechat
+    enabled: true
+    type: ClusterIP
+    selector:
+      app: librechat
+    ports:
+      - name: http
+        port: 3080
+        targetPort: 3080
+
+  - name: meilisearch
+    enabled: true
+    type: ClusterIP
+    selector: { app: meilisearch }
+    ports:
+      - name: http
+        port: 7700
+        targetPort: 7700
+
+  - name: postgres # this is for the postgres for the checkpoints and the protrol TCP
+    enabled: true
+    type: ClusterIP
+    selector: { app: postgres }
+    ports:
+      - name: postgres
+        port: 5432
+        targetPort: 5432
+
+  # MongoDB
+  - name: mongodb
+    enabled: true
+    type: ClusterIP
+    selector:
+      app: mongodb
+    ports:
+      - name: mongo
+        port: 27017
+        targetPort: 27017
+
+
+# ---------- Ingress ----------
+ingresses:
+  # --- LibreChat UI in kubeintellect namespace ---
+  - name: librechat
+    enabled: true
+    namespace: kubeintellect
+    className: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/rewrite-target: /
+    rules:
+      - host: kubeintellect.chat.local
+        paths:
+          - path: /
+            pathType: Prefix
+            service:
+              name: librechat
+              port: 3080
+    tls: [] # add secretName / hosts if you want TLS
+  
+  # --- Monitoring (Prometheus + Grafana) in the prometheus namespace ---
+  - name: monitoring-ingress
+    enabled: true
+    namespace: kubeintellect
+    className: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/rewrite-target: /
+    rules:
+      - host: prometheus.local
+        paths:
+          - path: /
+            pathType: Prefix
+            service:
+              name: prometheus-kube-prometheus-prometheus
+              port: 9090        # numeric
+      - host: grafana.local
+        paths:
+          - path: /
+            pathType: Prefix
+            service:
+              name: prometheus-grafana
+              port: 80
+    tls: []                     # add secretName/hosts if you want TLS
+
+  # --- KubeIntellect API in kubeintellect namespace ---
+  - name: kubeintellect-ingress
+    enabled: true
+    namespace: kubeintellect
+    className: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/rewrite-target: /
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+      nginx.ingress.kubernetes.io/proxy-connect-timeout: "300"
+    rules:
+      - host: kubeintellect.api.local
+        paths:
+          - path: /
+            pathType: Prefix
+            service:
+              name: kubeintellect-core-service
+              port: 80
+    tls: []
+
+  # --- Alertmanager ---
+  - name: alertmanager-ingress
+    enabled: true
+    namespace: kubeintellect
+    className: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/rewrite-target: /
+    rules:
+      - host: alertmanager.local
+        paths:
+          - path: /
+            pathType: Prefix
+            service:
+              name: prometheus-kube-prometheus-alertmanager
+              port: 9093
+    tls: []
+
+  # --- MinIO (Langfuse object store) ---
+  - name: minio-ingress
+    enabled: true
+    namespace: kubeintellect
+    className: nginx
+    rules:
+      - host: minio.local
+        paths:
+          - path: /
+            pathType: Prefix
+            service:
+              name: langfuse-minio
+              port: 9001
+    tls: []
+
+
+
+# ---------- ConfigMaps ----------
+configMaps:
+  - name: librechat-config
+    data:
+      # Two keys; your deployment mounts both as subPaths
+      config.yaml: |
+        # put any app config here if needed
+      librechat.yaml: |
+        version: 1.2.6
+        endpoints:
+          custom:
+            # - name: "OpenRouter"
+            #   apiKey: "${OPENROUTER_KEY}"
+            #   baseURL: "https://openrouter.ai/api/v1"
+            #   models:
+            #     default: ["gpt-3.5-turbo"]
+            #     fetch: true
+            #   titleConvo: true
+            #   titleModel: "current_model"
+            #   summarize: false
+            #   summaryModel: "current_model"
+            #   forcePrompt: false
+            #   modelDisplayLabel: "OpenRouter"
+
+            # - name: "Ollama"
+            #   apiKey: "ollama"
+            #   # CHANGE THIS to your Service DNS if Ollama is in-cluster:
+            #   # baseURL: "http://ollama-service.kubeintellect.svc.cluster.local:11434/v1/"
+            #   baseURL: "http://host.docker.internal:11434/v1/"
+            #   models:
+            #     default: ["llama3:latest","command-r","mixtral","phi3"]
+            #     fetch: false
+            #   titleConvo: true
+            #   titleModel: "current_model"
+
+            - name: "KubeIntellect"
+              apiKey: "your_api_key_or_dummy"
+              baseURL: "http://kubeintellect-core-service.kubeintellect.svc.cluster.local/v1"
+              models:
+                default: ["kubeintellect-pipeline"]
+                available: ["kubeintellect-pipeline"]
+                fetch: false
+              titleConvo: true
+              titleModel: "kubeintellect-pipeline"
+              summarize: false
+              forcePrompt: false
+              modelDisplayLabel: "KubeIntellect"
+              provider: "custom"
+              streaming: true
+              dynamicHeaders:
+                - header: "X-Conversation-Id"
+                  value: "${conversationId}"
+                - header: "X-User-Id"
+                  value: "${userId}"
+  
+  - name: kubeintellect-core-config
+    enabled: true
+    data:
+      LLM_PROVIDER: "azure"
+      API_V1_STR: "/v1"
+      AZURE_OPENAI_ENDPOINT: "https://<your-resource-name>.openai.azure.com/"
+      AZURE_OPENAI_API_VERSION: "2024-08-01-preview"
+      AZURE_PRIMARY_LLM_DEPLOYMENT_NAME: "gpt-4o"
+      SUPERVISOR_AZURE_DEPLOYMENT_NAME: "gpt-4o"
+      POSTGRES_HOST: "postgres"
+      KUBEINTELLECT_LANGSMITH_TRACING_ENABLED: "true"
+      LANGCHAIN_PROJECT: "kubeintellect"
+      LANGFUSE_ENABLED: "true"
+      LANGFUSE_HOST: "http://langfuse-web.kubeintellect.svc.cluster.local:3000"
+
+  - name: librechat-env
+    enabled: true
+    data:
+      HOST: "0.0.0.0"
+      PORT: "3080"
+      # if using in-cluster DNS:
+      # MONGO_URI: "mongodb://mongodb.kubeintellect.svc.cluster.local:27017"
+      MONGO_URI: "mongodb://mongodb.kubeintellect.svc.cluster.local:27017"
+      DOMAIN_SERVER: "http://chat.local"
+      DOMAIN_CLIENT: "http://chat.local"
+      NO_INDEX: "true"
+      TRUST_PROXY: "1"
+      CONSOLE_JSON: "false"
+      DEBUG_LOGGING: "true"
+      DEBUG_CONSOLE: "false"
+      OPENAI_MODELS: "gpt-3.5-turbo-16k"
+      DEBUG_OPENAI: "false"
+      DEBUG_PLUGINS: "true"
+      SEARCH: "true"
+      MEILI_NO_ANALYTICS: "true"
+      MEILI_HOST: "http://meilisearch:7700"
+      APP_TITLE: "LibreChat"
+      HELP_AND_FAQ_URL: "https://librechat.ai"
+      ALLOW_SHARED_LINKS: "true"
+      ALLOW_SHARED_LINKS_PUBLIC: "true"
+      ALLOW_EMAIL_LOGIN: "true"
+      ALLOW_REGISTRATION: "true"
+      ALLOW_SOCIAL_LOGIN: "false"
+      ALLOW_SOCIAL_REGISTRATION: "false"
+      ALLOW_PASSWORD_RESET: "false"
+      ALLOW_UNVERIFIED_EMAIL_LOGIN: "true"
+      KUBECONFIG_PATH: "/home/cloud/.kube/config"
+      # Conversation tracking flags
+      PASS_CONVERSATION_ID: "true"
+      INCLUDE_CONVERSATION_ID: "true"
+      CUSTOM_ENDPOINT_PASS_HEADERS: "true"
+      CUSTOM_ENDPOINT_CONVERSATION_TRACKING: "true"
+
+
+secrets:
+  # --- 1. KubeIntellect core app secret
+  - name: kubeintellect-core-secret
+    enabled: true
+    type: Opaque
+    # Fill in base64-encoded values before deploying: echo -n 'your-value' | base64
+    stringData:
+      AZURE_OPENAI_API_KEY: "<YOUR_AZURE_OPENAI_API_KEY>"
+      LANGCHAIN_API_KEY: "<YOUR_LANGCHAIN_API_KEY>"
+      # OPENAI_API_KEY: "<YOUR_OPENAI_API_KEY>"
+      POSTGRES_PASSWORD: "password"  # change for any non-local deployment
+      # Langfuse keys must match initProject.publicKey / secretKey below
+      LANGFUSE_PUBLIC_KEY: "pk-lf-local-example-key-replace-me"
+      LANGFUSE_SECRET_KEY: "sk-lf-local-example-key-replace-me"
+
+  # --- 2. Docker registry credentials
+  # GHCR images are public — no pull secret needed.
+  # If you fork and use a private registry, set enabled: true and provide credentials.
+  - name: ghcr-creds
+    enabled: false
+    type: kubernetes.io/dockerconfigjson
+    data:
+      .dockerconfigjson: ""  # echo -n '{"auths":{"ghcr.io":{"username":"<USER>","password":"<PAT>"}}}' | base64
+
+  # --- 3. PostgreSQL DB secret
+  - name: postgres-secret
+    enabled: true
+    type: Opaque
+    data:
+      password: cGFzc3dvcmQ=  # base64("password")
+
+  # --- 4. LibreChat secret (stringData for simplicity)
+  - name: librechat-secret
+    enabled: true
+    type: Opaque
+    stringData:
+      # OPENAI_API_KEY: "sk-...yourkey..."
+      MONGO_URI: "mongodb://mongodb:27017/LibreChat"
+      MEILI_MASTER_KEY: "<generate: openssl rand -hex 20>"
+      JWT_SECRET: "<generate: openssl rand -hex 32>"
+      JWT_REFRESH_SECRET: "<generate: openssl rand -hex 32>"
+      CREDS_KEY: "<generate: openssl rand -hex 32>"
+      CREDS_IV: "<generate: openssl rand -hex 16>"
+
+
+postgres:
+  host: postgres.kubeintellect.svc.cluster.local
+  port: "5432"
+  db: kubeintellectdb
+  user: kubeuser
+  secretName: postgres-secret
+  secretKey: password
+  imageTag: "15"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Langfuse — self-hosted LLM observability (optional)
+#
+# Set enabled: true to deploy the full Langfuse stack in the same namespace.
+# Takes ~2 minutes to become healthy on first start.
+#
+# After enabling, add to /etc/hosts:
+#   127.0.0.1 langfuse.local
+# Then open http://langfuse.local (via ingress) or:
+#   make port-forward-langfuse  →  http://localhost:3000
+#
+# No manual setup needed: LANGFUSE_INIT_* env vars automatically seed the admin
+# user, org, project, and API keys on first start. KubeIntellect is pre-configured
+# with matching keys in kubeintellect-core-secret — it will connect automatically.
+#   Login: admin@kubeintellect.local / langfuse-admin
+# ─────────────────────────────────────────────────────────────────────────────
+langfuse:
+  enabled: true    # flip to true to deploy the Langfuse observability stack
+
+  namespace: ""    # leave empty to use the main .Values.namespace
+
+  # --- Postgres (Langfuse metadata: users, projects, API keys) ---
+  postgres:
+    storage: "10Gi"        # ~2GB/yr metadata; 10Gi gives comfortable headroom
+    password: "langfuse"   # change for production
+
+  # --- ClickHouse (trace + observation analytics store) ---
+  clickhouse:
+    storage: "30Gi"        # ~18GB/yr at moderate query volume; 30Gi for 1yr+
+    password: "langfuse"   # change for production
+
+  # --- Redis (web → worker task queue) ---
+  redis:
+    storage: "2Gi"         # ephemeral queue; size unchanged
+
+  # --- MinIO (S3-compatible blob store for trace payloads) ---
+  minio:
+    storage: "50Gi"        # ~36GB/yr trace payloads; 50Gi for 1yr+
+    rootUser: "langfuse"
+    rootPassword: "langfuse123"   # change for production
+
+  # --- Langfuse app secrets ---
+  # Generate with: openssl rand -base64 32
+  nextauthUrl: "http://langfuse.local"
+  nextauthSecret: "changeme-nextauth-secret-min-32-chars-long"
+  salt: "changeme-salt-value"
+  # ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes).
+  # Generate with: openssl rand -hex 32
+  encryptionKey: "<generate: openssl rand -hex 32>"
+
+  # --- Seed (auto-create user / org / project / API keys on first start) ---
+  # These are passed as LANGFUSE_INIT_* env vars into langfuse-web on startup.
+  # The publicKey / secretKey MUST match LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY
+  # in kubeintellect-core-secret so no manual key-copying step is needed after deploy.
+  initUser:
+    email: "admin@kubeintellect.local"
+    name: "Admin"
+    password: "langfuse-admin"
+  initOrg:
+    id: "kubeintellect-org"
+    name: "KubeIntellect"
+  initProject:
+    id: "kubeintellect-project"
+    name: "KubeIntellect"
+    # Must match LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY in kubeintellect-core-secret above
+    publicKey: "pk-lf-local-example-key-replace-me"
+    secretKey: "sk-lf-local-example-key-replace-me"
+
+  # --- Ingress ---
+  ingress:
+    enabled: true
+    host: "langfuse.local"

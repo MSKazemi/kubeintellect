@@ -1,0 +1,98 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - 'v*'  # Only publish when you push a version tag (v1.2.0, v1.3.0, etc)
+
+permissions:
+  contents: read
+  id-token: write  # REQUIRED for trusted publishing
+
+jobs:
+  test-before-publish:
+    name: Run tests before publishing
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+      
+      - name: Run tests
+        run: pytest
+      
+      - name: Type-check
+        run: mypy kube_q/
+
+  build:
+    name: Build distribution
+    needs: test-before-publish
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+
+      - name: Install build dependencies
+        run: pip install build
+      
+      - name: Build distribution
+        run: python -m build
+      
+      - name: Store distribution packages
+        uses: actions/upload-artifact@v6
+        with:
+          name: python-package-distributions
+          path: dist/
+          retention-days: 1
+
+  publish-to-pypi:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    
+    environment:
+      name: pypi
+      url: https://pypi.org/project/kube-q/
+    
+    steps:
+      - name: Download all distributions
+        uses: actions/download-artifact@v7
+        with:
+          name: python-package-distributions
+          path: dist/
+      
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  create-release:
+    name: Create GitHub Release
+    needs: publish-to-pypi
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+    
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

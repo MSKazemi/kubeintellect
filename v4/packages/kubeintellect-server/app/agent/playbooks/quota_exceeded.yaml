@@ -1,0 +1,30 @@
+name: QuotaExceeded
+detect:
+  watch_predicates:
+    - kind: Event
+      reason_regex: "^(FailedCreate|ExceededQuota)$"
+      message_regex: "exceeded quota|forbidden.*quota"
+  promql:
+    - 'kube_resourcequota{type="used"} >= ignoring(type) kube_resourcequota{type="hard"}'
+  debounce_seconds: 60
+triggers:
+  - event_reason_regex: "FailedCreate|ExceededQuota"
+  - event_message_regex: "exceeded quota|quota.*exceeded|forbidden.*quota"
+investigation_steps:
+  - "kubectl describe resourcequota -n <ns> to see current usage vs hard limits for each resource."
+  - "kubectl get events -n <ns> --field-selector reason=FailedCreate to see the exact quota error."
+  - "kubectl top pods -n <ns> to identify the largest CPU/memory consumers."
+  - "Compare new pod resource requests against remaining quota headroom."
+expected_evidence:
+  - "ResourceQuota name and which resource is exhausted (cpu, memory, pods, persistentvolumeclaims, etc.)"
+  - "Current usage vs hard limit values"
+  - "Which workload or create attempt triggered the quota breach"
+recommended_fix_template: |
+  Namespace <NAMESPACE> has exceeded its ResourceQuota for <RESOURCE_TYPE>.
+  Current: <CURRENT_USAGE> / Limit: <HARD_LIMIT>.
+  Options:
+  1. Reduce resource requests on existing workloads to free headroom.
+  2. Delete unused workloads in the namespace.
+  3. Request a quota increase from the cluster admin:
+     kubectl patch resourcequota <QUOTA_NAME> -n <NAMESPACE> \
+       --patch '{"spec":{"hard":{"<RESOURCE>":"<NEW_LIMIT>"}}}'
