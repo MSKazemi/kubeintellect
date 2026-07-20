@@ -71,11 +71,25 @@ class DetectorEngine:
         """Feed one observation; returns any findings fired synchronously."""
         now = obs.ts
         fired: list[Finding] = []
+        deleted = obs.kind == "pod_status" and obs.fields.get("watch_type") == "DELETED"
         for det in self.detectors:
             key = (det.playbook, obs.namespace, obs.name)
             matched = any(p.matches(obs) for p in det.watch_predicates)
             state = self._states.get(key)
 
+            if deleted:
+                # A DELETED watch event proves the object is gone — its
+                # condition can no longer be pending/stuck. Disarm any armed key
+                # so a *normal* termination (Terminating → removed within the
+                # grace period, whose final DELETED object still computes
+                # status=Terminating and therefore still "matches") never fires.
+                # A genuinely stuck pod is never DELETED, so it still fires on
+                # debounce. This is the fix for the churn false-positives.
+                if state is not None and any(
+                    p.kind in ("Pod", "Node") for p in det.watch_predicates
+                ):
+                    del self._states[key]
+                continue
             if matched:
                 if state is None:
                     state = _KeyState(armed_at=now, last_match=now, evidence=_summarise(obs))
@@ -101,10 +115,17 @@ class DetectorEngine:
         the watchtower callback (on_finding) is never invoked for it.
         """
         now = obs.ts
+        deleted = obs.kind == "pod_status" and obs.fields.get("watch_type") == "DELETED"
         for det in self.shadow_detectors:
             key = (det.playbook, obs.namespace, obs.name)
             matched = any(p.matches(obs) for p in det.watch_predicates)
             state = self._shadow_states.get(key)
+            if deleted:
+                if state is not None and any(
+                    p.kind in ("Pod", "Node") for p in det.watch_predicates
+                ):
+                    del self._shadow_states[key]
+                continue
             if matched:
                 if state is None:
                     state = _KeyState(armed_at=now, last_match=now, evidence=_summarise(obs))

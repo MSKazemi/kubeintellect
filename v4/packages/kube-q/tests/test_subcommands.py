@@ -29,6 +29,7 @@ EXPECTED = {
     "detector",
     "preference",
     "v5-status",
+    "completion",
 }
 
 

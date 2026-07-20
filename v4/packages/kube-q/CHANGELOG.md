@@ -4,6 +4,15 @@ All notable changes to kube-q will be documented here.
 
 ## [Unreleased]
 
+### Added — Shell completion
+- **`kq completion [bash|zsh|fish]`** prints a shell completion script. Enable with
+  `source <(kq completion bash)` (or the zsh/fish equivalent). It completes
+  subcommands, their second-level verbs (`config show`, `detector new`, …), notable
+  per-command flags (`findings --limit`, `digest --hours`), and the global flags —
+  all generated from the same registry that powers `kq --help`, so completion never
+  drifts from the real command set. A drift test asserts every completed global flag
+  still appears in `kq --help`.
+
 ### Added — Command discoverability
 - **`kq --help` now lists the subcommands.** The eight `kq <command>` verbs
   (`config`, `findings`, `digest`, `replay`, `postmortem`, `detector`, `preference`,

@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/assets/brand/ki-c-indigo.svg" alt="KubeIntellect" width="96" height="96" />
   <h1>KubeIntellect</h1>
-  <p>AI DevOps engineer for Kubernetes</p>
+  <p>Human-Governed AI SRE for Kubernetes</p>
 
   [![PyPI](https://img.shields.io/pypi/v/kubeintellect.svg)](https://pypi.org/project/kubeintellect/)
   [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)

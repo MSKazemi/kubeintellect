@@ -8,8 +8,8 @@ description: >-
 
 # Research & Publications
 
-**KubeIntellect is an LLM-driven operator for Kubernetes** — an AI DevOps
-engineer you talk to in plain English. It investigates a **live** cluster with
+**KubeIntellect is an LLM-driven operator for Kubernetes** — a Human-Governed
+AI SRE you talk to in plain English. It investigates a **live** cluster with
 real tools (`kubectl`, Prometheus/PromQL, Loki/LogQL), grounds every answer in
 that evidence, and — behind a human-approval gate — applies fixes. It watches the
 cluster continuously with a zero-token perception layer, remembers incidents,

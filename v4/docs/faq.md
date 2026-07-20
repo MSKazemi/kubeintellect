@@ -15,7 +15,7 @@ KubeIntellect. Each one links to the page that covers it in depth.
 
 ### What is KubeIntellect in one line? Who is it for?
 
-KubeIntellect is an **AI DevOps engineer for Kubernetes**: you ask questions in
+KubeIntellect is a **Human-Governed AI SRE for Kubernetes**: you ask questions in
 plain English ("why is the payments pod crashing?"), it investigates your cluster
 with real tools, explains what it found, and — with your approval — fixes it. It
 is for anyone who operates a Kubernetes cluster and would rather describe a symptom

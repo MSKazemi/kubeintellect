@@ -10,7 +10,7 @@ hide:
   <div class="ki-hero-inner">
     <img src="assets/brand/ki-c-indigo.svg" alt="KubeIntellect" class="ki-hero-mark" />
     <h1 class="ki-wordmark"><span>KUBE</span><span class="ki-green">INTELLECT</span></h1>
-    <p class="ki-tagline">AI DEVOPS ENGINEER FOR KUBERNETES</p>
+    <p class="ki-tagline">HUMAN-GOVERNED AI SRE FOR KUBERNETES</p>
     <p class="ki-hero-desc">
       Diagnose CrashLoopBackOff, pending pods, and RBAC issues in plain English.
       Parallel specialist agents investigate your cluster — a human-approval gate

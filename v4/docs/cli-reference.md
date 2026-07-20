@@ -205,8 +205,26 @@ kq help                              # list every kq subcommand
 ```
 
 `kq help` (or `kq --help`) lists all subcommands — `config`, `findings`, `digest`,
-`replay`, `postmortem`, `detector`, `preference`, `v5-status` — each documented below.
-A mistyped command (e.g. `kq fndings`) prints a `Did you mean: findings?` suggestion.
+`replay`, `postmortem`, `detector`, `preference`, `v5-status`, `completion` — each
+documented below. A mistyped command (e.g. `kq fndings`) prints a
+`Did you mean: findings?` suggestion.
+
+### `kq completion [bash|zsh|fish]`
+
+Print a shell completion script so `<TAB>` completes `kq` subcommands, their verbs
+(`config show`, `detector new`, …), and flags. Enable it once:
+
+```bash
+# bash — add to ~/.bashrc
+source <(kq completion bash)
+# zsh — add to ~/.zshrc (before compinit)
+source <(kq completion zsh)
+# fish
+kq completion fish | source     # or: kq completion fish > ~/.config/fish/completions/kq.fish
+```
+
+Then `kq <TAB>` lists the commands, `kq fi<TAB>` → `findings`, and
+`kq findings --<TAB>` → `--limit`.
 
 | Setting | Env var | Default |
 |---|---|---|

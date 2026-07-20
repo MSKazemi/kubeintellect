@@ -7,7 +7,7 @@ description: >-
 
 # What You Can Ask
 
-KubeIntellect is an **AI DevOps engineer for Kubernetes**. You ask questions in
+KubeIntellect is a **Human-Governed AI SRE for Kubernetes**. You ask questions in
 plain English; it investigates your cluster with real tools, explains what it
 found, and — with your approval — fixes it.
 
