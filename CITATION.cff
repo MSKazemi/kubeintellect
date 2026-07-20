@@ -8,7 +8,7 @@ authors:
     given-names: "Mohsen"
   - family-names: "Bartolini"
     given-names: "Andrea"
-repository-code: "https://github.com/MSKazemi/kubeintellect"
+repository-code: "https://github.com/kubeintellect/kubeintellect"
 url: "https://kubeintellect.com"
 keywords:
   - kubernetes
