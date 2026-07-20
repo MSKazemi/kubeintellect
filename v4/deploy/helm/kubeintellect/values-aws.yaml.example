@@ -1,0 +1,85 @@
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║   KubeIntellect — AWS EKS values                                             ║
+# ║                                                                              ║
+# ║   1. cp values-aws.yaml.example values-aws.yaml                              ║
+# ║   2. Fill in the image (ECR or GHCR), domain, and (optional) RDS host        ║
+# ║   3. Put secrets (LLM key, DB URL) in v4/.env — never in this file           ║
+# ║   4. make aws-deploy-kubeintellect                                           ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+# ── Image ─────────────────────────────────────────────────────────────────────
+# EKS nodes can pull GHCR directly. To keep pulls in-region, mirror to Amazon ECR:
+#   aws ecr create-repository --repository-name kubeintellect
+#   docker pull ghcr.io/mskazemi/kubeintellect:dev-latest
+#   docker tag  ghcr.io/mskazemi/kubeintellect:dev-latest \
+#               <acct>.dkr.ecr.<region>.amazonaws.com/kubeintellect:dev-latest
+#   aws ecr get-login-password --region <region> | docker login --username AWS --password-stdin <acct>.dkr.ecr.<region>.amazonaws.com
+#   docker push <acct>.dkr.ecr.<region>.amazonaws.com/kubeintellect:dev-latest
+image:
+  repository: ghcr.io/mskazemi/kubeintellect   # ← or <acct>.dkr.ecr.<region>.amazonaws.com/kubeintellect
+  tag: dev-latest
+  pullPolicy: Always
+
+# amd64 only — the Dockerfile fetches linux/amd64 kubectl. Use an amd64 node group
+# (not Graviton/arm64), or add a multi-arch build first.
+nodeSelector:
+  kubernetes.io/arch: amd64
+
+replicaCount: 2
+
+# ── Ingress — AWS Load Balancer Controller (ALB) ──────────────────────────────
+# Requires the AWS Load Balancer Controller add-on on the cluster.
+ingress:
+  enabled: true
+  className: alb          # alb (AWS LB Controller) | nginx (ingress-nginx)
+  hosts:
+    - api.your-domain.com    # ← replace with your public domain / ACM-backed host
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    # alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:<region>:<acct>:certificate/<id>
+
+# ── LLM Provider ──────────────────────────────────────────────────────────────
+# Cloud-agnostic: pick any provider. Endpoint/key/models are injected from v4/.env
+# by the Makefile (azure | openai | qwen | anthropic).
+config:
+  llmProvider: openai
+  prometheusUrl: ""   # e.g. http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+  lokiUrl: ""
+
+# ── Database — Amazon RDS for PostgreSQL (recommended) ────────────────────────
+# The memory hierarchy, reflexion, preference memory, and flight recorder persist
+# here — a managed, durable DB is on-message for a MemoryAgent deployment.
+postgres:
+  external:
+    enabled: true
+    url: ""   # postgresql://user:password@<name>.<id>.<region>.rds.amazonaws.com:5432/kubeintellect
+              # (or set DATABASE_URL in v4/.env — the Makefile passes it via --set)
+# In-cluster fallback (EBS CSI gp3 volume):
+# postgres:
+#   external:
+#     enabled: false
+#   storage: 50Gi
+#   storageClass: gp3          # EBS CSI (or gp2 on older clusters)
+#   password: ""
+
+# ── RBAC — least privilege ────────────────────────────────────────────────────
+rbac:
+  clusterAdmin: false
+  createClusterReadOnly: true
+  createClusterOps: true
+  allowExec: false
+  enableNamespaceManagement: false
+
+# ── Resources ─────────────────────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+langfuse:
+  enabled: false

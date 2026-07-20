@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="ki — amber">
+  <title>ki mark — amber</title>
+  <defs>
+    <linearGradient id="g" x1="30" y1="30" x2="226" y2="226" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="256" height="256" rx="58" fill="#0b1020"/>
+  <rect x="1" y="1" width="254" height="254" rx="57" fill="none" stroke="#1e2642" stroke-width="1.5"/>
+
+  <!-- Chevron > -->
+  <path d="M 53,96 L 86,128 L 53,160"
+        fill="none" stroke="url(#g)" stroke-width="14"
+        stroke-linecap="round" stroke-linejoin="round"
+        filter="url(#glow)"/>
+
+  <!-- ki -->
+  <text x="104" y="170"
+        font-family="'JetBrains Mono','SF Mono',monospace"
+        font-weight="700" font-size="112"
+        fill="url(#g)">ki</text>
+
+  <!-- cursor ▌ -->
+  <rect x="214" y="141" width="18" height="30" rx="2" fill="url(#g)">
+    <animate attributeName="opacity" values="1;1;0;0" dur="1.1s" repeatCount="indefinite"/>
+  </rect>
+</svg>

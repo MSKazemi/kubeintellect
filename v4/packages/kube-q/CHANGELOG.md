@@ -1,0 +1,97 @@
+# Changelog
+
+All notable changes to kube-q will be documented here.
+
+## [Unreleased]
+
+### Added — Command discoverability
+- **`kq --help` now lists the subcommands.** The eight `kq <command>` verbs
+  (`config`, `findings`, `digest`, `replay`, `postmortem`, `detector`, `preference`,
+  `v5-status`) were dispatched manually before argparse and so never appeared in
+  `--help` — a new user couldn't discover them. Help now shows an aligned
+  `Commands:` section, generated from a single registry.
+- **`kq help` / `kq commands`** — print the command listing (with one-line
+  descriptions and a pointer to the REPL / `-q` one-shot mode).
+- **Friendly unknown-command handling** — `kq fndings` now prints
+  `Unknown command: fndings` with a `Did you mean: findings?` suggestion (difflib)
+  and a pointer to `kq help`, instead of dumping the raw argparse usage wall. Exits `2`.
+
+### Changed — Architecture
+- New `cli/subcommands.py` is the **single source of truth** for `kq` subcommands
+  (name → lazy-imported `run()` + description). `main()` dispatches, builds the
+  `--help` command list, and powers `kq help` from it — adding a subcommand is now
+  one registry line, no `main()` edits. Replaces eight repetitive `if sys.argv[1] == …`
+  dispatch blocks.
+
+### Changed — Interface polish (inline model preserved)
+- **Real-time investigation plan** — the plan panel now lives inside the streaming
+  `Live` group and updates its step icons (`✓ ▸ · —`) as the server emits successive
+  `plan` events, instead of being buffered and printed only once at the end
+- **Per-turn status footer** — after each answer a compact `ctx · ns · N tok · $cost`
+  line summarises the active context, namespace, and session usage
+- **Approval panel** — pending HITL write-actions render as a distinct bordered panel
+  (with the proposed command when the server provides it) rather than inline text
+- **Sectioned help** — `/help` shows a compact overview and topic list; `/help <topic>`
+  (e.g. `/help sessions`, `/help config`) drills into one area; aliases like
+  `/help ns` → namespace are accepted
+- **`NO_COLOR` support** — colours now flow through a single semantic theme that
+  degrades to no styling when `NO_COLOR` is set (https://no-color.org/)
+
+### Changed — Architecture
+- New `cli/theme.py` centralises the colour palette as a Rich `Theme` (semantic roles
+  instead of scattered `cyan`/`dim` literals)
+- New `cli/help_text.py` holds help content as structured topic data (was a single
+  ~180-line f-string in `renderer.py`)
+- `repl.py` reduced from 1191 → ~830 lines by extracting `cli/prompt.py` (completer,
+  prompt-session factory, slash-command catalogue) and `cli/sessions_ui.py` (session
+  picker, resume, transcript-history rendering); the public surface
+  (`run_repl`, `ReplConfig`, `_make_prompt_session`, `_HISTORY_FILE`, `_print_logo`)
+  stays importable from `kube_q.cli.repl`
+
+## [1.4.0] — 2026-04-14
+
+### Added — Web UI (Docker)
+- **Browser terminal** — full kube-q REPL accessible in any browser via xterm.js + WebSocket → node-pty → `kq`; no client-side logic duplicated, all commands and streaming stay in the Python process
+- **`web/server.mjs`** — production single-port server: Next.js HTTP + PTY WebSocket (`/pty-ws`) on one port; spawns a `kq` process per connection
+- **`web/pty-server.mjs`** — dev standalone PTY WebSocket server on port 3001; run alongside `next dev` via `npm run dev`
+- **`Dockerfile`** — multi-stage build: Node builder compiles Next.js, runtime stage installs `kube-q` from PyPI + copies built app; env vars injected at runtime (`KUBE_Q_URL`, `KUBE_Q_API_KEY`)
+- **iframe / basePath support** — `NEXT_PUBLIC_BASE_PATH` env var relocates the Next.js app to a sub-path; `Content-Security-Policy: frame-ancestors *` and `X-Frame-Options: ALLOWALL` headers allow embedding in any parent page
+- **Download conversation button** — toolbar "⬇ Download" button exports the xterm scrollback buffer as a `.md` file directly to the browser
+- **Custom branding** — `KUBE_Q_LOGO` sets a custom ASCII banner logo; `KUBE_Q_TAGLINE` sets a custom copyright / tagline line; both configurable via `.env` or environment variable
+
+### Added — Session Search & Branching
+- **`kq --search <query>` / `/search <query>`**: FTS5 full-text search across all session history with highlighted match snippets; supports FTS5 boolean syntax (`pods AND NOT staging`); old databases are backfilled during schema migration
+- **`/branch`**: fork the current conversation at the current message count into a new independent session — original is preserved; `/branches` lists all forks; `/title <text>` renames a session
+- **SQLite schema v3**: `messages_fts` FTS5 virtual table with insert/delete triggers, `parent_session_id` and `branch_point` columns on `sessions`; branches are ordinary sessions so search finds them automatically
+
+### Added — Token & Cost Tracking
+- **Token footer**: every response now shows `(1.2s · 460 tokens)` when the server emits a `usage` block in the SSE stream or JSON response; servers that omit `usage` behave exactly as before — no errors, no noise
+- **`/tokens` / `/cost`**: new in-REPL commands print a Rich panel with per-session prompt/completion/total counts, request count, and estimated dollar cost; override rates with `KUBE_Q_COST_PER_1K_PROMPT` and `KUBE_Q_COST_PER_1K_COMPLETION` env vars for custom backends
+- **`kq --list` tokens column**: session listing now shows total token count per session; SQLite schema auto-migrates transparently from v1 databases (adds `token_log` table and `total_*_tokens` columns via `PRAGMA user_version`)
+
+### Added
+- Configurable display names — `--user-name` / `--agent-name` CLI flags, `KUBE_Q_USER_NAME` / `KUBE_Q_AGENT_NAME` env vars, and `user_name` / `agent_name` config file keys; used in the prompt and saved conversation files
+- Friendly HTTP 401 error handling — shows a clear actionable message instead of raw JSON when the server has auth enabled and the key is missing or invalid; affects streaming, non-streaming, and health-check paths
+- `.env` file support — all settings configurable via `KUBE_Q_*` environment variables; kube-q loads `~/.kube-q/.env` and `./.env` automatically (no extra tooling required)
+- Removed YAML config file — `.env` files cover all the same settings with one less format and one less dependency (`pyyaml` removed)
+- Renamed config directory to `~/.kube-q/`; history, user-id, and log files all consolidated there
+
+## [1.0.0] — 2026-04-10
+
+### Added
+- Interactive REPL with streaming SSE responses
+- Human-in-the-Loop (HITL) approve/deny flow
+- Persistent conversation history and user ID
+- Namespace context switching (`/ns`)
+- Conversation save to markdown (`/save`)
+- Built-in demo scenarios (deploy, debug, hitl, security, scale)
+- Single-query mode (`--query`)
+- Health check with retry on startup
+- Multi-line copy-paste support via `prompt_toolkit`
+- Rich syntax highlighting for YAML/JSON code blocks
+- File attachment support via `@filename` in messages
+- `--api-key` / `KUBE_Q_API_KEY` authentication
+- `--ca-cert` for corporate proxies / self-signed certificates
+- `--output plain` flag for pipe-friendly output
+- Live token streaming
+- Typo suggestions for unknown slash commands

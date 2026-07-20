@@ -1,0 +1,35 @@
+name: NodeNotReady
+detect:
+  watch_predicates:
+    - kind: Node
+      status_regex: "NotReady|Unknown"           # matches "NotReady" and
+                                                  # "NotReady,SchedulingDisabled"
+    - kind: Event
+      reason_regex: "^(NodeNotReady|NodeHasDiskPressure|NodeHasMemoryPressure|KubeletNotReady)$"
+  promql:
+    - 'kube_node_status_condition{condition="Ready",status="true"} == 0'
+    - 'kube_node_status_condition{condition=~"MemoryPressure|DiskPressure|PIDPressure",condition!="Ready",status="true"} == 1'
+  debounce_seconds: 300
+triggers:
+  - event_reason_regex: "NodeNotReady|NodeHasDiskPressure|NodeHasMemoryPressure|KubeletNotReady"
+  - event_message_regex: "node.*not ready|kubelet.*not posting|node.*unreachable|node.*condition.*unknown"
+investigation_steps:
+  - "kubectl get nodes -o wide to see all node statuses, roles, and ages."
+  - "kubectl describe node <node> — check Conditions (Ready, MemoryPressure, DiskPressure, NetworkUnavailable) and Events."
+  - "kubectl get events --all-namespaces --field-selector involvedObject.name=<node> for node-level events."
+  - "kubectl get pods --all-namespaces --field-selector spec.nodeName=<node> to identify affected workloads."
+  - "kubectl top nodes to check current resource utilization and identify saturation."
+expected_evidence:
+  - "Node condition (NotReady, MemoryPressure, DiskPressure, NetworkUnavailable, Unknown)"
+  - "Duration the node has been in the degraded condition"
+  - "Kubelet last heartbeat time and any kubelet error events"
+recommended_fix_template: |
+  Node <NODE_NAME> is NotReady (condition: <CONDITION>, duration: <DURATION>).
+  Immediate: cordon to prevent new scheduling:
+    kubectl cordon <NODE_NAME>
+  Investigation and recovery:
+  - If transient: drain and let cloud provider replace the node:
+    kubectl drain <NODE_NAME> --ignore-daemonsets --delete-emptydir-data
+  - If kubelet stopped: check kubelet service and certificate expiry on the node.
+  - If network issue: check VPC/security group rules or CNI plugin health.
+  After recovery: kubectl uncordon <NODE_NAME>

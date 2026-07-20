@@ -1,0 +1,142 @@
+site_name: kube-q
+site_description: AI-powered terminal client for Kubernetes — query, debug, and manage your cluster in plain English.
+site_url: https://mskazemi.github.io/kube_q/
+repo_url: https://github.com/MSKazemi/kube_q
+repo_name: MSKazemi/kube_q
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 Mohsen Seyedkazemi Ardebili &bull; Released under the <a href="https://github.com/MSKazemi/kubeintellect/blob/main/LICENSE">AGPL-3.0-or-later</a> (commercial licensing available)
+
+theme:
+  name: material
+  logo: assets/brand/kq-mark.svg
+  favicon: assets/brand/kq-mark.svg
+  font:
+    text: Inter
+    code: JetBrains Mono
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - announce.dismiss
+    - content.action.edit
+    - content.action.view
+    - content.code.annotate
+    - content.code.copy
+    - content.tabs.link
+    - content.tooltips
+    - navigation.footer
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.progress
+    - navigation.path
+    - navigation.sections
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/extra.js
+
+plugins:
+  - search:
+      lang: en
+  - tags
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      title: On this page
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Quick Start: quickstart.md
+    - Installation: installation.md
+    - Configuration: configuration.md
+  - User Guide:
+    - CLI Reference: cli-reference.md
+    - In-REPL Commands: commands.md
+    - File Attachments: file-attachments.md
+    - Session History: session-history.md
+    - Token Tracking: token-tracking.md
+    - Human-in-the-Loop: hitl.md
+  - Web UI: web-ui.md
+  - Developer:
+    - Python SDK: sdk.md
+    - Deployment & Hosting: deployment.md
+  - Reference:
+    - FAQ: faq.md
+    - Troubleshooting: troubleshooting.md
+    - Changelog: changelog.md
+
+extra:
+  status:
+    new: Recently added
+    deprecated: Deprecated
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/MSKazemi/kube_q
+      name: kube-q on GitHub
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/kube-q/
+      name: kube-q on PyPI
+    - icon: fontawesome/brands/docker
+      link: https://github.com/MSKazemi/kube_q/pkgs/container/kube_q
+      name: kube-q container image
+  generator: false

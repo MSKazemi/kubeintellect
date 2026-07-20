@@ -1,0 +1,17 @@
+[project]
+name = "ki-protocol"
+version = "1.0.0"
+description = "KubeIntellect wire protocol — single source of truth for the typed SSE event format shared by server and clients."
+readme = "README.md"
+license = { text = "AGPL-3.0-or-later" }
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.10",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["ki_protocol"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

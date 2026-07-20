@@ -1,0 +1,33 @@
+# Virtual workspace root (ADR-004) — the publishable projects live in packages/:
+#   packages/kubeintellect-server  -> the `kubeintellect` distribution (server, module name `app`)
+#   packages/kube-q                -> the `kq` CLI client
+#   packages/ki-protocol           -> shared SSE wire protocol
+# Integration tests stay in ./tests (they also exercise the local evaluation/ harness).
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[dependency-groups]
+dev = [
+    # Pulls every workspace member (editable) into the dev environment.
+    "kubeintellect[tracing,metrics]",
+    "pytest>=8",
+    "pytest-asyncio>=1.0",
+    "pytest-mock>=3.14",
+    "respx>=0.22",
+    "ruff>=0.14",
+    "mypy>=1.19",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=1.0",
+    "scipy>=1.13",
+    "matplotlib>=3.9",
+    "seaborn>=0.13",
+    "numpy>=2.0",
+]
+
+[tool.uv.sources]
+kubeintellect = { workspace = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

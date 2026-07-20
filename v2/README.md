@@ -1,0 +1,322 @@
+<div align="center">
+  <img src="docs/assets/brand/ki-c-indigo.svg" alt="KubeIntellect" width="96" height="96" />
+  <h1>KubeIntellect</h1>
+  <p>AI DevOps engineer for Kubernetes</p>
+
+  [![PyPI](https://img.shields.io/pypi/v/kubeintellect.svg)](https://pypi.org/project/kubeintellect/)
+  [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+  [![Docs](https://img.shields.io/badge/docs-mskazemi.github.io-0075C4?logo=materialformkdocs&logoColor=white)](https://mskazemi.github.io/kubeintellect/)
+  [![GitHub Stars](https://img.shields.io/github/stars/MSKazemi/kubeintellect?style=social)](https://github.com/MSKazemi/kubeintellect)
+
+  **[Website](https://kubeintellect.com/)** · **[Live Demo](https://kubeintellect.com/demo)** · **[Docs](https://mskazemi.github.io/kubeintellect/)** · **[v1 (legacy)](https://github.com/MSKazemi/kubeintellect/tree/v1-legacy)**
+</div>
+
+Ask KubeIntellect a question in plain English — it queries kubectl, Prometheus, and Loki live, then answers. Destructive operations pause for your explicit approval before anything runs.
+
+```bash
+kq "why is my api-server pod crashlooping?"
+kq "show me pods with high restart counts in the default namespace"
+kq "scale the frontend deployment to 5 replicas"   # pauses for your approval
+```
+
+> **Safe by default** — read-only queries run immediately; scale, delete, and restart operations require explicit human-in-the-loop approval.
+
+---
+
+## Quickstart — Pick Your Path
+
+| Starting point | Path |
+|----------------|------|
+| Try it instantly — no install at all | [Browser demo](https://kubeintellect.com/demo) — open in browser, slower, read-only |
+| Try it fast — no Docker, no cluster | [A — kube-q CLI](#a--kube-q-cli-no-install-except-pip) (read-only, one `pip install`) |
+| Try it fast — no cluster, install Docker | [B — create local cluster](#b--create-local-cluster) (~5 min, all features) |
+| Have Docker, no cluster | [pip install + `kubeintellect init`](#c--local-install-have-docker-or-existing-cluster) |
+| Have an existing cluster | [pip install + `kubeintellect init`](#c--local-install-have-docker-or-existing-cluster) |
+| Want Docker Compose / production setup | [Docker Compose](#docker-compose-laptop--vm---no-cluster-required-to-run-the-server) |
+
+---
+
+### A — kube-q CLI (no install except pip)
+
+Install only the thin CLI. `kq` defaults to `https://api.kubeintellect.com` — no `--url` needed.
+
+```bash
+pip install kube-q
+kq --api-key ki-ro-dev
+```
+
+> Read-only — the demo cluster is shared. Destructive ops are disabled. For full access use path B.
+
+---
+
+### Browser demo (zero install)
+
+No terminal, no install. Open **[kubeintellect.com/demo](https://kubeintellect.com/demo)** directly.
+
+> Slower than the CLI — the browser terminal shares a single hosted instance. Read-only access.
+
+---
+
+### B — Create local cluster
+
+Docker is the only prerequisite. `kubeintellect init` installs Kind, creates the cluster, deploys sample workloads, and starts a background service.
+
+**1. Install Docker**
+```bash
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER && newgrp docker
+```
+
+**2. Install KubeIntellect**
+```bash
+pip install kubeintellect
+```
+
+**3. Run the wizard — answer Y to everything**
+```bash
+kubeintellect init
+```
+
+The wizard:
+- Asks your LLM provider (OpenAI or Azure) and API key
+- Creates a local Kind cluster with sample workloads
+- Optionally installs Prometheus, Grafana, and Loki
+- Optionally deploys 5 broken-pod RCA scenarios to practise with
+- Generates an API key and configures `kq` automatically
+- Installs a systemd service so the server starts on every login
+
+**4. Open a new terminal**
+```bash
+kq
+```
+
+No manual server start, no copy-pasting API keys.
+
+---
+
+### C — Local install (have Docker or existing cluster)
+
+```bash
+pip install kubeintellect
+```
+
+> **`kubeintellect: command not found` / `kq: command not found`?**
+> pip installs scripts to `~/.local/bin` which may not be on your PATH. Fix it permanently:
+> ```bash
+> echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+> ```
+
+**Prefer isolated install?** pipx manages a private env automatically — no PATH fiddling:
+```bash
+pipx install kubeintellect   # apt install pipx  if missing
+```
+
+> **Ubuntu 22.04** ships Python 3.10. You need 3.12+:
+> ```bash
+> sudo add-apt-repository ppa:deadsnakes/ppa -y
+> sudo apt-get install -y python3.12 python3.12-distutils
+> python3.12 -m pip install kubeintellect
+> ```
+
+### First-time setup — one command
+
+```bash
+kubeintellect init
+```
+
+The wizard will:
+- Ask your LLM provider (OpenAI or Azure) and API key
+- Offer to create a local Kind cluster with sample workloads
+- Offer to install Prometheus, Grafana, and Loki for observability
+- Offer to deploy broken-pod RCA scenarios to practise with
+- Choose SQLite (default) or PostgreSQL for persistence
+- Generate an API key and configure `kq` automatically
+- Install a systemd service so the server starts on every login
+
+After `init` completes, open a new terminal and run:
+
+```bash
+kq
+```
+
+That's it. No manual server start, no copy-pasting API keys.
+
+### What `kubeintellect status` shows
+
+```
+  Config:    ✓  ~/.kubeintellect/.env
+  LLM:       ✓  azure / gpt-4o
+  DB:        ✓  sqlite  ~/.kubeintellect/kubeintellect.db
+  kubectl:   ✓  found
+  Kube:      ✓  ~/.kube/config  context: kind-kubeintellect
+  Auth:      ✓  enabled
+    admin     ki-admin-xxxxxxxxxxxxxxxxxxxx   ← use this as KUBE_Q_API_KEY
+  Prometheus:✓  http://172.18.0.2:30090  reachable
+  Loki:      ✓  http://172.18.0.2:30100  reachable
+  Grafana:   ✓  http://172.18.0.2:30080  reachable
+  kube-q:    ✓  found
+```
+
+### Database
+
+| Mode | When | Setup |
+|------|------|-------|
+| SQLite | Default — local / testing | None — `init` sets it automatically |
+| PostgreSQL | Production / team | Set `DATABASE_URL` in `~/.kubeintellect/.env` |
+
+---
+
+## kube-q — Terminal Client
+
+**[kube-q](https://github.com/MSKazemi/kube_q)** is the CLI that talks to KubeIntellect. Install it separately and point it at any running instance.
+
+```bash
+pip install kube-q
+kq "why is my pod crashlooping?"
+```
+
+[![PyPI](https://img.shields.io/pypi/v/kube-q.svg)](https://pypi.org/project/kube-q/)
+[![GitHub](https://img.shields.io/badge/github-MSKazemi%2Fkube__q-blue)](https://github.com/MSKazemi/kube_q)
+
+---
+
+## Architecture
+
+```
+kq (CLI)  ──► KubeIntellect API (FastAPI + LangGraph)
+                │
+                ├── Coordinator (GPT-4o)
+                │     ├── simple query  → direct tool use → answer
+                │     └── complex fault → fan-out to 4 parallel subagents
+                │           ├── Pod subagent     (kubectl)
+                │           ├── Metrics subagent (Prometheus / PromQL)
+                │           ├── Logs subagent    (Loki / LogQL)
+                │           └── Events subagent  (kubectl events)
+                │
+                ├── HITL gate — destructive ops pause for approval
+                └── Role check — admin / operator / readonly enforced
+```
+
+**Checkpointing**: conversation state persists to PostgreSQL (production) or SQLite (local).
+
+---
+
+## Authentication
+
+Optional — if no keys are set, all requests are accepted.
+
+```bash
+# ~/.kubeintellect/.env  (written by kubeintellect init)
+KUBEINTELLECT_ADMIN_KEYS=ki-admin-abc123
+KUBEINTELLECT_OPERATOR_KEYS=ki-op-def456
+KUBEINTELLECT_READONLY_KEYS=ki-ro-xyz789
+```
+
+Generate keys: `openssl rand -hex 20`
+
+---
+
+## Other deployment options
+
+### Docker Compose (laptop / VM — no cluster required to run the server)
+
+```bash
+git clone https://github.com/MSKazemi/kubeintellect
+cd kubeintellect
+cp .env.example .env
+```
+
+Open `.env` and fill in three things:
+
+```bash
+# 1. LLM key (OpenAI or Azure)
+OPENAI_API_KEY=sk-...          # or AZURE_OPENAI_API_KEY / AZURE_OPENAI_ENDPOINT
+
+# 2. Database password
+POSTGRES_PASSWORD=changeme     # use something stronger
+
+# 3. Admin API key — generate one, then paste the same value as KUBE_Q_API_KEY below
+KUBEINTELLECT_ADMIN_KEYS=ki-admin-$(openssl rand -hex 10)
+```
+
+```bash
+docker compose up -d
+pip install kube-q
+```
+
+```bash
+# KUBE_Q_API_KEY = the value you set in KUBEINTELLECT_ADMIN_KEYS above
+KUBE_Q_API_KEY=<your-admin-key> kq --url http://localhost:8000
+```
+
+Full guide: [Deploy: Docker Compose](https://mskazemi.github.io/kubeintellect/deploy/docker-compose/)
+
+### Other options
+
+| Option | When to use |
+|--------|-------------|
+| [Kind cluster](https://mskazemi.github.io/kubeintellect/deploy/kind/) | Local K8s dev with monitoring + Langfuse |
+| [Cloud / VM (Helm)](https://mskazemi.github.io/kubeintellect/deploy/cloud/) | Production, AKS, or company cluster |
+
+Full guide: [Quickstart](https://mskazemi.github.io/kubeintellect/quickstart/)
+
+---
+
+## CLI reference
+
+| Command | Purpose |
+|---------|---------|
+| `kubeintellect init` | Setup wizard — LLM key, cluster, observability, kube-q, systemd service |
+| `kubeintellect serve` | Start the API server (default: `0.0.0.0:8000`) |
+| `kubeintellect status` | Show config + connectivity for all components |
+| `kubeintellect set KEY=VALUE` | Update a value in `~/.kubeintellect/.env` |
+| `kubeintellect db-init` | Apply schema to PostgreSQL |
+| `kubeintellect kind-setup` | Create a Kind cluster + DNS config |
+| `kubeintellect service <action>` | Manage the systemd background service (`install` / `uninstall` / `start` / `stop` / `status` / `logs`) |
+
+---
+
+## Docs
+
+| Topic | Link |
+|-------|------|
+| All install options | [Quickstart](https://mskazemi.github.io/kubeintellect/quickstart/) |
+| pip — no cluster (quick try) | [Install: no cluster](https://mskazemi.github.io/kubeintellect/install/no-cluster/) |
+| pip — existing cluster | [Install: existing cluster](https://mskazemi.github.io/kubeintellect/install/existing-cluster/) |
+| pip — local Kind cluster | [Install: Kind](https://mskazemi.github.io/kubeintellect/install/kind/) |
+| Docker Compose | [Deploy: Docker Compose](https://mskazemi.github.io/kubeintellect/deploy/docker-compose/) |
+| Kind dev environment (repo) | [Deploy: Kind](https://mskazemi.github.io/kubeintellect/deploy/kind/) |
+| VM / AKS / cloud (Helm) | [Deploy: cloud / Helm](https://mskazemi.github.io/kubeintellect/deploy/cloud/) |
+| All config options | [Configuration reference](https://mskazemi.github.io/kubeintellect/configuration/) |
+| Security model | [Security](https://mskazemi.github.io/kubeintellect/security/) |
+
+---
+
+## Repo layout
+
+```
+app/                        # core Python source (shared by all deployments)
+deploy/
+  docker-compose/           # monitoring configs (prometheus.yml, loki-config.yml, grafana)
+  helm/
+    kubeintellect/          # Helm chart + values for all environments
+    langfuse/               # Langfuse LLM tracing chart
+  kind/                     # Kind cluster configs
+docker-compose.yaml         # laptop deployment entry point
+scripts/
+docs/
+tests/
+```
+
+---
+
+## v1 (LibreChat backend)
+
+The original KubeIntellect used a LibreChat frontend with a LangGraph multi-agent backend (Supervisor → specialized worker agents, HITL checkpoints, dynamic tool generation). It is preserved on the [`v1-legacy`](https://github.com/MSKazemi/kubeintellect/tree/v1-legacy) branch.
+
+---
+
+## License
+
+MIT. See [pyproject.toml](pyproject.toml) for the complete license declaration.

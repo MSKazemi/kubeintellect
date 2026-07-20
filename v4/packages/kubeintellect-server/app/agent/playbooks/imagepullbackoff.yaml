@@ -1,0 +1,27 @@
+name: ImagePullBackOff
+detect:
+  watch_predicates:
+    - kind: Pod
+      status_regex: "ImagePullBackOff|ErrImagePull|InvalidImageName"
+    - kind: Event
+      reason_regex: "^(Failed|ErrImagePull|BackOff)$"
+      message_regex: "Failed to pull image|Back-off pulling image"
+      involved_kind: Pod
+  promql:
+    - 'kube_pod_container_status_waiting_reason{reason=~"ErrImagePull|ImagePullBackOff|InvalidImageName"} == 1'
+  debounce_seconds: 90
+triggers:
+  - pod_status_regex: "ImagePullBackOff|ErrImagePull"
+  - event_reason_regex: "Failed|ErrImagePull"
+investigation_steps:
+  - "kubectl describe pod <pod> -n <ns> — read the exact pull error in Events."
+  - "kubectl get events -n <ns> --sort-by=.lastTimestamp — confirm the registry/image error."
+  - "Verify the image reference (registry, repo, tag) and pull-secret presence on the pod."
+expected_evidence:
+  - "Failed to pull image error with the exact registry/tag"
+  - "Auth error if a private registry — pull secret missing or wrong"
+  - "404/manifest unknown if the tag is wrong"
+recommended_fix_template: |
+  The image cannot be pulled. Likely cause: <CAUSE> (wrong tag / missing pull secret /
+  registry unreachable). Suggested fix: <ACTION> (correct the tag, attach an
+  imagePullSecret, or fix the registry hostname).

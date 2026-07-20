@@ -1,417 +1,77 @@
-<div align="center">
-  <img src="docs/assets/brand/ki-c-indigo.svg" alt="KubeIntellect" width="96" height="96" />
-  <h1>KubeIntellect</h1>
-  <p>AI DevOps engineer for Kubernetes</p>
+# ki
 
-  [![PyPI](https://img.shields.io/pypi/v/kubeintellect.svg)](https://pypi.org/project/kubeintellect/)
-  [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
-  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-  [![Docs](https://img.shields.io/badge/docs-mskazemi.github.io-0075C4?logo=materialformkdocs&logoColor=white)](https://mskazemi.github.io/kubeintellect/)
-  [![GitHub Stars](https://img.shields.io/github/stars/MSKazemi/kubeintellect?style=social)](https://github.com/MSKazemi/kubeintellect)
+KubeIntellect — an LLM-driven operator for Kubernetes. This repository holds
+multiple generations of the system (`v1/`–`v5/`) that share a single local
+infrastructure stack. Each generation is a self-contained re-architecture of the
+same product; together they trace one design lineage from a capability-maximal
+multi-agent system to a lean, measurable operator and, in v5, a design-first
+program for the next generation.
 
-  **[Website](https://kubeintellect.com/)** · **[Live Demo](https://kubeintellect.com/demo)** · **[Docs](https://mskazemi.github.io/kubeintellect/)** · **[v1 (legacy)](https://github.com/MSKazemi/kubeintellect/tree/v1-legacy)**
-</div>
+## Versions at a glance
 
-Ask KubeIntellect a question in plain English — it queries kubectl, Prometheus, and Loki live, then answers. Destructive operations pause for your explicit approval before anything runs.
-
-```bash
-kq "why is my api-server pod crashlooping?"
-kq "show me pods with high restart counts in the default namespace"
-kq "scale the frontend deployment to 5 replicas"   # pauses for your approval
-```
-
-> **Safe by default** — read-only queries run immediately; scale, delete, and restart operations require explicit human-in-the-loop approval.
-
----
-
-## What is KubeIntellect?
-
-KubeIntellect is an open-source, LLM-orchestrated multi-agent framework for autonomous Kubernetes operations. It lets platform and DevOps engineers, SREs, and Kubernetes operators manage a cluster in plain English — root-cause analysis, live diagnostics, and human-approved cluster changes.
-
-KubeIntellect helps you diagnose incidents faster by fanning out a question to specialized agents that query kubectl, Prometheus, and Loki live, then synthesizing one answer. Use KubeIntellect when you want conversational, natural-language Kubernetes operations with a safety gate on anything destructive. KubeIntellect is different from read-only AI diagnostics tools because it can also execute scale, restart, and delete operations — but only after explicit human-in-the-loop approval, with role-based access control. KubeIntellect is not a replacement for your observability stack, GitOps pipeline, or on-call judgment; it queries the tools you already run and pauses for you before changing anything.
-
-A companion research paper, [*KubeIntellect: A Modular LLM-Orchestrated Agent Framework for End-to-End Kubernetes Management*](https://doi.org/10.1007/s10723-026-09837-6), published in the *Journal of Grid Computing* (Springer, 2026; arXiv preprint [arXiv:2509.02449](https://arxiv.org/abs/2509.02449)), describes the architecture and evaluation in detail.
-
----
-
-## Quickstart — Pick Your Path
-
-| Starting point | Path |
-|----------------|------|
-| Try it instantly — no install at all | [Browser demo](https://kubeintellect.com/demo) — open in browser, slower, read-only |
-| Try it fast — no Docker, no cluster | [A — kube-q CLI](#a--kube-q-cli-no-install-except-pip) (read-only, one `pip install`) |
-| Try it fast — no cluster, install Docker | [B — create local cluster](#b--create-local-cluster) (~5 min, all features) |
-| Have Docker, no cluster | [pip install + `kubeintellect init`](#c--local-install-have-docker-or-existing-cluster) |
-| Have an existing cluster | [pip install + `kubeintellect init`](#c--local-install-have-docker-or-existing-cluster) |
-| Want Docker Compose / production setup | [Docker Compose](#docker-compose-laptop--vm---no-cluster-required-to-run-the-server) |
-
----
-
-### A — kube-q CLI (no install except pip)
-
-Install only the thin CLI. `kq` defaults to `https://api.kubeintellect.com` — no `--url` needed.
-
-```bash
-pip install kube-q
-kq --api-key ki-ro-dev
-```
-
-> Read-only — the demo cluster is shared. Destructive ops are disabled. For full access use path B.
-
----
-
-### Browser demo (zero install)
-
-No terminal, no install. Open **[kubeintellect.com/demo](https://kubeintellect.com/demo)** directly.
-
-> Slower than the CLI — the browser terminal shares a single hosted instance. Read-only access.
-
----
-
-### B — Create local cluster
-
-Docker is the only prerequisite. `kubeintellect init` installs Kind, creates the cluster, deploys sample workloads, and starts a background service.
-
-**1. Install Docker**
-```bash
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER && newgrp docker
-```
-
-**2. Install KubeIntellect**
-```bash
-pip install kubeintellect
-```
-
-**3. Run the wizard — answer Y to everything**
-```bash
-kubeintellect init
-```
-
-The wizard:
-- Asks your LLM provider (OpenAI or Azure) and API key
-- Creates a local Kind cluster with sample workloads
-- Optionally installs Prometheus, Grafana, and Loki
-- Optionally deploys 5 broken-pod RCA scenarios to practise with
-- Generates an API key and configures `kq` automatically
-- Installs a systemd service so the server starts on every login
-
-**4. Open a new terminal**
-```bash
-kq
-```
-
-No manual server start, no copy-pasting API keys.
-
----
-
-### C — Local install (have Docker or existing cluster)
-
-```bash
-pip install kubeintellect
-```
-
-> **`kubeintellect: command not found` / `kq: command not found`?**
-> pip installs scripts to `~/.local/bin` which may not be on your PATH. Fix it permanently:
-> ```bash
-> echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
-> ```
-
-**Prefer isolated install?** pipx manages a private env automatically — no PATH fiddling:
-```bash
-pipx install kubeintellect   # apt install pipx  if missing
-```
-
-> **Ubuntu 22.04** ships Python 3.10. You need 3.12+:
-> ```bash
-> sudo add-apt-repository ppa:deadsnakes/ppa -y
-> sudo apt-get install -y python3.12 python3.12-distutils
-> python3.12 -m pip install kubeintellect
-> ```
-
-### First-time setup — one command
-
-```bash
-kubeintellect init
-```
-
-The wizard will:
-- Ask your LLM provider (OpenAI or Azure) and API key
-- Offer to create a local Kind cluster with sample workloads
-- Offer to install Prometheus, Grafana, and Loki for observability
-- Offer to deploy broken-pod RCA scenarios to practise with
-- Choose SQLite (default) or PostgreSQL for persistence
-- Generate an API key and configure `kq` automatically
-- Install a systemd service so the server starts on every login
-
-After `init` completes, open a new terminal and run:
-
-```bash
-kq
-```
-
-That's it. No manual server start, no copy-pasting API keys.
-
-### What `kubeintellect status` shows
-
-```
-  Config:    ✓  ~/.kubeintellect/.env
-  LLM:       ✓  azure / gpt-4o
-  DB:        ✓  sqlite  ~/.kubeintellect/kubeintellect.db
-  kubectl:   ✓  found
-  Kube:      ✓  ~/.kube/config  context: kind-kubeintellect
-  Auth:      ✓  enabled
-    admin     ki-admin-xxxxxxxxxxxxxxxxxxxx   ← use this as KUBE_Q_API_KEY
-  Prometheus:✓  http://172.18.0.2:30090  reachable
-  Loki:      ✓  http://172.18.0.2:30100  reachable
-  Grafana:   ✓  http://172.18.0.2:30080  reachable
-  kube-q:    ✓  found
-```
-
-### Database
-
-| Mode | When | Setup |
-|------|------|-------|
-| SQLite | Default — local / testing | None — `init` sets it automatically |
-| PostgreSQL | Production / team | Set `DATABASE_URL` in `~/.kubeintellect/.env` |
-
----
-
-## kube-q — Terminal Client
-
-**[kube-q](https://github.com/MSKazemi/kube_q)** is the CLI that talks to KubeIntellect. Install it separately and point it at any running instance.
-
-```bash
-pip install kube-q
-kq "why is my pod crashlooping?"
-```
-
-[![PyPI](https://img.shields.io/pypi/v/kube-q.svg)](https://pypi.org/project/kube-q/)
-[![GitHub](https://img.shields.io/badge/github-MSKazemi%2Fkube__q-blue)](https://github.com/MSKazemi/kube_q)
-
----
-
-## Architecture
-
-```
-kq (CLI)  ──► KubeIntellect API (FastAPI + LangGraph)
-                │
-                ├── Coordinator (GPT-4o)
-                │     ├── simple query  → direct tool use → answer
-                │     └── complex fault → fan-out to 4 parallel subagents
-                │           ├── Pod subagent     (kubectl)
-                │           ├── Metrics subagent (Prometheus / PromQL)
-                │           ├── Logs subagent    (Loki / LogQL)
-                │           └── Events subagent  (kubectl events)
-                │
-                ├── HITL gate — destructive ops pause for approval
-                └── Role check — admin / operator / readonly enforced
-```
-
-**Checkpointing**: conversation state persists to PostgreSQL (production) or SQLite (local).
-
----
-
-## Authentication
-
-Optional — if no keys are set, all requests are accepted.
-
-```bash
-# ~/.kubeintellect/.env  (written by kubeintellect init)
-KUBEINTELLECT_ADMIN_KEYS=ki-admin-abc123
-KUBEINTELLECT_OPERATOR_KEYS=ki-op-def456
-KUBEINTELLECT_READONLY_KEYS=ki-ro-xyz789
-```
-
-Generate keys: `openssl rand -hex 20`
-
----
-
-## Other deployment options
-
-### Docker Compose (laptop / VM — no cluster required to run the server)
-
-```bash
-git clone https://github.com/MSKazemi/kubeintellect
-cd kubeintellect
-cp .env.example .env
-```
-
-Open `.env` and fill in three things:
-
-```bash
-# 1. LLM key (OpenAI or Azure)
-OPENAI_API_KEY=sk-...          # or AZURE_OPENAI_API_KEY / AZURE_OPENAI_ENDPOINT
-
-# 2. Database password
-POSTGRES_PASSWORD=changeme     # use something stronger
-
-# 3. Admin API key — generate one, then paste the same value as KUBE_Q_API_KEY below
-KUBEINTELLECT_ADMIN_KEYS=ki-admin-$(openssl rand -hex 10)
-```
-
-```bash
-docker compose up -d
-pip install kube-q
-```
-
-```bash
-# KUBE_Q_API_KEY = the value you set in KUBEINTELLECT_ADMIN_KEYS above
-KUBE_Q_API_KEY=<your-admin-key> kq --url http://localhost:8000
-```
-
-Full guide: [Deploy: Docker Compose](https://mskazemi.github.io/kubeintellect/deploy/docker-compose/)
-
-### Other options
-
-| Option | When to use |
-|--------|-------------|
-| [Kind cluster](https://mskazemi.github.io/kubeintellect/deploy/kind/) | Local K8s dev with monitoring + Langfuse |
-| [Cloud / VM (Helm)](https://mskazemi.github.io/kubeintellect/deploy/cloud/) | Production, AKS, or company cluster |
-
-Full guide: [Quickstart](https://mskazemi.github.io/kubeintellect/quickstart/)
-
----
-
-## CLI reference
-
-| Command | Purpose |
-|---------|---------|
-| `kubeintellect init` | Setup wizard — LLM key, cluster, observability, kube-q, systemd service |
-| `kubeintellect serve` | Start the API server (default: `0.0.0.0:8000`) |
-| `kubeintellect status` | Show config + connectivity for all components |
-| `kubeintellect set KEY=VALUE` | Update a value in `~/.kubeintellect/.env` |
-| `kubeintellect db-init` | Apply schema to PostgreSQL |
-| `kubeintellect kind-setup` | Create a Kind cluster + DNS config |
-| `kubeintellect service <action>` | Manage the systemd background service (`install` / `uninstall` / `start` / `stop` / `status` / `logs`) |
-
----
-
-## Docs
-
-| Topic | Link |
-|-------|------|
-| All install options | [Quickstart](https://mskazemi.github.io/kubeintellect/quickstart/) |
-| pip — no cluster (quick try) | [Install: no cluster](https://mskazemi.github.io/kubeintellect/install/no-cluster/) |
-| pip — existing cluster | [Install: existing cluster](https://mskazemi.github.io/kubeintellect/install/existing-cluster/) |
-| pip — local Kind cluster | [Install: Kind](https://mskazemi.github.io/kubeintellect/install/kind/) |
-| Docker Compose | [Deploy: Docker Compose](https://mskazemi.github.io/kubeintellect/deploy/docker-compose/) |
-| Kind dev environment (repo) | [Deploy: Kind](https://mskazemi.github.io/kubeintellect/deploy/kind/) |
-| VM / AKS / cloud (Helm) | [Deploy: cloud / Helm](https://mskazemi.github.io/kubeintellect/deploy/cloud/) |
-| All config options | [Configuration reference](https://mskazemi.github.io/kubeintellect/configuration/) |
-| Security model | [Security](https://mskazemi.github.io/kubeintellect/security/) |
-
----
-
-## Repo layout
-
-```
-app/                        # core Python source (shared by all deployments)
-deploy/
-  docker-compose/           # monitoring configs (prometheus.yml, loki-config.yml, grafana)
-  helm/
-    kubeintellect/          # Helm chart + values for all environments
-    langfuse/               # Langfuse LLM tracing chart
-  kind/                     # Kind cluster configs
-docker-compose.yaml         # laptop deployment entry point
-scripts/
-docs/
-tests/
-```
-
----
-
-## v1 (LibreChat backend)
-
-The original KubeIntellect used a LibreChat frontend with a LangGraph multi-agent backend (Supervisor → specialized worker agents, HITL checkpoints, dynamic tool generation). It is preserved on the [`v1-legacy`](https://github.com/MSKazemi/kubeintellect/tree/v1-legacy) branch.
-
----
-
-## Use cases
-
-- **Incident root-cause analysis** — ask why a pod is crashlooping and let the coordinator fan out to pod, metrics, logs, and events agents in parallel.
-- **Live cluster diagnostics** — query pod status, restart counts, resource pressure, and recent events in natural language instead of chaining `kubectl` commands.
-- **Guarded cluster operations** — scale, restart, or delete workloads through a human-in-the-loop approval gate with role-based access control.
-- **Cross-signal investigation** — correlate kubectl state, Prometheus metrics (PromQL), and Loki logs (LogQL) in a single conversation.
-- **Learning and practice** — spin up a local Kind cluster with broken-pod RCA scenarios to practise Kubernetes troubleshooting.
-
----
-
-## Comparison with alternatives
-
-KubeIntellect overlaps with other AI-for-Kubernetes tools but occupies a distinct point in the design space. Evaluate each against your own requirements.
-
-| | KubeIntellect | Typical read-only AI diagnostics tools (e.g. k8sgpt) |
+| Version | What it is (as-built) | Status |
 |---|---|---|
-| Interaction | Conversational, multi-turn natural language | Mostly one-shot analysis / scan |
-| Architecture | Multi-agent (coordinator + pod / metrics / logs / events subagents) | Single-analyzer |
-| Data sources | kubectl, Prometheus, Loki, events | kubectl / cluster state |
-| Write operations | Scale / restart / delete, **HITL-gated** with RBAC | Typically none (read-only) |
-| State | Conversation checkpointing (PostgreSQL / SQLite) | Usually stateless |
-| Interfaces | Hosted API, `kube-q` CLI, browser demo | CLI / operator |
+| **`v1/`** | Capability-maximal generation: LangGraph **Supervisor + 13 specialised ReAct agents**, parallel diagnostics, **runtime CodeGenerator** tool synthesis (AST sandbox → SHA-256 → PVC → optional GitHub PR), ~100+ Kubernetes-client tools, 4-tier PostgreSQL memory, 7 LLM providers, LibreChat UI + `kube-q` CLI + MCP server. | Frozen legacy (ADR-001) |
+| **`v2/`** | **Simplify.** Single LangGraph **coordinator** ReAct loop over **4 guarded tools** (`run_kubectl`, `run_helm`, `query_prometheus`, `query_loki`) with a 7-layer kubectl safety guard, on-demand 4-subagent parallel RCA, pre-fetch snapshot, reflexion + YAML playbooks, and an evaluation harness. | Baseline `main` |
+| **`v3/`** | **Reframe.** The v2 behaviour delegated to the **`deepagents`** framework — coordinator + sub-agents over a virtual filesystem (`/snapshot.md`, `/findings/*`), `write_todos` planning, and `task()` delegation. | Experimental |
+| **`v4/`** | **Platform.** The v2 system plus feature-flagged V4 layers: sensorium + detector engine, memory hierarchy (L1 episodes + L2 temporal KG), flight recorder, autonomy ladder + watchtower, cortex, predictive detection. Delivered as a **uv monorepo** (`packages/kubeintellect-server`, `packages/kube-q`, `packages/ki-protocol`). | Current implementation |
+| **`v5/`** | **Design tier.** A design-first program for the next generation (research corpus, ADRs 101–105, 7 architecture docs, P0 specs). v5 ships **no standalone code** — its P0 slices live as additive, default-off flags inside the v4 server (ADR-101). | Design study |
 
-KubeIntellect's main differentiator is combining conversational multi-agent diagnostics with **approved** write operations. If you only need passive read-only diagnostics, a lighter single-analyzer tool may be enough.
+Lineage: **v1** (capability-maximal) → *simplify* → **v2** (lean, measurable) →
+*reframe* → **v3** (framework-delegated) → *productionise* → **v4** (platform) →
+*design forward* → **v5** (design study).
 
----
+## Repository layout
 
-## Limitations — when NOT to use
+The repository splits responsibilities between the root and each version directory:
 
-- **You need an LLM provider.** KubeIntellect requires an OpenAI or Azure OpenAI API key; LLM usage incurs cost and network calls.
-- **LLM output is not infallible.** Answers and generated tool calls can be wrong — this is exactly why destructive operations are gated behind explicit human approval. Always review before approving.
-- **Not an observability stack.** It queries your existing kubectl, Prometheus, and Loki; it does not replace them or a GitOps/CD pipeline.
-- **Requires Python 3.12+.**
-- **Shared demo paths are read-only and rate-limited.** The hosted browser demo and `ki-ro-dev` CLI key run against a shared, read-only cluster.
-- **Actively developed.** APIs and behaviour may change between releases.
+- **Root (`Makefile` + `deploy/` + `scripts/`)** — manages the *shared
+  infrastructure* used by every version: one Kind cluster, one observability
+  stack (Prometheus + Grafana + Loki), and one Langfuse instance with a shared
+  project. Run `make help` at the root to list the infra targets.
+- **Per-version (`v4/Makefile`, etc.)** — each version directory has its own
+  Makefile for *application* build/deploy and Python development, e.g.
+  `cd v4 && make kind-build-kubeintellect && make kind-deploy-kubeintellect`.
 
----
+Per [ADR-001](design/adr/001-standard-version-layout.md), a version directory
+contains only product code, `tests/`, `docs/`, `deploy/`, and packaging files;
+the shared **evaluation harness** (`evaluation/`) and **paper** (`paper/`,
+`architecture-comparison/`) live only at the repo root and are always private.
+Documentation across versions follows one canonical surface
+([ADR-002](design/adr/002-standard-doc-surface.md)).
 
-## FAQ
+## Shared infrastructure
 
-**What is KubeIntellect?**
-An open-source, LLM-orchestrated multi-agent framework for autonomous Kubernetes operations — root-cause analysis, live diagnostics, and human-approved cluster changes, driven by plain-English questions.
+All versions run against one set of shared infrastructure rather than each
+standing up its own:
 
-**Does it make changes to my cluster?**
-Read-only queries run immediately. Scale, restart, and delete operations pause for explicit human-in-the-loop approval, subject to role-based access (admin / operator / readonly).
+- **One Kind cluster** — `make kind-cluster-create`
+- **One observability stack** (Prometheus + Grafana + Loki) — `make monitoring-install`
+- **One Langfuse instance + shared project** — `make langfuse-provision`, then `make langfuse-install`
+- **Hosts entry** — `make hosts-entry`
 
-**KubeIntellect vs k8sgpt?**
-Both apply LLMs to Kubernetes. KubeIntellect adds multi-turn conversation, a multi-agent coordinator that correlates kubectl/Prometheus/Loki, conversation checkpointing, and HITL-gated write operations. Read-only tools like k8sgpt focus on passive diagnostics. Pick based on whether you need guarded write actions and cross-signal investigation.
+`make langfuse-provision` auto-creates a shared Langfuse project and token, and
+fans the keys into each version's `.env` (no manual UI step). All versions share
+**one** Langfuse project; per-version cost is filtered by a `version:vN` trace tag.
 
-**Which LLM providers are supported?**
-OpenAI and Azure OpenAI (e.g. GPT-4o), configured during `kubeintellect init`.
+## Quick start (laptop + Kind)
 
-**Do I need a cluster to try it?**
-No. Use the [browser demo](https://kubeintellect.com/demo) or the read-only [`kube-q` CLI](#a--kube-q-cli-no-install-except-pip). For full features, create a local Kind cluster with `kubeintellect init`.
+From the repository root:
 
-**Is it production-ready?**
-It ships a Helm chart, PostgreSQL-backed checkpointing, authentication, and RBAC for production deployment, and gates all destructive operations behind human approval. As with any tool that can act on a cluster, validate it in a non-production environment first and keep approvals in the loop.
-
-**Is there a research paper?**
-Yes — published in the *Journal of Grid Computing* (Springer, 2026): [doi:10.1007/s10723-026-09837-6](https://doi.org/10.1007/s10723-026-09837-6) (preprint [arXiv:2509.02449](https://arxiv.org/abs/2509.02449)). See [Citation](#citation).
-
----
-
-## Citation
-
-If you use KubeIntellect in your research, please cite the paper:
-
-```bibtex
-@article{seyedkazemi2026kubeintellect,
-  title     = {KubeIntellect: A Modular LLM-Orchestrated Agent Framework for End-to-End Kubernetes Management},
-  author    = {Seyedkazemi Ardebili, Mohsen and Bartolini, Andrea},
-  journal   = {Journal of Grid Computing},
-  publisher = {Springer},
-  volume    = {24},
-  number    = {3},
-  year      = {2026},
-  doi       = {10.1007/s10723-026-09837-6},
-  url       = {https://doi.org/10.1007/s10723-026-09837-6}
-}
+```bash
+make kind-cluster-create     # one shared Kind cluster
+make monitoring-install      # Prometheus + Grafana + Loki
+make langfuse-provision      # create shared Langfuse project + token, fan keys into each .env
+make langfuse-install        # deploy Langfuse
+make hosts-entry             # add local hosts entry
 ```
 
-A machine-readable [`CITATION.cff`](CITATION.cff) is also available in the repository root.
+Then build and deploy a version's application:
 
----
+```bash
+cd v4
+make kind-build-kubeintellect
+make kind-deploy-kubeintellect
+```
 
-## License
-
-MIT. See [pyproject.toml](pyproject.toml) for the complete license declaration.
+Run `make help` at the root at any time to see the available infra targets.

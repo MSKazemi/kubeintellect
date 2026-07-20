@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}-db-init
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "kubeintellect.labels" . | nindent 4 }}
+  annotations:
+    # Run this job on every helm upgrade so schema changes are applied
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        # Wait for postgres to be ready before running schema migration
+        - name: wait-for-postgres
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h {{ include "kubeintellect.fullname" . }}-postgres -U {{ .Values.postgres.user }}; do
+                echo "Waiting for postgres..."; sleep 2
+              done
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kubeintellect.fullname" . }}-secrets
+                  key: POSTGRES_PASSWORD
+      containers:
+        - name: db-init
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - psql -h {{ include "kubeintellect.fullname" . }}-postgres -U {{ .Values.postgres.user }} -d {{ .Values.postgres.database }} -f /schema/schema.sql
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kubeintellect.fullname" . }}-secrets
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: schema
+              mountPath: /schema
+      volumes:
+        - name: schema
+          configMap:
+            name: {{ include "kubeintellect.fullname" . }}-schema

@@ -1,0 +1,65 @@
+name: Bug Report
+description: Something is not working correctly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening a bug report, please check the [runbook](../../docs/runbook.md) for known issues.
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment type
+      options:
+        - Local (Kind)
+        - Azure AKS
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: k8s_version
+    attributes:
+      label: Kubernetes version
+      placeholder: "e.g. 1.31"
+    validations:
+      required: true
+
+  - type: input
+    id: llm_provider
+    attributes:
+      label: LLM provider
+      placeholder: "e.g. Azure OpenAI gpt-4o, OpenAI gpt-4-turbo"
+    validations:
+      required: true
+
+  - type: textarea
+    id: query
+    attributes:
+      label: Query that triggered the bug
+      description: What did you ask KubeIntellect?
+      placeholder: "e.g. 'Why is my pod in namespace production stuck in Pending?'"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Run `kubectl logs -n kubeintellect deployments/kubeintellect-core --tail=100`
+      render: shell

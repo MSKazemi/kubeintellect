@@ -3,6 +3,7 @@
 {{- $chPass    := .Values.clickhouse.password | default "langfuse" }}
 {{- $minioUser := .Values.minio.rootUser      | default "langfuse" }}
 {{- $minioPwd  := .Values.minio.rootPassword  | default "langfuse123" }}
+{{- $redisPass := .Values.redis.password      | default "langfuse" }}
 
 # --- PostgreSQL (Langfuse metadata) ---
 ---
@@ -131,11 +132,17 @@ spec:
       containers:
         - name: redis
           image: redis:7-alpine
+          # Require a password so Langfuse's REDIS_AUTH matches — without it the
+          # web/worker log "ERR AUTH … called without any password configured".
+          command: ["redis-server", "--requirepass", "$(REDIS_PASSWORD)"]
+          env:
+            - name: REDIS_PASSWORD
+              value: {{ $redisPass | quote }}
           ports:
             - containerPort: 6379
           readinessProbe:
             exec:
-              command: ["redis-cli", "ping"]
+              command: ["sh", "-c", "redis-cli --no-auth-warning -a \"$REDIS_PASSWORD\" ping | grep -q PONG"]
             initialDelaySeconds: 5
             periodSeconds: 10
           volumeMounts:

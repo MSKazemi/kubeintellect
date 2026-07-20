@@ -1,0 +1,83 @@
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║   KubeIntellect — Google Cloud GKE values                                    ║
+# ║                                                                              ║
+# ║   1. cp values-gcp.yaml.example values-gcp.yaml                              ║
+# ║   2. Fill in the image (Artifact Registry or GHCR), domain, Cloud SQL host   ║
+# ║   3. Put secrets (LLM key, DB URL) in v4/.env — never in this file           ║
+# ║   4. make gcp-deploy-kubeintellect                                           ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+# ── Image ─────────────────────────────────────────────────────────────────────
+# GKE nodes can pull GHCR directly. To keep pulls in-region, mirror to Artifact Registry:
+#   gcloud artifacts repositories create kubeintellect --repository-format=docker --location=<region>
+#   docker pull ghcr.io/mskazemi/kubeintellect:dev-latest
+#   docker tag  ghcr.io/mskazemi/kubeintellect:dev-latest \
+#               <region>-docker.pkg.dev/<project>/kubeintellect/kubeintellect:dev-latest
+#   gcloud auth configure-docker <region>-docker.pkg.dev
+#   docker push <region>-docker.pkg.dev/<project>/kubeintellect/kubeintellect:dev-latest
+image:
+  repository: ghcr.io/mskazemi/kubeintellect   # ← or <region>-docker.pkg.dev/<project>/kubeintellect/kubeintellect
+  tag: dev-latest
+  pullPolicy: Always
+
+# amd64 only — the Dockerfile fetches linux/amd64 kubectl. Use an amd64 node pool
+# (e.g. e2/n2), not a T2A (arm64) pool, or add a multi-arch build first.
+nodeSelector:
+  kubernetes.io/arch: amd64
+
+replicaCount: 2
+
+# ── Ingress — GKE Ingress (GCLB) ──────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: gce          # gce (GKE Ingress → external HTTP(S) LB) | nginx
+  hosts:
+    - api.your-domain.com    # ← replace with your public domain
+  annotations:
+    kubernetes.io/ingress.class: gce
+    # networking.gke.io/managed-certificates: kubeintellect-cert   # GKE managed cert
+    # kubernetes.io/ingress.global-static-ip-name: kubeintellect-ip
+
+# ── LLM Provider ──────────────────────────────────────────────────────────────
+# Cloud-agnostic: pick any provider. Endpoint/key/models are injected from v4/.env
+# by the Makefile (azure | openai | qwen | anthropic).
+config:
+  llmProvider: openai
+  prometheusUrl: ""   # e.g. http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+  lokiUrl: ""
+
+# ── Database — Cloud SQL for PostgreSQL (recommended) ─────────────────────────
+# The memory hierarchy, reflexion, preference memory, and flight recorder persist
+# here. Reach Cloud SQL via private IP or the Cloud SQL Auth Proxy sidecar.
+postgres:
+  external:
+    enabled: true
+    url: ""   # postgresql://user:password@<private-ip-or-proxy>:5432/kubeintellect
+              # (or set DATABASE_URL in v4/.env — the Makefile passes it via --set)
+# In-cluster fallback (GCE PD volume):
+# postgres:
+#   external:
+#     enabled: false
+#   storage: 50Gi
+#   storageClass: premium-rwo   # SSD (or standard-rwo for balanced PD)
+#   password: ""
+
+# ── RBAC — least privilege ────────────────────────────────────────────────────
+rbac:
+  clusterAdmin: false
+  createClusterReadOnly: true
+  createClusterOps: true
+  allowExec: false
+  enableNamespaceManagement: false
+
+# ── Resources ─────────────────────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+langfuse:
+  enabled: false

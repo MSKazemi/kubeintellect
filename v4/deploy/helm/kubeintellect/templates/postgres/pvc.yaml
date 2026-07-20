@@ -1,0 +1,18 @@
+{{- if not .Values.postgres.external.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kubeintellect-postgres-data
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "kubeintellect.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.postgres.storage }}
+  {{- if .Values.postgres.storageClass }}
+  storageClassName: {{ .Values.postgres.storageClass }}
+  {{- end }}
+{{- end }}

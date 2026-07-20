@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use KubeIntellect in your research or product, please cite it as below."
+title: "KubeIntellect: An LLM-Driven Autonomous Operator for Kubernetes"
+abstract: >-
+  KubeIntellect is an autonomous, memory-augmented operator for Kubernetes that
+  investigates live clusters with real tools (kubectl, Prometheus, Loki), grounds its
+  answers in evidence, and applies fixes behind human-in-the-loop approval. It features a
+  tiered-reasoning multi-agent architecture and a persistent memory hierarchy (episodes,
+  a temporal knowledge graph, and reflexion with verified-fix promotion) that lets it make
+  increasingly accurate decisions across sessions.
+type: software
+authors:
+  - given-names: Mohsen
+    family-names: "Seyedkazemi Ardebili"
+    email: mohsen.seyedkazemi@gmail.com
+repository-code: "https://github.com/MSKazemi/kubeintellect"
+url: "https://github.com/MSKazemi/kubeintellect"
+license: AGPL-3.0-or-later
+keywords:
+  - kubernetes
+  - llm-agents
+  - autonomous-operator
+  - multi-agent-systems
+  - agent-memory
+  - aiops
+  - qwen

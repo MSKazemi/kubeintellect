@@ -1,0 +1,175 @@
+# KubeIntellect — local deployment
+#
+# ── What you need ─────────────────────────────────────────────────────────────
+#   1. A kubeconfig with access to a Kubernetes cluster (default: ~/.kube/config)
+#   2. An LLM API key (OpenAI or Azure OpenAI)
+#   3. Any password for the Postgres database (started automatically below)
+#
+# ── Quick start ───────────────────────────────────────────────────────────────
+#   cp .env.example .env          # fill in: LLM key + POSTGRES_PASSWORD + ADMIN key
+#   docker compose up -d          # pulls ghcr.io/mskazemi/kubeintellect + starts postgres
+#   pip install kube-q
+#   KUBE_Q_API_KEY=<key> kq       # key = value of KUBEINTELLECT_ADMIN_KEYS in .env
+#
+# ── Optional: local monitoring (Prometheus + Grafana + Loki) ──────────────────
+#   docker compose --profile monitoring up -d
+#   # Then add to .env:  PROMETHEUS_URL=http://localhost:9090
+#   #                    LOKI_URL=http://localhost:3100
+#   # Skip if your cluster already has Prometheus/Loki — just point those URLs there.
+#
+# ── Optional: LLM call tracing (Langfuse) ────────────────────────────────────
+#   docker compose --profile tracing up -d
+#   # Visit http://localhost:3001 → create account → Settings → API Keys
+#   # Then add to .env:  LANGFUSE_ENABLED=true
+#   #                    LANGFUSE_HOST=http://localhost:3001
+#   #                    LANGFUSE_PUBLIC_KEY=pk-lf-...
+#   #                    LANGFUSE_SECRET_KEY=sk-lf-...
+#
+# ── Everything at once ────────────────────────────────────────────────────────
+#   docker compose --profile monitoring --profile tracing up -d
+#
+# ── Use a non-default kubeconfig ─────────────────────────────────────────────
+#   KUBECONFIG=/path/to/config docker compose up -d
+
+services:
+
+  # ── Core ─────────────────────────────────────────────────────────────────────
+
+  kubeintellect:
+    image: ghcr.io/mskazemi/kubeintellect:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ${KUBECONFIG:-~/.kube/config}:/home/app/.kube/config:ro
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_HOST=postgres
+      # Reach Langfuse over the compose network (NOT localhost:3001, which is the host-side
+      # port mapping and is unreachable from inside this container). Activate tracing by
+      # running `make langfuse-provision` then `docker compose --profile tracing up -d`.
+      - LANGFUSE_HOST=http://langfuse:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; r=urllib.request.urlopen('http://localhost:8000/healthz'); sys.exit(0 if b'ok' in r.read() else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-kubeintellect}
+      POSTGRES_USER: ${POSTGRES_USER:-kubeintellect}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kubeintellect} -d ${POSTGRES_DB:-kubeintellect}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Monitoring profile (Prometheus + Loki + Grafana) ─────────────────────────
+  # Start with: docker compose --profile monitoring up -d
+  # Then set in .env: PROMETHEUS_URL=http://localhost:9090
+  #                   LOKI_URL=http://localhost:3100
+
+  prometheus:
+    profiles: [monitoring]
+    image: prom/prometheus:v2.52.0
+    volumes:
+      - ./deploy/docker-compose/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  loki:
+    profiles: [monitoring]
+    image: grafana/loki:3.0.0
+    volumes:
+      - ./deploy/docker-compose/monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/tmp/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    restart: unless-stopped
+
+  grafana:
+    profiles: [monitoring]
+    image: grafana/grafana:11.0.0
+    volumes:
+      - ./deploy/docker-compose/monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/ds.yml:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+    restart: unless-stopped
+
+  # ── Tracing profile (Langfuse) ────────────────────────────────────────────────
+  # Zero-config: run `make langfuse-provision` first — it writes the project keys +
+  # LANGFUSE_INIT_* seed values into .env. Then `docker compose --profile tracing up -d`
+  # boots Langfuse, which auto-creates the org/project/API keys/admin user on first
+  # start (idempotent), so traces flow immediately with no manual UI step.
+  # UI: http://localhost:3001   Login: $LANGFUSE_INIT_USER_EMAIL / $LANGFUSE_INIT_USER_PASSWORD
+
+  langfuse-db:
+    profiles: [tracing]
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: langfuse
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:-langfuse-local}
+    volumes:
+      - langfuse-pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  langfuse:
+    profiles: [tracing]
+    image: langfuse/langfuse:latest
+    ports:
+      - "3001:3000"
+    environment:
+      DATABASE_URL: postgresql://langfuse:${LANGFUSE_DB_PASSWORD:-langfuse-local}@langfuse-db:5432/langfuse
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-changeme-local-secret-32chars!!}
+      NEXTAUTH_URL: http://localhost:3001
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "true"
+      TELEMETRY_ENABLED: "false"
+      # Headless init — seeds org / project / API keys / admin user on first start.
+      # Values come from .env (populated by `make langfuse-provision`). Idempotent.
+      LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-kubeintellect-org}
+      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:-KubeIntellect}
+      LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID:-kubeintellect-project}
+      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME:-KubeIntellect}
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-admin@kubeintellect.local}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-Admin}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-langfuse-admin}
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  prometheus-data:
+  loki-data:
+  grafana-data:
+  langfuse-pgdata:

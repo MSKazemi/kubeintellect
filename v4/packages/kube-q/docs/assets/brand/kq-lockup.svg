@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 200" role="img" aria-label="kq — KubeIntellect CLI">
+  <title>kq — the KubeIntellect CLI</title>
+  <defs>
+    <linearGradient id="lockBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1020"/>
+      <stop offset="100%" stop-color="#070b17"/>
+    </linearGradient>
+    <linearGradient id="lockAccent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Mark: rounded square on the left -->
+  <g transform="translate(20 20)">
+    <rect width="160" height="160" rx="36" ry="36" fill="url(#lockBg)"/>
+    <rect x="0.75" y="0.75" width="158.5" height="158.5" rx="35.25" ry="35.25"
+          fill="none" stroke="#1e2642" stroke-width="1.5"/>
+    <path d="M 34 60 L 56 80 L 34 100"
+          fill="none"
+          stroke="url(#lockAccent)"
+          stroke-width="9"
+          stroke-linecap="round"
+          stroke-linejoin="round"/>
+    <g font-family="'JetBrains Mono', 'SF Mono', 'Menlo', monospace"
+       font-weight="700" fill="#e2e8f0">
+      <text x="68" y="106" font-size="66" letter-spacing="-2">kq</text>
+    </g>
+    <rect x="138" y="86" width="10" height="18" rx="1.5" fill="url(#lockAccent)"/>
+  </g>
+
+  <!-- Wordmark + tagline -->
+  <g transform="translate(212 0)">
+    <text x="0" y="92"
+          font-family="Inter, system-ui, sans-serif"
+          font-weight="900"
+          font-size="64"
+          letter-spacing="-2"
+          fill="#e2e8f0">
+      kube<tspan fill="url(#lockAccent)">-q</tspan>
+    </text>
+    <text x="0" y="134"
+          font-family="'JetBrains Mono', 'SF Mono', monospace"
+          font-weight="500"
+          font-size="18"
+          letter-spacing="1"
+          fill="#8a94b0">
+      THE KUBEINTELLECT CLI
+    </text>
+    <text x="0" y="166"
+          font-family="'JetBrains Mono', 'SF Mono', monospace"
+          font-weight="400"
+          font-size="16"
+          fill="#6366f1">
+      $ pip install kube-q
+    </text>
+  </g>
+</svg>

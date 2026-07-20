@@ -12,6 +12,7 @@ clickhouse:
 
 redis:
   storage: "1Gi"
+  password: "langfuse"
 
 minio:
   storage: "20Gi"
@@ -23,20 +24,21 @@ nextauthSecret: "changeme-nextauth-secret-min-32-chars-long"
 salt: "changeme-salt-value"
 encryptionKey: "36653cf14b2bc0d0158f283af1e50c5401321ddb9850fcd7be7a3417ad950a4f"
 
-# SYNC REQUIRED: publicKey / secretKey seeded here MUST match secrets.langfusePublicKey /
-# langfuseSecretKey in deploy/helm/kubeintellect/values-kind.yaml. Update BOTH files together.
+# publicKey / secretKey are injected at install time by `make langfuse-install`, which
+# --sets them (and the matching kubeintellect secret) from .env after `make langfuse-provision`.
+# Left blank here on purpose — a stale placeholder default would break trace/cost capture.
 initUser:
   email: "admin@kubeintellect.local"
   name: "Admin"
   password: "langfuse-admin"
 initOrg:
   id: "kubeintellect-org"
-  name: "KubeIntellect V2"
+  name: "KubeIntellect"
 initProject:
   id: "kubeintellect-project"
-  name: "KubeIntellect V2"
-  publicKey: "pk-lf-6492d57f-1f9a-4cb7-ba41-32aa25b5912c"
-  secretKey: "sk-lf-change-me"
+  name: "KubeIntellect"
+  publicKey: ""
+  secretKey: ""
 
 ingress:
   enabled: true

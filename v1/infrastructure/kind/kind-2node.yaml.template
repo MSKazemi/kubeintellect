@@ -1,0 +1,29 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 6443
+        hostPort: 6443
+        listenAddress: "0.0.0.0"
+      - containerPort: 80   # Ingress HTTP
+        hostPort: 80
+      - containerPort: 443  # Ingress HTTPS
+        hostPort: 443
+    extraMounts:
+      - hostPath: ${PROJECT_ROOT}
+        containerPath: /mnt/code/KubeIntellect
+      - hostPath: ${PROJECT_ROOT}/.local-data/postgres
+        containerPath: /mnt/data/postgres
+  - role: worker
+    extraMounts:
+      - hostPath: ${PROJECT_ROOT}
+        containerPath: /mnt/code/KubeIntellect
+  - role: worker
+    extraMounts:
+      - hostPath: ${PROJECT_ROOT}
+        containerPath: /mnt/code/KubeIntellect
+  - role: worker
+    extraMounts:
+      - hostPath: ${PROJECT_ROOT}
+        containerPath: /mnt/code/KubeIntellect

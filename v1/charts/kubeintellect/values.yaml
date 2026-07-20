@@ -1,0 +1,17 @@
+# values.yaml (minimal defaults so --strict passes)
+namespace: default
+apps: []
+services: []
+ingresses: []
+image:           # prevents nil deref if someone forgets to pass image values
+  pullSecrets: []
+
+externalSecrets:
+  enabled: false
+
+exporters:
+  enabled: false
+  mongodb:
+    image: percona/mongodb_exporter:0.40
+  postgres:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0

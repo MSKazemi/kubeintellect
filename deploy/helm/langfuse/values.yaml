@@ -12,6 +12,8 @@ clickhouse:
 
 redis:
   storage: "2Gi"
+  # Password for langfuse-redis; wired to the web/worker via REDIS_AUTH. Empty → "langfuse".
+  password: ""
 
 minio:
   storage: "50Gi"

@@ -1,0 +1,25 @@
+name: ContainerCreatingStuck
+detect:
+  watch_predicates:
+    - kind: Pod
+      status_regex: "^ContainerCreating$"
+    - kind: Event
+      reason_regex: "^(FailedMount|FailedAttachVolume)$"
+      message_regex: "MountVolume|FailedMount|attachdetach|VolumeBinding|unbound.*PersistentVolumeClaim"
+  promql:
+    - 'min_over_time(kube_pod_container_status_waiting_reason{reason="ContainerCreating"}[5m]) == 1'
+  debounce_seconds: 300
+triggers:
+  - pod_status_regex: "ContainerCreating"
+  - event_message_regex: "FailedMount|MountVolume|attach|VolumeBinding"
+investigation_steps:
+  - "kubectl describe pod <pod> -n <ns> — inspect Events for FailedMount or attach errors."
+  - "kubectl get pvc -n <ns> — check PVC bound state and storage class."
+  - "kubectl get events -n <ns> --sort-by=.lastTimestamp — look for volume/CSI errors."
+expected_evidence:
+  - "FailedMount / MountVolume.SetUp event"
+  - "PVC stuck Pending or unable to provision"
+  - "CSI driver errors or storage-class misconfiguration"
+recommended_fix_template: |
+  The pod is stuck creating because a volume cannot be mounted. Suggested fix: <ACTION>
+  (fix the PVC, switch storage class, or check CSI driver logs).

@@ -1,0 +1,22 @@
+# Kept local, never committed
+.gitignore
+# AI tooling / Claude artifacts
+.claude/
+CLAUDE.md
+# Internal dev docs (private tier)
+design/
+# Secrets
+.env
+.env.*
+*.key
+*.pem
+# p2p config
+.p2p.toml
+# Editor / OS / build
+.vscode/
+.DS_Store
+__pycache__/
+.venv/
+# Runtime PID files
+*.pid
+.server*.pid
