@@ -23,6 +23,7 @@ Usage:
   kq detector new "..."       # author a natural-language detector
   kq preference               # view/set remembered user preferences
   kq v5-status                # v5 trust-plane status (flags, kill switch, spend cap)
+  kq completion bash          # print a shell completion script (bash|zsh|fish)
   kq --no-stream              # disable streaming
   kq --user-id myuser         # set persistent user ID
   kq --no-banner              # suppress logo (screen recording)
