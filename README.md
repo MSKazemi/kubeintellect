@@ -6,8 +6,10 @@
   [![PyPI](https://img.shields.io/pypi/v/kubeintellect.svg)](https://pypi.org/project/kubeintellect/)
   [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
   [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+  [![DOI](https://img.shields.io/badge/DOI-10.1007%2Fs10723--026--09837--6-blue)](https://doi.org/10.1007/s10723-026-09837-6)
+  [![arXiv](https://img.shields.io/badge/arXiv-2509.02449-b31b1b.svg)](https://arxiv.org/abs/2509.02449)
   [![Website](https://img.shields.io/badge/website-kubeintellect.com-0075C4)](https://kubeintellect.com/)
-  [![GitHub Stars](https://img.shields.io/github/stars/kubeintellect/kubeintellect?style=social)](https://github.com/kubeintellect/kubeintellect)
+  [![GitHub Stars](https://img.shields.io/github/stars/MSKazemi/kubeintellect?style=social)](https://github.com/MSKazemi/kubeintellect)
 
   **[Website](https://kubeintellect.com/)** · **[Live Demo](https://kubeintellect.com/demo)** · **[Current version → `v4/`](v4/)** · **[Paper](https://doi.org/10.1007/s10723-026-09837-6)**
 </div>
@@ -30,7 +32,7 @@ kq "scale the frontend deployment to 5 replicas"   # pauses for your approval
 - **It is for** platform engineers, DevOps engineers, SREs, and Kubernetes operators who want to troubleshoot and manage clusters in plain English.
 - **It helps you diagnose incidents faster** by correlating kubectl state, Prometheus metrics, and Loki logs through a coordinator that delegates to pod, metrics, logs, and events subagents.
 - **Use KubeIntellect when** you want conversational operations with a hard safety gate on every destructive action.
-- **It is different from read-only AI diagnostics tools** (such as k8sgpt) because it can also *act* — scale, restart, delete — but only after explicit human approval, gated by RBAC (admin / operator / readonly).
+- **It is different from read-only AI diagnostics tools** because it can also *act* — scale, restart, delete — but only after explicit human approval, gated by RBAC (admin / operator / readonly).
 - **It is not** a replacement for your observability stack, a GitOps/CD pipeline, or on-call judgment; it queries the tools you already run and pauses before changing anything. It requires an OpenAI or Azure OpenAI API key and Python 3.12+.
 
 ## Quick start
