@@ -144,6 +144,10 @@ Run `make help` at the root at any time to see the available infra targets.
 
 **Which version should I use?** [`v4/`](v4/) — it's the current, actively developed implementation.
 
+## Maintainer
+
+KubeIntellect is created, led, and maintained by **[Mohsen Seyedkazemi Ardebili](https://github.com/MSKazemi)** — see [GOVERNANCE.md](GOVERNANCE.md). Contributions are welcome from everyone; start with [CONTRIBUTING.md](CONTRIBUTING.md) and a [`good first issue`](https://github.com/MSKazemi/kubeintellect/labels/good%20first%20issue). If KubeIntellect is useful to you, a ⭐ helps others find it.
+
 ## License
 
 
