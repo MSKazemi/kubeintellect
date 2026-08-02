@@ -1,0 +1,72 @@
+name: 🐛 Bug report
+description: Something isn't working as documented or expected.
+title: "bug: <short summary>"
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug! The more detail you give, the faster we can help.
+        For **security** issues, please **do not** file a public bug — see [SECURITY.md](https://github.com/MSKazemi/kubeintellect/blob/main/SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: Version / generation
+      description: Which version are you on? (e.g. `v4`, a git commit, or a `pip` package version)
+      placeholder: "v4 @ commit abc1234, or kube-q 0.x.y"
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - kube-q (CLI)
+        - kubeintellect-server
+        - Agents / orchestration
+        - Detectors / sensorium
+        - Memory subsystem
+        - Deploy / Helm / infra
+        - Docs
+        - Other / not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what actually happened?
+      placeholder: |
+        1. I ran `kq "..."`
+        2. Expected: ...
+        3. Actual: ...
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: A minimal, reliable reproduction. Include the exact command/query.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / output
+      description: Paste logs or error output. **Redact any secrets, tokens, or cluster identifiers.**
+      render: shell
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, cluster type (Kind/EKS/AKS/GKE/…), LLM provider (OpenAI/Azure).
+      placeholder: "Ubuntu 24.04, Python 3.12, Kind, Azure OpenAI (gpt-4o)"
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this isn't a duplicate.
+          required: true
+        - label: I redacted secrets/tokens from any logs above.
+          required: true

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Questions & Ideas (Discussions)
+    url: https://github.com/MSKazemi/kubeintellect/discussions
+    about: Ask a question, propose an idea, or show what you built. Not sure if it's a bug? Start here.
+  - name: 🔒 Report a security vulnerability
+    url: https://github.com/MSKazemi/kubeintellect/security/advisories/new
+    about: Please report security issues privately — do NOT open a public issue.
+  - name: 📖 Documentation & Live Demo
+    url: https://kubeintellect.com
+    about: Docs, the browser demo, and the hosted API.
