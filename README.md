@@ -12,6 +12,8 @@
   [![GitHub Stars](https://img.shields.io/github/stars/MSKazemi/kubeintellect?style=social)](https://github.com/MSKazemi/kubeintellect)
 
   **[Website](https://kubeintellect.com/)** · **[Live Demo](https://kubeintellect.com/demo)** · **[Current version → `v4/`](v4/)** · **[Paper](https://doi.org/10.1007/s10723-026-09837-6)**
+
+  Created & maintained by **[Mohsen Seyedkazemi Ardebili](https://github.com/MSKazemi)**
 </div>
 
 ---
