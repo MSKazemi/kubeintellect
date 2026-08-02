@@ -12,6 +12,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Documentation
+- **Canonical repo consolidated to `MSKazemi/kubeintellect`.** Repointed the README star badge
+  (was rendering the org mirror's 0-star count), `CITATION.cff` `repository-code`, and the four
+  `llms.txt` doc links from the `kubeintellect/kubeintellect` org mirror to the personal repo, which
+  holds the organic stars. Ends the star-count fragmentation between the two identical public repos
+  (org mirror to be redirected + archived).
 - **v4 product docs — major quality pass.** Audited every page against the code and fixed
   drift (homepage playbook stat 10→18, `KUBE_Q_URL` default, `AZURE_OPENAI_API_VERSION`,
   demo-key TTL vars, a misplaced CLI flag table); documented the previously-undocumented
