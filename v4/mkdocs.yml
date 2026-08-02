@@ -109,6 +109,7 @@ nav:
     - Examples & cookbook: examples.md
     - Autonomous operations: autonomy.md
     - CLI Reference: cli-reference.md
+    - How it compares (vs k8sgpt / HolmesGPT): comparison.md
     - FAQ: faq.md
     - Troubleshooting: troubleshooting.md
 
