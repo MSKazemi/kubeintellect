@@ -1,0 +1,49 @@
+name: 📐 RFC / Design proposal
+description: Propose a substantial change — new subsystem, protocol/interface change, or anything touching the safety model.
+title: "RFC: <title>"
+labels: ["RFC", "discussion"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        RFCs are for changes big enough to deserve design review before code. Think: new agents,
+        new subsystems, architecture shifts, or anything that touches the human-in-the-loop safety
+        model. Small features → use the Feature request template instead.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One paragraph — what are you proposing?
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why should we do this? What use cases does it enable? What's inadequate today?
+    validations:
+      required: true
+  - type: textarea
+    id: design
+    attributes:
+      label: Design
+      description: The detailed proposal — components, data flow, interfaces, and how it fits the existing architecture.
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety & security impact
+      description: How does this interact with the HITL gate, RBAC, least-privilege, and untrusted-input handling? (Required — the safety model is a hard invariant.)
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives & prior art
+      description: Other designs considered, and how similar tools (k8sgpt, HolmesGPT, …) approach this.
+  - type: textarea
+    id: unresolved
+    attributes:
+      label: Unresolved questions
+      description: What's still open for the community to weigh in on?
