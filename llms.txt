@@ -13,10 +13,10 @@ Key facts:
 
 ## Documentation
 
-- [README](https://github.com/kubeintellect/kubeintellect/blob/main/README.md): overview, quickstart, architecture, and CLI reference
+- [README](https://github.com/MSKazemi/kubeintellect/blob/main/README.md): overview, quickstart, architecture, and CLI reference
 - [Website & docs](https://kubeintellect.com/): project home, live demo, and hosted API
-- [Quickstart](https://github.com/kubeintellect/kubeintellect/blob/main/v4/docs/quickstart.md): all install options
-- [Security model](https://github.com/kubeintellect/kubeintellect/blob/main/v4/docs/security.md): authentication, RBAC, and the human-in-the-loop gate
+- [Quickstart](https://github.com/MSKazemi/kubeintellect/blob/main/v4/docs/quickstart.md): all install options
+- [Security model](https://github.com/MSKazemi/kubeintellect/blob/main/v4/docs/security.md): authentication, RBAC, and the human-in-the-loop gate
 
 ## Project
 
@@ -29,4 +29,4 @@ Key facts:
 ## Research
 
 - [Paper: KubeIntellect (arXiv:2509.02449)](https://arxiv.org/abs/2509.02449): "KubeIntellect: A Modular LLM-Orchestrated Agent Framework for End-to-End Kubernetes Management" by Mohsen Seyedkazemi Ardebili and Andrea Bartolini (2025)
-- [CITATION.cff](https://github.com/kubeintellect/kubeintellect/blob/main/CITATION.cff): machine-readable citation metadata
+- [CITATION.cff](https://github.com/MSKazemi/kubeintellect/blob/main/CITATION.cff): machine-readable citation metadata

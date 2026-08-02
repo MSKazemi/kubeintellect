@@ -145,6 +145,10 @@ Run `make help` at the root at any time to see the available infra targets.
 
 **Which version should I use?** [`v4/`](v4/) — it's the current, actively developed implementation.
 
+## Maintainer
+
+KubeIntellect is created, led, and maintained by **[Mohsen Seyedkazemi Ardebili](https://github.com/MSKazemi)** — see [GOVERNANCE.md](GOVERNANCE.md). Contributions are welcome from everyone; start with [CONTRIBUTING.md](CONTRIBUTING.md) and a [`good first issue`](https://github.com/MSKazemi/kubeintellect/labels/good%20first%20issue). If KubeIntellect is useful to you, a ⭐ helps others find it.
+
 ## License
 
 KubeIntellect is **dual-licensed** under the **[GNU AGPL-3.0-or-later](LICENSE)** *or* a **commercial license**. Self-host and modify freely under the AGPL; for closed/SaaS use without AGPL's network-copyleft obligations, a commercial license is available. See **[LICENSING.md](LICENSING.md)**; contact **mohsen.seyedkazemi@gmail.com**.
