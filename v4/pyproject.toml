@@ -19,7 +19,7 @@ dev = [
     # 438 findings across app/ (mostly EXE002 + import style). Adopting them is a
     # standalone cleanup, not something to fold into a security bump — ruff has no
     # advisory against it. Raise this bound once that cleanup lands.
-    "ruff>=0.15,<0.16",
+    "ruff>=0.16.1,<0.17",
     "mypy>=1.19",
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=1.0",
