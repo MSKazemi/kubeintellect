@@ -25,7 +25,7 @@ dev = [
     { name = "kubeintellect", extras = ["tracing", "metrics"], editable = "packages/kubeintellect-server" },
     { name = "matplotlib", specifier = ">=3.9" },
     { name = "mkdocs-material", specifier = ">=9.5" },
-    { name = "mkdocstrings", extras = ["python"], specifier = ">=1.0" },
+    { name = "mkdocstrings", extras = ["python"], specifier = ">=1.0.6" },
     { name = "mypy", specifier = ">=1.19" },
     { name = "numpy", specifier = ">=2.0" },
     { name = "pytest", specifier = ">=8" },
