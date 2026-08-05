@@ -3,6 +3,7 @@
   <h1>KubeIntellect</h1>
   <p><strong>Human-governed AI SRE for Kubernetes</strong> — chat with your cluster in plain English.</p>
 
+  [![CI](https://github.com/MSKazemi/kubeintellect/actions/workflows/ci.yml/badge.svg)](https://github.com/MSKazemi/kubeintellect/actions/workflows/ci.yml)
   [![PyPI](https://img.shields.io/pypi/v/kubeintellect.svg)](https://pypi.org/project/kubeintellect/)
   [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
   [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
@@ -14,6 +15,12 @@
   **[Website](https://kubeintellect.com/)** · **[Live Demo](https://kubeintellect.com/demo)** · **[Current version → `v4/`](v4/)** · **[Paper](https://doi.org/10.1007/s10723-026-09837-6)**
 
   Created & maintained by **[Mohsen Seyedkazemi Ardebili](https://github.com/MSKazemi)**
+
+  <br/>
+
+  <img src=".github/assets/kubeintellect-demo.gif" alt="KubeIntellect diagnosing a CrashLoopBackOff, then pausing for approval before scaling" width="880" />
+
+  <sub>Ask why a pod is broken → get the root cause. Ask it to <em>change</em> something → it stops and waits for you.<br/>Scripted demo, time-compressed; panels are the real <code>kq</code> UI.</sub>
 </div>
 
 ---
@@ -134,6 +141,34 @@ Run `make help` at the root at any time to see the available infra targets.
 | Correlates kubectl + Prometheus + Loki | ✅ | Partial | Manual |
 | Performs cluster actions | ✅ (approval-gated) | ❌ | ✅ (unguarded) |
 | Human-in-the-loop safety gate + RBAC | ✅ | n/a | ❌ |
+| Works with no LLM API key | ❌ | Varies (local models supported) | ✅ |
+| Runs fully offline / air-gapped | Partial (self-hosted models only) | Varies | ✅ |
+| Per-query cost | LLM tokens | LLM tokens | Free |
+| Project maturity & community size | Young — small community | **Larger, more adopted** | Universal |
+
+Where the alternatives win is stated on purpose: if you only need read-only
+triage, or you cannot send cluster data to a hosted model, a read-only tool or
+plain `kubectl` may be the better fit. KubeIntellect earns its cost when you want
+conversational diagnosis *and* guarded action in one loop.
+
+## Limitations
+
+Known and deliberate, so you can judge fit before installing:
+
+- **An LLM API key is required.** OpenAI or Azure OpenAI out of the box; v4 also
+  supports Anthropic, Qwen, and OpenAI-compatible endpoints. Queries cost tokens.
+- **Cluster context leaves your network** unless you point it at a self-hosted or
+  in-cluster model endpoint. Review [SECURITY.md](SECURITY.md) before running it
+  against production.
+- **It is not a replacement** for your observability stack, a GitOps/CD pipeline,
+  or on-call judgment. It queries the tools you already run.
+- **LLM answers can be wrong.** The approval gate exists precisely because the
+  model's proposed action should be read before it runs. Do not enable
+  `--auto-approve` outside testing.
+- **Autonomy is capped at A1 by default** — detector firings open investigations;
+  automatic remediation (A3) requires an explicit allowlist.
+- **Young project.** APIs across `v1/`–`v4/` have changed between generations;
+  `v4/` is the supported line and the one to build on.
 
 ## FAQ
 

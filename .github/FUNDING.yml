@@ -1,0 +1,12 @@
+# Adds a "Sponsor" button to the top of the repository page.
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
+#
+# KubeIntellect is dual-licensed (AGPL-3.0-or-later OR commercial — see
+# LICENSING.md), so the button doubles as the commercial-enquiry entry point.
+
+custom: ["https://kubeintellect.com/", "https://github.com/MSKazemi/kubeintellect/blob/main/LICENSING.md"]
+
+# Uncomment once a GitHub Sponsors profile exists for the account
+# (Settings -> Sponsors). Checked 2026-08-05: not yet enabled, and an
+# unconfigured entry renders a broken button.
+# github: [MSKazemi]
