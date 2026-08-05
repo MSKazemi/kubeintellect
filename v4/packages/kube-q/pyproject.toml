@@ -46,7 +46,7 @@ kq = "kube_q.cli.main:main"
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0",
+    "pytest>=9.1.1",
     "respx>=0.21",
     "pytest-mock>=3.14",
     "ruff>=0.4",

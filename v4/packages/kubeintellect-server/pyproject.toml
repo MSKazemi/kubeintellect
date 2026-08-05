@@ -18,7 +18,7 @@ dependencies = [
     # API
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
-    "pydantic>=2.10",
+    "pydantic>=2.13.4",
     "pydantic-settings>=2.6",
     "python-dotenv>=1.0",
     # LLM + Agent
