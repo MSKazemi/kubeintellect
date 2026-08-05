@@ -51,6 +51,15 @@ pip-delete-this-directory.txt
 *.manifest
 *.spec
 
+# ── Node / Next.js (v4/packages/kube-q/web — the browser demo front-end) ─────
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+
 # ── Virtual environments ─────────────────────────────────────────────────────
 .venv/
 venv/

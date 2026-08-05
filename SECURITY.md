@@ -48,13 +48,32 @@ Security-relevant areas we especially care about:
 
 ## Supported versions
 
-Active security fixes target the **current version (`v4/`)**. Earlier generations (`v1/`–`v3/`) are
-maintained for reference and receive fixes on a best-effort basis.
+Active security fixes target the **current version (`v4/`)** only. It is the line published to
+PyPI as `kubeintellect` / `kube-q`, and the only one you should deploy.
 
-| Version | Supported |
-|---|---|
-| `v4/` (current) | ✅ |
-| `v1/`–`v3/` | 🔸 Best-effort |
+| Version | Supported | Notes |
+|---|---|---|
+| `v4/` (current) | ✅ Actively fixed | Published to PyPI; dependencies tracked by Dependabot |
+| `v1/`–`v3/` | ❌ **Frozen — do not deploy** | Kept verbatim for architectural lineage and to keep the published paper's results reproducible |
+
+### About dependency alerts in `v1/`–`v3/`
+
+Those directories are **deliberately frozen** (ADR-001/002). Their lockfiles pin the exact
+versions the published experiments were run against, so upgrading them would destroy the
+reproducibility they exist to provide. As a result they carry known-vulnerable transitive
+dependencies, and Dependabot reports them.
+
+This is a documented, accepted trade-off, not an oversight:
+
+- **Nothing from `v1/`–`v3/` is published to any package registry.** Installing
+  `kubeintellect` or `kube-q` never pulls this code.
+- They are **reference artifacts**, not deployable software. Do not run them against a real
+  cluster.
+- Dependabot's *update* configuration is scoped to `v4/` and the CI workflows on purpose, so
+  these frozen trees do not generate update PRs no one intends to merge.
+
+If you find a vulnerability that is exploitable **in `v4/`**, please report it — that is in
+scope and will be fixed.
 
 ## Disclosure
 

@@ -29,3 +29,16 @@ updates:
       interval: weekly
     labels: [dependencies]
     open-pull-requests-limit: 3
+
+  # The browser demo front-end. Not shipped in any wheel, but it is a public
+  # surface (kubeintellect.com/demo) and it carried the only critical advisory
+  # in the repo, so it needs tracking like everything else.
+  - package-ecosystem: npm
+    directory: "/v4/packages/kube-q/web"
+    schedule:
+      interval: weekly
+    labels: [dependencies]
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
