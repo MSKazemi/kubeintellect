@@ -1,0 +1,119 @@
+name: CI
+
+# Scope: the v4 platform, which is the current implementation. v1–v3 are frozen
+# legacy generations (ADR-001/002) and are intentionally not built here.
+#
+# Note for contributors: workflows only run when they live in the repository
+# ROOT .github/workflows/. The per-version files under v1/…/v4/.github/ are
+# packaged with those directories and are never executed by GitHub.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.12.1"
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v4
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install "uv==${UV_VERSION}"
+
+      - name: Sync dependencies
+        run: uv sync
+
+      - name: ruff check
+        run: uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/
+
+  test:
+    name: Tests (${{ matrix.suite }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: server
+            workdir: v4
+            path: tests/
+          - suite: kube-q CLI
+            workdir: v4/packages/kube-q
+            path: tests/
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install "uv==${UV_VERSION}"
+
+      # Both suites resolve from the v4 workspace root; the two `tests` packages
+      # collide under a single pytest invocation, so they run as separate jobs.
+      - name: Sync dependencies
+        working-directory: v4
+        run: uv sync
+
+      - name: Run pytest
+        working-directory: ${{ matrix.workdir }}
+        run: uv run python -m pytest ${{ matrix.path }} -q
+
+  install-smoke:
+    name: Install smoke test
+    runs-on: ubuntu-latest
+    # Proves the README's install path actually works from a clean environment:
+    # build the three workspace distributions, install them into an empty venv,
+    # and confirm both entry points start.
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install "uv==${UV_VERSION}"
+
+      - name: Build workspace distributions
+        working-directory: v4
+        run: |
+          uv build --package ki-protocol  -o dist
+          uv build --package kube-q       -o dist
+          uv build --package kubeintellect -o dist
+          ls -l dist
+
+      - name: Install into a clean environment
+        working-directory: v4
+        run: |
+          uv venv /tmp/smoke
+          VIRTUAL_ENV=/tmp/smoke uv pip install --find-links dist \
+            "$(ls dist/kubeintellect-*.whl)"
+
+      - name: Entry points start
+        run: |
+          /tmp/smoke/bin/kubeintellect --help
+          /tmp/smoke/bin/kq --help
+
+      - name: Server package imports
+        run: /tmp/smoke/bin/python -c "import app; print('kubeintellect server import OK')"

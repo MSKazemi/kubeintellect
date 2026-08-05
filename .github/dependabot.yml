@@ -1,0 +1,31 @@
+version: 2
+
+# Scope: the v4 platform (current) plus the root CI workflows. v1–v3 are frozen
+# legacy generations and are deliberately not tracked — dependency PRs against
+# them would be noise no one intends to merge.
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    labels: [dependencies, github_actions]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: uv
+    directory: "/v4"
+    schedule:
+      interval: weekly
+    labels: [dependencies]
+    open-pull-requests-limit: 5
+    groups:
+      # One PR per week for routine patch/minor bumps keeps review cost low;
+      # majors still arrive as individual PRs so they get read properly.
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: "/v4"
+    schedule:
+      interval: weekly
+    labels: [dependencies]
+    open-pull-requests-limit: 3

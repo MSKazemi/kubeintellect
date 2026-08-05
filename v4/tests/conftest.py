@@ -4,9 +4,24 @@ and unit-tested without any running services, tokens, or a real cluster.
 
 Loaded by pytest before any test module is imported.
 """
+import importlib.util
 import os
 import sys
 from unittest.mock import MagicMock
+
+# ── Evaluation-harness tests ─────────────────────────────────────────────────
+# These modules test the `evaluation/` research harness, which lives outside the
+# published source tree. Skip collecting them when it is not importable, so the
+# suite is green on a clean clone instead of erroring at collection time.
+if importlib.util.find_spec("evaluation") is None:
+    collect_ignore = [
+        "test_aggregate.py",
+        "test_compare.py",
+        "test_evaluation_runner.py",
+        "test_follow_up.py",
+        "test_loki_telemetry.py",
+        "test_signal_scorer.py",
+    ]
 
 # ── Pydantic Settings — supply dummy values so Settings() validates ──────────
 # Use os.environ[...] = (not setdefault) to force-override any values that

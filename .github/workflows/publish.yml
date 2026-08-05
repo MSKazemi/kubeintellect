@@ -1,0 +1,59 @@
+name: Publish to PyPI
+
+# Root copy of v4/.github/workflows/publish.yml. Workflows only execute when they
+# live in the repository ROOT .github/workflows/ — the per-version file under v4/
+# is packaged with that directory and is never run by GitHub.
+#
+# Manual trigger only: Actions -> Publish to PyPI -> Run workflow.
+# Requires a `pypi` environment with PyPI trusted publishing (OIDC) configured
+# for all three distributions.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (build only, do not upload)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    environment: pypi
+    defaults:
+      run:
+        working-directory: v4
+    permissions:
+      id-token: write   # required for trusted publishing (OIDC)
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: pip install build
+
+      # All three workspace packages publish together: the kubeintellect dist
+      # depends on kube-q and ki-protocol, so they must exist on PyPI too (ADR-004).
+      - name: Build sdists and wheels for all workspace packages
+        run: |
+          python -m build --outdir dist packages/ki-protocol
+          python -m build --outdir dist packages/kube-q
+          python -m build --outdir dist packages/kubeintellect-server
+          ls -l dist
+
+      - name: Upload to PyPI
+        if: ${{ !inputs.dry_run }}
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b  # v1.14.0
+        with:
+          # The workflow runs from v4/, but the action resolves paths from the
+          # workspace root.
+          packages-dir: v4/dist
+          skip-existing: true   # re-running an already-published version is a no-op

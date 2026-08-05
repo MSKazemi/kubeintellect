@@ -13,7 +13,7 @@
 .PHONY: help kind-cluster-create kind-cluster-create-vm kind-cluster-stop kind-cluster-start \
         kind-cluster-cleanup monitoring-install monitoring-uninstall \
         langfuse-provision langfuse-install langfuse-clean hosts-entry helm-package \
-        opsmembench opsmembench-demo opsmembench-test
+        opsmembench opsmembench-demo opsmembench-driver-check opsmembench-test
 
 KIND_CLUSTER_NAME ?= testbed-v2
 MONITORING_NS     ?= monitoring
@@ -143,6 +143,9 @@ OPSMEMBENCH_DEMO_TIMELINE ?= evaluation/opsmembench/timelines/fleet-multi-theme.
 
 opsmembench-demo: ## Print the OpsMemBench ablation table over built-in baselines (No-memory/V4-flat/V5-full)
 	uv run --project v4 python -m evaluation.opsmembench.runner demo --timeline $(OPSMEMBENCH_DEMO_TIMELINE)
+
+opsmembench-driver-check: ## Prove the OpsMemBench live driver's offline core (mock SUT → ceiling grade — no cluster)
+	uv run --project v4 python -m evaluation.opsmembench.live_driver self-check --timeline $(OPSMEMBENCH_TIMELINE)
 
 opsmembench-test: ## Run the OpsMemBench harness unit tests
 	uv run --project v4 python -m pytest evaluation/opsmembench/test_opsmembench.py -q
