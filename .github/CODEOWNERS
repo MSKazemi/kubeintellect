@@ -1,0 +1,47 @@
+# CODEOWNERS — automatic review routing.
+#
+# Right now every path resolves to one person, which is an honest picture of the
+# project's bus factor rather than a filing error. The file exists so that
+# delegating an area is a one-line change instead of a restructure: when someone
+# earns the Reviewer rung (see GOVERNANCE.md), add them to their area below.
+#
+# Syntax: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+# Note: CODEOWNERS only requests review; it does not enforce it. Required
+# approvals are configured in branch protection.
+
+# ── Default owner for everything not matched below ───────────────────────────
+*                                       @MSKazemi
+
+# ── Areas open to delegation (the labels match the area/* issue labels) ──────
+# area/agents — coordinator, subagents, playbooks
+/v4/packages/kubeintellect-server/app/agent/          @MSKazemi
+/v4/packages/kubeintellect-server/app/cortex/         @MSKazemi
+
+# area/detectors — sensorium + detector engine
+/v4/packages/kubeintellect-server/app/detectors/      @MSKazemi
+/v4/packages/kubeintellect-server/app/sensorium/      @MSKazemi
+
+# area/memory — episodes, knowledge graph, consolidation
+/v4/packages/kubeintellect-server/app/memory/         @MSKazemi
+
+# area/kube-q — the kq CLI and the browser demo front-end
+/v4/packages/kube-q/                                  @MSKazemi
+
+# area/deploy — Helm charts, Kind, cloud deploy paths
+/deploy/                                              @MSKazemi
+/v4/deploy/                                           @MSKazemi
+
+# ── Load-bearing safety surfaces — always route to the lead maintainer ───────
+# These enforce the human-in-the-loop and RBAC guarantees. A change here is a
+# change to the product's core promise, so it is deliberately NOT delegable to
+# an area reviewer (kind/safety on the issue tracker).
+/v4/packages/kubeintellect-server/app/api/v1/auth.py  @MSKazemi
+/v4/packages/kubeintellect-server/app/autonomy/       @MSKazemi
+/SECURITY.md                                          @MSKazemi
+/GOVERNANCE.md                                        @MSKazemi
+/LICENSE                                              @MSKazemi
+/LICENSING.md                                         @MSKazemi
+
+# ── Release and CI plumbing ──────────────────────────────────────────────────
+/.github/workflows/                                   @MSKazemi
+/.github/dependabot.yml                               @MSKazemi

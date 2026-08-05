@@ -95,9 +95,47 @@ say so in the PR.
 - [ ] New behavior has both a happy-path **and** an error-path test
 - [ ] **Every write/mutating operation keeps its dry-run + diff + human-approval (HITL) gate** — this is a safety requirement, not a UX choice
 - [ ] Secret values are never logged or returned (key names only)
-- [ ] `pytest`, `ruff check`, and `mypy` all pass locally
+- [ ] `pytest` and `ruff check` pass locally (these are the CI gates)
+- [ ] `mypy` shows no *new* errors from your change — see the note below
 - [ ] Docs updated if behavior/CLI/flags changed
 - [ ] Commits are signed off (DCO)
+
+> **On `mypy` and `ruff format`:** neither is a blocking CI gate yet, and you should know why
+> before you waste time on it. `mypy` currently reports **30 pre-existing errors across 12
+> files**, and `ruff format --check` would reformat ~108 files. Both are tracked as debt in
+> [ROADMAP.md](ROADMAP.md). **You are not expected to fix them in your PR** — just don't add
+> new ones. If a gate fails for a reason that has nothing to do with your change, say so in the
+> PR and we'll sort it out; it is not your bug.
+
+---
+
+## AI assistance
+
+**AI assistance is welcome.** This project is itself an AI tool; it would be strange to ban the
+tooling. What matters is not how a change was produced but whether you stand behind it.
+
+Regardless of how you wrote it, you must:
+
+- **Understand it** — every line, well enough to explain the approach in review.
+- **Have run the tests locally**, and read the output.
+- **Take responsibility for it** as your own work, including the DCO sign-off.
+
+Please **disclose substantial AI assistance** in the PR description. This is not a black mark;
+it just helps reviewers know where to look, exactly like "I copied this pattern from the
+Kubernetes docs" would.
+
+Two specific asks for this project in particular:
+
+1. **Never let a generated change weaken the safety model.** The HITL approval gate, the RBAC
+   checks, and the mutating chokepoint are load-bearing. A plausible-looking refactor that
+   quietly bypasses them is the single most dangerous PR we could merge, and it is exactly the
+   kind of thing generated code does confidently.
+2. **Don't open a PR you can't defend.** We review on the merits, and "why this approach rather
+   than X?" is a normal question. If you can answer it, the PR is fine — that's the whole
+   filter, and it applies identically to hand-written code.
+
+We will never reject a contribution *because* AI was used. We will reject one that is untested,
+doesn't fit the design, or that the author cannot explain — the same bar as always.
 
 ---
 
@@ -144,5 +182,22 @@ to agree to this, open a Discussion and we'll figure it out together.
 
 ## Recognition
 
-Every merged contributor is a real contributor. We credit contributors in release notes and on
-the repo. Thank you for helping build a safer way to operate Kubernetes with AI. 💙
+Every merged contributor is a real contributor, and **code is not the only kind that counts.**
+These are credited by name in release notes with equal weight:
+
+- Documentation, examples, and tutorials
+- Bug reports with a reproduction that actually reproduces
+- Issue triage and answering questions in Discussions
+- Testing on a platform, distribution, or cloud the maintainer doesn't have
+- Design feedback and RFC review
+- Translations
+- Playbooks and detectors
+
+If you contributed and weren't credited, that's a mistake on our side — **open an issue and
+we'll fix it.** You will not be the one being awkward.
+
+Where this leads is written down in [GOVERNANCE.md](GOVERNANCE.md): there is an explicit
+contributor ladder, and people are invited up it. The project has one maintainer today, so if
+you want to own an area, that door is genuinely open.
+
+Thank you for helping build a safer way to operate Kubernetes with AI. 💙

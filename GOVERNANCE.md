@@ -14,6 +14,16 @@ the community the moment you show up.
 Anyone who has a merged pull request, an accepted design/RFC, a triaged issue, or meaningful docs
 work. Contributors are credited in release notes.
 
+### Reviewers
+Contributors trusted with review authority in **one area** — for example detectors, the memory
+subsystem, the `kq` CLI, deploy/Helm, or the docs. Reviewers get review requests for their area
+routed to them automatically (see [`.github/CODEOWNERS`](.github/CODEOWNERS)) and can triage and
+label issues. They do **not** need merge rights and are not expected to watch the whole project.
+
+Reviewers are invited after several quality contributions in an area plus sound judgement shown
+in review comments. This rung exists deliberately: owning one area is a far more realistic ask
+than co-maintaining everything, and it is the normal route to maintainer.
+
 ### Maintainers
 Contributors trusted with review and merge rights. Maintainers:
 - Review and merge pull requests.
@@ -29,6 +39,34 @@ KubeIntellect was created by **Mohsen Seyedkazemi Ardebili** and is currently le
 who also holds the copyright that makes the dual-license model possible (see below). The lead
 maintainer has final say on direction and on decisions where consensus can't be reached — a role
 we intend to dilute into a maintainer group as the project matures.
+
+### Stepping back, and what happens if the lead maintainer disappears
+
+Written down now, while it is hypothetical and nobody is upset.
+
+- **Anyone can step back at any time**, from any rung, with no justification owed. Say so in an
+  issue or by email so review requests stop being routed to you. Stepping back is not a
+  failure, and returning later is welcome.
+- **Inactivity is not misconduct.** A maintainer or reviewer inactive for ~6 months may be moved
+  to emeritus to keep review routing honest. Emeritus status is reversible on request and keeps
+  all past credit.
+- **If the lead maintainer becomes unreachable for 3+ months**, the remaining maintainers may
+  act by consensus to keep the project alive — cut releases, merge fixes, and update this
+  document. Today there are no other maintainers, which is exactly why recruiting them is the
+  project's top priority.
+- **If the project is ever abandoned**, the intent is to archive it publicly with a clear
+  notice in the README rather than let it rot silently, and to say so on PyPI. The AGPL means
+  the code cannot be taken away from you regardless.
+- **Copyright and the dual license** stay with the author; that is a legal fact, not a
+  governance lever, and it does not affect anyone's AGPL rights. See
+  [LICENSING.md](LICENSING.md).
+
+### Code of Conduct enforcement
+Reports go to **mohsen.seyedkazemi@gmail.com** and are handled per
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). This is currently a single person, which is an
+acknowledged weakness — if a report concerns the lead maintainer, escalate publicly in a
+Discussion or via a GitHub abuse report; that path is legitimate and will not be held against
+you.
 
 ## How decisions are made
 
