@@ -87,8 +87,12 @@ def spinner(seconds: float, label: str = "KubeIntellect is thinking…") -> None
 
 def build() -> None:
     # 1. Banner — the real logo art and tagline.
-    emit("\r\n" + renderer._DEFAULT_LOGO_ART + "\r\n", 0.4)
-    emit(f"\033[2m   {renderer._DEFAULT_TAGLINE}\033[0m\r\n\r\n", 0.25)
+    # The art's internal separators are bare "\n". In a raw terminal that moves
+    # down a row WITHOUT returning to column 0, so each art line would start
+    # where the previous one ended and the logo comes out as a staircase. Route
+    # it through emit_block(), which rewrites LF -> CRLF like every other block.
+    emit_block("\n" + renderer._DEFAULT_LOGO_ART + "\n", 0.4)
+    emit_block(f"\033[2m   {renderer._DEFAULT_TAGLINE}\033[0m\n\n", 0.25)
 
     # 2. Session header — the real Panel.fit from repl.py.
     emit_block(capture(renderer.console.print, Panel.fit(
