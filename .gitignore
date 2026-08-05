@@ -1,22 +1,142 @@
-# Kept local, never committed
-.gitignore
-# AI tooling / Claude artifacts
-.claude/
-CLAUDE.md
-# Internal dev docs (private tier)
-design/
-# Secrets
+# ─────────────────────────────────────────────────────────────────────────────
+# .gitignore — KubeIntellect
+# Universal build/junk/secret rules honoured by every git operating in this tree.
+# NOTE: private research materials (design/, papers/, v5/, .claude/, …) are NOT
+# listed here on purpose — they are versioned in the private git and kept out of
+# the public remote by the repo-local allowlist in .git/info/exclude.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Secrets ──────────────────────────────────────────────────────────────────
 .env
 .env.*
-*.key
+*.local
 *.pem
-# p2p config
-.p2p.toml
-# Editor / OS / build
-.vscode/
-.DS_Store
+*.key
+*.pub
+*.token
+.envrc
+.direnv/
+credentials.json
+secrets.yaml
+secrets.yml
+# Generated Kubernetes/Helm secret overlays (contain real credentials)
+charts/kubeintellect/values-kind-secrets.yaml
+values-prod.yaml
+values-production.yaml
+values-vm.yaml
+values-aks.yaml
+values-eks.yaml
+values-gke.yaml
+charts/*/charts/
+
+# ── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.eggs/
+develop-eggs/
+.installed.cfg
+MANIFEST
+dist/
+build/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+pip-log.txt
+pip-delete-this-directory.txt
+.pybuilder/
+*.manifest
+*.spec
+
+# ── Virtual environments ─────────────────────────────────────────────────────
 .venv/
-# Runtime PID files
+venv/
+env/
+ENV/
+
+# ── Test / coverage / type-checkers / linters ────────────────────────────────
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+nosetests.xml
+*.cover
+htmlcov/
+.hypothesis/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+
+# ── Jupyter ──────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ── Editors / IDEs ───────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.iml
+*.code-workspace
+*.swp
+*.swo
+*~
+
+# ── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+desktop.ini
+
+# ── Logs / temp / runtime ────────────────────────────────────────────────────
+*.log
+*.tmp
+*.temp
+*.bak
+*.orig
+.cache/
+logs/
 *.pid
-.server*.pid
+.server.log
+.server.pid
+.server.*.pid
+.server.*.log
+
+# ── MCP / Playwright tool artifacts ──────────────────────────────────────────
+.playwright-mcp/
+.mcp-*/
+*.playwright.yml
+*.playwright.png
+*.cast
+
+# ── Docs build output ────────────────────────────────────────────────────────
+site/
+_site/
+.docusaurus/
+
+# ── LaTeX build byproducts (sources kept) ────────────────────────────────────
+*.aux
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.out
+*.spl
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+
+# ── Terraform / IaC ──────────────────────────────────────────────────────────
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup
+*.tfstate
+*.tfstate.*

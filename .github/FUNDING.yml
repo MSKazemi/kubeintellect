@@ -1,0 +1,9 @@
+# Adds a "Sponsor" button to the top of the repository page.
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
+#
+
+
+# Uncomment once a GitHub Sponsors profile exists for the account
+# (Settings -> Sponsors). Checked 2026-08-05: not yet enabled, and an
+# unconfigured entry renders a broken button.
+# github: [MSKazemi]
