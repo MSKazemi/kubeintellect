@@ -10,8 +10,11 @@ and [`help wanted`](https://github.com/MSKazemi/kubeintellect/issues?q=is%3Aissu
 
 - 💬 **Questions / ideas** → [GitHub Discussions](https://github.com/MSKazemi/kubeintellect/discussions)
 - 🐛 **Bugs** → [open an issue](https://github.com/MSKazemi/kubeintellect/issues/new/choose)
+- 🆘 **Stuck / need help** → [SUPPORT.md](SUPPORT.md) tells you which channel to use and what to include
+- 🙋 **Just using it?** → adding a row to [ADOPTERS.md](ADOPTERS.md) is a real contribution, and a fine first PR
 - 🔒 **Security** → **do not** open a public issue; see [SECURITY.md](SECURITY.md)
 - 📜 **Conduct** → all interaction is governed by our [Code of Conduct](CODE_OF_CONDUCT.md)
+- 🧭 **Triage** → how issues get labelled and prioritised is written down in [TRIAGE.md](TRIAGE.md)
 
 ---
 
@@ -40,7 +43,7 @@ The repo **root** (`Makefile`, `deploy/`, `scripts/`) manages the *shared infras
 Docker, [`kind`](https://kind.sigs.k8s.io/), `kubectl`, `helm`.
 
 ```bash
-# Canonical repo (the org repo is canonical)
+# Canonical repo. (github.com/kubeintellect/kubeintellect is an archived mirror.)
 git clone https://github.com/MSKazemi/kubeintellect.git
 cd kubeintellect/v4
 
@@ -74,20 +77,103 @@ See the [v4 README](v4/README.md) for every install path in detail.
 5. **Sign off your commits** (DCO, below).
 6. **Open a PR** using the template. Link the issue (`Closes #123`), describe the *why*.
 
+How issues get labelled, prioritised, assigned, and closed is written down in
+[TRIAGE.md](TRIAGE.md) — including how to claim an issue and what "quiet for two
+weeks" means.
+
+---
+
+## Your first PR, start to finish
+
+A complete worked example, using a real open issue —
+[#12: fix `ruff` F541 in `fix_pr_probe.py`](https://github.com/MSKazemi/kubeintellect/issues/12).
+It is one line of code, which is the point: the goal here is to get the *process*
+working once, on something that cannot go wrong.
+
+**1. Claim it.** Comment "I'd like to take this" on the issue. No permission needed.
+
+**2. Fork and clone.**
+
+```bash
+gh repo fork MSKazemi/kubeintellect --clone   # or fork in the UI, then git clone
+cd kubeintellect
+git checkout -b fix/f541-fix-pr-probe
+```
+
+**3. Set up just enough to run the gates.** You do **not** need a Kubernetes
+cluster, a Docker daemon, or an LLM API key to run the test suite — almost
+everything is mocked.
+
+```bash
+cd v4
+uv sync            # ~1 min; installs the three workspace packages
+```
+
+**4. Reproduce the problem before fixing it.** This habit is worth more than the fix.
+
+```bash
+uv run ruff check scripts/fix_pr_probe.py     # shows the F541
+```
+
+**5. Make the change**, then prove it:
+
+```bash
+uv run ruff check scripts/fix_pr_probe.py     # now clean
+```
+
+**6. Run the same gates CI will run** (the section below has the exact commands).
+For a one-line lint fix, `ruff check` plus the suite for the package you touched is
+enough; run both suites if you're unsure.
+
+**7. Commit with a DCO sign-off** — the `-s` is required (it is checked in review,
+not by CI, so it is easy to forget; `git commit --amend -s` fixes it):
+
+```bash
+git commit -s -m "fix(server): drop f-prefix from placeholder-free string (F541)"
+git push -u origin fix/f541-fix-pr-probe
+```
+
+**8. Open the PR.**
+
+```bash
+gh pr create --fill --body "Closes #12"
+```
+
+Fill in the template, say *why* in one or two sentences, and mention if you used AI
+assistance (see below — it is welcome, just disclosed).
+
+**9. Expect a reply, not silence.** Every PR gets a first response, even if the
+answer is "not this way". If CI fails on something unrelated to your change, say so
+in the PR — pre-existing `mypy` and `ruff format` debt is not your bug.
+
+**Stuck at any step?** That is a documentation defect, not a you problem — say so in
+[Discussions](https://github.com/MSKazemi/kubeintellect/discussions/categories/q-a)
+and this section gets fixed.
+
 ---
 
 ## Quality gates — green before you push
 
-From the version directory you changed (usually `v4/`):
+These are the **exact** commands CI runs
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). Run them from `v4/`:
 
 ```bash
-uv run pytest            # test suite (coverage is tracked; don't regress it)
-uv run ruff check .      # lint + format check
-uv run mypy src          # type check
+uv sync                                                        # once, after cloning
+
+# 1. Lint — the CI gate is `ruff check` only (not `ruff format`; see the note below)
+uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/
+
+# 2. Tests — two suites, run separately: the two `tests` packages collide
+#    under a single pytest invocation.
+uv run python -m pytest tests/ -q                              # server (~986 tests)
+cd packages/kube-q && uv run python -m pytest tests/ -q        # kq CLI (~297 tests)
 ```
 
 A PR that fails these will fail CI. If a gate is failing for a reason unrelated to your change,
 say so in the PR.
+
+> `make lint` in `v4/` also runs `ruff format --check`, which currently fails on pre-existing
+> formatting. That is **not** a CI gate — use the `ruff check` command above to predict CI.
 
 ### PR checklist
 

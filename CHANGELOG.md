@@ -34,6 +34,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   scoped detection claims, trimmed redundancy); all PDFs rebuild clean.
 
 ### Added
+- **Snap packaging for the `kq` CLI.** New `snap/snapcraft.yaml` builds a `kubeintellect` snap
+  (core24, amd64 + arm64) carrying the terminal client, with `snap/README.md` documenting the
+  build, the confinement trade-offs, and the store-publishing steps. Deliberately **strict**
+  confinement rather than the `classic` that `kubectl`/`helm`/`k9s` use: `kq` is an HTTP client
+  whose filesystem needs are two known directories, so they are requested as explicit
+  `personal-files` plugs — `dot-kube` (read `~/.kube`) and `dot-kube-q` (write `~/.kube-q`) —
+  since the `home` interface excludes top-level dot-directories. `HOME` is remapped to
+  `$SNAP_REAL_HOME` so `Path.home()` resolves outside the sandbox. Packaged as a single `python`
+  part that vendors the client past its Next.js demo UI (sourcing `packages/kube-q` directly
+  would drag ~600 MB of `node_modules` through the pull step) and installs it together with
+  `ki-protocol` in one `pip` call, because `ki-protocol` is not on PyPI yet. Not published to
+  the Snap Store yet — the name is unregistered and `personal-files` needs an approved snap
+  declaration.
+- **Snap CI.** `.github/workflows/snap.yml` builds both architectures on any PR touching
+  `snap/`, `kube-q`, or `ki-protocol`, installs the built snap on the runner and smoke-tests
+  `--version`, `--help`, and completion generation; publishing is a separate manually-dispatched
+  job gated on a `SNAPCRAFT_STORE_CREDENTIALS` secret.
+- **Community: adoption and prioritisation surfaces.** `ADOPTERS.md` (honestly empty rather
+  than padded) plus a pinned adoption thread (#51), and a pinned roadmap voting index (#52)
+  that makes 👍 reactions the explicit prioritisation signal for the "Next" list; the six
+  roadmap issues carry a new `roadmap` label. New `adoption`, `needs-info`, and
+  `area/packaging` labels.
+- **Community: `SUPPORT.md` and `TRIAGE.md`.** `SUPPORT.md` routes questions to the right
+  channel, says what to include, and states plainly that there is no SLA. `TRIAGE.md`
+  documents the full issue lifecycle — the five triage questions, what every label means and
+  what it promises, how to claim an issue, the two-week unassignment rule, and what each close
+  reason means — written so that a non-maintainer can triage without repo permissions.
+
 - **Container image publishing to GHCR and Docker Hub.** New `.github/workflows/docker-publish.yml`
   builds the v4 image once and publishes it to `ghcr.io/mskazemi/kubeintellect` and
   `docker.io/kazemi/kubeintellect`, tagged by semver plus `latest` and the commit sha, with OCI
@@ -100,6 +128,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   (awaiting owner ratification); ADR-104 deferred.
 
 ### Fixed
+- **`CONTRIBUTING.md` gave commands that do not exist.** The quality-gate section told
+  contributors to run `uv run mypy src` (there is no `src/` in the workspace layout) and
+  `uv run ruff check .` (CI lints only `packages/kubeintellect-server/app/` and
+  `packages/ki-protocol/`); both are replaced with the exact commands from `ci.yml`, plus a note
+  that `make lint`'s `ruff format --check` is not a CI gate. The dev-setup snippet also still
+  claimed the archived org mirror was canonical. Added a worked first-PR walkthrough against a
+  real open issue.
 - **Container image licence label corrected (legal).** `v4/Dockerfile` labelled the image
   `org.opencontainers.image.licenses="MIT"` while the project is AGPL-3.0. Every published image
   would have misrepresented its terms. Now `AGPL-3.0-only`, with `url` and `documentation` labels
