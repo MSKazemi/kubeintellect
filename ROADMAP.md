@@ -61,6 +61,11 @@ Not glamorous, but real, and each is a genuinely good first contribution.
 - **`mypy` is not clean** — 30 errors across 12 files. It is deliberately not a blocking CI
   gate until those are fixed.
 - **Worked examples missing for most `kq` subcommands** — [#15](https://github.com/MSKazemi/kubeintellect/issues/15).
+- **The snap is built but not published.** `snap/snapcraft.yaml` produces a strict-confinement
+  `kubeintellect` snap (amd64 + arm64) and CI builds and smoke-tests it on every relevant PR, but
+  the store name is unregistered and the two `personal-files` plugs need an approved snap
+  declaration before release. Build it yourself meanwhile — see
+  [`snap/README.md`](snap/README.md). Blocked on the maintainer's store account, not on code.
 - **`v1/`–`v3/` carry known-vulnerable dependencies.** They are frozen reference trees, not
   deployable software — see [SECURITY.md](SECURITY.md) for why they are not upgraded.
 
@@ -93,6 +98,13 @@ Saying no clearly is part of a roadmap. These are decisions, not oversights.
 
 ## How to influence this
 
+0. **👍 the "Next" items you want**, on the issues linked in the table above. The counts are the
+   only prioritisation signal this project has, and they genuinely reorder the list —
+   [#52](https://github.com/MSKazemi/kubeintellect/issues/52) is the index. A one-line comment
+   saying *why* you need it outweighs ten reactions, because it says what "done" has to mean.
+   And if you're running KubeIntellect anywhere,
+   [#51](https://github.com/MSKazemi/kubeintellect/issues/51) is where to say so — listed
+   environments are the ones that get tested against.
 1. **Open a [Discussion](https://github.com/MSKazemi/kubeintellect/discussions)** describing the
    problem you have — not the feature you want. Problems are more useful than solutions.
 2. For anything architectural, open an **RFC issue** (there is a template). Significant changes

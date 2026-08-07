@@ -1,0 +1,136 @@
+name: kubeintellect
+title: KubeIntellect (kq)
+base: core24
+adopt-info: kq
+summary: Chat with your Kubernetes cluster from the terminal
+description: |
+  **KubeIntellect** is an AI agent platform for Kubernetes operations, and `kq` is
+  its terminal client: an interactive REPL that lets you query, debug and triage a
+  cluster in plain English.
+
+  This snap packages the **client** only. It talks over HTTPS to a KubeIntellect
+  server (self-hosted via the published container image, or any OpenAI /
+  Azure OpenAI compatible backend selected with `--backend`).
+
+  Highlights:
+
+  * Interactive REPL with streaming responses, slash commands and Tab completion
+  * Session persistence, resume, full-text search and conversation branching
+  * Token and cost tracking per session
+  * Human-in-the-loop approval before any mutating action
+  * Multi-cluster: switch kubectl context live, or bundle cluster + backend +
+    credentials into named profiles
+  * Shell completion for bash, zsh and fish (`kq completion <shell>`)
+
+  **After installing, connect the two personal-files interfaces** so `kq` can read
+  your kubeconfig and keep its own state:
+
+      sudo snap connect kubeintellect:dot-kube
+      sudo snap connect kubeintellect:dot-kube-q
+
+  and, if you want the short command name:
+
+      sudo snap alias kubeintellect.kq kq
+
+  Point it at a backend with `KUBE_Q_URL` (and `KUBE_Q_API_KEY` where required),
+  then run `kubeintellect`. See https://github.com/MSKazemi/kubeintellect for the
+  server side and full documentation.
+
+license: AGPL-3.0-or-later
+website: https://github.com/MSKazemi/kubeintellect
+source-code: https://github.com/MSKazemi/kubeintellect
+issues: https://github.com/MSKazemi/kubeintellect/issues
+contact: https://github.com/MSKazemi/kubeintellect/discussions
+
+grade: stable
+confinement: strict
+
+platforms:
+  amd64:
+  arm64:
+
+# ── Interfaces ────────────────────────────────────────────────────────────────
+# `home` deliberately does NOT cover top-level dot-directories, so the two things
+# kq actually needs — the kubeconfig it reads and the state directory it owns —
+# are requested explicitly as personal-files. Both must be connected manually
+# until the store grants auto-connection.
+plugs:
+  dot-kube:
+    interface: personal-files
+    read:
+      - $HOME/.kube          # kubeconfig + any client certs it references
+  dot-kube-q:
+    interface: personal-files
+    write:
+      - $HOME/.kube-q        # config, profiles, plugins, session SQLite DB
+
+apps:
+  kubeintellect:
+    command: bin/kq
+    completer: usr/share/bash-completion/completions/kq
+    plugs: &kq-plugs
+      - network              # HTTPS/SSE to the KubeIntellect server
+      - home                 # `@file` attachments and `/save` transcripts
+      - dot-kube
+      - dot-kube-q
+    environment: &kq-env
+      # Strict snaps get HOME=$SNAP_USER_DATA by default, which would hide the
+      # user's real ~/.kube and scatter kq state under ~/snap. Point it back at
+      # the real home — the personal-files plugs above are what actually gate it.
+      HOME: $SNAP_REAL_HOME
+      # Rich/prompt_toolkit render boxes and colour; force a UTF-8 locale rather
+      # than inheriting the host's (which may be unset inside the sandbox).
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+      PYTHONIOENCODING: utf-8
+      TERMINFO_DIRS: $SNAP/usr/share/terminfo:/usr/share/terminfo:/etc/terminfo:/lib/terminfo
+
+  # Same binary under the familiar name: `kubeintellect.kq`, aliasable to `kq`.
+  kq:
+    command: bin/kq
+    completer: usr/share/bash-completion/completions/kq
+    plugs: *kq-plugs
+    environment: *kq-env
+
+parts:
+  kq:
+    plugin: python
+    # Sourced from the tiny shared-protocol package; the client is vendored in
+    # below. Pointing `source` at packages/kube-q directly would drag its Next.js
+    # demo UI (~600 MB of node_modules) through the pull step for no reason.
+    source: v4/packages/ki-protocol
+    override-pull: |
+      craftctl default
+      client="${CRAFT_PROJECT_DIR}/v4/packages/kube-q"
+      dest="${CRAFT_PART_SRC}/vendor-kube-q"
+      rm -rf "${dest}"
+      mkdir -p "${dest}"
+      cp -r "${client}/kube_q" "${client}/pyproject.toml" \
+            "${client}/README.md" "${client}/LICENSE" "${dest}/"
+      find "${dest}" -name __pycache__ -type d -prune -exec rm -rf {} +
+      # The snap version tracks the kube-q client release.
+      craftctl set version="$(sed -n 's/^version = "\(.*\)"$/\1/p' "${dest}/pyproject.toml" | head -1)"
+    # One pip invocation so the local ki-protocol satisfies kube-q's
+    # `ki-protocol>=1.0.0` requirement instead of being resolved from PyPI.
+    python-packages:
+      - .
+      - ./vendor-kube-q
+    build-packages:
+      - python3-venv
+    stage-packages:
+      - ncurses-term        # terminfo for less common $TERM values
+    override-build: |
+      craftctl default
+      # Ship the generated bash completion so snapd's `completer` hook works.
+      # Generated with the build host's python against the venv's site-packages,
+      # so it does not depend on the venv shebang that craftctl just rewrote.
+      site_packages="$(echo "${CRAFT_PART_INSTALL}"/lib/python3.*/site-packages)"
+      install -d "${CRAFT_PART_INSTALL}/usr/share/bash-completion/completions"
+      PYTHONPATH="${site_packages}" python3 -c \
+        "from kube_q.cli.completion_cmd import script_for; print(script_for('bash'))" \
+        > "${CRAFT_PART_INSTALL}/usr/share/bash-completion/completions/kq"
+    prime:
+      - -lib/python3.*/site-packages/pip*
+      - -lib/python3.*/site-packages/setuptools*
+      - -lib/python3.*/site-packages/wheel*
+      - -lib/python3.*/site-packages/pkg_resources*
