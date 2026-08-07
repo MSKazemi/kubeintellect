@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2.2.0] – 2026-08-08
+
 ### Documentation
 - **Canonical repo consolidated to `MSKazemi/kubeintellect`.** Repointed the README star badge
   (was rendering the org mirror's 0-star count), `CITATION.cff` `repository-code`, and the four
@@ -61,7 +65,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   documents the full issue lifecycle — the five triage questions, what every label means and
   what it promises, how to claim an issue, the two-week unassignment rule, and what each close
   reason means — written so that a non-maintainer can triage without repo permissions.
-
 - **Container image publishing to GHCR and Docker Hub.** New `.github/workflows/docker-publish.yml`
   builds the v4 image once and publishes it to `ghcr.io/mskazemi/kubeintellect` and
   `docker.io/kazemi/kubeintellect`, tagged by semver plus `latest` and the commit sha, with OCI
