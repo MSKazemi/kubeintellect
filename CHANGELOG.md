@@ -34,6 +34,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   scoped detection claims, trimmed redundancy); all PDFs rebuild clean.
 
 ### Added
+- **Container image publishing to GHCR and Docker Hub.** New `.github/workflows/docker-publish.yml`
+  builds the v4 image once and publishes it to `ghcr.io/mskazemi/kubeintellect` and
+  `docker.io/kazemi/kubeintellect`, tagged by semver plus `latest` and the commit sha, with OCI
+  labels and `VERSION`/`GIT_SHA` build args. Triggered by a `v*` tag or manually, with a dry-run
+  option. Docker Hub is skipped with a warning until `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` are set.
+  Private material cannot reach the image: CI checks out the public repository, the build context is
+  `v4/`, and the Dockerfile copies only the three workspace package source trees — verified against a
+  local build, whose image contains just `app/`, `ki_protocol/` and `kube_q/`.
 - **Doc-claims drift guard (v4).** New `v4/scripts/check_doc_claims.py` reads the canonical
   numbers straight from code — 18 shipped playbooks (loader), 16 baseline compiled detectors
   (`load_detectors()`), the valid LLM-provider set (`config.py`), and the count of `KI_V5_*`
@@ -92,6 +100,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   (awaiting owner ratification); ADR-104 deferred.
 
 ### Fixed
+- **Container image licence label corrected (legal).** `v4/Dockerfile` labelled the image
+  `org.opencontainers.image.licenses="MIT"` while the project is AGPL-3.0. Every published image
+  would have misrepresented its terms. Now `AGPL-3.0-only`, with `url` and `documentation` labels
+  added and the `source` URL cased to match the canonical repo. Caught while inspecting the built
+  image before enabling public publishing.
 - **v3 HITL fail-open closed (safety).** `v3/app/agent/hitl.py` approval/denial detection now
   matches a leading decisive token, not only exact whole-message phrases — a multi-word denial
   ("no don't do that") is no longer silently treated as approval by the `resume = not is_denial(...)`
