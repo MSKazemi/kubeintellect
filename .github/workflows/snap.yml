@@ -1,0 +1,105 @@
+name: Snap
+
+# Builds the `kubeintellect` snap (the `kq` CLI, strict confinement) from
+# snap/snapcraft.yaml, and publishes it to the Snap Store on demand.
+#
+# Note for contributors: workflows only run when they live in the repository
+# ROOT .github/workflows/. The per-version files under v1/…/v4/.github/ are
+# packaged with those directories and are never executed by GitHub.
+#
+# Publishing requires a `SNAPCRAFT_STORE_CREDENTIALS` repository secret:
+#   snapcraft export-login --snaps kubeintellect \
+#       --acls package_access,package_push,package_update,package_release -
+# Until that secret exists the publish job is skipped, and the build job still
+# runs as a normal PR gate.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "snap/**"
+      - "v4/packages/kube-q/**"
+      - "v4/packages/ki-protocol/**"
+      - ".github/workflows/snap.yml"
+  pull_request:
+    paths:
+      - "snap/**"
+      - "v4/packages/kube-q/**"
+      - "v4/packages/ki-protocol/**"
+      - ".github/workflows/snap.yml"
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Store channel to release to (empty = build only)"
+        type: choice
+        default: ""
+        options: ["", "edge", "beta", "candidate", "stable"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: snap-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build snap (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runs-on: ubuntu-latest
+          - arch: arm64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Build
+        id: build
+        uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79  # v1.3.0
+
+      # Smoke test: install the snap we just built and confirm the CLI starts.
+      # `--dangerous` is required because a locally built snap is unsigned.
+      # Only meaningful on the native runner architecture.
+      - name: Install and smoke test
+        run: |
+          sudo snap install --dangerous "${{ steps.build.outputs.snap }}"
+          sudo snap connect kubeintellect:dot-kube
+          sudo snap connect kubeintellect:dot-kube-q
+          kubeintellect --version
+          kubeintellect --help
+          kubeintellect.kq completion bash | head -5
+          snap connections kubeintellect
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: snap-${{ matrix.arch }}
+          path: ${{ steps.build.outputs.snap }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish to the Snap Store
+    needs: build
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.channel != '' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: snapstore
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Build
+        id: build
+        uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79  # v1.3.0
+
+      - name: Publish
+        uses: snapcore/action-publish@214b86e5ca036ead1668c79afb81e550e6c54d40  # v1.2.0
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        with:
+          snap: ${{ steps.build.outputs.snap }}
+          release: ${{ inputs.channel }}

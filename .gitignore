@@ -149,3 +149,9 @@ terraform.tfstate
 terraform.tfstate.backup
 *.tfstate
 *.tfstate.*
+
+# ── Snapcraft build byproducts (snap/snapcraft.yaml is tracked) ──────────────
+*.snap
+/parts/
+/stage/
+/prime/
