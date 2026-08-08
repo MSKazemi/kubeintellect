@@ -79,20 +79,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Dropped an f-prefix from a placeholder-free string in `v4/scripts/fix_pr_probe.py` (F541).
 
 ### Changed
-- **`ki-protocol` 1.0.0 and `kube-q` 1.5.0 are published to PyPI** (#66). `pip install kube-q`
-  now yields 1.5.0 and pulls `ki-protocol` automatically; all ten subcommands (`export`,
-  `postmortem`, `replay`, `findings`, `digest`, `detector`, `preference`, `completion`,
-  `help`, `commands`) exist on the published build, verified in a clean venv without `--help`.
-  Registering `ki-protocol` also uncovered that **`kube-q`'s trusted publisher authorized the
-  wrong repository** (`MSKazemi/kube_q`, not `MSKazemi/kubeintellect`), so the root
-  `publish.yml` could never have published it. `kubeintellect` 2.2.0 is **still unpublished** —
-  PyPI rejects it with `OIDC scoped token is not valid for project 'kubeintellect'`; the README
-  warning is now scoped to that one package instead of both.
-- **README carries an honest note about what is and isn't published** (#66), rather than
-  sending new users down a path that errors. It first covered both distributions (`kube-q`
-  1.4.3 with no working subcommands, `kubeintellect` 2.0.2); now that `kube-q` 1.5.0 is live,
-  the warning is narrowed to `pip install kubeintellect` and points at the 2.2.0 container
-  image, which was current all along.
+- **The PyPI release is unblocked — all three distributions are published and current** (#66,
+  closed). `ki-protocol` **1.0.0**, `kube-q` **1.5.0**, `kubeintellect` **2.2.0**, all reporting
+  `AGPL-3.0-or-later` instead of the stale `MIT` metadata. Verified in clean venvs:
+  `pip install kube-q` yields 1.5.0 with all ten subcommands (checked *without* `--help`, per
+  the argparse trap), and `pip install kubeintellect` yields 2.2.0 with a working entry point.
+
+  Two defects surfaced while unblocking it, neither of which the issue anticipated:
+  **(1) `kube-q`'s trusted publisher authorized the wrong repository** — `MSKazemi/kube_q`
+  rather than `MSKazemi/kubeintellect` — so the root `publish.yml` could never have published
+  it, and confirming only the *workflow filename* would not have caught it.
+  **(2) A trusted publisher registered without an environment does not match a workflow that
+  runs with one.** `kubeintellect`'s publisher said `Environment: (Any)` while `publish.yml`
+  runs `environment: pypi`, and every upload failed with `403 OIDC scoped token is not valid
+  for project 'kubeintellect'` while the two publishers naming `pypi` explicitly succeeded in
+  the same run. Registering a second publisher with the environment set explicitly fixed it.
+- **README's PyPI warning block is gone** — it existed only while the published packages were
+  behind, and both install paths now work as documented. The server quickstart also no longer
+  claims `kubeintellect init` "creates a Kind cluster, deploys samples"; verified against the
+  published 2.2.0 CLI, `init` writes `~/.kubeintellect/.env` and cluster creation is the
+  separate `kind-setup` command.
 - **`TRIAGE.md` no longer tells contributors that `mypy` is non-blocking debt.** It became a
   required CI check in `0c7b055`; a contributor following the old text would have pushed a PR
   expecting a `mypy` failure to be ignorable and had it blocked instead.

@@ -62,22 +62,14 @@ kq --api-key ki-ro-dev            # kq defaults to https://api.kubeintellect.com
 docker run --rm -it ghcr.io/mskazemi/kubeintellect:2.2.0 --help
 ```
 
-> ### ⚠️ The `kubeintellect` server package on PyPI is still one release behind
->
-> **The `kq` CLI is fixed** — `pip install kube-q` now gives **1.5.0** with every subcommand
-> (`export`, `postmortem`, `replay`, `findings`, `digest`, `detector`, `preference`,
-> `completion`), and pulls `ki-protocol` automatically. Nothing special to do.
->
-> **`pip install kubeintellect` still gives 2.0.2**, not 2.2.0 — so the AGPL relicense and the
-> v2.2.0 server changes are not in the PyPI build yet. Tracked in
-> [#66](https://github.com/MSKazemi/kubeintellect/issues/66).
->
-> For the current server use the container image above — it is 2.2.0 and needs no workaround.
-> Or install the server from source:
->
-> ```bash
-> pip install "kubeintellect @ git+https://github.com/MSKazemi/kubeintellect.git#subdirectory=v4/packages/kubeintellect-server"
-> ```
+Or install the server from PyPI:
+
+```bash
+pip install kubeintellect
+kubeintellect init         # setup wizard — writes ~/.kubeintellect/.env
+kubeintellect kind-setup   # optional: create a local Kind cluster to try it against
+kubeintellect serve        # start the API server on :8000
+```
 
 Full install paths (browser, CLI-only, local Kind, Docker Compose, existing cluster) are in the **[v4 README](v4/README.md)** and **[v4 docs](v4/docs/)**.
 

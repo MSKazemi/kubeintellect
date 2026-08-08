@@ -38,10 +38,9 @@ jobs:
 
             A few things that may save you time:
 
-            - **`pip install kube-q` currently gives an old build (1.4.3)** in which the `kq`
-              subcommands don't exist. If you hit `unrecognized arguments`, that's
-              [#66](https://github.com/MSKazemi/kubeintellect/issues/66), not your mistake —
-              the workaround is in the README.
+            - Please include the output of `kq --version` (or `kubeintellect --version`) —
+              the published builds are `kube-q` 1.5.0 and `kubeintellect` 2.2.0, and an older
+              one explains a surprising number of reports.
             - Questions and ideas are usually a better fit in
               [Discussions](https://github.com/MSKazemi/kubeintellect/discussions).
             - Found a security problem? Please **don't** post it here — use
