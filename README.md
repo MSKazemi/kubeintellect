@@ -62,30 +62,22 @@ kq --api-key ki-ro-dev            # kq defaults to https://api.kubeintellect.com
 docker run --rm -it ghcr.io/mskazemi/kubeintellect:2.2.0 --help
 ```
 
-> ### ⚠️ PyPI is behind the source tree — read this before following the docs
+> ### ⚠️ The `kubeintellect` server package on PyPI is still one release behind
 >
-> The published packages are **`kube-q` 1.4.3** and **`kubeintellect` 2.0.2**; the current
-> source is **1.5.0 / 2.2.0**. Asking questions (`kq "why is my pod crashlooping?"`) works on
-> the published build, but **every `kq` subcommand — `export`, `postmortem`, `replay`,
-> `findings`, `digest`, `detector`, `preference`, `completion` — exists only in 1.5.0** and
-> will fail on 1.4.3 with `unrecognized arguments`.
+> **The `kq` CLI is fixed** — `pip install kube-q` now gives **1.5.0** with every subcommand
+> (`export`, `postmortem`, `replay`, `findings`, `digest`, `detector`, `preference`,
+> `completion`), and pulls `ki-protocol` automatically. Nothing special to do.
 >
-> Publishing is blocked on registering `ki-protocol` on PyPI (both packages depend on it, and
-> PyPI trusted publishing cannot create a brand-new project). Tracked in
+> **`pip install kubeintellect` still gives 2.0.2**, not 2.2.0 — so the AGPL relicense and the
+> v2.2.0 server changes are not in the PyPI build yet. Tracked in
 > [#66](https://github.com/MSKazemi/kubeintellect/issues/66).
 >
-> Until that lands, install the current CLI from source — this is verified to give 1.5.0 with
-> all subcommands:
+> For the current server use the container image above — it is 2.2.0 and needs no workaround.
+> Or install the server from source:
 >
 > ```bash
-> pip install \
->   "ki-protocol @ git+https://github.com/MSKazemi/kubeintellect.git#subdirectory=v4/packages/ki-protocol" \
->   "kube-q @ git+https://github.com/MSKazemi/kubeintellect.git#subdirectory=v4/packages/kube-q"
-> kq --version   # kube-q 1.5.0
+> pip install "kubeintellect @ git+https://github.com/MSKazemi/kubeintellect.git#subdirectory=v4/packages/kubeintellect-server"
 > ```
->
-> The container images are current and need no workaround:
-> `ghcr.io/mskazemi/kubeintellect:2.2.0`.
 
 Full install paths (browser, CLI-only, local Kind, Docker Compose, existing cluster) are in the **[v4 README](v4/README.md)** and **[v4 docs](v4/docs/)**.
 

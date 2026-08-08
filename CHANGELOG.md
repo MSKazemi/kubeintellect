@@ -79,12 +79,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Dropped an f-prefix from a placeholder-free string in `v4/scripts/fix_pr_probe.py` (F541).
 
 ### Changed
-- **README now states plainly that PyPI is behind the source tree, with a verified
-  install-from-source workaround** (#66). `pip install kube-q` serves 1.4.3, in which every
-  documented `kq` subcommand fails with `unrecognized arguments`; publishing is blocked on
-  registering `ki-protocol` on PyPI, which trusted publishing cannot do for a new project.
-  Sending new users down a path that errors is worse than admitting the gap; the block is
-  removed when #66 lands.
+- **`ki-protocol` 1.0.0 and `kube-q` 1.5.0 are published to PyPI** (#66). `pip install kube-q`
+  now yields 1.5.0 and pulls `ki-protocol` automatically; all ten subcommands (`export`,
+  `postmortem`, `replay`, `findings`, `digest`, `detector`, `preference`, `completion`,
+  `help`, `commands`) exist on the published build, verified in a clean venv without `--help`.
+  Registering `ki-protocol` also uncovered that **`kube-q`'s trusted publisher authorized the
+  wrong repository** (`MSKazemi/kube_q`, not `MSKazemi/kubeintellect`), so the root
+  `publish.yml` could never have published it. `kubeintellect` 2.2.0 is **still unpublished** —
+  PyPI rejects it with `OIDC scoped token is not valid for project 'kubeintellect'`; the README
+  warning is now scoped to that one package instead of both.
+- **README carries an honest note about what is and isn't published** (#66), rather than
+  sending new users down a path that errors. It first covered both distributions (`kube-q`
+  1.4.3 with no working subcommands, `kubeintellect` 2.0.2); now that `kube-q` 1.5.0 is live,
+  the warning is narrowed to `pip install kubeintellect` and points at the 2.2.0 container
+  image, which was current all along.
 - **`TRIAGE.md` no longer tells contributors that `mypy` is non-blocking debt.** It became a
   required CI check in `0c7b055`; a contributor following the old text would have pushed a PR
   expecting a `mypy` failure to be ignorable and had it blocked instead.
