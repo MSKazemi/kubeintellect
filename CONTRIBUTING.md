@@ -194,6 +194,19 @@ uv run python -m pytest tests/ -q                              # server (~990 te
 cd packages/kube-q && uv run python -m pytest tests/ -q        # kq CLI (~312 tests)
 ```
 
+There is a fifth gate, run from the **repo root**, which needs no virtualenv and takes a second:
+
+```bash
+make check-modes    # a tracked file is executable if and only if it has a shebang
+make fix-modes      # corrects any violation in place, then re-check
+```
+
+It exists because `ruff` is pinned `<0.16` here, and `EXE002` ("executable file with no
+shebang") only became a default rule in 0.16 — so the lint gate cannot see a stray `+x` bit at
+all. That blind spot is how 94 library modules ended up marked executable before
+[#70](https://github.com/MSKazemi/kubeintellect/pull/70) cleared them. In practice this only
+affects you if you add a new file: leave it non-executable unless it is a script with a shebang.
+
 A PR that fails these will fail CI. If a gate is failing for a reason unrelated to your change,
 say so in the PR.
 
@@ -207,6 +220,7 @@ say so in the PR.
 - [ ] **Every write/mutating operation keeps its dry-run + diff + human-approval (HITL) gate** — this is a safety requirement, not a UX choice
 - [ ] Secret values are never logged or returned (key names only)
 - [ ] `pytest`, `ruff check` and `mypy` pass locally (these are the CI gates)
+- [ ] `make check-modes` passes (only relevant if you added a file)
 - [ ] Docs updated if behavior/CLI/flags changed
 - [ ] Commits are signed off (DCO)
 
