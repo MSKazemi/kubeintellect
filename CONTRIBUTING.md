@@ -300,18 +300,29 @@ prompt injection.
 
 ---
 
-## Developer Certificate of Origin (DCO) + licensing
 
-commit. Add `-s` to your commit:
+project you are contributing to. Two small things keep that model honest, and they do different jobs.
+
+### 1. DCO sign-off — on every commit
+
+Add `-s` to your commit:
 
 ```bash
 git commit -s -m "fix: truncate pod logs at token budget"
 ```
 
-This appends a `Signed-off-by:` trailer certifying you wrote the patch (or have the right to
-submit it) under the [Developer Certificate of Origin](https://developercertificate.org/), and
-that your contribution may be distributed under the project's licenses. If you can't or don't want
-to agree to this, open a Discussion and we'll figure it out together.
+This appends a `Signed-off-by:` trailer certifying you wrote the patch, or have the right to submit
+it, under the [Developer Certificate of Origin](https://developercertificate.org/).
+
+
+**You keep the copyright in your work.** You are granting a license, not transferring ownership, and
+you can keep using your own code anywhere else you like.
+
+Signing is one comment on your first PR — a bot posts the link, you reply once, and it covers every
+contribution you make afterwards. Nothing else changes about how you contribute.
+
+If you can't or don't want to agree to any of this, **open a Discussion** and we'll figure it out
+together. We would rather adapt than lose your work.
 
 ---
 
