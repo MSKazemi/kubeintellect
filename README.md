@@ -10,9 +10,10 @@
   [![DOI](https://img.shields.io/badge/DOI-10.1007%2Fs10723--026--09837--6-blue)](https://doi.org/10.1007/s10723-026-09837-6)
   [![arXiv](https://img.shields.io/badge/arXiv-2509.02449-b31b1b.svg)](https://arxiv.org/abs/2509.02449)
   [![Website](https://img.shields.io/badge/website-kubeintellect.com-0075C4)](https://kubeintellect.com/)
+  [![good first issues](https://img.shields.io/github/issues/MSKazemi/kubeintellect/good%20first%20issue?label=good%20first%20issues&color=7057ff)](https://github.com/MSKazemi/kubeintellect/contribute)
   [![GitHub Stars](https://img.shields.io/github/stars/MSKazemi/kubeintellect?style=social)](https://github.com/MSKazemi/kubeintellect)
 
-  **[Website](https://kubeintellect.com/)** · **[Live Demo](https://kubeintellect.com/demo)** · **[Current version → `v4/`](v4/)** · **[Paper](https://doi.org/10.1007/s10723-026-09837-6)**
+  **[Website](https://kubeintellect.com/)** · **[Live Demo](https://kubeintellect.com/demo)** · **[Current version → `v4/`](v4/)** · **[Contributing](#contributing)** · **[Paper](https://doi.org/10.1007/s10723-026-09837-6)**
 
   Created & maintained by **[Mohsen Seyedkazemi Ardebili](https://github.com/MSKazemi)**
 
@@ -58,9 +59,33 @@ kq --api-key ki-ro-dev            # kq defaults to https://api.kubeintellect.com
 **Run the full system on a local cluster** (Docker is the only prerequisite):
 
 ```bash
-pip install kubeintellect
-kubeintellect init                # wizard: creates a Kind cluster, deploys samples, configures kq
+docker run --rm -it ghcr.io/mskazemi/kubeintellect:2.2.0 --help
 ```
+
+> ### ⚠️ PyPI is behind the source tree — read this before following the docs
+>
+> The published packages are **`kube-q` 1.4.3** and **`kubeintellect` 2.0.2**; the current
+> source is **1.5.0 / 2.2.0**. Asking questions (`kq "why is my pod crashlooping?"`) works on
+> the published build, but **every `kq` subcommand — `export`, `postmortem`, `replay`,
+> `findings`, `digest`, `detector`, `preference`, `completion` — exists only in 1.5.0** and
+> will fail on 1.4.3 with `unrecognized arguments`.
+>
+> Publishing is blocked on registering `ki-protocol` on PyPI (both packages depend on it, and
+> PyPI trusted publishing cannot create a brand-new project). Tracked in
+> [#66](https://github.com/MSKazemi/kubeintellect/issues/66).
+>
+> Until that lands, install the current CLI from source — this is verified to give 1.5.0 with
+> all subcommands:
+>
+> ```bash
+> pip install \
+>   "ki-protocol @ git+https://github.com/MSKazemi/kubeintellect.git#subdirectory=v4/packages/ki-protocol" \
+>   "kube-q @ git+https://github.com/MSKazemi/kubeintellect.git#subdirectory=v4/packages/kube-q"
+> kq --version   # kube-q 1.5.0
+> ```
+>
+> The container images are current and need no workaround:
+> `ghcr.io/mskazemi/kubeintellect:2.2.0`.
 
 Full install paths (browser, CLI-only, local Kind, Docker Compose, existing cluster) are in the **[v4 README](v4/README.md)** and **[v4 docs](v4/docs/)**.
 
@@ -180,11 +205,45 @@ Known and deliberate, so you can judge fit before installing:
 
 **Which version should I use?** [`v4/`](v4/) — it's the current, actively developed implementation.
 
+## Contributing
+
+**Contributions are wanted, and the barrier is deliberately low.** You do **not** need a
+Kubernetes cluster, a Docker daemon, or an LLM API key to contribute — the test suites are
+fully mocked. Python 3.12+ is the only prerequisite.
+
+```bash
+git clone https://github.com/MSKazemi/kubeintellect.git
+cd kubeintellect
+make setup     # installs the v4 workspace, then runs the exact gates CI runs (~1 min)
+```
+
+`make setup` ends by telling you whether your environment is correct, so you never debug your
+setup and your change at the same time. Prefer zero install? Open the repo in a
+[**GitHub Codespace**](https://codespaces.new/MSKazemi/kubeintellect) — `.devcontainer/` runs
+the same setup for you.
+
+| I want to… | Go here |
+|---|---|
+| **Find something to work on** | [`/contribute`](https://github.com/MSKazemi/kubeintellect/contribute) — the curated [`good first issue`](https://github.com/MSKazemi/kubeintellect/labels/good%20first%20issue) list, each scoped small on purpose |
+| **See a first PR done end to end** | [CONTRIBUTING.md → *Your first PR, start to finish*](CONTRIBUTING.md#your-first-pr-start-to-finish) — a real open issue, every command, nothing skipped |
+| **Contribute with an AI coding agent** | [AGENTS.md](AGENTS.md) — the machine-readable version of the rules. AI assistance is [explicitly welcome](CONTRIBUTING.md#ai-assistance); please just disclose it |
+| **Ask before writing code** | [Discussions](https://github.com/MSKazemi/kubeintellect/discussions) — questions are never a bother, and an unclear doc is our bug, not yours |
+| **Help without writing code** | Docs, a reproducible bug report, triage, testing on a platform we lack, or adding yourself to [ADOPTERS.md](ADOPTERS.md) — all credited equally |
+
+**What you can expect back:** every issue and PR gets a *human* first response — even if the
+answer is "not this way", it arrives rather than silence ([TRIAGE.md](TRIAGE.md)). Every merged
+contributor is named in the release notes. And one thing that will look broken but isn't —
+**on a first-time contributor's fork PR,
+GitHub runs no CI until a maintainer approves the run**, so your PR sits with no checks. That is
+expected, it is not your mistake, and you do not need to do anything.
+
 ## Maintainer
 
-KubeIntellect is created, led, and maintained by **[Mohsen Seyedkazemi Ardebili](https://github.com/MSKazemi)** — see [GOVERNANCE.md](GOVERNANCE.md). Contributions are welcome from everyone; start with [CONTRIBUTING.md](CONTRIBUTING.md) and a [`good first issue`](https://github.com/MSKazemi/kubeintellect/labels/good%20first%20issue). If KubeIntellect is useful to you, a ⭐ helps others find it.
+KubeIntellect is created, led, and maintained by **[Mohsen Seyedkazemi Ardebili](https://github.com/MSKazemi)** — see [GOVERNANCE.md](GOVERNANCE.md).
 
-Where the project is going — and what it deliberately **won't** do — is in **[ROADMAP.md](ROADMAP.md)**. It has one maintainer today; the contributor ladder in [GOVERNANCE.md](GOVERNANCE.md) is a real invitation, not a formality.
+Where the project is going — and what it deliberately **won't** do — is in **[ROADMAP.md](ROADMAP.md)**. It has one maintainer today; the contributor ladder in [GOVERNANCE.md](GOVERNANCE.md) is a real invitation, not a formality, and areas are genuinely available to own.
+
+If KubeIntellect is useful to you, a ⭐ helps other people find it — and [#51](https://github.com/MSKazemi/kubeintellect/issues/51) is where to say what you're using it for.
 
 ## License
 

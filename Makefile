@@ -10,7 +10,7 @@
 # All versions share ONE Langfuse project; each tags its traces with version:vN, so
 # per-version cost is a tag filter (per-version projects need Langfuse Enterprise).
 # ═══════════════════════════════════════════════════════════════════════════════
-.PHONY: help kind-cluster-create kind-cluster-create-vm kind-cluster-stop kind-cluster-start \
+.PHONY: help setup kind-cluster-create kind-cluster-create-vm kind-cluster-stop kind-cluster-start \
         kind-cluster-cleanup monitoring-install monitoring-uninstall \
         langfuse-provision langfuse-install langfuse-clean hosts-entry helm-package \
         opsmembench opsmembench-demo opsmembench-driver-check opsmembench-test
@@ -22,6 +22,8 @@ help: ## Show shared-infra targets
 	@printf "\n\033[1mKubeIntellect — Shared Infrastructure (root)\033[0m\n"
 	@printf "Defaults: KIND_CLUSTER_NAME=\033[33m$(KIND_CLUSTER_NAME)\033[0m  MONITORING_NS=\033[33m$(MONITORING_NS)\033[0m\n"
 	@printf "Per-version app targets live in vN/Makefile — e.g. \033[36mcd v4 && make kind-deploy-kubeintellect\033[0m\n"
+	@printf "\n\033[1mContributors — start here (no cluster needed)\033[0m\n"
+	@printf "  \033[36msetup\033[0m                   Install the v4 workspace and run all four CI gates\n"
 	@printf "\n\033[1mKind cluster (one cluster, shared by all versions)\033[0m\n"
 	@printf "  \033[36mkind-cluster-create\033[0m      Create the shared Kind cluster (run once)\n"
 	@printf "  \033[36mkind-cluster-create-vm\033[0m   Create Kind cluster on an Azure VM (run once on the VM)\n"
@@ -45,6 +47,9 @@ help: ## Show shared-infra targets
 	@printf "    cd v4 && make kind-build-kubeintellect && make kind-deploy-kubeintellect\n\n"
 
 # ── Kind cluster ──────────────────────────────────────────────────────────────
+setup: ## Contributor setup — install the v4 workspace and run all four CI gates (no cluster needed)
+	@./scripts/dev-setup.sh
+
 kind-cluster-create: ## Create the shared Kind cluster (2-node, hot-reload mounts) — run once
 	KIND_CLUSTER_NAME=$(KIND_CLUSTER_NAME) bash scripts/kind/create-kind-cluster.sh
 

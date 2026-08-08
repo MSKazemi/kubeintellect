@@ -26,6 +26,19 @@ Key facts:
 - [PyPI: kubeintellect](https://pypi.org/project/kubeintellect/): server + CLI package
 - [PyPI: kube-q](https://pypi.org/project/kube-q/): thin CLI package
 
+## Contributing
+
+KubeIntellect is actively seeking contributors and is licensed AGPL-3.0-or-later (dual-licensed; a commercial license is also available). Contributing requires **only Python 3.12+** — no Kubernetes cluster, no Docker daemon, and no LLM API key are needed, because the test suites are fully mocked. Cloning the repo and running `make setup` from the root installs the workspace and runs the exact gates CI runs. Active development happens in the `v4/` directory; `v1/`–`v3/` are frozen design-lineage snapshots that accept documentation fixes only. Every mutating cluster operation must keep its human-in-the-loop approval gate — that is a hard requirement of any accepted contribution. AI-assisted contributions are explicitly welcome when disclosed in the pull request.
+
+- [CONTRIBUTING.md](https://github.com/MSKazemi/kubeintellect/blob/main/CONTRIBUTING.md): dev setup, the exact CI gate commands, and a complete worked first pull request
+- [Good first issues](https://github.com/MSKazemi/kubeintellect/contribute): curated small, well-scoped starting tasks
+- [AGENTS.md](https://github.com/MSKazemi/kubeintellect/blob/main/AGENTS.md): machine-readable repository rules for AI coding agents (agents.md format)
+- [TRIAGE.md](https://github.com/MSKazemi/kubeintellect/blob/main/TRIAGE.md): how issues are labelled, prioritised, and claimed; response-time targets
+- [GOVERNANCE.md](https://github.com/MSKazemi/kubeintellect/blob/main/GOVERNANCE.md): decision-making and the contributor ladder
+- [SUPPORT.md](https://github.com/MSKazemi/kubeintellect/blob/main/SUPPORT.md): which channel to use for which kind of question
+- [Discussions](https://github.com/MSKazemi/kubeintellect/discussions): questions, ideas, and Q&A
+- [ADOPTERS.md](https://github.com/MSKazemi/kubeintellect/blob/main/ADOPTERS.md): who is using KubeIntellect
+
 ## Research
 
 - [Paper: KubeIntellect (arXiv:2509.02449)](https://arxiv.org/abs/2509.02449): "KubeIntellect: A Modular LLM-Orchestrated Agent Framework for End-to-End Kubernetes Management" by Mohsen Seyedkazemi Ardebili and Andrea Bartolini (2025)

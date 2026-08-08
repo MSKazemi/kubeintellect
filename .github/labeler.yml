@@ -1,0 +1,71 @@
+# Path-based auto-labelling for pull requests (actions/labeler v7 syntax).
+#
+# Purpose: a contributor should never have to know the repo's internal taxonomy
+# to get their PR routed correctly. Labels applied here mirror the `area/*` set
+# used on issues, so a PR and the issue it closes carry the same label.
+#
+# Only labels that already exist in the repo are used — labeler does not create
+# them. Keep this file in sync with `gh label list`.
+
+'area/server':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'v4/packages/kubeintellect-server/**'
+          - 'v4/tests/**'
+
+'area/kube-q':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'v4/packages/kube-q/**'
+
+'area/agents':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'v4/packages/kubeintellect-server/app/agent/**'
+          - 'v4/packages/kubeintellect-server/app/cortex/**'
+
+'area/detectors':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'v4/packages/kubeintellect-server/app/detectors/**'
+          - 'v4/packages/kubeintellect-server/app/sensorium/**'
+
+'area/memory':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'v4/packages/kubeintellect-server/app/memory/**'
+
+'area/eval':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'v4/packages/kubeintellect-server/app/eval/**'
+
+'area/deploy':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'deploy/**'
+          - '**/Dockerfile*'
+          - '**/*.yaml'
+          - '**/charts/**'
+
+'area/packaging':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'snap/**'
+          - '**/pyproject.toml'
+          - '**/Formula/**'
+          - 'v4/packages/ki-protocol/**'
+
+'documentation':
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/*.md'
+          - 'docs/**'
+          - '**/docs/**'
+          - 'llms.txt'
+
+'github_actions':
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/workflows/**'
+          - '.github/*.yml'
