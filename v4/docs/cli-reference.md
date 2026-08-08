@@ -205,8 +205,8 @@ kq help                              # list every kq subcommand
 ```
 
 `kq help` (or `kq --help`) lists all subcommands — `config`, `findings`, `digest`,
-`replay`, `postmortem`, `detector`, `preference`, `v5-status`, `completion` — each
-documented below. A mistyped command (e.g. `kq fndings`) prints a
+`replay`, `postmortem`, `export`, `detector`, `preference`, `v5-status`,
+`completion` — each documented below. A mistyped command (e.g. `kq fndings`) prints a
 `Did you mean: findings?` suggestion.
 
 ### `kq completion [bash|zsh|fish]`
@@ -352,6 +352,37 @@ recorded events and falls back to the deterministic timeline on any failure.
 ```bash
 kq postmortem demo-1
 ```
+
+### `kq export <session-id>`
+
+Export the same grounded report as `kq postmortem`, serialized to JSON or YAML —
+for archiving, attaching to a ticket, or feeding another tool. The document is a
+view over the hash-chained decision log; nothing is synthesized.
+
+```bash
+kq export demo-1                              # JSON to stdout
+kq export demo-1 --format yaml                # YAML to stdout
+kq export demo-1 -o reports/demo-1.json       # write a file (parents created)
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--format`, `-f` | `json` | Output format: `json` or `yaml`. |
+| `--output`, `-o` | stdout | Destination file. Parent directories are created. |
+
+Stdout stays machine-parseable — progress notes and warnings go to stderr, so
+`kq export demo-1 \| jq .root_cause` works.
+
+If the recorder holds **no events** for the session, nothing is written and the
+command reports that instead of emitting an empty-but-plausible report.
+
+| Exit code | Meaning |
+|---|---|
+| `0` | Exported; audit chain intact. |
+| `1` | Fetch or write failed. |
+| `2` | Usage error. |
+| `3` | Exported, but the **audit chain is broken** — treat the export as untrusted (same convention as `kq replay`). |
+| `4` | No recorded events for that session — nothing exported. |
 
 ### `kq detector …` — teach a new failure in plain English
 

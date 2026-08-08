@@ -38,6 +38,10 @@ _SUBCOMMANDS: dict[str, tuple[str, str]] = {
         "kube_q.cli.postmortem_cmd",
         "Generate a grounded incident postmortem for a session",
     ),
+    "export": (
+        "kube_q.cli.export_cmd",
+        "Export a session's diagnosis report to JSON or YAML",
+    ),
     "detector": (
         "kube_q.cli.detector_cmd",
         "Author, list, or promote natural-language detectors",
@@ -66,6 +70,7 @@ _COMPLETION_HINTS: dict[str, dict[str, list[str]]] = {
     "digest": {"verbs": [], "flags": ["--hours"]},
     "replay": {"verbs": [], "flags": []},
     "postmortem": {"verbs": [], "flags": []},
+    "export": {"verbs": [], "flags": ["--format", "--output"]},
     "detector": {"verbs": ["new", "list", "promote"], "flags": ["--status"]},
     "preference": {"verbs": [], "flags": ["--user"]},
     "v5-status": {"verbs": [], "flags": []},

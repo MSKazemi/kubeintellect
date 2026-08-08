@@ -35,7 +35,7 @@ dev = [
     { name = "ruff", specifier = ">=0.15,<0.16" },
     { name = "scipy", specifier = ">=1.13" },
     { name = "seaborn", specifier = ">=0.13" },
-    { name = "types-pyyaml" },
+    { name = "types-pyyaml", specifier = ">=6.0.12" },
 ]
 
 [[package]]
@@ -754,6 +754,7 @@ dependencies = [
     { name = "prompt-toolkit" },
     { name = "pydantic" },
     { name = "pygments" },
+    { name = "pyyaml" },
     { name = "rich" },
 ]
 
@@ -776,6 +777,7 @@ requires-dist = [
     { name = "pygments", specifier = ">=2.18" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.14" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "respx", marker = "extra == 'dev'", specifier = ">=0.21" },
     { name = "rich", specifier = ">=14.3.3" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
@@ -844,7 +846,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.6" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.1" },
 ]
 provides-extras = ["tracing", "metrics", "all"]
 

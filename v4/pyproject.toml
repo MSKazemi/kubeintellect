@@ -21,7 +21,7 @@ dev = [
     # advisory against it. Raise this bound once that cleanup lands.
     "ruff>=0.15,<0.16",
     "mypy>=1.19",
-    "types-PyYAML",
+    "types-PyYAML>=6.0.12",
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=1.0.6",
     "scipy>=1.13",
@@ -36,7 +36,6 @@ kubeintellect = { workspace = true }
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-
 
 [tool.mypy]
 python_version = "3.12"
