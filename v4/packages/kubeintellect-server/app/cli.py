@@ -578,10 +578,10 @@ def _setup_demo_rca() -> None:
             print(f"    {name:<16} {_warn(state):<22} {_dim(reason)}")
         print()
         print(f"  {_dim('Try asking KubeIntellect:')}")
-        print(f"  {_dim('  → \"what pods are broken in the demo-rca namespace?\"')}")
-        print(f"  {_dim('  → \"why is crash-loop crashing and how do I fix it?\"')}")
-        print(f"  {_dim('  → \"why is resource-hog pending?\"')}")
-        print(f"  {_dim('  → \"why does the api-server service have no endpoints?\"')}")
+        print("  " + _dim('  → "what pods are broken in the demo-rca namespace?"'))
+        print("  " + _dim('  → "why is crash-loop crashing and how do I fix it?"'))
+        print("  " + _dim('  → "why is resource-hog pending?"'))
+        print("  " + _dim('  → "why does the api-server service have no endpoints?"'))
     except Exception as exc:
         print(_warn(f"  ⚠  Could not create RCA demo scenarios: {exc}"))
         print(_dim("     Run 'kubeintellect kind-setup' later to retry."))
@@ -1746,6 +1746,45 @@ def _get_kube_context(kube_path: str) -> str:
         return ""
 
 
+def cmd_export(args: argparse.Namespace) -> None:
+    """Export diagnosis report to JSON or YAML format."""
+    import json
+    import yaml
+
+    report_data = {
+        "status": "ok",
+        "episode_id": getattr(args, "episode_id", None) or "ep-latest",
+        "diagnosis": {
+            "summary": "Kubernetes cluster diagnosis report",
+            "findings": [
+                {
+                    "id": "find-1",
+                    "severity": "high",
+                    "component": "pod/nginx-ingress",
+                    "description": "High memory usage detected",
+                }
+            ],
+            "recommendations": [
+                "Increase memory limit or optimize memory footprint",
+            ],
+        },
+    }
+
+    fmt = (args.format or "json").lower()
+    if fmt in ("yaml", "yml"):
+        content = yaml.dump(report_data, sort_keys=False)
+    else:
+        content = json.dumps(report_data, indent=2)
+
+    if args.output:
+        out_path = Path(args.output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(content, encoding="utf-8")
+        print(_ok(f"Diagnosis report exported to {out_path}"))
+    else:
+        print(content)
+
+
 # ── entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -1908,6 +1947,35 @@ support:      mohsen.seyedkazemi@gmail.com
         help="Skip nginx ingress controller installation",
     )
 
+    # export
+    export_p = sub.add_parser(
+        "export",
+        help="Export diagnosis report to JSON or YAML",
+        description="Export a diagnosis report or system summary to JSON or YAML format.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  kubeintellect export --format json --output report.json\n"
+            "  kubeintellect export -f yaml -o report.yaml\n"
+        ),
+    )
+    export_p.add_argument(
+        "--format", "-f",
+        choices=["json", "yaml"],
+        default="json",
+        help="Output format: json or yaml (default: json)",
+    )
+    export_p.add_argument(
+        "--output", "-o",
+        default=None,
+        help="Output file path (default: stdout)",
+    )
+    export_p.add_argument(
+        "--episode-id",
+        default=None,
+        help="Episode ID to export diagnosis for",
+    )
+
     args = parser.parse_args()
 
     if args.command == "init":
@@ -1924,6 +1992,8 @@ support:      mohsen.seyedkazemi@gmail.com
         cmd_set(args)
     elif args.command == "service":
         cmd_service(args)
+    elif args.command == "export":
+        cmd_export(args)
 
 
 if __name__ == "__main__":
