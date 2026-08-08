@@ -144,7 +144,7 @@ assistance (see below — it is welcome, just disclosed).
 
 **9. Expect a reply, not silence.** Every PR gets a first response, even if the
 answer is "not this way". If CI fails on something unrelated to your change, say so
-in the PR — pre-existing `mypy` and `ruff format` debt is not your bug.
+in the PR — pre-existing `ruff format` debt is not your bug.
 
 **Stuck at any step?** That is a documentation defect, not a you problem — say so in
 [Discussions](https://github.com/MSKazemi/kubeintellect/discussions/categories/q-a)
@@ -163,10 +163,13 @@ uv sync                                                        # once, after clo
 # 1. Lint — the CI gate is `ruff check` only (not `ruff format`; see the note below)
 uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/
 
-# 2. Tests — two suites, run separately: the two `tests` packages collide
+# 2. Types — must stay at zero errors
+uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q
+
+# 3. Tests — two suites, run separately: the two `tests` packages collide
 #    under a single pytest invocation.
-uv run python -m pytest tests/ -q                              # server (~986 tests)
-cd packages/kube-q && uv run python -m pytest tests/ -q        # kq CLI (~297 tests)
+uv run python -m pytest tests/ -q                              # server (~990 tests)
+cd packages/kube-q && uv run python -m pytest tests/ -q        # kq CLI (~312 tests)
 ```
 
 A PR that fails these will fail CI. If a gate is failing for a reason unrelated to your change,
@@ -181,17 +184,21 @@ say so in the PR.
 - [ ] New behavior has both a happy-path **and** an error-path test
 - [ ] **Every write/mutating operation keeps its dry-run + diff + human-approval (HITL) gate** — this is a safety requirement, not a UX choice
 - [ ] Secret values are never logged or returned (key names only)
-- [ ] `pytest` and `ruff check` pass locally (these are the CI gates)
-- [ ] `mypy` shows no *new* errors from your change — see the note below
+- [ ] `pytest`, `ruff check` and `mypy` pass locally (these are the CI gates)
 - [ ] Docs updated if behavior/CLI/flags changed
 - [ ] Commits are signed off (DCO)
 
-> **On `mypy` and `ruff format`:** neither is a blocking CI gate yet, and you should know why
-> before you waste time on it. `mypy` currently reports **30 pre-existing errors across 12
-> files**, and `ruff format --check` would reformat ~108 files. Both are tracked as debt in
-> [ROADMAP.md](ROADMAP.md). **You are not expected to fix them in your PR** — just don't add
-> new ones. If a gate fails for a reason that has nothing to do with your change, say so in the
-> PR and we'll sort it out; it is not your bug.
+> **On `mypy`:** it is now a blocking gate and the workspace sits at **zero errors** — if it
+> reports something, it is from your change. Two annotations are load-bearing and mypy cannot
+> see why: LangGraph and LangChain both decide whether to inject the run config by
+> *pattern-matching the `config` parameter's annotation*, so respelling it silently disables
+> RBAC and the HITL gate. `tests/test_workflow_config_injection.py` guards this — if it fails,
+> read its docstring before changing an annotation.
+>
+> **On `ruff format`:** still **not** a gate — it would reformat ~108 files, which needs to land
+> as its own commit. Tracked in [ROADMAP.md](ROADMAP.md). You are not expected to fix that in
+> your PR. If a gate fails for a reason unrelated to your change, say so in the PR; it is not
+> your bug.
 
 ---
 

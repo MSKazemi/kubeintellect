@@ -1,4 +1,4 @@
-.PHONY: install run run-bg stop logs dev dev-postgres dev-postgres-stop db-init db-purge lint test test-memory cli \
+.PHONY: install run run-bg stop logs dev dev-postgres dev-postgres-stop db-init db-purge lint typecheck test test-memory cli \
         local-run local-stop local-logs quickstart \
         kind-build-kubeintellect kind-deploy-kubeintellect kind-redeploy-kubeintellect \
         vm-deploy-kubeintellect aks-deploy-kubeintellect alibaba-deploy-kubeintellect \
@@ -368,6 +368,9 @@ db-purge: ## Run reflexion retention (delete old rca_outcomes / unverified patte
 lint: ## Run ruff linter and format check
 	uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/
 	uv run ruff format --check packages/kubeintellect-server/app/ packages/ki-protocol/
+
+typecheck: ## Run mypy over the whole workspace (blocking CI gate — must stay at zero errors)
+	uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q
 
 test: ## Run the pytest test suite (server + kube-q workspace member)
 	uv run python -m pytest tests/ -v

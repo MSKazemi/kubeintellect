@@ -22,7 +22,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   Closes #58. Thanks to @AdvaitVarhade for proposing the capability and the initial
   implementation.
 
+- **`Types (mypy)` is now a blocking CI gate**, and `make typecheck` runs it locally. The
+  workspace type-checks with **zero errors** across all 171 source files, down from 30. The
+  remaining `ruff format` debt is unaffected and still not a gate.
+- `tests/test_workflow_config_injection.py` — a regression guard asserting that every graph
+  node and tool declaring a `config` parameter actually receives the run config. See below
+  for why that is not obvious.
+
 ### Fixed
+- **The coordinator system prompt was silently corrupted.** `_COORDINATOR_SYSTEM` was a
+  non-raw string containing jsonpath separators, so `{"\n"}` and `{"\t"}` were interpreted
+  before the model saw them — a real newline split an example `kubectl get pods -o jsonpath=…`
+  command mid-line, and a literal tab replaced another. Now a raw string. This also clears the
+  `SyntaxWarning: invalid escape sequence '\`'` that Python is scheduled to turn into a
+  `SyntaxError` (#63).
+- **RCA synthesis crashed on providers that return content blocks.** `_synthesize` called
+  `response.content.strip()`, which raises `AttributeError` when `content` is a list rather
+  than a string; it now uses `response.text`, which flattens the blocks.
+- **API keys are wrapped in `SecretStr`** before being handed to `ChatOpenAI` /
+  `AzureChatOpenAI`, so a client repr or traceback cannot render the raw key.
+- `init_graph()` raises a named error when `POSTGRES_DSN` is unset with `USE_SQLITE=false`,
+  instead of failing inside the driver.
 - **Four type errors in `app/cli.py`** (#55): `callable` used as a type annotation is now
   `Callable[[], None]`, and the two `subprocess.run` calls that rebound a
   `CompletedProcess[str]` variable declare `text=True`, so the type is consistent without
@@ -32,6 +52,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Changed
 - `types-PyYAML` added to the dev dependency group; the server's mypy baseline drops from
   29 to 27 errors (two pre-existing missing-stub errors resolved).
+- **First `[tool.mypy]` configuration for the workspace** (#53) — `python_version = "3.12"`
+  plus a per-module `ignore_missing_imports` override for `asyncpg`, which ships no `py.typed`
+  marker. Clears the 5 remaining `[import-untyped]` errors without touching source. Thanks to
+  @hariomlohardev (#65).
+- `max_tokens=` → `max_completion_tokens=` on the OpenAI/Azure chat clients — the same
+  pydantic field under its public alias, so the request payload is unchanged.
 - Container runtime image moves from `python:3.12-slim` to `python:3.13-slim` (#59).
   Verified independently of CI, which does not build the image: the full dependency set
   resolves on CPython 3.13.14, both entry points start, and the 986-test server suite passes.

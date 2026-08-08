@@ -46,6 +46,30 @@ jobs:
       - name: ruff check
         run: uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/
 
+  types:
+    name: Types (mypy)
+    runs-on: ubuntu-latest
+    # mypy reached zero errors across the workspace; this job keeps it there. The
+    # configuration (python_version, the asyncpg override) lives in v4/pyproject.toml.
+    defaults:
+      run:
+        working-directory: v4
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install "uv==${UV_VERSION}"
+
+      - name: Sync dependencies
+        run: uv sync
+
+      - name: mypy
+        run: uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q
+
   test:
     name: Tests (${{ matrix.suite }})
     runs-on: ubuntu-latest

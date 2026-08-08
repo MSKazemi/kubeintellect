@@ -58,8 +58,9 @@ Not glamorous, but real, and each is a genuinely good first contribution.
 
 - **`ruff format` is not enforced.** `ruff check` passes and runs in CI, but ~108 files are
   unformatted. The reformat needs to land as its own commit before the gate can be turned on.
-- **`mypy` is not clean** — 30 errors across 12 files. It is deliberately not a blocking CI
-  gate until those are fixed.
+- ~~**`mypy` is not clean** — 30 errors across 12 files.~~ **Cleared in v2.3.0.** The workspace
+  type-checks with zero errors and `Types (mypy)` is a blocking CI gate. Configuration lives in
+  `v4/pyproject.toml`; keep it at zero.
 - **Worked examples missing for most `kq` subcommands** — [#15](https://github.com/MSKazemi/kubeintellect/issues/15).
 - **The snap is built but not published.** `snap/snapcraft.yaml` produces a strict-confinement
   `kubeintellect` snap (amd64 + arm64) and CI builds and smoke-tests it on every relevant PR, but

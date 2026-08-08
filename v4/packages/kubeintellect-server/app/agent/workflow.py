@@ -20,9 +20,12 @@ sets rca_required=True as a signal and route_coordinator acts on it.
 from __future__ import annotations
 
 import asyncio
+from contextlib import AbstractAsyncContextManager
 from typing import Any
 
 from langchain_core.messages import HumanMessage
+from langchain_core.runnables import RunnableConfig
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, Send
 
@@ -181,7 +184,10 @@ def build_graph() -> StateGraph:
     builder.add_node("context_fetcher", context_fetcher)
     builder.add_node("coordinator", coordinator)
     builder.add_node("targeted_investigator", targeted_investigator)
-    builder.add_node("subagent_executor", subagent_executor)
+    # subagent_executor is only ever reached through a Send (route_coordinator), so its
+    # input is SubagentInput rather than AgentState. LangGraph's add_node signature has
+    # no way to express a Send-only node, so it cannot type-check this edge.
+    builder.add_node("subagent_executor", subagent_executor)  # type: ignore[arg-type]
 
     builder.add_edge(START, "memory_loader")
     builder.add_edge("memory_loader", "context_fetcher")
@@ -204,9 +210,11 @@ def build_graph() -> StateGraph:
 
 # ── Compiled graph (singleton with checkpointer) ──────────────────────────────
 
-_graph = None
-_checkpointer_cm = None   # the context manager (holds the connection)
-_checkpointer = None      # the actual AsyncPostgresSaver instance
+_graph: Any = None
+# The context manager (holds the connection). Either checkpointer backend can land
+# here, so it is typed by the shared base rather than by whichever one is compiled in.
+_checkpointer_cm: AbstractAsyncContextManager[BaseCheckpointSaver[Any]] | None = None
+_checkpointer: BaseCheckpointSaver[Any] | None = None
 _graph_lock = asyncio.Lock()
 
 
@@ -232,7 +240,16 @@ async def init_graph() -> None:
         else:
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
             logger.info("Building LangGraph workflow with AsyncPostgresSaver")
-            _checkpointer_cm = AsyncPostgresSaver.from_conn_string(settings.POSTGRES_DSN)
+            dsn = settings.POSTGRES_DSN
+            if not dsn:
+                # Unreachable while POSTGRES_DSN only returns None under USE_SQLITE,
+                # which this branch has already excluded — kept so a future change to
+                # that property fails loudly instead of inside the driver.
+                raise RuntimeError(
+                    "POSTGRES_DSN resolved to None with USE_SQLITE=false. Set DATABASE_URL "
+                    "or the POSTGRES_* settings, or run with USE_SQLITE=true."
+                )
+            _checkpointer_cm = AsyncPostgresSaver.from_conn_string(dsn)
         _checkpointer = await _checkpointer_cm.__aenter__()
         await _checkpointer.setup()
         _graph = builder.compile(checkpointer=_checkpointer)
@@ -309,7 +326,7 @@ async def invoke(
 ) -> AgentState:
     """Single-turn invoke (non-streaming). Returns final state."""
     graph = await get_graph()
-    config = {"configurable": {"thread_id": session_id, "user_role": user_role}}
+    config: RunnableConfig = {"configurable": {"thread_id": session_id, "user_role": user_role}}
 
     state = _fresh_turn_state(user_message, session_id, user_id, user_role, extra_state)
 
@@ -339,7 +356,9 @@ async def stream_events(
     can read it without touching AgentState.
     """
     graph = await get_graph()
-    config = {"configurable": {"thread_id": session_id, "user_role": user_role, "hitl_bypass": auto_approve}}
+    config: RunnableConfig = {
+        "configurable": {"thread_id": session_id, "user_role": user_role, "hitl_bypass": auto_approve}
+    }
 
     # "approve all" message activates session-wide bypass for this turn onward
     if _is_auto_approve_request(user_message):
@@ -353,6 +372,8 @@ async def stream_events(
         t.interrupts for t in graph_state.tasks
     ))
 
+    # Either a resume command or the partial state update from _fresh_turn_state.
+    input_data: Command[Any] | dict[str, Any]
     if has_interrupt:
         denied = _is_denial(user_message)
         input_data = Command(resume=not denied)
