@@ -783,7 +783,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "kubeintellect"
-version = "2.1.0"
+version = "2.2.0"
 source = { editable = "packages/kubeintellect-server" }
 dependencies = [
     { name = "asyncpg" },
@@ -843,7 +843,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.6" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.1" },
 ]
 provides-extras = ["tracing", "metrics", "all"]
 
