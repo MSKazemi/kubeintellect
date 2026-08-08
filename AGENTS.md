@@ -50,7 +50,7 @@ uv sync          # creates .venv and installs the whole workspace
 
 ## Gate commands — these are exactly what CI runs
 
-From the repo root, `make setup` runs all four in order. Individually, from `v4/`:
+From the repo root, `make setup` runs the four `v4/` gates in order. Individually, from `v4/`:
 
 ```bash
 # 1. Lint — `ruff check` only. NOT `ruff format`.
@@ -59,12 +59,24 @@ uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/
 # 2. Types — the workspace is at ZERO errors; keep it there.
 uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q
 
-# 3. Server suite (986 tests)
+# 3. Server suite (990 tests)
 uv run python -m pytest tests/ -q
 
 # 4. kq CLI suite (312 tests)
 cd packages/kube-q && uv run python -m pytest tests/ -q
 ```
+
+Plus one repo-root gate, which needs no virtualenv:
+
+```bash
+# 5. File modes — a tracked file is executable if and only if it has a shebang.
+make check-modes          # or: ./scripts/check-file-modes.sh
+make fix-modes            # corrects any violation in place
+```
+
+If you create a file, do not mark it executable unless it is a script with a shebang. This
+gate exists because `ruff`'s EXE002 cannot run here (see the pin below), so nothing else
+catches a stray `+x`.
 
 Do not report work as complete without running these and reading the output.
 
@@ -80,8 +92,10 @@ Two annotations are load-bearing and mypy *cannot* verify them — see "Safety i
 - **`ruff format --check` is not a CI gate** and would reformat ~108 files. `make lint` in
   `v4/` *does* run it, so `make lint` fails on a clean checkout. Use the `ruff check` command
   above to predict CI, not `make lint`.
-- **`ruff` is pinned `<0.16`** on purpose — 0.16's default rules report 438 findings. Lifting
-  the pin is tracked in #64. Do not bump it.
+- **`ruff` is pinned `<0.16`** on purpose — 0.16's default rules reported 438 findings, now
+  **342** after the `EXE002` family was cleared (#70). Lifting the pin is tracked in #64. Do
+  not bump it. Note the consequence: while the pin holds, `ruff` here is blind to `EXE002`
+  and `EXE001`, which is why the separate `make check-modes` gate above exists.
 
 ## Safety invariants — never weaken these
 

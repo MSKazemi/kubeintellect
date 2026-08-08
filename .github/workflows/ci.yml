@@ -46,6 +46,24 @@ jobs:
       - name: ruff check
         run: uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/
 
+  file-modes:
+    name: File modes
+    runs-on: ubuntu-latest
+    # Enforces: a tracked file is executable if and only if it starts with a
+    # shebang (the ruff EXE002/EXE001 pair).
+    #
+    # This deliberately does NOT live in the ruff job above. ruff is pinned
+    # `<0.16` (#64) and EXE002 only became a default rule in 0.16, so the lint
+    # gate is structurally blind to this class — which is how 94 library modules
+    # accumulated a stray `+x` bit before #70 cleared them. Keeping the guard
+    # dependency-free (git + coreutils, no uv sync) means it stays correct
+    # whichever way the ruff upgrade lands, and it finishes in seconds.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Check file modes
+        run: ./scripts/check-file-modes.sh
+
   types:
     name: Types (mypy)
     runs-on: ubuntu-latest

@@ -12,6 +12,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **A `File modes` CI gate (`make check-modes`, `scripts/check-file-modes.sh`)** enforcing one
+  invariant outside the frozen v1–v3 generations: *a tracked file is executable if and only if
+  it starts with a shebang*. This closes a structural blind spot rather than a one-off mess —
+  `ruff` is pinned `<0.16` (#64) and `EXE002` only became a default rule in 0.16, so the lint
+  gate could not see a stray `+x` bit at all, which is how 94 library modules silently acquired
+  one. The guard is deliberately dependency-free (git + coreutils, no `uv sync`), so it stays
+  correct whichever way the ruff upgrade lands, and it runs in seconds. It also covers the
+  inverse defect (`EXE001`: a shebang'd script that is not executable, i.e. one you cannot run),
+  which `ruff` only reports for Python. `make fix-modes` corrects violations in place, updating
+  both the working tree and the index — a `chmod` alone would leave the committed mode unchanged.
 - **One-command contributor setup: `make setup` (`scripts/dev-setup.sh`).** Installs `uv` if
   missing, installs the `v4` workspace, then runs the *exact* four gate commands CI runs
   (ruff, mypy, server suite, `kq` suite) and reports which passed. A contributor therefore
@@ -59,6 +69,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   for why that is not obvious.
 
 ### Fixed
+- **Cleared the stray executable bit from 94 source files** under
+  `v4/packages/kubeintellect-server/app/` and `v4/packages/ki-protocol/` — file-mode only
+  (`100755 → 100644`), zero content changes, verified by the patch containing no `+`/`-` content
+  lines. These are library modules with no shebang, so `chmod -x` is the correct fix rather than
+  adding one. Clears `EXE002` in the CI-linted scope and takes the ruff 0.16 finding count from
+  438 to 342, unblocking part of #64. Thanks to [@hariomlohardev](https://github.com/hariomlohardev)
+  ([#70](https://github.com/MSKazemi/kubeintellect/pull/70)).
+- **Extended the same mode-only sweep to the remaining 282 files** outside that lint path
+  (the rest of `v4/`, `deploy/`, and three root files), and gave the four shebang'd scripts that
+  were *not* executable their `+x` back. The frozen v1–v3 generations are deliberately untouched
+  (ADR-001/002): they are closed to changes and not built by CI, so rewriting ~500 of their file
+  modes would be churn against immutable history for no gate benefit.
 - **The coordinator system prompt was silently corrupted.** `_COORDINATOR_SYSTEM` was a
   non-raw string containing jsonpath separators, so `{"\n"}` and `{"\t"}` were interpreted
   before the model saw them — a real newline split an example `kubectl get pods -o jsonpath=…`
