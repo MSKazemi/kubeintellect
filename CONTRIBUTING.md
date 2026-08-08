@@ -300,20 +300,37 @@ prompt injection.
 
 ---
 
-## Developer Certificate of Origin (DCO) + licensing
+## Licensing: DCO sign-off + CLA
 
 KubeIntellect is **dual-licensed** (AGPL-3.0-or-later **or** a commercial license — see
-[LICENSING.md](LICENSING.md)). To keep that model viable, we require a **DCO sign-off** on every
-commit. Add `-s` to your commit:
+[LICENSING.md](LICENSING.md)). Commercial licenses are what fund continued work on the open-source
+project you are contributing to. Two small things keep that model honest, and they do different jobs.
+
+### 1. DCO sign-off — on every commit
+
+Add `-s` to your commit:
 
 ```bash
 git commit -s -m "fix: truncate pod logs at token budget"
 ```
 
-This appends a `Signed-off-by:` trailer certifying you wrote the patch (or have the right to
-submit it) under the [Developer Certificate of Origin](https://developercertificate.org/), and
-that your contribution may be distributed under the project's licenses. If you can't or don't want
-to agree to this, open a Discussion and we'll figure it out together.
+This appends a `Signed-off-by:` trailer certifying you wrote the patch, or have the right to submit
+it, under the [Developer Certificate of Origin](https://developercertificate.org/).
+
+### 2. CLA — once, on your first pull request
+
+The DCO says the patch is yours to give. It does **not** grant permission to license your code under a
+*commercial* license, and offering that license is exactly what pays for this project. The
+[CLA](CLA.md) closes that gap.
+
+**You keep the copyright in your work.** You are granting a license, not transferring ownership, and
+you can keep using your own code anywhere else you like.
+
+Signing is one comment on your first PR — a bot posts the link, you reply once, and it covers every
+contribution you make afterwards. Nothing else changes about how you contribute.
+
+If you can't or don't want to agree to any of this, **open a Discussion** and we'll figure it out
+together. We would rather adapt than lose your work.
 
 ---
 
