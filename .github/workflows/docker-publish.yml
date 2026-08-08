@@ -8,7 +8,11 @@ name: Publish container image
 # priv/, evaluation/, v5/, ...) cannot reach the image.
 #
 # Trigger: push a v* tag, or run manually from Actions -> Publish container
-# image. Manual runs support a dry run that builds without pushing.
+# image. Manual runs support a dry run that builds and authenticates to both
+# registries without pushing — use it to verify credentials before a release.
+#
+# Both registries are required: a missing Docker Hub secret fails the run rather
+# than silently publishing to GHCR alone.
 
 on:
   push:
@@ -40,34 +44,38 @@ jobs:
 
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
+      # Both registries are REQUIRED. A missing credential used to emit a
+      # ::warning:: and publish to GHCR only — which still reported success, so
+      # a release could silently reach one registry and nobody would notice.
+      # Fail loudly instead.
+      - name: Verify Docker Hub credentials are present
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          missing=""
+          [ -z "$DOCKERHUB_USERNAME" ] && missing="DOCKERHUB_USERNAME"
+          [ -z "$DOCKERHUB_TOKEN" ] && missing="${missing:+$missing }DOCKERHUB_TOKEN"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s): ${missing}. Refusing to publish to GHCR only — set them under Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          echo "Docker Hub credentials present."
+
+      # Both logins run even on a dry run: logging in pushes nothing, and it is
+      # the only way a dry run can actually prove the credentials work. A dry
+      # run that skips auth cannot tell you your token is valid.
+
       # GHCR needs no manually-managed secret — GITHUB_TOKEN plus the
       # packages:write permission above is enough.
       - name: Log in to GitHub Container Registry
-        if: ${{ !inputs.dry_run }}
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Docker Hub is optional so the workflow still succeeds before the secrets
-      # are added.
-      - name: Check for Docker Hub credentials
-        id: dockerhub
-        env:
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-        run: |
-          if [ -n "$DOCKERHUB_TOKEN" ] && [ -n "$DOCKERHUB_USERNAME" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-            echo "Docker Hub credentials present — will publish there too."
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::DOCKERHUB_USERNAME/DOCKERHUB_TOKEN not set — publishing to GHCR only."
-          fi
-
       - name: Log in to Docker Hub
-        if: ${{ steps.dockerhub.outputs.enabled == 'true' && !inputs.dry_run }}
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -76,13 +84,10 @@ jobs:
       - name: Derive image names
         id: images
         run: |
-          IMAGES="${GHCR_IMAGE}"
-          if [ "${{ steps.dockerhub.outputs.enabled }}" = "true" ]; then
-            IMAGES="${IMAGES}"$'\n'"${DOCKERHUB_IMAGE}"
-          fi
           {
             echo "list<<EOF"
-            echo "$IMAGES"
+            echo "${GHCR_IMAGE}"
+            echo "${DOCKERHUB_IMAGE}"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -137,10 +142,6 @@ jobs:
             echo '```'
             if [ "${{ inputs.dry_run }}" = "true" ]; then
               echo
-              echo "_Dry run — nothing was pushed._"
-            fi
-            if [ "${{ steps.dockerhub.outputs.enabled }}" != "true" ]; then
-              echo
-              echo "> Docker Hub was skipped: DOCKERHUB_USERNAME/DOCKERHUB_TOKEN are not set."
+              echo "_Dry run — nothing was pushed, but both registry logins were exercised, so the credentials above are proven valid._"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
