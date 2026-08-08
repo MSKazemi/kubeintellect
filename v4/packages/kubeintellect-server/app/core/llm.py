@@ -7,10 +7,16 @@ from functools import lru_cache
 from typing import Any, List, Type
 
 from langchain_core.language_models import BaseChatModel
+from pydantic import SecretStr
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _secret(value: str | None) -> SecretStr | None:
+    """Wrap an API key so it is never rendered by a repr/traceback of the client."""
+    return SecretStr(value) if value else None
 
 # Resolved once at import time so the ImportError warning fires only on startup,
 # not on every request.  None = not yet resolved, False = unavailable.
@@ -84,10 +90,12 @@ def _make_azure(deployment: str, temperature: float = 0.0, max_tokens: int = 409
     return AzureChatOpenAI(
         azure_deployment=deployment,
         azure_endpoint=endpoint,
-        api_key=settings.AZURE_OPENAI_API_KEY,
+        api_key=_secret(settings.AZURE_OPENAI_API_KEY),
         api_version=settings.AZURE_OPENAI_API_VERSION,
         temperature=temperature,
-        max_tokens=max_tokens,
+        # `max_completion_tokens` is the public alias of the `max_tokens` field in
+        # langchain-openai ≥1.x; both set the same value, the alias is the typed one.
+        max_completion_tokens=max_tokens,
         streaming=streaming,
         disable_streaming=not streaming,
     )
@@ -97,10 +105,10 @@ def _make_openai(model: str, temperature: float = 0.0, max_tokens: int = 4096, s
     from langchain_openai import ChatOpenAI
     return ChatOpenAI(
         model=model,
-        api_key=settings.OPENAI_API_KEY,
+        api_key=_secret(settings.OPENAI_API_KEY),
         base_url=settings.OPENAI_BASE_URL or None,  # OpenAI-compatible providers (Qwen/DashScope, LiteLLM); None → api.openai.com
         temperature=temperature,
-        max_tokens=max_tokens,
+        max_completion_tokens=max_tokens,  # public alias of `max_tokens` — see _make_azure
         streaming=streaming,
         disable_streaming=not streaming,
     )

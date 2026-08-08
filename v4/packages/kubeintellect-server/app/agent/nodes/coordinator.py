@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import time
+from typing import Optional
 
 from langchain_core.messages import (
     AIMessage,
@@ -252,8 +253,11 @@ def _extract_plan(messages: list[BaseMessage]) -> tuple[list[PlanStep], list[Bas
 
 # ── Coordinator system prompt ─────────────────────────────────────────────────
 
-_COORDINATOR_SYSTEM = """\
-You are KubeIntellect, an expert Kubernetes operations AI.
+# Raw string on purpose. The prompt quotes jsonpath separators verbatim — `{"\n"}`,
+# `{"\t"}` and a lone backslash. Interpreted, those became a real newline and tab, which
+# split the example kubectl commands mid-line before the model ever saw them, and the
+# lone `\` raised a SyntaxWarning that Python will eventually make a SyntaxError.
+_COORDINATOR_SYSTEM = r"""You are KubeIntellect, an expert Kubernetes operations AI.
 
 You have access to four tools:
 - run_kubectl: run any kubectl command against the cluster
@@ -639,7 +643,13 @@ def _playbooks_block(state: AgentState) -> str:
     return "\n".join(sections)
 
 
-async def coordinator(state: AgentState, config: RunnableConfig = None) -> dict:
+# `Optional[RunnableConfig]`, not `RunnableConfig | None`: this module uses
+# `from __future__ import annotations`, so LangGraph sees the annotation as a string and
+# matches it against a fixed list ("RunnableConfig", "Optional[RunnableConfig]", …) in
+# langgraph._internal._runnable.KWARGS_CONFIG_KEYS. The PEP-604 spelling is not on that
+# list, so it would silently stop the run config being injected — taking user_role and
+# hitl_bypass with it. Covered by tests/test_workflow_config_injection.py.
+async def coordinator(state: AgentState, config: Optional[RunnableConfig] = None) -> dict:  # noqa: UP045
     """
     Coordinator node.  Always returns a plain state-update dict — never Send objects.
 
@@ -673,7 +683,7 @@ async def coordinator(state: AgentState, config: RunnableConfig = None) -> dict:
     last_user_msg = ""
     for m in reversed(state.get("messages", [])):
         if hasattr(m, "type") and m.type == "human":
-            last_user_msg = m.content[:120]
+            last_user_msg = m.content[:120] if isinstance(m.content, str) else ""
             break
     logger.debug(f"coordinator: invoking LLM user={user_id} session={session_id} msg={last_user_msg!r}")
 
@@ -734,7 +744,7 @@ async def coordinator(state: AgentState, config: RunnableConfig = None) -> dict:
     return result
 
 
-async def _direct_answer(state: AgentState, config: RunnableConfig = None) -> dict:
+async def _direct_answer(state: AgentState, config: Optional[RunnableConfig] = None) -> dict:  # noqa: UP045
     """Run coordinator LLM with tools for simple queries."""
     from langgraph.prebuilt import create_react_agent
 
@@ -1153,7 +1163,9 @@ Synthesize these into a single root-cause analysis. Respond with ONLY a JSON obj
         [SystemMessage(content=_COORDINATOR_SYSTEM), HumanMessage(content=synthesis_prompt)]
     )
 
-    raw = response.content.strip()
+    # `.text` flattens a content-block list (some providers never return a bare
+    # string) into the concatenated text; `.content.strip()` would raise on one.
+    raw = response.text.strip()
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"):

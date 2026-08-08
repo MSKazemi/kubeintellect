@@ -357,7 +357,13 @@ def _capture_rollback_point(verb: str, args: list, stdin: str | None, config, en
 def run_kubectl(
     command: str,
     stdin: str | None = None,
-    config: Annotated[RunnableConfig, InjectedToolArg] = None,
+    # The annotation MUST stay exactly `RunnableConfig` — langchain_core's
+    # _get_runnable_config_param matches with `type_ is RunnableConfig`, so widening it
+    # to `RunnableConfig | None` stops the run config being injected at all. The tool
+    # then sees config=None and silently loses user_role (RBAC) and hitl_bypass, which
+    # turns the HITL gate into a no-op. Covered by tests/test_kubectl_tool.py
+    # ::TestAlwaysConfirm. The body already treats config as optional.
+    config: Annotated[RunnableConfig, InjectedToolArg] = None,  # type: ignore[assignment]
 ) -> str:
     """Run any kubectl command against the configured cluster.
 
