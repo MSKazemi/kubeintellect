@@ -68,7 +68,7 @@ async def main() -> int:
         check("PR branch created + fix committed", branch == "ki/fix-runasnonroot" and "runAsNonRoot" in pr.title, log)
         check("git diff on the branch shows the security fix", "runAsNonRoot: true" in gitdiff)
 
-    print(f"\n================ FIXED MANIFEST (excerpt) ================")
+    print("\n================ FIXED MANIFEST (excerpt) ================")
     for ln in fixed.splitlines():
         if "runAsNonRoot" in ln or "image:" in ln:
             print("  " + ln.strip())
