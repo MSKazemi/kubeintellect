@@ -21,6 +21,7 @@ dev = [
     # advisory against it. Raise this bound once that cleanup lands.
     "ruff>=0.15,<0.16",
     "mypy>=1.19",
+    "types-PyYAML",
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=1.0.6",
     "scipy>=1.13",
@@ -35,3 +36,14 @@ kubeintellect = { workspace = true }
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+
+[tool.mypy]
+python_version = "3.12"
+
+[[tool.mypy.overrides]]
+# asyncpg ships no py.typed marker, so there are no stubs that could ever be
+# "installed" for it — this silences the resulting [import-untyped] noise
+# without masking real type errors elsewhere.
+module = ["asyncpg.*"]
+ignore_missing_imports = true
