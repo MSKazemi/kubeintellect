@@ -16,6 +16,7 @@ import secrets
 import subprocess
 import sys
 from collections import namedtuple
+from collections.abc import Callable
 from pathlib import Path
 
 
@@ -1525,7 +1526,7 @@ def cmd_set(args: argparse.Namespace) -> None:
 
 # ── tool installers ───────────────────────────────────────────────────────────
 
-def _ensure_tool(name: str, installer: "callable") -> None:
+def _ensure_tool(name: str, installer: Callable[[], None]) -> None:
     if subprocess.run(["which", name], capture_output=True).returncode == 0:
         return
     print(f"  '{name}' not found — installing...")
@@ -1626,7 +1627,7 @@ def cmd_kind_setup(args: argparse.Namespace) -> None:
         print(f"  Creating Kind cluster '{cluster_name}'...")
         result = subprocess.run(
             ["kind", "create", "cluster", "--name", cluster_name],
-            check=False,
+            check=False, text=True,
         )
         if result.returncode != 0:
             print(_err("  Error: failed to create Kind cluster."), file=sys.stderr)
@@ -1639,7 +1640,7 @@ def cmd_kind_setup(args: argparse.Namespace) -> None:
             "https://raw.githubusercontent.com/kubernetes/ingress-nginx"
             "/main/deploy/static/provider/kind/deploy.yaml"
         )
-        result = subprocess.run(["kubectl", "apply", "-f", ingress_url], check=False)
+        result = subprocess.run(["kubectl", "apply", "-f", ingress_url], check=False, text=True)
         if result.returncode != 0:
             print(_warn("  Warning: nginx ingress install failed — install it manually later."), file=sys.stderr)
         else:
