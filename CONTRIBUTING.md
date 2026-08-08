@@ -39,15 +39,37 @@ The repo **root** (`Makefile`, `deploy/`, `scripts/`) manages the *shared infras
 
 ## Dev setup
 
-**Requirements:** Python **3.12+**, [`uv`](https://docs.astral.sh/uv/getting-started/installation/),
-Docker, [`kind`](https://kind.sigs.k8s.io/), `kubectl`, `helm`.
+### Fastest path — one command
+
+**You do not need a Kubernetes cluster, an LLM API key, or Docker to contribute.** The test
+suites are fully mocked. Only Python 3.12+ is required.
 
 ```bash
 # Canonical repo. (github.com/kubeintellect/kubeintellect is an archived mirror.)
 git clone https://github.com/MSKazemi/kubeintellect.git
+cd kubeintellect
+make setup          # or: ./scripts/dev-setup.sh
+```
+
+That installs [`uv`](https://docs.astral.sh/uv/) if missing, installs the whole `v4`
+workspace, and then runs **the exact four gates CI runs** (ruff, mypy, both test suites) so
+you know your environment is correct before you change anything. It takes about a minute and
+prints what to do next.
+
+**Zero-install alternative:** open the repo in a
+[GitHub Codespace](https://codespaces.new/MSKazemi/kubeintellect) or in VS Code with the Dev
+Containers extension — `.devcontainer/devcontainer.json` runs the same setup automatically.
+
+### Manual path
+
+**Requirements:** Python **3.12+**, [`uv`](https://docs.astral.sh/uv/getting-started/installation/).
+Docker, [`kind`](https://kind.sigs.k8s.io/), `kubectl` and `helm` are needed **only** for
+end-to-end work against a real cluster.
+
+```bash
 cd kubeintellect/v4
 
-cp .env.example .env      # fill in your LLM API key at minimum (OpenAI or Azure OpenAI)
+cp .env.example .env      # only needed to RUN the app; not needed to run the tests
 uv sync                    # install the workspace (kubeintellect-server, kube-q, ki-protocol)
 ```
 

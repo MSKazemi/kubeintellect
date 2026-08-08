@@ -12,6 +12,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **One-command contributor setup: `make setup` (`scripts/dev-setup.sh`).** Installs `uv` if
+  missing, installs the `v4` workspace, then runs the *exact* four gate commands CI runs
+  (ruff, mypy, server suite, `kq` suite) and reports which passed. A contributor therefore
+  learns their environment is correct *before* changing anything, and never debugs their setup
+  and their change at the same time. It also names the pre-existing debt that is **not** their
+  bug (`make lint`'s non-gate `ruff format --check`, the deliberate `ruff<0.16` pin). No
+  cluster, Docker daemon, or LLM API key is required — the suites are mocked.
+- **`.devcontainer/devcontainer.json`** — zero-install contribution via GitHub Codespaces or
+  VS Code Dev Containers, pinned to the Python 3.12 that CI pins and running the same setup
+  script on create.
+- **`AGENTS.md`** ([agents.md](https://agents.md/) format) — machine-readable repository rules
+  for AI coding agents: gate commands, the six safety invariants, testing expectations, and
+  the pre-existing debt not to "fix". Human authority remains `CONTRIBUTING.md`.
+- **A `Contributing` section on the README front page**, plus a live good-first-issue badge and
+  a header nav link. The invitation previously existed only as one sentence under `Maintainer`
+  near the bottom of a 221-line file.
+- **`.github/workflows/greetings.yml`** — welcomes a contributor's first issue and first PR,
+  and pre-empts the two things that most often make newcomers give up: silence, and a fork PR
+  that appears stalled because GitHub runs no CI for first-time contributors until a maintainer
+  approves the run.
+- **`.github/workflows/labeler.yml` + `.github/labeler.yml`** — path-based `area/*` PR
+  labelling mirroring the issue taxonomy in `TRIAGE.md`, so a contributor never needs to know
+  the repo's internal structure to be routed correctly.
+- **`.github/ISSUE_TEMPLATE/documentation.yml`** — a documentation issue template, making
+  "the docs were unclear" a first-class report rather than a bug-report misfit.
+- **A `Contributing` section in `llms.txt`**, so answer engines asked how to contribute to
+  KubeIntellect have a grounded answer (Python-3.12-only prerequisite, `v4/` scope, the HITL
+  invariant, and where the good first issues are).
+
 - **`kq export <session-id>` — export a diagnosis report to JSON or YAML.** Serializes the
   same grounded postmortem `kq postmortem` renders (a view over the hash-chained decision
   log) for archiving, ticket attachments, or downstream tooling. `--format json|yaml`,
@@ -50,6 +79,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Dropped an f-prefix from a placeholder-free string in `v4/scripts/fix_pr_probe.py` (F541).
 
 ### Changed
+- **README now states plainly that PyPI is behind the source tree, with a verified
+  install-from-source workaround** (#66). `pip install kube-q` serves 1.4.3, in which every
+  documented `kq` subcommand fails with `unrecognized arguments`; publishing is blocked on
+  registering `ki-protocol` on PyPI, which trusted publishing cannot do for a new project.
+  Sending new users down a path that errors is worse than admitting the gap; the block is
+  removed when #66 lands.
+- **`TRIAGE.md` no longer tells contributors that `mypy` is non-blocking debt.** It became a
+  required CI check in `0c7b055`; a contributor following the old text would have pushed a PR
+  expecting a `mypy` failure to be ignorable and had it blocked instead.
+- `CONTRIBUTING.md` leads with the one-command path and states up front that **no cluster,
+  Docker daemon, or LLM API key is needed** to run the suites — previously the requirements
+  list implied all three were mandatory before you could contribute a typo fix.
 - `types-PyYAML` added to the dev dependency group; the server's mypy baseline drops from
   29 to 27 errors (two pre-existing missing-stub errors resolved).
 - **First `[tool.mypy]` configuration for the workspace** (#53) — `python_version = "3.12"`
