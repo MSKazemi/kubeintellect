@@ -10,7 +10,7 @@
 # All versions share ONE Langfuse project; each tags its traces with version:vN, so
 # per-version cost is a tag filter (per-version projects need Langfuse Enterprise).
 # ═══════════════════════════════════════════════════════════════════════════════
-.PHONY: help setup kind-cluster-create kind-cluster-create-vm kind-cluster-stop kind-cluster-start \
+.PHONY: help setup check-modes fix-modes kind-cluster-create kind-cluster-create-vm kind-cluster-stop kind-cluster-start \
         kind-cluster-cleanup monitoring-install monitoring-uninstall \
         langfuse-provision langfuse-install langfuse-clean hosts-entry helm-package \
         opsmembench opsmembench-demo opsmembench-driver-check opsmembench-test
@@ -24,6 +24,8 @@ help: ## Show shared-infra targets
 	@printf "Per-version app targets live in vN/Makefile — e.g. \033[36mcd v4 && make kind-deploy-kubeintellect\033[0m\n"
 	@printf "\n\033[1mContributors — start here (no cluster needed)\033[0m\n"
 	@printf "  \033[36msetup\033[0m                   Install the v4 workspace and run all four CI gates\n"
+	@printf "  \033[36mcheck-modes\033[0m             Check the CI file-mode gate (executable iff shebang)\n"
+	@printf "  \033[36mfix-modes\033[0m               Fix any file-mode violations in place\n"
 	@printf "\n\033[1mKind cluster (one cluster, shared by all versions)\033[0m\n"
 	@printf "  \033[36mkind-cluster-create\033[0m      Create the shared Kind cluster (run once)\n"
 	@printf "  \033[36mkind-cluster-create-vm\033[0m   Create Kind cluster on an Azure VM (run once on the VM)\n"
@@ -49,6 +51,12 @@ help: ## Show shared-infra targets
 # ── Kind cluster ──────────────────────────────────────────────────────────────
 setup: ## Contributor setup — install the v4 workspace and run all four CI gates (no cluster needed)
 	@./scripts/dev-setup.sh
+
+check-modes: ## Check the file-mode CI gate — a tracked file is executable iff it has a shebang
+	@./scripts/check-file-modes.sh
+
+fix-modes: ## Fix file-mode violations in place (stages the mode changes)
+	@./scripts/check-file-modes.sh --fix
 
 kind-cluster-create: ## Create the shared Kind cluster (2-node, hot-reload mounts) — run once
 	KIND_CLUSTER_NAME=$(KIND_CLUSTER_NAME) bash scripts/kind/create-kind-cluster.sh
