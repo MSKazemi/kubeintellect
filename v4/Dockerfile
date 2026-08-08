@@ -69,7 +69,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
  && rm -rf /var/lib/apt/lists/* /tmp/kubectl.sha256
 
 # ── Stage 3: lean runtime image ───────────────────────────────────────────────
-FROM python:3.12-slim AS runtime
+FROM python:3.13-slim AS runtime
 
 ARG VERSION=dev
 ARG GIT_SHA=unknown
