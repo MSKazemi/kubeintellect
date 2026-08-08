@@ -31,6 +31,8 @@ dependencies = [
     "pygments>=2.18",
     "pydantic>=2.0",
     "ki-protocol>=1.0.0",
+    # `kq export --format yaml`
+    "pyyaml>=6.0.3",
 ]
 
 [tool.uv.sources]

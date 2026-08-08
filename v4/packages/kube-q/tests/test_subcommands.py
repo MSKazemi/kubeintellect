@@ -26,6 +26,7 @@ EXPECTED = {
     "digest",
     "replay",
     "postmortem",
+    "export",
     "detector",
     "preference",
     "v5-status",
