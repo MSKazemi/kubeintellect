@@ -11,7 +11,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **`kq export <session-id>` — export a diagnosis report to JSON or YAML.** Serializes the
+  same grounded postmortem `kq postmortem` renders (a view over the hash-chained decision
+  log) for archiving, ticket attachments, or downstream tooling. `--format json|yaml`,
+  `--output PATH`. Stdout stays machine-parseable (notes and warnings go to stderr), so
+  `kq export <id> | jq` works. Exit codes follow the `kq replay` convention: `3` when the
+  audit chain is broken, and `4` when the recorder holds no events for the session — in
+  which case nothing is written, rather than emitting an empty-but-plausible report.
+  Closes #58. Thanks to @AdvaitVarhade for proposing the capability and the initial
+  implementation.
+
+### Fixed
+- **Four type errors in `app/cli.py`** (#55): `callable` used as a type annotation is now
+  `Callable[[], None]`, and the two `subprocess.run` calls that rebound a
+  `CompletedProcess[str]` variable declare `text=True`, so the type is consistent without
+  changing runtime behaviour. Thanks to @hariomlohardev for the fix (#57).
+- Dropped an f-prefix from a placeholder-free string in `v4/scripts/fix_pr_probe.py` (F541).
+
+### Changed
+- `types-PyYAML` added to the dev dependency group; the server's mypy baseline drops from
+  29 to 27 errors (two pre-existing missing-stub errors resolved).
+- Container runtime image moves from `python:3.12-slim` to `python:3.13-slim` (#59).
+  Verified independently of CI, which does not build the image: the full dependency set
+  resolves on CPython 3.13.14, both entry points start, and the 986-test server suite passes.
+- `uvicorn[standard]` floor raised `>=0.32` → `>=0.52.1` to match the resolved version (#61).
 
 ## [2.2.0] – 2026-08-08
 
