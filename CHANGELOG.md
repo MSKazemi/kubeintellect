@@ -12,6 +12,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Fixed
+- **The Greetings workflow had never posted a single greeting** — it passed the
+  `first-interaction` action its inputs hyphenated (`issue-message`, `pr-message`,
+  `repo-token`) while the action declares them underscored. The runner exposes unknown inputs
+  under their own names rather than rejecting them, so the action threw
+  `Input required and not supplied: issue_message` on every issue and every pull request since
+  the workflow landed; `repo-token` only appeared to work because `repo_token` defaults to
+  `${{ github.token }}`. Every first-time contributor got silence plus a red X — precisely the
+  two things the workflow's own header says it exists to prevent, and what #73's author saw.
+  The failure was easy to dismiss as bot noise because it also fired on every Dependabot PR,
+  leaving them permanently `UNSTABLE`.
 - **The demo UI is ESLint-clean again** (`v4/packages/kube-q/web`, #50, #73) — 2 errors and 2
   warnings, reported by [@AdvaitVarhade](https://github.com/AdvaitVarhade), who also traced the
   two `react-hooks/set-state-in-effect` errors to `app/page.tsx`; the issue had attributed them

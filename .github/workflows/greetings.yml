@@ -23,11 +23,17 @@ jobs:
   greeting:
     runs-on: ubuntu-latest
     steps:
+      # Input names are underscored (`issue_message`, not `issue-message`). The
+      # hyphenated spelling is silently ignored by the runner, so the action threw
+      # "Input required and not supplied: issue_message" on every run and no
+      # greeting was ever posted — the one failure mode this workflow exists to
+      # prevent. `repo_token` only appeared to work because it defaults to
+      # `${{ github.token }}`.
       - uses: actions/first-interaction@1c4688942c71f71d4f5502a26ea67c331730fa4d  # v3.1.0
         with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
 
-          issue-message: |
+          issue_message: |
             👋 Thanks for opening your first issue in KubeIntellect, and welcome.
 
             A maintainer will read this personally. **Every issue gets a human first response** —
@@ -46,7 +52,7 @@ jobs:
             - Found a security problem? Please **don't** post it here — use
               [private reporting](https://github.com/MSKazemi/kubeintellect/security/advisories/new).
 
-          pr-message: |
+          pr_message: |
             🎉 Thank you for your first pull request to KubeIntellect.
 
             **Please read this one thing — it will look like something is broken, and it isn't:**
