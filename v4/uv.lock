@@ -833,8 +833,8 @@ requires-dist = [
     { name = "kubeintellect", extras = ["tracing", "metrics"], marker = "extra == 'all'", editable = "packages/kubeintellect-server" },
     { name = "langchain", specifier = ">=1.0" },
     { name = "langchain-openai", specifier = ">=1.0" },
-    { name = "langfuse", specifier = ">=4.5" },
-    { name = "langfuse", marker = "extra == 'tracing'", specifier = ">=4.5" },
+    { name = "langfuse", specifier = ">=4.14.3" },
+    { name = "langfuse", marker = "extra == 'tracing'", specifier = ">=4.14.3" },
     { name = "langgraph", specifier = ">=1.0" },
     { name = "langgraph-checkpoint-postgres", specifier = ">=3.0" },
     { name = "langgraph-checkpoint-sqlite", specifier = ">=3.0" },
@@ -912,7 +912,7 @@ wheels = [
 
 [[package]]
 name = "langfuse"
-version = "4.14.2"
+version = "4.14.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "backoff" },
@@ -924,9 +924,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "wrapt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/36/7c/4cdf76a100f169a0855d4a7e69598a3bbe19bd2f048c5de3c298af1aa2c0/langfuse-4.14.2.tar.gz", hash = "sha256:76eb3f2c2106ddd63271154d1a33f8b3d4036f449a9f9b48403c36bd5e7c1bba", size = 389507, upload-time = "2026-07-30T11:54:48.46Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ca/1c/d3410521e8b36d36aa7e6792394d193f91959742292a56f20cdda56f94aa/langfuse-4.14.3.tar.gz", hash = "sha256:eba25be6da7e5eeb640b28d7a0910f5c40cc6449eeaef89ba5d282d9db1a355d", size = 389580, upload-time = "2026-08-06T09:25:51.043Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8b/b5/1499bcedb6872e8acc4e7043c522c9f3a4fe2eafd78a6f37e73308d18753/langfuse-4.14.2-py3-none-any.whl", hash = "sha256:27879cbaea570e94323c6ced60a0997feedf5294f18b51436009947c42f9f92e", size = 688132, upload-time = "2026-07-30T11:54:49.553Z" },
+    { url = "https://files.pythonhosted.org/packages/2a/15/8c2d05d20ed05386cbc27bb19987485345f8138052f07a60d3286c329b75/langfuse-4.14.3-py3-none-any.whl", hash = "sha256:a3f77d11d8dcf440f28678271c7ea1aab01c51e372fa344661c038434122f8df", size = 688218, upload-time = "2026-08-06T09:25:49.711Z" },
 ]
 
 [[package]]
