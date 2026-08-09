@@ -50,9 +50,18 @@ const PtyTerminal = forwardRef<PtyTerminalHandle, PtyTerminalProps>(
   ({ authToken, onStatusChange }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<import("@xterm/xterm").Terminal | null>(null);
-  const statusRef = useRef<PtyStatus>("idle");
+  // Latest-callback ref. Lets the connection effect below depend on `authToken`
+  // alone — a changed `onStatusChange` identity must not tear down a live PTY
+  // session — while still dispatching to the current callback.
+  //
+  // The ref is seeded at construction and updated from an effect, never during
+  // render: React may start a render and discard it, and a ref written in that
+  // render would survive the render that never committed.
+  // https://react.dev/reference/react/useRef#caveats
   const onStatusChangeRef = useRef(onStatusChange);
-  onStatusChangeRef.current = onStatusChange;
+  useEffect(() => {
+    onStatusChangeRef.current = onStatusChange;
+  }, [onStatusChange]);
 
   useImperativeHandle(ref, () => ({
     downloadBuffer() {
@@ -90,10 +99,8 @@ const PtyTerminal = forwardRef<PtyTerminalHandle, PtyTerminalProps>(
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const notifyStatus = (s: PtyStatus, detail?: string) => {
-      statusRef.current = s;
+    const notifyStatus = (s: PtyStatus, detail?: string) =>
       onStatusChangeRef.current?.(s, detail);
-    };
     const el = containerRef.current;
     let destroyed = false;
     let ws: WebSocket | null = null;
@@ -228,10 +235,14 @@ const PtyTerminal = forwardRef<PtyTerminalHandle, PtyTerminalProps>(
       // xterm failed to load — show plain-text error in the container
       console.error("[PtyTerminal] init failed:", err);
       notifyStatus("error", String(err));
-      el.innerHTML =
-        `<pre style="color:#f88;padding:16px;font-family:monospace">` +
+      // Built as a text node rather than assigned through innerHTML: `err` is
+      // third-party (a dynamic-import failure) and must never be parsed as markup.
+      const pre = document.createElement("pre");
+      pre.style.cssText = "color:#f88;padding:16px;font-family:monospace";
+      pre.textContent =
         `✗  Terminal failed to initialise:\n${err}\n\n` +
-        `Check the browser console for details.</pre>`;
+        `Check the browser console for details.`;
+      el.replaceChildren(pre);
     });
 
     return () => {

@@ -11,6 +11,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- **The demo UI is ESLint-clean again** (`v4/packages/kube-q/web`, #50, #73) — 2 errors and 2
+  warnings, reported by [@AdvaitVarhade](https://github.com/AdvaitVarhade), who also traced the
+  two `react-hooks/set-state-in-effect` errors to `app/page.tsx`; the issue had attributed them
+  to `PtyTerminal.tsx`. `PtyTerminal` now builds its status notifier inside the connection
+  effect and reaches the current callback through a ref, so the effect depends on `authToken`
+  alone — a re-rendered parent no longer tears down a live PTY session — and the unused
+  `useState` import is gone.
+
+  The two errors in `page.tsx` are fixed by removing the effects rather than deferring them.
+  `sessionStorage` is now read through `useSyncExternalStore`, which is SSR-safe and derives the
+  token during render, so the `tokenReady` state and its mount effect are both gone; and the
+  auth-failure prompt is raised in the `onStatusChange` callback that causes it instead of from
+  an effect watching the state that callback just wrote. Deferring the same `setState` behind
+  `setTimeout(…, 0)` would satisfy the linter while making the behaviour worse — the cascading
+  render still happens, now after paint, so the terminal pane visibly flashes empty on every
+  load. Verified in a browser as well as by `npm run lint` and `npm run build`: the terminal
+  mounts, connects, and propagates status, with no hydration or `getSnapshot` warning under
+  dev StrictMode.
+
+  The ref that carries the callback is updated from an effect rather than during render, since
+  React may discard a render and a ref written there would outlive it. The xterm-init failure
+  path now builds its message as a text node instead of assigning `innerHTML`.
+
 ### Added
 - **The test suites now run on Python 3.13 as well as 3.12** (`Tests (… · py3.13)`), closing
   a gap where the project was verified on an interpreter it does not ship. `v4/Dockerfile`'s
