@@ -41,7 +41,7 @@ dependencies = [
     # Workspace members (ADR-004) — published together with the server
     "kube-q>=1.5.0",
     "ki-protocol>=1.0.0",
-    "langfuse>=4.5",
+    "langfuse>=4.14.3",
 ]
 
 [tool.uv.sources]
@@ -55,7 +55,7 @@ Issues = "https://github.com/mskazemi/kubeintellect/issues"
 
 [project.optional-dependencies]
 tracing = [
-    "langfuse>=4.5",
+    "langfuse>=4.14.3",
     "opentelemetry-api>=1.0",
 ]
 metrics = [
