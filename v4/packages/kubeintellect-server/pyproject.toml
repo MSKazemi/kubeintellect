@@ -9,6 +9,9 @@ keywords = ["kubernetes", "llm", "ai", "devops", "k8s", "kubectl"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
+    # 3.13 is claimed only because CI proves it: the `Tests (… · py3.13)` jobs
+    # run both suites on it, and the runtime image is python:3.13-slim.
+    "Programming Language :: Python :: 3.13",
     "Topic :: System :: Systems Administration",
     "Intended Audience :: Developers",
     "Intended Audience :: System Administrators",
