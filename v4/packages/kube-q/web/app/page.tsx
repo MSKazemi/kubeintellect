@@ -44,14 +44,16 @@ export default function Home() {
     const saved = typeof window !== "undefined"
       ? window.sessionStorage.getItem(TOKEN_KEY) ?? ""
       : "";
-    setToken(saved || undefined);
-    setTokenReady(true);
+    setTimeout(() => {
+      setToken(saved || undefined);
+      setTokenReady(true);
+    }, 0);
   }, []);
 
   // If the PTY rejected us for auth, prompt for a token.
   useEffect(() => {
     if (status === "error" && /authentication/i.test(statusDetail ?? "")) {
-      setShowTokenPrompt(true);
+      setTimeout(() => setShowTokenPrompt(true), 0);
     }
   }, [status, statusDetail]);
 
