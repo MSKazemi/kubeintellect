@@ -98,9 +98,10 @@ outside.
 
 - **Every PR gets a first response.** Even if the answer is "not this way", it
   arrives rather than silence.
-- CI must be green: `ruff check`, `mypy`, and both pytest suites. The exact commands are in
+- CI must be green: `ruff check`, `mypy`, both pytest suites (on Python 3.12 **and** 3.13),
+  file modes, and syntax warnings. The exact commands are in
   [CONTRIBUTING.md § Quality gates](CONTRIBUTING.md#quality-gates--green-before-you-push),
-  and `make setup` from the repo root runs all four for you. `mypy` **is** blocking as of
+  and `make setup` from the repo root runs all six for you. `mypy` **is** blocking as of
   v2.2.0 and the workspace sits at zero errors — if it reports something, it is from your
   change. `ruff format` remains known debt and is **not** a gate; a failure there is not
   your bug.

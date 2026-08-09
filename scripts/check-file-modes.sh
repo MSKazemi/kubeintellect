@@ -7,16 +7,16 @@
 # WHY THIS EXISTS
 #
 # Ruff's EXE002 ("file is executable but has no shebang") caught 94 library
-# modules under v4/ that carried a stray `+x` bit — cleared in #70, closing part
-# of #64. But ruff is deliberately pinned `<0.16` in v4/pyproject.toml, and
-# EXE002 only became a default rule in 0.16. So the CI lint gate cannot see this
-# class of defect at all, and the 94 bits would simply accumulate again: they
-# originally arrived in bulk from mode-preserving copies (rsync/scp/FAT media),
-# which is exactly the kind of drift no reviewer notices in a diff.
+# modules under v4/ that carried a stray `+x` bit — cleared in #70. But ruff is
+# deliberately pinned `<0.16` in v4/pyproject.toml, and EXE002 only became a
+# default rule in 0.16. So the CI lint gate cannot see this class of defect at
+# all, and the 94 bits would simply accumulate again: they originally arrived in
+# bulk from mode-preserving copies (rsync/scp/FAT media), which is exactly the
+# kind of drift no reviewer notices in a diff.
 #
 # This guard is therefore intentionally INDEPENDENT of ruff and of the pin. It
 # needs no dependencies, no virtualenv, and no network — just git and coreutils
-# — so it stays correct whichever way the ruff upgrade in #64 lands.
+# — so it stays correct whichever way the ruff upgrade eventually lands.
 #
 # It also covers the inverse defect (EXE001: a shebang'd script that is NOT
 # executable, i.e. a script you cannot actually run), which ruff only reports

@@ -52,9 +52,9 @@ make setup          # or: ./scripts/dev-setup.sh
 ```
 
 That installs [`uv`](https://docs.astral.sh/uv/) if missing, installs the whole `v4`
-workspace, and then runs **the exact four gates CI runs** (ruff, mypy, both test suites) so
-you know your environment is correct before you change anything. It takes about a minute and
-prints what to do next.
+workspace, and then runs **the exact six gates CI runs** (ruff, mypy, both test suites, file
+modes, syntax warnings) so you know your environment is correct before you change anything. It
+takes about a minute and prints what to do next.
 
 **Zero-install alternative:** open the repo in a
 [GitHub Codespace](https://codespaces.new/MSKazemi/kubeintellect) or in VS Code with the Dev
@@ -194,18 +194,34 @@ uv run python -m pytest tests/ -q                              # server (~990 te
 cd packages/kube-q && uv run python -m pytest tests/ -q        # kq CLI (~312 tests)
 ```
 
-There is a fifth gate, run from the **repo root**, which needs no virtualenv and takes a second:
+CI runs those two test suites **twice** — on Python 3.12 and on Python 3.13. 3.13 is not
+optional coverage: `v4/Dockerfile`'s runtime stage is `python:3.13-slim`, so it is the
+interpreter the shipped container executes. If your change passes on one and fails on the
+other, that difference is the bug.
+
+There are two more gates, run from the **repo root**. Both need no virtualenv and take a
+second:
 
 ```bash
 make check-modes    # a tracked file is executable if and only if it has a shebang
 make fix-modes      # corrects any violation in place, then re-check
+
+make check-syntax   # every tracked .py compiles with no SyntaxWarning
 ```
 
-It exists because `ruff` is pinned `<0.16` here, and `EXE002` ("executable file with no
-shebang") only became a default rule in 0.16 — so the lint gate cannot see a stray `+x` bit at
-all. That blind spot is how 94 library modules ended up marked executable before
+Both exist to cover blind spots the main gates structurally cannot see. `ruff` is pinned
+`<0.16` here, and `EXE002` ("executable file with no shebang") only became a default rule in
+0.16 — so the lint gate cannot see a stray `+x` bit at all. That blind spot is how 94 library
+modules ended up marked executable before
 [#70](https://github.com/MSKazemi/kubeintellect/pull/70) cleared them. In practice this only
 affects you if you add a new file: leave it non-executable unless it is a script with a shebang.
+
+The syntax gate is the same story for invalid escape sequences (`"\d"` where you meant
+`r"\d"`). The pinned `ruff` does not report them in the linted scope, `mypy` never compiles
+source, and `pytest` only raises the warning on a cold `.pyc` cache — so a green suite proved
+nothing, and [#63](https://github.com/MSKazemi/kubeintellect/issues/63) reached an outside
+contributor. It was not cosmetic either: the same string was corrupting the jsonpath examples
+in the coordinator prompt. Fix the string; never silence the warning.
 
 A PR that fails these will fail CI. If a gate is failing for a reason unrelated to your change,
 say so in the PR.
@@ -221,6 +237,7 @@ say so in the PR.
 - [ ] Secret values are never logged or returned (key names only)
 - [ ] `pytest`, `ruff check` and `mypy` pass locally (these are the CI gates)
 - [ ] `make check-modes` passes (only relevant if you added a file)
+- [ ] `make check-syntax` passes (no `SyntaxWarning` on the newest supported interpreter)
 - [ ] Docs updated if behavior/CLI/flags changed
 - [ ] Commits are signed off (DCO)
 

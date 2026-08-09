@@ -53,16 +53,39 @@ jobs:
     # shebang (the ruff EXE002/EXE001 pair).
     #
     # This deliberately does NOT live in the ruff job above. ruff is pinned
-    # `<0.16` (#64) and EXE002 only became a default rule in 0.16, so the lint
-    # gate is structurally blind to this class — which is how 94 library modules
-    # accumulated a stray `+x` bit before #70 cleared them. Keeping the guard
-    # dependency-free (git + coreutils, no uv sync) means it stays correct
-    # whichever way the ruff upgrade lands, and it finishes in seconds.
+    # `<0.16` (see v4/pyproject.toml) and EXE002 only became a default rule in
+    # 0.16, so the lint gate is structurally blind to this class — which is how
+    # 94 library modules accumulated a stray `+x` bit before #70 cleared them.
+    # Keeping the guard dependency-free (git + coreutils, no uv sync) means it
+    # stays correct whichever way the ruff upgrade lands, and it finishes in
+    # seconds.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Check file modes
         run: ./scripts/check-file-modes.sh
+
+  syntax:
+    name: Syntax warnings
+    runs-on: ubuntu-latest
+    # Compiles every tracked Python file outside v1-v3 with SyntaxWarning
+    # promoted to an error, on the NEWEST supported interpreter.
+    #
+    # Nothing else in this pipeline can fail on that class. #63 (an invalid
+    # escape sequence that was also corrupting the coordinator prompt) slipped
+    # through because the pinned ruff does not report it, mypy does not compile
+    # source, and pytest only triggers the warning on a cold .pyc cache — so a
+    # green suite was not evidence. Like the file-modes job, this is stdlib-only
+    # and needs no `uv sync`.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Check for syntax warnings
+        run: ./scripts/check-syntax-warnings.py
 
   types:
     name: Types (mypy)
@@ -120,6 +143,51 @@ jobs:
       - name: Run pytest
         working-directory: ${{ matrix.workdir }}
         run: uv run python -m pytest ${{ matrix.path }} -q
+
+  test-next:
+    name: Tests (${{ matrix.suite }} · py3.13)
+    runs-on: ubuntu-latest
+    # Runs both suites on the interpreter this project actually SHIPS on.
+    # v4/Dockerfile's runtime stage is `python:3.13-slim` (#59) and all three
+    # distributions declare `requires-python = ">=3.12"`, so every container and
+    # every `pip install` on a modern machine gets 3.13 — while the job above
+    # only ever proved 3.12. Closes #62.
+    #
+    # This is a separate job rather than a `python-version` axis on the matrix
+    # above ON PURPOSE: adding the axis would rename `Tests (server)` to
+    # `Tests (server · py3.12)`, and branch protection matches required checks
+    # by name, so every open PR would block on a check that no longer reports.
+    # Fold the two jobs together only together with that settings change.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: server
+            workdir: v4
+            path: tests/
+          - suite: kube-q CLI
+            workdir: v4/packages/kube-q
+            path: tests/
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        run: pip install "uv==${UV_VERSION}"
+
+      # `--python 3.13` overrides the workspace's resolved interpreter; without
+      # it uv would happily build the 3.12 environment it finds in uv.lock and
+      # this job would silently duplicate the one above.
+      - name: Sync dependencies
+        working-directory: v4
+        run: uv sync --python 3.13
+
+      - name: Run pytest
+        working-directory: ${{ matrix.workdir }}
+        run: uv run --python 3.13 python -m pytest ${{ matrix.path }} -q
 
   install-smoke:
     name: Install smoke test

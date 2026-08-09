@@ -24,7 +24,7 @@ fi
 PYV=$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')
 ok "python3 $PYV"
 if [ "$(printf '%s\n3.12\n' "$PYV" | sort -V | head -1)" != "3.12" ]; then
-  fail "Python 3.12+ required (found $PYV). CI pins 3.12."
+  fail "Python 3.12+ required (found $PYV). CI runs both 3.12 and 3.13."
   exit 1
 fi
 
@@ -42,56 +42,81 @@ uv sync
 ok "workspace installed into v4/.venv"
 
 # ---------------------------------------------------------------------------
-# Run the four gates CI runs. Keep these in lockstep with:
+# Run the six gates CI runs. Keep these in lockstep with:
 #   .github/workflows/ci.yml, CONTRIBUTING.md, AGENTS.md
+#
+# Gates 1-4 need the virtualenv. Gates 5-6 deliberately do not — see the header
+# comments in the two scripts they call.
 # ---------------------------------------------------------------------------
 STATUS=0
 
-say "Gate 1/4 — ruff check (this IS the CI lint gate)"
+say "Gate 1/6 — ruff check (this IS the CI lint gate)"
 if uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/; then
   ok "lint clean"
 else
   fail "ruff check failed"; STATUS=1
 fi
 
-say "Gate 2/4 — mypy (the workspace sits at zero errors)"
+say "Gate 2/6 — mypy (the workspace sits at zero errors)"
 if uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q; then
   ok "types clean"
 else
   fail "mypy failed"; STATUS=1
 fi
 
-say "Gate 3/4 — server test suite"
+say "Gate 3/6 — server test suite"
 if uv run python -m pytest tests/ -q; then
   ok "server suite passed"
 else
   fail "server suite failed"; STATUS=1
 fi
 
-say "Gate 4/4 — kq CLI test suite"
+say "Gate 4/6 — kq CLI test suite"
 if (cd packages/kube-q && uv run python -m pytest tests/ -q); then
   ok "kq suite passed"
 else
   fail "kq suite failed"; STATUS=1
 fi
 
+say "Gate 5/6 — file modes (executable iff shebang)"
+if (cd "$ROOT" && ./scripts/check-file-modes.sh); then
+  ok "file modes clean"
+else
+  fail "file-mode check failed"; STATUS=1
+fi
+
+say "Gate 6/6 — syntax warnings"
+if (cd "$ROOT" && ./scripts/check-syntax-warnings.py); then
+  ok "no syntax warnings"
+else
+  fail "syntax-warning check failed"; STATUS=1
+fi
+
 echo
 if [ "$STATUS" -eq 0 ]; then
   cat <<'EOF'
 ────────────────────────────────────────────────────────────────────────────
- You are ready to contribute. All four CI gates pass on a clean checkout.
+ You are ready to contribute. All six CI gates pass on a clean checkout.
 
- Re-run the gates any time from v4/:
+ Re-run the four workspace gates any time from v4/:
    uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/
    uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q
    uv run python -m pytest tests/ -q
    cd packages/kube-q && uv run python -m pytest tests/ -q
 
+ …and the two that need no virtualenv, from the repo root:
+   make check-modes
+   make check-syntax
+
  Heads-up, so you don't chase pre-existing debt that is NOT your bug:
    • `make lint` fails on a clean checkout — it runs `ruff format --check`,
      which is not a CI gate and would reformat ~108 files.
-   • `ruff` is pinned <0.16 on purpose (issue #64).
+   • `ruff` is pinned <0.16 on purpose (v4/pyproject.toml says why); 342
+     findings are waiting on that upgrade. Do not bump the pin in a PR that
+     is about something else.
    • `mypy` IS clean and enforced — if it complains, it is from your change.
+   • CI runs the suites on Python 3.12 AND 3.13; this script uses whichever
+     python3 you have. If CI fails only on one of them, that is the bug.
 
  Pick a first issue:
    https://github.com/MSKazemi/kubeintellect/contribute

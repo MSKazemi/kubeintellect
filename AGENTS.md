@@ -50,7 +50,7 @@ uv sync          # creates .venv and installs the whole workspace
 
 ## Gate commands — these are exactly what CI runs
 
-From the repo root, `make setup` runs the four `v4/` gates in order. Individually, from `v4/`:
+From the repo root, `make setup` runs all six gates in order. Individually, from `v4/`:
 
 ```bash
 # 1. Lint — `ruff check` only. NOT `ruff format`.
@@ -66,17 +66,33 @@ uv run python -m pytest tests/ -q
 cd packages/kube-q && uv run python -m pytest tests/ -q
 ```
 
-Plus one repo-root gate, which needs no virtualenv:
+Plus two repo-root gates, which need no virtualenv:
 
 ```bash
 # 5. File modes — a tracked file is executable if and only if it has a shebang.
 make check-modes          # or: ./scripts/check-file-modes.sh
 make fix-modes            # corrects any violation in place
+
+# 6. Syntax — every tracked .py outside v1-v3 compiles with no SyntaxWarning.
+make check-syntax         # or: ./scripts/check-syntax-warnings.py
 ```
 
 If you create a file, do not mark it executable unless it is a script with a shebang. This
 gate exists because `ruff`'s EXE002 cannot run here (see the pin below), so nothing else
 catches a stray `+x`.
+
+The syntax gate exists for the same structural reason: the pinned `ruff` does not report an
+invalid escape sequence in the linted scope, `mypy` never compiles source, and pytest only
+emits the warning on a cold `.pyc` cache — so a green suite was not evidence. That is how #63
+reached an outside contributor, and that escape was also silently corrupting the jsonpath
+examples in the coordinator prompt. Never silence one of these; fix the string.
+
+### The suites run on two interpreters
+
+CI runs both suites on **Python 3.12 and 3.13** (`Tests (…)` and `Tests (… · py3.13)`). 3.13 is
+not optional coverage — `v4/Dockerfile`'s runtime stage is `python:3.13-slim`, so it is the
+interpreter the shipped container actually executes. If a change passes on one and fails on the
+other, that difference is the bug.
 
 Do not report work as complete without running these and reading the output.
 
@@ -93,9 +109,19 @@ Two annotations are load-bearing and mypy *cannot* verify them — see "Safety i
   `v4/` *does* run it, so `make lint` fails on a clean checkout. Use the `ruff check` command
   above to predict CI, not `make lint`.
 - **`ruff` is pinned `<0.16`** on purpose — 0.16's default rules reported 438 findings, now
-  **342** after the `EXE002` family was cleared (#70). Lifting the pin is tracked in #64. Do
-  not bump it. Note the consequence: while the pin holds, `ruff` here is blind to `EXE002`
-  and `EXE001`, which is why the separate `make check-modes` gate above exists.
+  **342** after the `EXE002` family was cleared (#70). Do not bump it. The remaining families
+  must land as separate per-rule PRs; #64 tracked this and was closed when `EXE002` cleared,
+  so the rest is currently untracked — open a fresh issue before starting, don't assume it is
+  unclaimed work. Note the consequence of the pin: `ruff` here is blind to `EXE002`/`EXE001`,
+  which is why the separate `make check-modes` gate above exists.
+
+  ⚠️ **`UP045` (95 of the 342) is a safety trap, not a cleanup.** It rewrites
+  `Optional[X]` → `X | None`, which on an injected `RunnableConfig` parameter is exactly the
+  change invariant #6 below forbids: the run config stops being injected, and RBAC and the
+  HITL gate silently stop being enforced *while every test still passes*. Never run
+  `ruff --fix` over that family. It needs a hand-audited PR that leaves every
+  `RunnableConfig` annotation alone (`app/tools/aci/read_verbs.py`,
+  `app/agent/nodes/coordinator.py`, `app/tools/kubectl_tool.py`).
 
 ## Safety invariants — never weaken these
 
