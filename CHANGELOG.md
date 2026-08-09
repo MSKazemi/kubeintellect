@@ -12,10 +12,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **The test suites now run on Python 3.13 as well as 3.12** (`Tests (… · py3.13)`), closing
+  a gap where the project was verified on an interpreter it does not ship. `v4/Dockerfile`'s
+  runtime stage is `python:3.13-slim` and all three distributions declare
+  `requires-python = ">=3.12"`, so every container and every `pip install` on a current
+  machine already ran 3.13 — while CI pinned 3.12 in every job. Both suites pass unchanged
+  (990 server + 312 `kq`), so this adds coverage rather than fixing a break; the point is that
+  a future 3.13-only regression now fails a gate instead of reaching users. Added as a
+  separate job rather than a `python-version` matrix axis on purpose: the axis would rename
+  `Tests (server)`, and branch protection matches required checks by name. The
+  `Programming Language :: Python :: 3.13` classifier on the server distribution is now
+  earned rather than assumed.
+- **A `Syntax warnings` CI gate (`make check-syntax`, `scripts/check-syntax-warnings.py`)** —
+  compiles every tracked Python file outside the frozen v1–v3 trees with `SyntaxWarning`
+  promoted to an error, on the newest supported interpreter. This closes the structural blind
+  spot that let #63 reach an outside contributor: the pinned `ruff` does not report an invalid
+  escape sequence in the CI-linted scope, `mypy` never compiles source, and pytest triggers the
+  warning only on a cold `.pyc` cache — so a green suite was not evidence either way. The
+  defect class is not cosmetic: #63's non-raw string was also corrupting the jsonpath examples
+  in the coordinator prompt. Like the `File modes` gate it is deliberately dependency-free
+  (stdlib only, no `uv sync`) so it stays correct however the `ruff` pin is eventually lifted,
+  and it uses `compile()` rather than `compileall` so it leaves no `.pyc` files behind.
+  `make setup` now runs all six gates instead of four.
 - **A `File modes` CI gate (`make check-modes`, `scripts/check-file-modes.sh`)** enforcing one
   invariant outside the frozen v1–v3 generations: *a tracked file is executable if and only if
   it starts with a shebang*. This closes a structural blind spot rather than a one-off mess —
-  `ruff` is pinned `<0.16` (#64) and `EXE002` only became a default rule in 0.16, so the lint
+  `ruff` is pinned `<0.16` and `EXE002` only became a default rule in 0.16, so the lint
   gate could not see a stray `+x` bit at all, which is how 94 library modules silently acquired
   one. The guard is deliberately dependency-free (git + coreutils, no `uv sync`), so it stays
   correct whichever way the ruff upgrade lands, and it runs in seconds. It also covers the
