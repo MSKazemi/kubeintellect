@@ -96,7 +96,16 @@ echo
 if [ "$STATUS" -eq 0 ]; then
   cat <<'EOF'
 ────────────────────────────────────────────────────────────────────────────
- You are ready to contribute. All six CI gates pass on a clean checkout.
+ You are ready to contribute. All six locally-runnable gates pass on a
+ clean checkout.
+
+ `main` requires NINE checks. Six of them are the gates above. The other
+ three run only in CI, because they need a clean machine or another
+ interpreter — so a green run here does not guarantee a green PR:
+   • Install smoke test
+   • Tests (server · py3.13)
+   • Tests (kube-q CLI · py3.13)
+ If your PR is red on one of those alone, it is a real failure, not flake.
 
  Re-run the four workspace gates any time from v4/:
    uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/
@@ -111,9 +120,11 @@ if [ "$STATUS" -eq 0 ]; then
  Heads-up, so you don't chase pre-existing debt that is NOT your bug:
    • `make lint` fails on a clean checkout — it runs `ruff format --check`,
      which is not a CI gate and would reformat ~108 files.
-   • `ruff` is pinned <0.16 on purpose (v4/pyproject.toml says why); 342
-     findings are waiting on that upgrade. Do not bump the pin in a PR that
-     is about something else.
+   • `ruff` is pinned <0.16 on purpose (v4/pyproject.toml says why); 439
+     findings are waiting on that upgrade, tracked in issue #75. Do not bump
+     the pin in a PR that is about something else — and never run a bare
+     `ruff check --fix`: the UP045 autofix silently disables RBAC and the
+     human-in-the-loop gate. See AGENTS.md safety invariant #6.
    • `mypy` IS clean and enforced — if it complains, it is from your change.
    • CI runs the suites on Python 3.12 AND 3.13; this script uses whichever
      python3 you have. If CI fails only on one of them, that is the bug.

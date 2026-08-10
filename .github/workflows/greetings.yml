@@ -64,8 +64,11 @@ jobs:
 
             While you wait, the things most likely to come up in review:
 
-            - Did you run the gates? `make setup` from the repo root runs exactly what CI runs
-              (ruff, mypy, both test suites), and needs no cluster or API key.
+            - Did you run the gates? `make setup` from the repo root runs six of the nine
+              checks `main` requires (ruff, mypy, both test suites, file modes, syntax
+              warnings) and needs no cluster and no API key. The remaining three — the
+              install smoke test and both suites on Python 3.13 — run only in CI, so a
+              green local run does not guarantee a green PR.
             - Does your change include a test that **fails before it and passes after**?
             - If your change touches a command that emits a diagnosis, report, or summary:
               please run it against a **deliberately absent** resource (a made-up id, no
