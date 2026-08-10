@@ -300,13 +300,10 @@ prompt injection.
 
 ---
 
-## Licensing: DCO sign-off + CLA
+## Licensing: DCO sign-off
 
-KubeIntellect is **dual-licensed** (AGPL-3.0-or-later **or** a commercial license — see
-[LICENSING.md](LICENSING.md)). Commercial licenses are what fund continued work on the open-source
-project you are contributing to. Two small things keep that model honest, and they do different jobs.
-
-### 1. DCO sign-off — on every commit
+**There is no CLA.** Contributing takes one line on your commit — nothing to sign, no account to
+create, nothing for your employer's legal team to review.
 
 Add `-s` to your commit:
 
@@ -315,22 +312,18 @@ git commit -s -m "fix: truncate pod logs at token budget"
 ```
 
 This appends a `Signed-off-by:` trailer certifying you wrote the patch, or have the right to submit
-it, under the [Developer Certificate of Origin](https://developercertificate.org/).
+it, under the [Developer Certificate of Origin](DCO.md). Forgot it?
+`git commit --amend --signoff && git push --force-with-lease`. Want it always on?
+`git config --global format.signOff true`.
 
-### 2. CLA — once, on your first pull request
+**You keep the copyright in your work.** Your contribution is licensed under AGPL-3.0-or-later, the
+same license as the rest of the project, and you can keep using your own code anywhere else you like.
 
-The DCO says the patch is yours to give. It does **not** grant permission to license your code under a
-*commercial* license, and offering that license is exactly what pays for this project. The
-[CLA](CLA.md) closes that gap.
+KubeIntellect is dual-licensed — AGPL-3.0-or-later, or a commercial license from the copyright holder
+(see [LICENSING.md](LICENSING.md)). That commercial option covers the maintainer's own code. It does
+not reach your contribution, and nothing here asks you to let it.
 
-**You keep the copyright in your work.** You are granting a license, not transferring ownership, and
-you can keep using your own code anywhere else you like.
-
-Signing is one comment on your first PR — a bot posts the link, you reply once, and it covers every
-contribution you make afterwards. Nothing else changes about how you contribute.
-
-If you can't or don't want to agree to any of this, **open a Discussion** and we'll figure it out
-together. We would rather adapt than lose your work.
+Questions about any of this? **Open a Discussion** — we would rather adapt than lose your work.
 
 ---
 

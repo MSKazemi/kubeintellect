@@ -45,6 +45,9 @@ research use, cite the project — see [CITATION.cff](CITATION.cff).
 
 ## Contributions
 
-Unless stated otherwise, contributions you submit are provided under AGPL-3.0-or-later. To
-keep dual-licensing viable, the maintainer may ask contributors to agree to a Contributor
-License Agreement (CLA) that permits relicensing contributions under the commercial license.
+Contributions you submit are provided under AGPL-3.0-or-later, the same license as the rest
+of the project. **There is no CLA** — contributing takes a single `Signed-off-by` line under
+the [Developer Certificate of Origin](DCO.md), and you keep the copyright in your own work.
+
+The commercial license above covers the copyright holder's own code. It does not reach your
+contribution, and nothing here asks you to let it.
