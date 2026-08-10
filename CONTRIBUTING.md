@@ -147,8 +147,9 @@ uv run ruff check scripts/fix_pr_probe.py     # now clean
 For a one-line lint fix, `ruff check` plus the suite for the package you touched is
 enough; run both suites if you're unsure.
 
-**7. Commit with a DCO sign-off** — the `-s` is required (it is checked in review,
-not by CI, so it is easy to forget; `git commit --amend -s` fixes it):
+**7. Commit with a DCO sign-off** — the `-s` is required, and CI checks it. Forgot?
+`git commit --amend --signoff && git push --force-with-lease` fixes it. To never
+think about it again: `git config --global format.signOff true`.
 
 ```bash
 git commit -s -m "fix(server): drop f-prefix from placeholder-free string (F541)"
