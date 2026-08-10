@@ -11,7 +11,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+- **Cleared three ruff-0.16 rule families from the backlog** (#79, #110) — contributed by
+  [@hariomlohardev](https://github.com/hariomlohardev). `UP017` (`datetime.timezone.utc` →
+  `datetime.UTC`, 5 sites), `UP041` (`asyncio.TimeoutError` → `TimeoutError`, 2 sites) and
+  `RUF022` (sort `__all__`, 3 sites). All three are provably no-ops here: `datetime.UTC` is an
+  alias for the same object since 3.11, `asyncio.TimeoutError` **is** the builtin `TimeoutError`
+  since 3.11 (the same class, not a subclass, and both sites are `except` clauses), and nothing
+  iterates `__all__` in an order-dependent way. Every package declares `requires-python = ">=3.12"`.
+
+  The four `from datetime import datetime, timezone` lines were rewritten to import `UTC` rather
+  than left importing a now-unused name, which is what keeps `F401` quiet under the pinned `ruff`
+  without a second cleanup pass. The deliberate `# noqa: UP017` in `kube_q/cli/store.py` is
+  untouched, and no annotation was widened — `UP045` stays out of scope because on this codebase
+  it silently disables RBAC and the HITL gate (AGENTS.md invariant #6). One slice of #75; the pin
+  itself stays until the rest clears.
+
 ### Fixed
+- **The Homebrew formula could not install, and misstated the licence** (#56, #111) — fixed by
+  [@uuzzrm](https://github.com/uuzzrm). It declared `license "MIT"` on AGPL code, pointed
+  `homepage` at `MSKazemi/kube_q` (the #74/#78 defect, which the issue had not caught), targeted
+  the pre-relicense 1.0.0, and carried four `resource` blocks for a seven-dependency package —
+  **two of them with 63-character sha256 values**, which are not valid digests at all rather than
+  merely stale ones. Now 1.5.0, `AGPL-3.0-or-later`, the canonical homepage, and the complete
+  18-resource dependency tree with `certifi` taken from Homebrew.
+
+  Verified by downloading every artifact and hashing the bytes — 19/19 match — and by resolving
+  `kube-q==1.5.0` independently for Python 3.12: the closure is exactly complete, nothing missing
+  and nothing extra. **`brew audit --strict` and `brew install --build-from-source` have still
+  not been run by anyone**; neither contributor nor maintainer has Homebrew available, so the
+  `maturin`/`rust` build path for `pydantic-core` is reasoned rather than observed. Tracked in
+  #113. The formula is not a tap, so nothing is installable from here either way — the licence
+  misstatement was the live defect, and it is fixed.
+
+  The issue itself was **partly wrong** and has been corrected in place: `kube-q` 1.0.0 does
+  exist (uploaded 2026-04-10, the oldest release) and its recorded sha256 matched the formula, so
+  the "points at a release that does not exist" premise was false. It survived a re-verification
+  because that check printed `sorted(releases)[-3:]` — the last three entries, which structurally
+  cannot show 1.0.0.
 - **The `kq` test suite failed depending on the contributor's terminal** (#106, #109) — fixed by
   [@floze-the-genius](https://github.com/floze-the-genius). The suite inherited `COLUMNS`, `TERM`
   and `NO_COLOR` from the invoking shell, which changed Rich's table wrapping and the theme the
