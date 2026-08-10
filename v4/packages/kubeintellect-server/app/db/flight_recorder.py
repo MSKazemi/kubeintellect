@@ -231,7 +231,7 @@ async def _drain() -> None:
                 batch.append(item)
                 while len(batch) < _BATCH_MAX and not _queue.empty():
                     batch.append(_queue.get_nowait())
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
             if batch:
                 await _flush(batch)

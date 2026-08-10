@@ -12,7 +12,7 @@ catches, logs, and returns a safe empty value.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from typing import Any
 
 from app.core.config import settings
@@ -403,4 +403,4 @@ async def backfill_from_rca_outcomes(cluster_id_default: str = "unknown") -> int
 def _ts(value: float | None) -> datetime | None:
     if value is None:
         return None
-    return datetime.fromtimestamp(value, tz=timezone.utc)
+    return datetime.fromtimestamp(value, tz=UTC)
