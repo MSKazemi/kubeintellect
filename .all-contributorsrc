@@ -1,0 +1,59 @@
+{
+  "projectName": "kubeintellect",
+  "projectOwner": "MSKazemi",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "files": [
+    "README.md"
+  ],
+  "imageSize": 100,
+  "commit": true,
+  "commitConvention": "angular",
+  "commitType": "docs",
+  "contributorsPerLine": 7,
+  "contributorsSortAlphabetically": false,
+  "badgeTemplate": "[![All Contributors](https://img.shields.io/badge/all_contributors-<%= contributors.length %>-7057ff.svg)](#contributors)",
+  "skipCi": true,
+  "types": {
+    "platform": {
+      "symbol": "\ud83d\udcbb",
+      "description": "Verified KubeIntellect on a Kubernetes platform CI does not cover, and reported what happened",
+      "link": "https://github.com/MSKazemi/kubeintellect/issues?q=label%3Aarea%2Fdeploy"
+    }
+  },
+  "contributors": [
+    {
+      "login": "hariomlohardev",
+      "name": "Hariom ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/264109575?v=4",
+      "profile": "https://github.com/hariomlohardev",
+      "contributions": [
+        "code",
+        "infra",
+        "maintenance"
+      ]
+    },
+    {
+      "login": "AdvaitVarhade",
+      "name": "AdvaitVarhade",
+      "avatar_url": "https://avatars.githubusercontent.com/u/199199199?v=4",
+      "profile": "https://github.com/AdvaitVarhade",
+      "contributions": [
+        "code",
+        "bug",
+        "ideas"
+      ]
+    },
+    {
+      "login": "shaurya703",
+      "name": "Shaurya Kesarwani",
+      "avatar_url": "https://avatars.githubusercontent.com/u/153742516?v=4",
+      "profile": "https://github.com/shaurya703",
+      "contributions": [
+        "code",
+        "doc",
+        "review"
+      ]
+    }
+  ]
+}
