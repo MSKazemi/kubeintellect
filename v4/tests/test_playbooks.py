@@ -68,6 +68,7 @@ def test_all_playbooks_load() -> None:
         "WebhookAdmissionRejected",
         "NodeNotReady",
         "NetworkPolicyBlocking",
+        "DeploymentRolloutStuck",
     }
     assert expected.issubset(names), f"missing playbooks: {expected - names}"
 
@@ -291,3 +292,34 @@ def test_networkpolicy_blocking_ignores_connection_refused() -> None:
     matched = match_playbooks(HEALTHY_PODS, REFUSED_EVENTS)
     assert "NetworkPolicyBlocking" not in matched
     assert "ServiceUnreachable" in matched
+
+
+# ── DeploymentRolloutStuck triggers (#98) ─────────────────────────────────────
+
+ROLLOUT_STUCK_EVENTS = """\
+NAMESPACE   LAST SEEN   TYPE      REASON                    OBJECT           MESSAGE
+default     4m          Warning   ProgressDeadlineExceeded  deployment/web   ReplicaSet "web-7d9f" has timed out progressing.
+"""
+
+
+def test_match_rollout_stuck_by_event_reason() -> None:
+    matched = match_playbooks(HEALTHY_PODS, ROLLOUT_STUCK_EVENTS)
+    assert "DeploymentRolloutStuck" in matched
+
+
+def test_match_rollout_stuck_by_lowercase_message() -> None:
+    """The Deployment controller phrases it in prose, not as a reason."""
+    events = (
+        "NAMESPACE   LAST SEEN  TYPE     REASON   OBJECT          MESSAGE\n"
+        "default     2m         Warning  Failed   deployment/api  progress deadline exceeded\n"
+    )
+    matched = match_playbooks(HEALTHY_PODS, events)
+    assert "DeploymentRolloutStuck" in matched
+
+
+def test_rollout_stuck_does_not_fire_on_a_healthy_rollout() -> None:
+    events = (
+        "NAMESPACE   LAST SEEN  TYPE     REASON             OBJECT          MESSAGE\n"
+        "default     10s        Normal   ScalingReplicaSet  deployment/api  Scaled up replica set api-1 to 3\n"
+    )
+    assert "DeploymentRolloutStuck" not in match_playbooks(HEALTHY_PODS, events)
