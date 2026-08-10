@@ -3,7 +3,8 @@ name = "kubeintellect"
 version = "2.2.0"
 description = "AI-powered Kubernetes management — local server and CLI"
 readme = "README.md"
-license = {text = "AGPL-3.0-or-later"}
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 keywords = ["kubernetes", "llm", "ai", "devops", "k8s", "kubectl"]
 classifiers = [
@@ -15,7 +16,6 @@ classifiers = [
     "Topic :: System :: Systems Administration",
     "Intended Audience :: Developers",
     "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
 ]
 dependencies = [
     # API
@@ -49,9 +49,11 @@ kube-q = { workspace = true }
 ki-protocol = { workspace = true }
 
 [project.urls]
-Homepage = "https://github.com/mskazemi/kubeintellect"
-Documentation = "https://github.com/mskazemi/kubeintellect#readme"
-Issues = "https://github.com/mskazemi/kubeintellect/issues"
+Homepage = "https://github.com/MSKazemi/kubeintellect"
+Documentation = "https://github.com/MSKazemi/kubeintellect#readme"
+Repository = "https://github.com/MSKazemi/kubeintellect"
+Changelog = "https://github.com/MSKazemi/kubeintellect/blob/main/CHANGELOG.md"
+Issues = "https://github.com/MSKazemi/kubeintellect/issues"
 
 [project.optional-dependencies]
 tracing = [

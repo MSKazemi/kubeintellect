@@ -3,11 +3,32 @@ name = "ki-protocol"
 version = "1.0.0"
 description = "KubeIntellect wire protocol — single source of truth for the typed SSE event format shared by server and clients."
 readme = "README.md"
-license = { text = "AGPL-3.0-or-later" }
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
+authors = [
+    { name = "Mohsen Seyedkazemi Ardebili", email = "mskazemi@gmail.com" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Systems Administration",
+]
 dependencies = [
     "pydantic>=2.10",
 ]
+
+[project.urls]
+Homepage = "https://github.com/MSKazemi/kubeintellect"
+Documentation = "https://github.com/MSKazemi/kubeintellect#readme"
+Repository = "https://github.com/MSKazemi/kubeintellect"
+Changelog = "https://github.com/MSKazemi/kubeintellect/blob/main/CHANGELOG.md"
+Issues = "https://github.com/MSKazemi/kubeintellect/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["ki_protocol"]
