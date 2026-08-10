@@ -33,7 +33,7 @@ KubeIntellect is actively seeking contributors and is licensed AGPL-3.0-or-later
 - [CONTRIBUTING.md](https://github.com/MSKazemi/kubeintellect/blob/main/CONTRIBUTING.md): dev setup, the exact CI gate commands, and a complete worked first pull request
 - [Good first issues](https://github.com/MSKazemi/kubeintellect/contribute): curated small, well-scoped starting tasks
 - [AGENTS.md](https://github.com/MSKazemi/kubeintellect/blob/main/AGENTS.md): machine-readable repository rules for AI coding agents (agents.md format)
-- [TRIAGE.md](https://github.com/MSKazemi/kubeintellect/blob/main/TRIAGE.md): how issues are labelled, prioritised, and claimed; response-time targets
+- [TRIAGE.md](https://github.com/MSKazemi/kubeintellect/blob/main/TRIAGE.md): how issues are labelled, prioritised, and claimed. Every issue and pull request gets a human first response; there is deliberately no time commitment attached, because the project has a single maintainer
 - [GOVERNANCE.md](https://github.com/MSKazemi/kubeintellect/blob/main/GOVERNANCE.md): decision-making and the contributor ladder
 - [SUPPORT.md](https://github.com/MSKazemi/kubeintellect/blob/main/SUPPORT.md): which channel to use for which kind of question
 - [Discussions](https://github.com/MSKazemi/kubeintellect/discussions): questions, ideas, and Q&A
@@ -41,5 +41,18 @@ KubeIntellect is actively seeking contributors and is licensed AGPL-3.0-or-later
 
 ## Research
 
-- [Paper: KubeIntellect (arXiv:2509.02449)](https://arxiv.org/abs/2509.02449): "KubeIntellect: A Modular LLM-Orchestrated Agent Framework for End-to-End Kubernetes Management" by Mohsen Seyedkazemi Ardebili and Andrea Bartolini (2025)
+- [Published paper (DOI 10.1007/s10723-026-09837-6)](https://doi.org/10.1007/s10723-026-09837-6): "KubeIntellect: A Modular LLM-Orchestrated Agent Framework for End-to-End Kubernetes Management", Seyedkazemi Ardebili & Bartolini, *Journal of Grid Computing* 24(3), Springer, 2026. Peer-reviewed; this is the citable version
+- [arXiv preprint (arXiv:2509.02449)](https://arxiv.org/abs/2509.02449): an earlier, shorter version of the same work
 - [CITATION.cff](https://github.com/MSKazemi/kubeintellect/blob/main/CITATION.cff): machine-readable citation metadata
+
+## Common questions (answered by the maintainer)
+
+Each of these is an accepted answer in GitHub Discussions, written against the current code.
+
+- [What actually stops KubeIntellect from deleting something important?](https://github.com/MSKazemi/kubeintellect/discussions/81): the four layers — a human-approval chokepoint on every mutating action that applies even to superadmin; RBAC where a readonly key cannot reach an approval prompt at all; blocklists that make Secrets and ServiceAccounts unreadable by every role; and an autonomy ladder defaulting to A1 (investigate, never mutate) where auto-fix requires an explicit per-playbook, per-namespace allowlist that ships empty
+- [What cluster data is sent to the LLM provider, and can I keep it on-premises?](https://github.com/MSKazemi/kubeintellect/discussions/83): kubectl output, Prometheus results and Loki log lines become model context. Secrets and ServiceAccounts are never readable and therefore never sent. The repository's redaction layer applies to **stored** data (episodes, flight recorder, preferences), **not** to the live prompt path — it is not an egress filter. Self-hosted inference works via an OpenAI-compatible endpoint but is not yet a tested or supported path
+- [Is KubeIntellect production-ready?](https://github.com/MSKazemi/kubeintellect/discussions/84): usable as a diagnostic assistant against production with a readonly key; not recommended in the remediation path. One maintainer, no adopters listed yet, and no published per-query token cost
+- [How is this different from k8sgpt and HolmesGPT — and where are they better?](https://github.com/MSKazemi/kubeintellect/discussions/85): KubeIntellect can act, not just diagnose, behind a human-approval gate; k8sgpt is more mature, CNCF-backed, Apache-2.0, and has more install channels
+- [Can I run KubeIntellect with a local or self-hosted LLM?](https://github.com/MSKazemi/kubeintellect/discussions/69)
+- [Do I need a Kubernetes cluster or an API key to contribute?](https://github.com/MSKazemi/kubeintellect/discussions/68): no to both — the test suites are fully mocked and Python 3.12+ is the only prerequisite
+- [Why does `kq export` fail with "unrecognized arguments"?](https://github.com/MSKazemi/kubeintellect/discussions/67): fixed — upgrade to `kube-q` 1.5.0 or newer

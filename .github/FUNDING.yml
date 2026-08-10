@@ -7,6 +7,8 @@
 custom: ["https://kubeintellect.com/", "https://github.com/MSKazemi/kubeintellect/blob/main/LICENSING.md"]
 
 # Uncomment once a GitHub Sponsors profile exists for the account
-# (Settings -> Sponsors). Checked 2026-08-05: not yet enabled, and an
-# unconfigured entry renders a broken button.
+# (Settings -> Sponsors). An unconfigured entry renders a broken button, so
+# this stays commented until the listing is live.
+# Re-verified 2026-08-10 via the API — `user(login:"MSKazemi"){hasSponsorsListing}`
+# still returns false, so leaving it commented is correct, not an oversight.
 # github: [MSKazemi]
