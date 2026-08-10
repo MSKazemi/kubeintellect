@@ -24,6 +24,7 @@ Most first-run problems are covered already:
 
 - **[v4 README](v4/README.md)** — every install path (browser, CLI-only, local Kind, Docker Compose, existing cluster)
 - **[v4 docs](v4/docs/)** — install, quickstart, configuration, architecture, security, CLI reference
+- **[Data handling](v4/docs/data-handling.md)** — model inputs, persistence, redaction, and telemetry boundaries
 - **[Troubleshooting](v4/docs/troubleshooting.md)** and **[FAQ](v4/docs/faq.md)**
 - **[ROADMAP.md](ROADMAP.md)** — including what the project deliberately *will not* do
 
