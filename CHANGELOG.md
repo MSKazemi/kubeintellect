@@ -90,6 +90,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   path now builds its message as a text node instead of assigning `innerHTML`.
 
 ### Added
+- **A `NetworkPolicyBlocking` playbook** (#99, #108) — the 19th, contributed by
+  [@Priyanshu608](https://github.com/Priyanshu608). It covers the one failure in the set that
+  emits **no evidence at all**: a NetworkPolicy denial is discarded in the CNI datapath, so the
+  API server records no event and no Warning is ever produced. The Service is healthy, endpoints
+  exist, DNS resolves — and the connection simply hangs. The playbook makes that *absence* the
+  signal, which is what none of the other 18 could express.
+
+  Two maintainer corrections landed on top. The submitted trigger also matched
+  **`connection refused`**, which is evidence *against* a policy drop: a refusal means a TCP RST
+  came back, so the packet was delivered. Matching it would have pointed the agent at a
+  NetworkPolicy for what is almost always a wrong port or a missing endpoint —
+  `ServiceUnreachable`'s territory. It now matches timeout signatures only, and
+  `test_networkpolicy_blocking_ignores_connection_refused` locks that in. The `triggers:` block
+  was also nested under `detect:`, where the loader never reads it
+  ([`loader.py`](v4/packages/kubeintellect-server/app/agent/playbooks/loader.py) takes
+  `triggers` from the top level), so the playbook loaded cleanly into the registry and then
+  never fired — inert, with no error anywhere. `test_each_playbook_has_complete_schema` catches
+  exactly this and did.
+
 - **The test suites now run on Python 3.13 as well as 3.12** (`Tests (… · py3.13)`), closing
   a gap where the project was verified on an interpreter it does not ship. `v4/Dockerfile`'s
   runtime stage is `python:3.13-slim` and all three distributions declare
