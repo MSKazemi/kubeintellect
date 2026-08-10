@@ -133,7 +133,7 @@ Your app will be live at `https://kube-q.fly.dev` (or a name you choose). Free t
 Connect your GitHub repo and Railway auto-deploys on every push to `main`.
 
 1. Go to `railway.app` → New Project → Deploy from GitHub repo
-2. Select `MSKazemi/kube_q`
+2. Select `MSKazemi/kubeintellect`
 3. Add environment variables: `KUBE_Q_URL`, `KUBE_Q_API_KEY`
 4. Railway detects the `Dockerfile` and builds automatically
 

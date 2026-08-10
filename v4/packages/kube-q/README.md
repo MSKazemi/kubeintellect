@@ -48,8 +48,8 @@ brew install kube-q
 Or install from source:
 
 ```bash
-git clone https://github.com/MSKazemi/kube_q
-cd kube_q
+git clone https://github.com/MSKazemi/kubeintellect.git
+cd kubeintellect/v4/packages/kube-q
 pip install -e .
 ```
 

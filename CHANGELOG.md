@@ -12,6 +12,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Fixed
+- **The published `kube-q` package pointed users, and their bug reports, at the wrong
+  repository** (#74, #78) — every `[project.urls]` entry resolved to `MSKazemi/kube_q`, a
+  pre-AGPL snapshot that is not where `kube-q` is developed. On a package serving ~160
+  downloads a month, "Homepage", "Repository" and "Bug Tracker" all led away from the canonical
+  repo, and the PyPI page carried no link to the docs, the changelog, or this repository. Fixed
+  by [@shaurya703](https://github.com/shaurya703), who also gave `ki-protocol` the `authors`,
+  `[project.urls]` and `classifiers` it had never had — its page was blank, including **no
+  licence classifier at all** on AGPL code.
+
+  All three distributions moved to the [PEP 639](https://peps.python.org/pep-0639/) form
+  (`license = "AGPL-3.0-or-later"` + `license-files`). This removes a defect the issue had not
+  spotted: `kube-q` used `license = { file = "LICENSE" }`, which dumped the **entire 34 KB AGPL
+  text** into the `License:` metadata header. Every wheel now reports a machine-readable
+  `License-Expression` under `Metadata-Version: 2.4`, and the redundant
+  `License :: OSI Approved :: …` classifier is gone — PyPI rejects an upload carrying both.
+
+  **@shaurya703 also caught that `license-files` resolves relative to each package directory**,
+  and that neither `ki-protocol` nor `kubeintellect-server` had a `LICENSE` of its own — so
+  those wheels had been shipping **without the licence text**, a real compliance gap in an
+  AGPL project that was invisible from the source tree. Both now carry a byte-identical copy,
+  verified in the built artifacts (`twine check` passes on all six).
+
+  The live PyPI pages stay wrong until the next publish; this fixes the source of them.
+- **The `kube-q` documentation still sent readers to the old repository** — 13 files across
+  `v4/` linked `MSKazemi/kube_q`, including `v4/packages/kube-q/README.md`, which **is** the
+  body of the PyPI page: it told readers to `git clone https://github.com/MSKazemi/kube_q`.
+  So the metadata fix above would have corrected the sidebar links while the page underneath
+  still pointed elsewhere. Found by [@shaurya703](https://github.com/shaurya703) while working
+  on #78, from a single `mkdocs.yml` observation. The from-source instructions now clone the
+  monorepo and `cd kubeintellect/v4/packages/kube-q` (verified end to end: clone → `pip install
+  -e .` → `kq --version` reports 1.5.0 — which only resolves at all now that `ki-protocol` is
+  published). The mkdocs social link to `ghcr.io/mskazemi/kube_q` was a **404** and now points
+  at the image that exists. The Homebrew formula's stale homepage is deliberately untouched —
+  it belongs to #56.
+- **Imports are sorted across `v4/`** (#76, #77) — `ruff` 0.16 enables `I001` by default and
+  reported 75 unsorted blocks across 60 files, part of what blocks lifting the `ruff<0.16` pin.
+  Cleared by [@shaurya703](https://github.com/shaurya703), verified at the AST level rather
+  than by eye: the imported-symbol set is identical in all 60 files and there is no non-import
+  code change anywhere. The one manual edit is the interesting one — ruff's autofix wraps the
+  long `langchain_anthropic` import into parenthesized form, which moves
+  `# type: ignore[import-not-found]` off the `from` line and breaks the suppression (mypy 0 →
+  1). The ignore now sits on the `from … import (` line, keeping both the sorted form and the
+  suppression. `UP045` remains untouched by design; the remaining ~364 findings are tracked in
+  #75.
 - **The Greetings workflow had never posted a single greeting** — it passed the
   `first-interaction` action its inputs hyphenated (`issue-message`, `pr-message`,
   `repo-token`) while the action declares them underscored. The runner exposes unknown inputs
