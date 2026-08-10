@@ -240,8 +240,24 @@ the project is young — which is exactly why being on it is worth something.
 | **[@AdvaitVarhade](https://github.com/AdvaitVarhade)** | Fixed the demo UI's `set-state-in-effect` errors ([#73](https://github.com/MSKazemi/kubeintellect/pull/73)) — and corrected the issue itself, which had named the wrong file. Also proposed the `kq export` command and reported the Python 3.13 syntax warnings. |
 
 Every merged contribution is credited by name in [CHANGELOG.md](CHANGELOG.md) and in the
-release notes. Non-code work — triage, a reproducible bug report, docs, testing on a platform
-we lack — counts the same way; see [GOVERNANCE.md](GOVERNANCE.md).
+release notes.
+
+**Non-code work is credited as a first-class contribution type.** The project follows the
+[All Contributors](https://allcontributors.org/) specification (`.all-contributorsrc`), so
+documentation, bug reports, reviews, ideas, triage, and **verifying KubeIntellect on a
+Kubernetes platform our CI does not cover** are all recorded — not just merged commits.
+
+That last one is a real, open lane: CI runs on Kind only, so nobody has confirmed the install
+path on **k3s, EKS, GKE, AKS or OpenShift**. Those issues need a cluster and about an hour, and
+**no Python at all** — see
+[`area/deploy`](https://github.com/MSKazemi/kubeintellect/issues?q=is%3Aopen+label%3Aarea%2Fdeploy).
+A report saying *"it did not work, here is exactly where it stopped"* is the single most useful
+thing the project cannot get any other way.
+
+> **One honest caveat.** GitHub's Contributors graph counts *merged commits* only, so a comment
+> or a platform report will not appear there however valuable it is. If you want to be on that
+> graph too, the one-line docs PR that comes out of what you found will do it — and is usually
+> warranted anyway. See [GOVERNANCE.md](GOVERNANCE.md) for the full ladder.
 
 ## License
 
