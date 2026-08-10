@@ -3,6 +3,7 @@ name = "kubeintellect"
 version = "2.2.0"
 description = "AI-powered Kubernetes management — local server and CLI"
 readme = "README.md"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 keywords = ["kubernetes", "llm", "ai", "devops", "k8s", "kubectl"]
 classifiers = [
@@ -47,9 +48,11 @@ kube-q = { workspace = true }
 ki-protocol = { workspace = true }
 
 [project.urls]
-Homepage = "https://github.com/mskazemi/kubeintellect"
-Documentation = "https://github.com/mskazemi/kubeintellect#readme"
-Issues = "https://github.com/mskazemi/kubeintellect/issues"
+Homepage = "https://github.com/MSKazemi/kubeintellect"
+Documentation = "https://github.com/MSKazemi/kubeintellect#readme"
+Repository = "https://github.com/MSKazemi/kubeintellect"
+Changelog = "https://github.com/MSKazemi/kubeintellect/blob/main/CHANGELOG.md"
+Issues = "https://github.com/MSKazemi/kubeintellect/issues"
 
 [project.optional-dependencies]
 tracing = [
