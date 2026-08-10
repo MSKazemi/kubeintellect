@@ -241,6 +241,8 @@ the project is young — which is exactly why being on it is worth something.
 | **[@hariomlohardev](https://github.com/hariomlohardev)** | Removed the executable bit from 94 non-script modules ([#70](https://github.com/MSKazemi/kubeintellect/pull/70)) — mode-only, zero content lines, and it fixed the cause rather than silencing the rule. Also [#57](https://github.com/MSKazemi/kubeintellect/pull/57) and [#65](https://github.com/MSKazemi/kubeintellect/pull/65). |
 | **[@AdvaitVarhade](https://github.com/AdvaitVarhade)** | Fixed the demo UI's `set-state-in-effect` errors ([#73](https://github.com/MSKazemi/kubeintellect/pull/73)) — and corrected the issue itself, which had named the wrong file. Also proposed the `kq export` command and reported the Python 3.13 syntax warnings. |
 
+| **[@uuzzrm](https://github.com/uuzzrm)** | Wrote [`v4/docs/data-handling.md`](v4/docs/data-handling.md) ([#105](https://github.com/MSKazemi/kubeintellect/pull/105)) — the page that states what reaches a model provider, what is persisted, and precisely where the redactor does **not** apply. Every claim in it was verified against source. Their honest test-failure report also uncovered [#106](https://github.com/MSKazemi/kubeintellect/issues/106), a real environment-sensitivity bug in our own suite. |
+
 Every merged contribution is credited by name in [CHANGELOG.md](CHANGELOG.md) and in the
 release notes.
 
