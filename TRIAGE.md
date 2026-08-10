@@ -12,7 +12,7 @@ contributor ladder in [GOVERNANCE.md](GOVERNANCE.md).
 ## The flow
 
 ```
-opened ──▶ needs-triage ──▶ accepted (area/* + kind/* + priority/*) ──▶ assigned ──▶ PR ──▶ closed
+opened ──▶ needs-triage ──▶ accepted (area/* + kind/* + priority/*) ──▶ claimed ──▶ PR ──▶ closed
                 │
                 ├──▶ needs more info ──▶ (stale after 30d) ──▶ closed, reopenable
                 ├──▶ duplicate / invalid / wontfix ──▶ closed with a reason
@@ -79,14 +79,20 @@ Once those are answered, drop `needs-triage` and add `priority/*`.
 | `discussion` | Needs community input before anyone should start work. |
 | `needs-triage` | Not yet reviewed by a maintainer. Removing this is the triage act. |
 | `needs-info` | Waiting on the reporter. Closed after 30 quiet days, and reopened the moment the info arrives. |
+| `claimed` | Someone said they are working on it. Pick a different issue. Comes off after two quiet weeks. |
 
 ## Claiming an issue
 
 Comment "I'd like to take this." That's it — no permission needed, no assignment
-ceremony. The maintainer will assign it to you so nobody duplicates your work.
+ceremony.
 
-If you go quiet for **two weeks** on an assigned issue, it gets unassigned so
-someone else can pick it up. This is not a reprimand and you can re-claim it; life
+The issue then gets the **`claimed`** label so nobody duplicates your work, and a
+reply confirming it is yours. *(GitHub only allows assigning issues to repository
+collaborators, so the label — not the assignee field — is what reserves an issue
+for an outside contributor. The reservation is exactly as real.)*
+
+If you go quiet for **two weeks** on a claimed issue, the `claimed` label comes off
+so someone else can pick it up. This is not a reprimand and you can re-claim it; life
 happens, and a silently-blocked issue is worse for you than for the project.
 
 Before starting anything **larger than a `good first issue`**, say what you plan to
