@@ -16,8 +16,8 @@ import secrets
 import subprocess
 import sys
 from collections import namedtuple
+from collections.abc import Callable
 from pathlib import Path
-
 
 _CONFIG_DIR = Path.home() / ".kubeintellect"
 _CONFIG_FILE = _CONFIG_DIR / ".env"
@@ -1525,7 +1525,7 @@ def cmd_set(args: argparse.Namespace) -> None:
 
 # ── tool installers ───────────────────────────────────────────────────────────
 
-def _ensure_tool(name: str, installer: "callable") -> None:
+def _ensure_tool(name: str, installer: Callable[[], None]) -> None:
     if subprocess.run(["which", name], capture_output=True).returncode == 0:
         return
     print(f"  '{name}' not found — installing...")
@@ -1538,8 +1538,8 @@ def _ensure_tool(name: str, installer: "callable") -> None:
 
 
 def _install_kind() -> None:
-    import urllib.request
     import platform
+    import urllib.request
     arch = "amd64" if platform.machine() in ("x86_64", "AMD64") else "arm64"
     system = platform.system().lower()
     url = f"https://kind.sigs.k8s.io/dl/v0.23.0/kind-{system}-{arch}"
@@ -1549,8 +1549,8 @@ def _install_kind() -> None:
 
 
 def _install_kubectl() -> None:
-    import urllib.request
     import platform
+    import urllib.request
     arch = "amd64" if platform.machine() in ("x86_64", "AMD64") else "arm64"
     system = platform.system().lower()
     stable = urllib.request.urlopen("https://dl.k8s.io/release/stable.txt").read().decode().strip()
@@ -1626,7 +1626,7 @@ def cmd_kind_setup(args: argparse.Namespace) -> None:
         print(f"  Creating Kind cluster '{cluster_name}'...")
         result = subprocess.run(
             ["kind", "create", "cluster", "--name", cluster_name],
-            check=False,
+            check=False, text=True,
         )
         if result.returncode != 0:
             print(_err("  Error: failed to create Kind cluster."), file=sys.stderr)
@@ -1639,7 +1639,7 @@ def cmd_kind_setup(args: argparse.Namespace) -> None:
             "https://raw.githubusercontent.com/kubernetes/ingress-nginx"
             "/main/deploy/static/provider/kind/deploy.yaml"
         )
-        result = subprocess.run(["kubectl", "apply", "-f", ingress_url], check=False)
+        result = subprocess.run(["kubectl", "apply", "-f", ingress_url], check=False, text=True)
         if result.returncode != 0:
             print(_warn("  Warning: nginx ingress install failed — install it manually later."), file=sys.stderr)
         else:

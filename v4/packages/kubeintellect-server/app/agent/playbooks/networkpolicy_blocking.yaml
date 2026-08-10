@@ -1,0 +1,34 @@
+name: NetworkPolicyBlocking
+# A NetworkPolicy denial is silent by construction: the packet is discarded in the
+# CNI datapath, so the API server records no event and no Warning is ever emitted.
+# There is nothing to compile into a watch predicate, and drop counters are
+# CNI-specific (cilium_drop_count_total, calico_denied_packets) rather than
+# guaranteed cluster state. Detection stays prompt-side.
+detect: null
+triggers:
+  - event_message_regex: "connection timed out|i/o timeout|dial tcp.*timeout"
+investigation_steps:
+  - "kubectl get networkpolicy -n <ns> — a policy selecting the destination pods is the precondition; if the namespace has none, this playbook does not apply."
+  - "kubectl describe networkpolicy <policy> -n <ns> — read podSelector, policyTypes and the rules. An empty `ingress: []` under `policyTypes: [Ingress]` denies all inbound traffic; that is a deny-all, not a missing config."
+  - "kubectl get pods -n <ns> --show-labels — confirm the destination pods match the policy's podSelector, and whether the source pod matches any `from` selector."
+  - "kubectl get svc,endpoints -n <ns> — confirm the Service has ready endpoints. Empty endpoints mean the cause is ServiceNoEndpoints, not a policy."
+  - "Check the SOURCE namespace for its own policy — an egress rule there blocks the connection exactly as an ingress rule does at the destination, and is easy to miss."
+  - "Separate a drop from a refusal: a policy denial hangs and then times out, because the packet is discarded with no reply. 'Connection refused' means a RST came back, so the packet was delivered — look elsewhere."
+expected_evidence:
+  - "Destination pods are Running and Ready, and the Service has non-empty Endpoints"
+  - "DNS resolves the Service name, but the connection hangs and then times out"
+  - "At least one NetworkPolicy in the namespace selects the destination pods and carries no rule admitting the source"
+  - "No Warning event references the failure — here the absence of events is the signal, not a gap in the investigation"
+recommended_fix_template: |
+  Traffic to <DEST> in namespace <NS> is being dropped by NetworkPolicy <POLICY>,
+  which selects the destination pods but admits no rule matching <SOURCE>.
+
+  Add the narrowest rule that unblocks the caller — scope it to the specific pod
+  or namespace selector and port, never to an empty selector, which admits the
+  whole cluster and silently removes the isolation the policy exists to provide:
+
+    kubectl edit networkpolicy <POLICY> -n <NS>
+
+  If the destination is reached from another namespace, the source namespace must
+  also permit the egress. Confirm the fix by retrying the connection — it should
+  now either succeed or fail fast, rather than hang.

@@ -25,8 +25,6 @@ from __future__ import annotations
 
 import asyncio
 
-from app.db import flight_recorder
-
 # Event models live in the shared ki-protocol package since the V4 monorepo
 # merge (ADR-004); re-exported here so existing imports keep working.
 from ki_protocol.wire import (
@@ -42,6 +40,8 @@ from ki_protocol.wire import (
     ToolResultEvent,
 )
 
+from app.db import flight_recorder
+
 __all__ = [
     "PROTOCOL_VERSION",
     "ErrorEvent",
@@ -53,10 +53,10 @@ __all__ = [
     "TokenEvent",
     "ToolCallEvent",
     "ToolResultEvent",
-    "prepare_session",
-    "emit",
     "close_session",
+    "emit",
     "get_history",
+    "prepare_session",
     "stream",
 ]
 
@@ -134,7 +134,7 @@ async def stream(session_id: str, heartbeat_interval: float = 15.0):
     while True:
         try:
             item = await asyncio.wait_for(q.get(), timeout=heartbeat_interval)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             yield None   # caller emits ": heartbeat\n\n"
             continue
         if item is _DONE:

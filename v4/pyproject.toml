@@ -15,12 +15,16 @@ dev = [
     "pytest-asyncio>=1.0",
     "pytest-mock>=3.14",
     "respx>=0.22",
-    # Pinned below 0.16 deliberately: 0.16 enables new default rules that report
-    # 438 findings across app/ (mostly EXE002 + import style). Adopting them is a
-    # standalone cleanup, not something to fold into a security bump — ruff has no
-    # advisory against it. Raise this bound once that cleanup lands.
+    # Pinned below 0.16 deliberately: 0.16 enables new default rules that reported
+    # 438 findings across app/, now 342 after #70 cleared the EXE002 family.
+    # Adopting the rest is a standalone cleanup, not something to fold into a
+    # security bump — ruff has no advisory against it. Raise this bound once that
+    # cleanup lands, one rule family per PR, and read the UP045 warning in
+    # AGENTS.md first: autofixing that family silently disables RBAC and the HITL
+    # gate.
     "ruff>=0.15,<0.16",
     "mypy>=1.19",
+    "types-PyYAML>=6.0.12",
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=1.0.6",
     "scipy>=1.13",
@@ -35,3 +39,13 @@ kubeintellect = { workspace = true }
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.12"
+
+[[tool.mypy.overrides]]
+# asyncpg ships no py.typed marker, so there are no stubs that could ever be
+# "installed" for it — this silences the resulting [import-untyped] noise
+# without masking real type errors elsewhere.
+module = ["asyncpg.*"]
+ignore_missing_imports = true

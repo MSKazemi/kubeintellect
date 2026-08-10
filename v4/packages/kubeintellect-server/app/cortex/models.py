@@ -23,7 +23,9 @@ logger = get_logger(__name__)
 
 def _anthropic(model: str, streaming: bool) -> BaseChatModel:
     try:
-        from langchain_anthropic import ChatAnthropic  # type: ignore[import-not-found]  # optional extra
+        from langchain_anthropic import (  # type: ignore[import-not-found]  # optional extra
+            ChatAnthropic,
+        )
     except ImportError as exc:
         raise RuntimeError(
             "LLM_PROVIDER=anthropic requires the anthropic extra: "

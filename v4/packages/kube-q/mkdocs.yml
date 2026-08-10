@@ -1,9 +1,11 @@
 site_name: kube-q
 site_description: AI-powered terminal client for Kubernetes — query, debug, and manage your cluster in plain English.
 site_url: https://mskazemi.github.io/kube_q/
-repo_url: https://github.com/MSKazemi/kube_q
-repo_name: MSKazemi/kube_q
-edit_uri: edit/main/docs/
+repo_url: https://github.com/MSKazemi/kubeintellect
+repo_name: MSKazemi/kubeintellect
+# Relative to repo_url. kube-q lives in the monorepo, so this must carry the
+# package path — `edit/main/docs/` would 404 now that repo_url is the monorepo.
+edit_uri: edit/main/v4/packages/kube-q/docs/
 copyright: Copyright &copy; 2026 Mohsen Seyedkazemi Ardebili &bull; Released under the <a href="https://github.com/MSKazemi/kubeintellect/blob/main/LICENSE">AGPL-3.0-or-later</a> (commercial licensing available)
 
 theme:
@@ -131,12 +133,12 @@ extra:
     deprecated: Deprecated
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/MSKazemi/kube_q
+      link: https://github.com/MSKazemi/kubeintellect
       name: kube-q on GitHub
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/kube-q/
       name: kube-q on PyPI
     - icon: fontawesome/brands/docker
-      link: https://github.com/MSKazemi/kube_q/pkgs/container/kube_q
-      name: kube-q container image
+      link: https://github.com/MSKazemi/kubeintellect/pkgs/container/kubeintellect
+      name: KubeIntellect container image
   generator: false

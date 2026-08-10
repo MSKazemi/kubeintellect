@@ -35,6 +35,7 @@ dev = [
     { name = "ruff", specifier = ">=0.15,<0.16" },
     { name = "scipy", specifier = ">=1.13" },
     { name = "seaborn", specifier = ">=0.13" },
+    { name = "types-pyyaml", specifier = ">=6.0.12" },
 ]
 
 [[package]]
@@ -753,6 +754,7 @@ dependencies = [
     { name = "prompt-toolkit" },
     { name = "pydantic" },
     { name = "pygments" },
+    { name = "pyyaml" },
     { name = "rich" },
 ]
 
@@ -775,6 +777,7 @@ requires-dist = [
     { name = "pygments", specifier = ">=2.18" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.14" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "respx", marker = "extra == 'dev'", specifier = ">=0.21" },
     { name = "rich", specifier = ">=14.3.3" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
@@ -783,7 +786,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "kubeintellect"
-version = "2.1.0"
+version = "2.2.0"
 source = { editable = "packages/kubeintellect-server" }
 dependencies = [
     { name = "asyncpg" },
@@ -830,8 +833,8 @@ requires-dist = [
     { name = "kubeintellect", extras = ["tracing", "metrics"], marker = "extra == 'all'", editable = "packages/kubeintellect-server" },
     { name = "langchain", specifier = ">=1.0" },
     { name = "langchain-openai", specifier = ">=1.0" },
-    { name = "langfuse", specifier = ">=4.5" },
-    { name = "langfuse", marker = "extra == 'tracing'", specifier = ">=4.5" },
+    { name = "langfuse", specifier = ">=4.14.3" },
+    { name = "langfuse", marker = "extra == 'tracing'", specifier = ">=4.14.3" },
     { name = "langgraph", specifier = ">=1.0" },
     { name = "langgraph-checkpoint-postgres", specifier = ">=3.0" },
     { name = "langgraph-checkpoint-sqlite", specifier = ">=3.0" },
@@ -843,7 +846,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.6" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.1" },
 ]
 provides-extras = ["tracing", "metrics", "all"]
 
@@ -909,7 +912,7 @@ wheels = [
 
 [[package]]
 name = "langfuse"
-version = "4.14.2"
+version = "4.14.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "backoff" },
@@ -921,9 +924,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "wrapt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/36/7c/4cdf76a100f169a0855d4a7e69598a3bbe19bd2f048c5de3c298af1aa2c0/langfuse-4.14.2.tar.gz", hash = "sha256:76eb3f2c2106ddd63271154d1a33f8b3d4036f449a9f9b48403c36bd5e7c1bba", size = 389507, upload-time = "2026-07-30T11:54:48.46Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ca/1c/d3410521e8b36d36aa7e6792394d193f91959742292a56f20cdda56f94aa/langfuse-4.14.3.tar.gz", hash = "sha256:eba25be6da7e5eeb640b28d7a0910f5c40cc6449eeaef89ba5d282d9db1a355d", size = 389580, upload-time = "2026-08-06T09:25:51.043Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8b/b5/1499bcedb6872e8acc4e7043c522c9f3a4fe2eafd78a6f37e73308d18753/langfuse-4.14.2-py3-none-any.whl", hash = "sha256:27879cbaea570e94323c6ced60a0997feedf5294f18b51436009947c42f9f92e", size = 688132, upload-time = "2026-07-30T11:54:49.553Z" },
+    { url = "https://files.pythonhosted.org/packages/2a/15/8c2d05d20ed05386cbc27bb19987485345f8138052f07a60d3286c329b75/langfuse-4.14.3-py3-none-any.whl", hash = "sha256:a3f77d11d8dcf440f28678271c7ea1aab01c51e372fa344661c038434122f8df", size = 688218, upload-time = "2026-08-06T09:25:49.711Z" },
 ]
 
 [[package]]
@@ -2551,6 +2554,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/21/3b/6c24bec5be5e743ffd99576daa5cc077722fc7d5bbc00bd133fa0c698dc6/tqdm-4.70.0.tar.gz", hash = "sha256:55b0b0dbd97462d06ebee91e4dac24ed4d4702be82b24f07e6c1d27e08cea220", size = 795438, upload-time = "2026-07-27T11:33:15.271Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f9/1c/01bfd571a64e7f270e6bab5e33777debe0edc56759233ce84f27dec92d14/tqdm-4.70.0-py3-none-any.whl", hash = "sha256:7f585706bfddbdebf89daac705b2dfcc16890130727d3197ca62c732b4310953", size = 80184, upload-time = "2026-07-27T11:33:13.167Z" },
+]
+
+[[package]]
+name = "types-pyyaml"
+version = "6.0.12.20260724"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3f/6f/a28f44bcd56bebed42b028a2894c79853e2f5e6b5279e633cb3f287a05e7/types_pyyaml-6.0.12.20260724.tar.gz", hash = "sha256:3c1ce1bb73cd5ec02e90390c2b1f00e810d241d8825fd73ff359696839271b6b", size = 17893, upload-time = "2026-07-24T04:58:43.453Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8b/42/0337fefc615e20ee55d1c8f71b774a9b2b734a04669139c20753b27a2a3a/types_pyyaml-6.0.12.20260724-py3-none-any.whl", hash = "sha256:d57db930a4b2efbc57cf430ec8882765d246929432fa253092f383902329a453", size = 20312, upload-time = "2026-07-24T04:58:42.486Z" },
 ]
 
 [[package]]

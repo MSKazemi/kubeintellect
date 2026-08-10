@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from app.agent.playbooks import get_playbook, list_playbooks, match_playbooks
 
-
 CRASHLOOP_PODS = """\
 NAMESPACE   NAME    READY   STATUS             RESTARTS   AGE
 default     app-1   0/1     CrashLoopBackOff   5          10m
@@ -68,6 +67,7 @@ def test_all_playbooks_load() -> None:
         "Evicted",
         "WebhookAdmissionRejected",
         "NodeNotReady",
+        "NetworkPolicyBlocking",
     }
     assert expected.issubset(names), f"missing playbooks: {expected - names}"
 
@@ -252,3 +252,42 @@ def test_match_node_not_ready_by_event_message() -> None:
     )
     matched = match_playbooks(HEALTHY_PODS, events)
     assert "NodeNotReady" in matched
+
+
+# ── NetworkPolicyBlocking triggers (#99) ──────────────────────────────────────
+
+TIMEOUT_EVENTS = """\
+NAMESPACE   LAST SEEN   TYPE      REASON     OBJECT       MESSAGE
+default     20s         Warning   Unhealthy  pod/api-1    Get "http://10.244.1.7:8080/healthz": dial tcp 10.244.1.7:8080: i/o timeout
+"""
+
+REFUSED_EVENTS = """\
+NAMESPACE   LAST SEEN   TYPE      REASON     OBJECT       MESSAGE
+default     20s         Warning   Unhealthy  pod/api-1    Get "http://10.244.1.7:8080/healthz": dial tcp 10.244.1.7:8080: connection refused
+"""
+
+
+def test_match_networkpolicy_blocking_by_io_timeout() -> None:
+    matched = match_playbooks(HEALTHY_PODS, TIMEOUT_EVENTS)
+    assert "NetworkPolicyBlocking" in matched
+
+
+def test_match_networkpolicy_blocking_by_connection_timed_out() -> None:
+    events = (
+        "NAMESPACE   LAST SEEN  TYPE     REASON   OBJECT       MESSAGE\n"
+        "default     15s        Warning  Failed   pod/web-1    connection timed out after 30s\n"
+    )
+    matched = match_playbooks(HEALTHY_PODS, events)
+    assert "NetworkPolicyBlocking" in matched
+
+
+def test_networkpolicy_blocking_ignores_connection_refused() -> None:
+    """A refusal means a RST came back, so the packet was delivered.
+
+    That is evidence *against* a policy drop — a NetworkPolicy discards silently.
+    Matching it here would send the agent down the wrong path on what is almost
+    always a wrong port or a missing endpoint, which ServiceUnreachable owns.
+    """
+    matched = match_playbooks(HEALTHY_PODS, REFUSED_EVENTS)
+    assert "NetworkPolicyBlocking" not in matched
+    assert "ServiceUnreachable" in matched

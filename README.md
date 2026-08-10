@@ -5,14 +5,16 @@
 
   [![CI](https://github.com/MSKazemi/kubeintellect/actions/workflows/ci.yml/badge.svg)](https://github.com/MSKazemi/kubeintellect/actions/workflows/ci.yml)
   [![PyPI](https://img.shields.io/pypi/v/kubeintellect.svg)](https://pypi.org/project/kubeintellect/)
+  [![kq downloads](https://img.shields.io/pypi/dm/kube-q?label=kq%20installs)](https://pypi.org/project/kube-q/)
   [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
   [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
   [![DOI](https://img.shields.io/badge/DOI-10.1007%2Fs10723--026--09837--6-blue)](https://doi.org/10.1007/s10723-026-09837-6)
   [![arXiv](https://img.shields.io/badge/arXiv-2509.02449-b31b1b.svg)](https://arxiv.org/abs/2509.02449)
   [![Website](https://img.shields.io/badge/website-kubeintellect.com-0075C4)](https://kubeintellect.com/)
+  [![good first issues](https://img.shields.io/github/issues/MSKazemi/kubeintellect/good%20first%20issue?label=good%20first%20issues&color=7057ff)](https://github.com/MSKazemi/kubeintellect/contribute)
   [![GitHub Stars](https://img.shields.io/github/stars/MSKazemi/kubeintellect?style=social)](https://github.com/MSKazemi/kubeintellect)
 
-  **[Website](https://kubeintellect.com/)** · **[Live Demo](https://kubeintellect.com/demo)** · **[Current version → `v4/`](v4/)** · **[Paper](https://doi.org/10.1007/s10723-026-09837-6)**
+  **[Website](https://kubeintellect.com/)** · **[Live Demo](https://kubeintellect.com/demo)** · **[Current version → `v4/`](v4/)** · **[Contributing](#contributing)** · **[Paper](https://doi.org/10.1007/s10723-026-09837-6)**
 
   Created & maintained by **[Mohsen Seyedkazemi Ardebili](https://github.com/MSKazemi)**
 
@@ -58,8 +60,16 @@ kq --api-key ki-ro-dev            # kq defaults to https://api.kubeintellect.com
 **Run the full system on a local cluster** (Docker is the only prerequisite):
 
 ```bash
+docker run --rm -it ghcr.io/mskazemi/kubeintellect:2.2.0 --help
+```
+
+Or install the server from PyPI:
+
+```bash
 pip install kubeintellect
-kubeintellect init                # wizard: creates a Kind cluster, deploys samples, configures kq
+kubeintellect init         # setup wizard — writes ~/.kubeintellect/.env
+kubeintellect kind-setup   # optional: create a local Kind cluster to try it against
+kubeintellect serve        # start the API server on :8000
 ```
 
 Full install paths (browser, CLI-only, local Kind, Docker Compose, existing cluster) are in the **[v4 README](v4/README.md)** and **[v4 docs](v4/docs/)**.
@@ -123,6 +133,7 @@ Run `make help` at the root at any time to see the available infra targets.
 
 - **[Website](https://kubeintellect.com/)** — overview, live demo, and hosted API.
 - **[v4 docs](v4/docs/)** — install, quickstart, configuration, architecture, security, CLI reference, and troubleshooting for the current version.
+- **[Data handling](v4/docs/data-handling.md)** — what v4 sends to model and telemetry endpoints, stores, and redacts.
 - **[v4 README](v4/README.md)** — every install path in detail.
 - Each version directory (`v1/`–`v4/`) ships its own `README.md` and `docs/`.
 
@@ -158,8 +169,9 @@ Known and deliberate, so you can judge fit before installing:
 - **An LLM API key is required.** OpenAI or Azure OpenAI out of the box; v4 also
   supports Anthropic, Qwen, and OpenAI-compatible endpoints. Queries cost tokens.
 - **Cluster context leaves your network** unless you point it at a self-hosted or
-  in-cluster model endpoint. Review [SECURITY.md](SECURITY.md) before running it
-  against production.
+  in-cluster model endpoint. Review [SECURITY.md](SECURITY.md) and the
+  [data-handling notes](v4/docs/data-handling.md) before running it against
+  production.
 - **It is not a replacement** for your observability stack, a GitOps/CD pipeline,
   or on-call judgment. It queries the tools you already run.
 - **LLM answers can be wrong.** The approval gate exists precisely because the
@@ -180,11 +192,80 @@ Known and deliberate, so you can judge fit before installing:
 
 **Which version should I use?** [`v4/`](v4/) — it's the current, actively developed implementation.
 
+## Contributing
+
+**Contributions are wanted, and the barrier is deliberately low.** You do **not** need a
+Kubernetes cluster, a Docker daemon, or an LLM API key to contribute — the test suites are
+fully mocked. Python 3.12+ is the only prerequisite.
+
+```bash
+git clone https://github.com/MSKazemi/kubeintellect.git
+cd kubeintellect
+make setup     # installs the v4 workspace, then runs the exact gates CI runs (~1 min)
+```
+
+`make setup` ends by telling you whether your environment is correct, so you never debug your
+setup and your change at the same time. Prefer zero install? Open the repo in a
+[**GitHub Codespace**](https://codespaces.new/MSKazemi/kubeintellect) — `.devcontainer/` runs
+the same setup for you.
+
+| I want to… | Go here |
+|---|---|
+| **Find something to work on** | [`/contribute`](https://github.com/MSKazemi/kubeintellect/contribute) — the curated [`good first issue`](https://github.com/MSKazemi/kubeintellect/labels/good%20first%20issue) list, each scoped small on purpose |
+| **See a first PR done end to end** | [CONTRIBUTING.md → *Your first PR, start to finish*](CONTRIBUTING.md#your-first-pr-start-to-finish) — a real open issue, every command, nothing skipped |
+| **Contribute with an AI coding agent** | [AGENTS.md](AGENTS.md) — the machine-readable version of the rules. AI assistance is [explicitly welcome](CONTRIBUTING.md#ai-assistance); please just disclose it |
+| **Ask before writing code** | [Discussions](https://github.com/MSKazemi/kubeintellect/discussions) — questions are never a bother, and an unclear doc is our bug, not yours |
+| **Help without writing code** | Docs, a reproducible bug report, triage, testing on a platform we lack, or adding yourself to [ADOPTERS.md](ADOPTERS.md) — all credited equally |
+
+**What you can expect back:** every issue and PR gets a *human* first response — even if the
+answer is "not this way", it arrives rather than silence ([TRIAGE.md](TRIAGE.md)). Every merged
+contributor is named in the release notes. And one thing that will look broken but isn't —
+**on a first-time contributor's fork PR,
+GitHub runs no CI until a maintainer approves the run**, so your PR sits with no checks. That is
+expected, it is not your mistake, and you do not need to do anything.
+
 ## Maintainer
 
-KubeIntellect is created, led, and maintained by **[Mohsen Seyedkazemi Ardebili](https://github.com/MSKazemi)** — see [GOVERNANCE.md](GOVERNANCE.md). Contributions are welcome from everyone; start with [CONTRIBUTING.md](CONTRIBUTING.md) and a [`good first issue`](https://github.com/MSKazemi/kubeintellect/labels/good%20first%20issue). If KubeIntellect is useful to you, a ⭐ helps others find it.
+KubeIntellect is created, led, and maintained by **[Mohsen Seyedkazemi Ardebili](https://github.com/MSKazemi)** — see [GOVERNANCE.md](GOVERNANCE.md).
 
-Where the project is going — and what it deliberately **won't** do — is in **[ROADMAP.md](ROADMAP.md)**. It has one maintainer today; the contributor ladder in [GOVERNANCE.md](GOVERNANCE.md) is a real invitation, not a formality.
+Where the project is going — and what it deliberately **won't** do — is in **[ROADMAP.md](ROADMAP.md)**. It has one maintainer today; the contributor ladder in [GOVERNANCE.md](GOVERNANCE.md) is a real invitation, not a formality, and areas are genuinely available to own.
+
+If KubeIntellect is useful to you, a ⭐ helps other people find it — and [#51](https://github.com/MSKazemi/kubeintellect/issues/51) is where to say what you're using it for.
+
+### Contributors
+
+People other than the maintainer whose work is in the shipped code. The list is short because
+the project is young — which is exactly why being on it is worth something.
+
+| | Contributed |
+|---|---|
+| **[@hariomlohardev](https://github.com/hariomlohardev)** | Removed the executable bit from 94 non-script modules ([#70](https://github.com/MSKazemi/kubeintellect/pull/70)) — mode-only, zero content lines, and it fixed the cause rather than silencing the rule. Also [#57](https://github.com/MSKazemi/kubeintellect/pull/57) and [#65](https://github.com/MSKazemi/kubeintellect/pull/65). |
+| **[@AdvaitVarhade](https://github.com/AdvaitVarhade)** | Fixed the demo UI's `set-state-in-effect` errors ([#73](https://github.com/MSKazemi/kubeintellect/pull/73)) — and corrected the issue itself, which had named the wrong file. Also proposed the `kq export` command and reported the Python 3.13 syntax warnings. |
+| **[@shaurya703](https://github.com/shaurya703)** | Repointed the PyPI metadata at the canonical repository and adopted PEP 639 ([#78](https://github.com/MSKazemi/kubeintellect/pull/78)) — noticing that `license-files` resolves per package, which meant two wheels had been shipping **without the AGPL text at all**. Spotted the same defect in `mkdocs.yml`, which led to a 13-file sweep. Also cleared the `I001` import backlog ([#77](https://github.com/MSKazemi/kubeintellect/pull/77)). |
+| **[@uuzzrm](https://github.com/uuzzrm)** | Wrote [`v4/docs/data-handling.md`](v4/docs/data-handling.md) ([#105](https://github.com/MSKazemi/kubeintellect/pull/105)) — the page that states what reaches a model provider, what is persisted, and precisely where the redactor does **not** apply. Every claim in it was verified against source. Their honest test-failure report also uncovered [#106](https://github.com/MSKazemi/kubeintellect/issues/106), a real environment-sensitivity bug in our own suite. |
+| **[@floze-the-genius](https://github.com/floze-the-genius)** | Made the `kq` suite independent of the terminal it runs in ([#109](https://github.com/MSKazemi/kubeintellect/pull/109)) — tests used to fail on a narrow or `NO_COLOR` terminal before a contributor changed anything. Pinned the environment in `pytest_configure`, **before** module import, which is what a fixture alone cannot do, and **without weakening a single assertion**. Reported a five-environment before/after matrix in which every number reproduced independently. |
+| **[@Priyanshu608](https://github.com/Priyanshu608)** | Wrote the `NetworkPolicyBlocking` playbook ([#108](https://github.com/MSKazemi/kubeintellect/pull/108)) — the 19th, and the only one whose signal is the **absence** of evidence: a policy denial is dropped in the CNI datapath, so no event is ever emitted and the connection simply hangs. Captured that as a positive finding rather than a gap. |
+| **[@AshSgDe29071999](https://github.com/AshSgDe29071999)** | Independently diagnosed the terminal-sensitivity bug and submitted the fixture-only fix ([#107](https://github.com/MSKazemi/kubeintellect/pull/107)). It did not merge — #109 arrived against a claimed issue — but running it as a control is the only reason we know the `pytest_configure` hook is load-bearing rather than incidental. The `claimed` label exists because of the collision they hit. |
+
+Every merged contribution is credited by name in [CHANGELOG.md](CHANGELOG.md) and in the
+release notes.
+
+**Non-code work is credited as a first-class contribution type.** The project follows the
+[All Contributors](https://allcontributors.org/) specification (`.all-contributorsrc`), so
+documentation, bug reports, reviews, ideas, triage, and **verifying KubeIntellect on a
+Kubernetes platform our CI does not cover** are all recorded — not just merged commits.
+
+That last one is a real, open lane: CI runs on Kind only, so nobody has confirmed the install
+path on **k3s, EKS, GKE, AKS or OpenShift**. Those issues need a cluster and about an hour, and
+**no Python at all** — see
+[`area/deploy`](https://github.com/MSKazemi/kubeintellect/issues?q=is%3Aopen+label%3Aarea%2Fdeploy).
+A report saying *"it did not work, here is exactly where it stopped"* is the single most useful
+thing the project cannot get any other way.
+
+> **One honest caveat.** GitHub's Contributors graph counts *merged commits* only, so a comment
+> or a platform report will not appear there however valuable it is. If you want to be on that
+> graph too, the one-line docs PR that comes out of what you found will do it — and is usually
+> warranted anyway. See [GOVERNANCE.md](GOVERNANCE.md) for the full ladder.
 
 ## License
 

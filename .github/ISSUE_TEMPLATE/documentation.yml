@@ -1,0 +1,68 @@
+name: 📖 Documentation problem
+description: Something in the docs is wrong, missing, out of date, or impossible to follow.
+title: "docs: "
+labels: ["documentation", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Documentation defects are real defects. If you got stuck following our own
+        instructions, that is our bug — thank you for reporting it.
+
+        Reporting one is a fine first contribution, and fixing it is an even better one.
+
+  - type: input
+    id: where
+    attributes:
+      label: Where is it?
+      description: A URL, file path, or page name — whatever gets us to the right place.
+      placeholder: "README.md § Quick start  ·  or  ·  https://github.com/MSKazemi/kubeintellect/wiki/FAQ"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of problem is it?
+      options:
+        - It is wrong (the documented behaviour does not match reality)
+        - It is out of date (it described an older version)
+        - It is missing (there is no documentation for this)
+        - I could not follow it (unclear, ambiguous, or steps do not work)
+        - Broken link, typo, or formatting
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What does it say, and what should it say?
+      description: |
+        Quote the current text if you can, then tell us what you expected. If a command
+        failed, please paste the command and its output.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else that would help?
+      description: |
+        Your OS, Python version, and how you installed KubeIntellect, if the problem is
+        install-related.
+
+        If it is install-related, the output of `kq --version` or
+        `kubeintellect --version` helps a lot. The current published builds are
+        `kube-q` **1.5.0** and `kubeintellect` **2.2.0**.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: offer
+    attributes:
+      label: Would you like to fix it yourself?
+      description: Entirely optional — "no" is a perfectly good answer, the report alone helps.
+      options:
+        - label: I'd like to open a PR for this (we'll help if you get stuck)
+          required: false

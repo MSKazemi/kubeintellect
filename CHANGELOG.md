@@ -11,7 +11,274 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+- **The `kq` test suite failed depending on the contributor's terminal** (#106, #109) — fixed by
+  [@floze-the-genius](https://github.com/floze-the-genius). The suite inherited `COLUMNS`, `TERM`
+  and `NO_COLOR` from the invoking shell, which changed Rich's table wrapping and the theme the
+  module-level console is built with. A contributor on an 80-column terminal could watch tests
+  fail before touching a line of code, on a suite that was green in CI. On `2c1f676`:
+  `COLUMNS=40` → 5 failed, `COLUMNS=60` → 1 failed, `TERM=dumb` → 1 failed, `NO_COLOR=1` →
+  1 failed.
+
+  The fix pins the rendering environment in `pytest_configure` — **before** test modules are
+  imported — and re-applies it per test with an autouse fixture that `monkeypatch` can still
+  override, restoring the invoking environment in `pytest_unconfigure`. **No assertion was
+  weakened**, which was the point: the tempting fix is to loosen assertions until they pass at
+  any width, which makes the suite green and stops it testing anything.
+
+  The `pytest_configure` half is load-bearing, and
+  [@AshSgDe29071999](https://github.com/AshSgDe29071999) is why that is documented rather than
+  assumed. They independently diagnosed the same root cause and submitted the fixture-only
+  form (#107); running it as a control showed it clears four of the five environments and
+  still fails under `NO_COLOR=1`, because an autouse fixture runs after collection, by which
+  point the module-level console already exists with the stripped theme. Now 312/312 on all
+  five single-variable runs, on all three applied together, and on a clean environment.
+- **The published `kube-q` package pointed users, and their bug reports, at the wrong
+  repository** (#74, #78) — every `[project.urls]` entry resolved to `MSKazemi/kube_q`, a
+  pre-AGPL snapshot that is not where `kube-q` is developed. On a package serving ~160
+  downloads a month, "Homepage", "Repository" and "Bug Tracker" all led away from the canonical
+  repo, and the PyPI page carried no link to the docs, the changelog, or this repository. Fixed
+  by [@shaurya703](https://github.com/shaurya703), who also gave `ki-protocol` the `authors`,
+  `[project.urls]` and `classifiers` it had never had — its page was blank, including **no
+  licence classifier at all** on AGPL code.
+
+  All three distributions moved to the [PEP 639](https://peps.python.org/pep-0639/) form
+  (`license = "AGPL-3.0-or-later"` + `license-files`). This removes a defect the issue had not
+  spotted: `kube-q` used `license = { file = "LICENSE" }`, which dumped the **entire 34 KB AGPL
+  text** into the `License:` metadata header. Every wheel now reports a machine-readable
+  `License-Expression` under `Metadata-Version: 2.4`, and the redundant
+  `License :: OSI Approved :: …` classifier is gone — PyPI rejects an upload carrying both.
+
+  **@shaurya703 also caught that `license-files` resolves relative to each package directory**,
+  and that neither `ki-protocol` nor `kubeintellect-server` had a `LICENSE` of its own — so
+  those wheels had been shipping **without the licence text**, a real compliance gap in an
+  AGPL project that was invisible from the source tree. Both now carry a byte-identical copy,
+  verified in the built artifacts (`twine check` passes on all six).
+
+  The live PyPI pages stay wrong until the next publish; this fixes the source of them.
+- **The `kube-q` documentation still sent readers to the old repository** — 13 files across
+  `v4/` linked `MSKazemi/kube_q`, including `v4/packages/kube-q/README.md`, which **is** the
+  body of the PyPI page: it told readers to `git clone https://github.com/MSKazemi/kube_q`.
+  So the metadata fix above would have corrected the sidebar links while the page underneath
+  still pointed elsewhere. Found by [@shaurya703](https://github.com/shaurya703) while working
+  on #78, from a single `mkdocs.yml` observation. The from-source instructions now clone the
+  monorepo and `cd kubeintellect/v4/packages/kube-q` (verified end to end: clone → `pip install
+  -e .` → `kq --version` reports 1.5.0 — which only resolves at all now that `ki-protocol` is
+  published). The mkdocs social link to `ghcr.io/mskazemi/kube_q` was a **404** and now points
+  at the image that exists. The Homebrew formula's stale homepage is deliberately untouched —
+  it belongs to #56.
+- **Imports are sorted across `v4/`** (#76, #77) — `ruff` 0.16 enables `I001` by default and
+  reported 75 unsorted blocks across 60 files, part of what blocks lifting the `ruff<0.16` pin.
+  Cleared by [@shaurya703](https://github.com/shaurya703), verified at the AST level rather
+  than by eye: the imported-symbol set is identical in all 60 files and there is no non-import
+  code change anywhere. The one manual edit is the interesting one — ruff's autofix wraps the
+  long `langchain_anthropic` import into parenthesized form, which moves
+  `# type: ignore[import-not-found]` off the `from` line and breaks the suppression (mypy 0 →
+  1). The ignore now sits on the `from … import (` line, keeping both the sorted form and the
+  suppression. `UP045` remains untouched by design; the remaining ~364 findings are tracked in
+  #75.
+- **The Greetings workflow had never posted a single greeting** — it passed the
+  `first-interaction` action its inputs hyphenated (`issue-message`, `pr-message`,
+  `repo-token`) while the action declares them underscored. The runner exposes unknown inputs
+  under their own names rather than rejecting them, so the action threw
+  `Input required and not supplied: issue_message` on every issue and every pull request since
+  the workflow landed; `repo-token` only appeared to work because `repo_token` defaults to
+  `${{ github.token }}`. Every first-time contributor got silence plus a red X — precisely the
+  two things the workflow's own header says it exists to prevent, and what #73's author saw.
+  The failure was easy to dismiss as bot noise because it also fired on every Dependabot PR,
+  leaving them permanently `UNSTABLE`.
+- **The demo UI is ESLint-clean again** (`v4/packages/kube-q/web`, #50, #73) — 2 errors and 2
+  warnings, reported by [@AdvaitVarhade](https://github.com/AdvaitVarhade), who also traced the
+  two `react-hooks/set-state-in-effect` errors to `app/page.tsx`; the issue had attributed them
+  to `PtyTerminal.tsx`. `PtyTerminal` now builds its status notifier inside the connection
+  effect and reaches the current callback through a ref, so the effect depends on `authToken`
+  alone — a re-rendered parent no longer tears down a live PTY session — and the unused
+  `useState` import is gone.
+
+  The two errors in `page.tsx` are fixed by removing the effects rather than deferring them.
+  `sessionStorage` is now read through `useSyncExternalStore`, which is SSR-safe and derives the
+  token during render, so the `tokenReady` state and its mount effect are both gone; and the
+  auth-failure prompt is raised in the `onStatusChange` callback that causes it instead of from
+  an effect watching the state that callback just wrote. Deferring the same `setState` behind
+  `setTimeout(…, 0)` would satisfy the linter while making the behaviour worse — the cascading
+  render still happens, now after paint, so the terminal pane visibly flashes empty on every
+  load. Verified in a browser as well as by `npm run lint` and `npm run build`: the terminal
+  mounts, connects, and propagates status, with no hydration or `getSnapshot` warning under
+  dev StrictMode.
+
+  The ref that carries the callback is updated from an effect rather than during render, since
+  React may discard a render and a ref written there would outlive it. The xterm-init failure
+  path now builds its message as a text node instead of assigning `innerHTML`.
+
+### Added
+- **A `NetworkPolicyBlocking` playbook** (#99, #108) — the 19th, contributed by
+  [@Priyanshu608](https://github.com/Priyanshu608). It covers the one failure in the set that
+  emits **no evidence at all**: a NetworkPolicy denial is discarded in the CNI datapath, so the
+  API server records no event and no Warning is ever produced. The Service is healthy, endpoints
+  exist, DNS resolves — and the connection simply hangs. The playbook makes that *absence* the
+  signal, which is what none of the other 18 could express.
+
+  Two maintainer corrections landed on top. The submitted trigger also matched
+  **`connection refused`**, which is evidence *against* a policy drop: a refusal means a TCP RST
+  came back, so the packet was delivered. Matching it would have pointed the agent at a
+  NetworkPolicy for what is almost always a wrong port or a missing endpoint —
+  `ServiceUnreachable`'s territory. It now matches timeout signatures only, and
+  `test_networkpolicy_blocking_ignores_connection_refused` locks that in. The `triggers:` block
+  was also nested under `detect:`, where the loader never reads it
+  ([`loader.py`](v4/packages/kubeintellect-server/app/agent/playbooks/loader.py) takes
+  `triggers` from the top level), so the playbook loaded cleanly into the registry and then
+  never fired — inert, with no error anywhere. `test_each_playbook_has_complete_schema` catches
+  exactly this and did.
+
+- **The test suites now run on Python 3.13 as well as 3.12** (`Tests (… · py3.13)`), closing
+  a gap where the project was verified on an interpreter it does not ship. `v4/Dockerfile`'s
+  runtime stage is `python:3.13-slim` and all three distributions declare
+  `requires-python = ">=3.12"`, so every container and every `pip install` on a current
+  machine already ran 3.13 — while CI pinned 3.12 in every job. Both suites pass unchanged
+  (990 server + 312 `kq`), so this adds coverage rather than fixing a break; the point is that
+  a future 3.13-only regression now fails a gate instead of reaching users. Added as a
+  separate job rather than a `python-version` matrix axis on purpose: the axis would rename
+  `Tests (server)`, and branch protection matches required checks by name. The
+  `Programming Language :: Python :: 3.13` classifier on the server distribution is now
+  earned rather than assumed.
+- **A `Syntax warnings` CI gate (`make check-syntax`, `scripts/check-syntax-warnings.py`)** —
+  compiles every tracked Python file outside the frozen v1–v3 trees with `SyntaxWarning`
+  promoted to an error, on the newest supported interpreter. This closes the structural blind
+  spot that let #63 reach an outside contributor: the pinned `ruff` does not report an invalid
+  escape sequence in the CI-linted scope, `mypy` never compiles source, and pytest triggers the
+  warning only on a cold `.pyc` cache — so a green suite was not evidence either way. The
+  defect class is not cosmetic: #63's non-raw string was also corrupting the jsonpath examples
+  in the coordinator prompt. Like the `File modes` gate it is deliberately dependency-free
+  (stdlib only, no `uv sync`) so it stays correct however the `ruff` pin is eventually lifted,
+  and it uses `compile()` rather than `compileall` so it leaves no `.pyc` files behind.
+  `make setup` now runs all six gates instead of four.
+- **A `File modes` CI gate (`make check-modes`, `scripts/check-file-modes.sh`)** enforcing one
+  invariant outside the frozen v1–v3 generations: *a tracked file is executable if and only if
+  it starts with a shebang*. This closes a structural blind spot rather than a one-off mess —
+  `ruff` is pinned `<0.16` and `EXE002` only became a default rule in 0.16, so the lint
+  gate could not see a stray `+x` bit at all, which is how 94 library modules silently acquired
+  one. The guard is deliberately dependency-free (git + coreutils, no `uv sync`), so it stays
+  correct whichever way the ruff upgrade lands, and it runs in seconds. It also covers the
+  inverse defect (`EXE001`: a shebang'd script that is not executable, i.e. one you cannot run),
+  which `ruff` only reports for Python. `make fix-modes` corrects violations in place, updating
+  both the working tree and the index — a `chmod` alone would leave the committed mode unchanged.
+- **One-command contributor setup: `make setup` (`scripts/dev-setup.sh`).** Installs `uv` if
+  missing, installs the `v4` workspace, then runs the *exact* four gate commands CI runs
+  (ruff, mypy, server suite, `kq` suite) and reports which passed. A contributor therefore
+  learns their environment is correct *before* changing anything, and never debugs their setup
+  and their change at the same time. It also names the pre-existing debt that is **not** their
+  bug (`make lint`'s non-gate `ruff format --check`, the deliberate `ruff<0.16` pin). No
+  cluster, Docker daemon, or LLM API key is required — the suites are mocked.
+- **`.devcontainer/devcontainer.json`** — zero-install contribution via GitHub Codespaces or
+  VS Code Dev Containers, pinned to the Python 3.12 that CI pins and running the same setup
+  script on create.
+- **`AGENTS.md`** ([agents.md](https://agents.md/) format) — machine-readable repository rules
+  for AI coding agents: gate commands, the six safety invariants, testing expectations, and
+  the pre-existing debt not to "fix". Human authority remains `CONTRIBUTING.md`.
+- **A `Contributing` section on the README front page**, plus a live good-first-issue badge and
+  a header nav link. The invitation previously existed only as one sentence under `Maintainer`
+  near the bottom of a 221-line file.
+- **`.github/workflows/greetings.yml`** — welcomes a contributor's first issue and first PR,
+  and pre-empts the two things that most often make newcomers give up: silence, and a fork PR
+  that appears stalled because GitHub runs no CI for first-time contributors until a maintainer
+  approves the run.
+- **`.github/workflows/labeler.yml` + `.github/labeler.yml`** — path-based `area/*` PR
+  labelling mirroring the issue taxonomy in `TRIAGE.md`, so a contributor never needs to know
+  the repo's internal structure to be routed correctly.
+- **`.github/ISSUE_TEMPLATE/documentation.yml`** — a documentation issue template, making
+  "the docs were unclear" a first-class report rather than a bug-report misfit.
+- **A `Contributing` section in `llms.txt`**, so answer engines asked how to contribute to
+  KubeIntellect have a grounded answer (Python-3.12-only prerequisite, `v4/` scope, the HITL
+  invariant, and where the good first issues are).
+
+- **`kq export <session-id>` — export a diagnosis report to JSON or YAML.** Serializes the
+  same grounded postmortem `kq postmortem` renders (a view over the hash-chained decision
+  log) for archiving, ticket attachments, or downstream tooling. `--format json|yaml`,
+  `--output PATH`. Stdout stays machine-parseable (notes and warnings go to stderr), so
+  `kq export <id> | jq` works. Exit codes follow the `kq replay` convention: `3` when the
+  audit chain is broken, and `4` when the recorder holds no events for the session — in
+  which case nothing is written, rather than emitting an empty-but-plausible report.
+  Closes #58. Thanks to @AdvaitVarhade for proposing the capability and the initial
+  implementation.
+
+- **`Types (mypy)` is now a blocking CI gate**, and `make typecheck` runs it locally. The
+  workspace type-checks with **zero errors** across all 171 source files, down from 30. The
+  remaining `ruff format` debt is unaffected and still not a gate.
+- `tests/test_workflow_config_injection.py` — a regression guard asserting that every graph
+  node and tool declaring a `config` parameter actually receives the run config. See below
+  for why that is not obvious.
+
+### Fixed
+- **Cleared the stray executable bit from 94 source files** under
+  `v4/packages/kubeintellect-server/app/` and `v4/packages/ki-protocol/` — file-mode only
+  (`100755 → 100644`), zero content changes, verified by the patch containing no `+`/`-` content
+  lines. These are library modules with no shebang, so `chmod -x` is the correct fix rather than
+  adding one. Clears `EXE002` in the CI-linted scope and takes the ruff 0.16 finding count from
+  438 to 342, unblocking part of #64. Thanks to [@hariomlohardev](https://github.com/hariomlohardev)
+  ([#70](https://github.com/MSKazemi/kubeintellect/pull/70)).
+- **Extended the same mode-only sweep to the remaining 282 files** outside that lint path
+  (the rest of `v4/`, `deploy/`, and three root files), and gave the four shebang'd scripts that
+  were *not* executable their `+x` back. The frozen v1–v3 generations are deliberately untouched
+  (ADR-001/002): they are closed to changes and not built by CI, so rewriting ~500 of their file
+  modes would be churn against immutable history for no gate benefit.
+- **The coordinator system prompt was silently corrupted.** `_COORDINATOR_SYSTEM` was a
+  non-raw string containing jsonpath separators, so `{"\n"}` and `{"\t"}` were interpreted
+  before the model saw them — a real newline split an example `kubectl get pods -o jsonpath=…`
+  command mid-line, and a literal tab replaced another. Now a raw string. This also clears the
+  `SyntaxWarning: invalid escape sequence '\`'` that Python is scheduled to turn into a
+  `SyntaxError` (#63).
+- **RCA synthesis crashed on providers that return content blocks.** `_synthesize` called
+  `response.content.strip()`, which raises `AttributeError` when `content` is a list rather
+  than a string; it now uses `response.text`, which flattens the blocks.
+- **API keys are wrapped in `SecretStr`** before being handed to `ChatOpenAI` /
+  `AzureChatOpenAI`, so a client repr or traceback cannot render the raw key.
+- `init_graph()` raises a named error when `POSTGRES_DSN` is unset with `USE_SQLITE=false`,
+  instead of failing inside the driver.
+- **Four type errors in `app/cli.py`** (#55): `callable` used as a type annotation is now
+  `Callable[[], None]`, and the two `subprocess.run` calls that rebound a
+  `CompletedProcess[str]` variable declare `text=True`, so the type is consistent without
+  changing runtime behaviour. Thanks to @hariomlohardev for the fix (#57).
+- Dropped an f-prefix from a placeholder-free string in `v4/scripts/fix_pr_probe.py` (F541).
+
+### Changed
+- **The PyPI release is unblocked — all three distributions are published and current** (#66,
+  closed). `ki-protocol` **1.0.0**, `kube-q` **1.5.0**, `kubeintellect` **2.2.0**, all reporting
+  `AGPL-3.0-or-later` instead of the stale `MIT` metadata. Verified in clean venvs:
+  `pip install kube-q` yields 1.5.0 with all ten subcommands (checked *without* `--help`, per
+  the argparse trap), and `pip install kubeintellect` yields 2.2.0 with a working entry point.
+
+  Two defects surfaced while unblocking it, neither of which the issue anticipated:
+  **(1) `kube-q`'s trusted publisher authorized the wrong repository** — `MSKazemi/kube_q`
+  rather than `MSKazemi/kubeintellect` — so the root `publish.yml` could never have published
+  it, and confirming only the *workflow filename* would not have caught it.
+  **(2) A trusted publisher registered without an environment does not match a workflow that
+  runs with one.** `kubeintellect`'s publisher said `Environment: (Any)` while `publish.yml`
+  runs `environment: pypi`, and every upload failed with `403 OIDC scoped token is not valid
+  for project 'kubeintellect'` while the two publishers naming `pypi` explicitly succeeded in
+  the same run. Registering a second publisher with the environment set explicitly fixed it.
+- **README's PyPI warning block is gone** — it existed only while the published packages were
+  behind, and both install paths now work as documented. The server quickstart also no longer
+  claims `kubeintellect init` "creates a Kind cluster, deploys samples"; verified against the
+  published 2.2.0 CLI, `init` writes `~/.kubeintellect/.env` and cluster creation is the
+  separate `kind-setup` command.
+- **`TRIAGE.md` no longer tells contributors that `mypy` is non-blocking debt.** It became a
+  required CI check in `0c7b055`; a contributor following the old text would have pushed a PR
+  expecting a `mypy` failure to be ignorable and had it blocked instead.
+- `CONTRIBUTING.md` leads with the one-command path and states up front that **no cluster,
+  Docker daemon, or LLM API key is needed** to run the suites — previously the requirements
+  list implied all three were mandatory before you could contribute a typo fix.
+- `types-PyYAML` added to the dev dependency group; the server's mypy baseline drops from
+  29 to 27 errors (two pre-existing missing-stub errors resolved).
+- **First `[tool.mypy]` configuration for the workspace** (#53) — `python_version = "3.12"`
+  plus a per-module `ignore_missing_imports` override for `asyncpg`, which ships no `py.typed`
+  marker. Clears the 5 remaining `[import-untyped]` errors without touching source. Thanks to
+  @hariomlohardev (#65).
+- `max_tokens=` → `max_completion_tokens=` on the OpenAI/Azure chat clients — the same
+  pydantic field under its public alias, so the request payload is unchanged.
+- Container runtime image moves from `python:3.12-slim` to `python:3.13-slim` (#59).
+  Verified independently of CI, which does not build the image: the full dependency set
+  resolves on CPython 3.13.14, both entry points start, and the 986-test server suite passes.
+- `uvicorn[standard]` floor raised `>=0.32` → `>=0.52.1` to match the resolved version (#61).
 
 ## [2.2.0] – 2026-08-08
 

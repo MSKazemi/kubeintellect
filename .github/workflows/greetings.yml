@@ -1,0 +1,81 @@
+name: Greetings
+
+# Welcomes a contributor's FIRST issue and FIRST pull request.
+#
+# This exists to remove the two things that most often make a newcomer give up:
+#   1. Silence — they cannot tell whether anyone will look.
+#   2. A PR that appears stalled with no CI, which on this repo is expected
+#      behaviour for fork PRs from first-time contributors, not their mistake.
+#
+# It is deliberately NOT a substitute for a human reply. See TRIAGE.md.
+
+on:
+  issues:
+    types: [opened]
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  greeting:
+    runs-on: ubuntu-latest
+    steps:
+      # Input names are underscored (`issue_message`, not `issue-message`). The
+      # hyphenated spelling is silently ignored by the runner, so the action threw
+      # "Input required and not supplied: issue_message" on every run and no
+      # greeting was ever posted — the one failure mode this workflow exists to
+      # prevent. `repo_token` only appeared to work because it defaults to
+      # `${{ github.token }}`.
+      - uses: actions/first-interaction@1c4688942c71f71d4f5502a26ea67c331730fa4d  # v3.1.0
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+
+          issue_message: |
+            👋 Thanks for opening your first issue in KubeIntellect, and welcome.
+
+            A maintainer will read this personally. **Every issue gets a human first response** —
+            even if the answer is "not this way", it arrives rather than silence
+            ([TRIAGE.md](https://github.com/MSKazemi/kubeintellect/blob/main/TRIAGE.md)).
+            It is a one-person project, so if this thread goes quiet, a nudge is welcome
+            rather than rude.
+
+            A few things that may save you time:
+
+            - Please include the output of `kq --version` (or `kubeintellect --version`) —
+              the published builds are `kube-q` 1.5.0 and `kubeintellect` 2.2.0, and an older
+              one explains a surprising number of reports.
+            - Questions and ideas are usually a better fit in
+              [Discussions](https://github.com/MSKazemi/kubeintellect/discussions).
+            - Found a security problem? Please **don't** post it here — use
+              [private reporting](https://github.com/MSKazemi/kubeintellect/security/advisories/new).
+
+          pr_message: |
+            🎉 Thank you for your first pull request to KubeIntellect.
+
+            **Please read this one thing — it will look like something is broken, and it isn't:**
+
+            > On a fork PR from a first-time contributor, **GitHub runs no CI at all** until a
+            > maintainer clicks *"Approve and run workflows"*. Your PR will sit with no checks
+            > and a blocked merge box. **That is expected and it is not your fault.** You don't
+            > need to do anything — a maintainer will approve the run.
+
+            While you wait, the things most likely to come up in review:
+
+            - Did you run the gates? `make setup` from the repo root runs six of the nine
+              checks `main` requires (ruff, mypy, both test suites, file modes, syntax
+              warnings) and needs no cluster and no API key. The remaining three — the
+              install smoke test and both suites on Python 3.13 — run only in CI, so a
+              green local run does not guarantee a green PR.
+            - Does your change include a test that **fails before it and passes after**?
+            - If your change touches a command that emits a diagnosis, report, or summary:
+              please run it against a **deliberately absent** resource (a made-up id, no
+              cluster) and confirm it refuses rather than returning a plausible-looking result.
+              This is the one failure mode this project cannot ship, and CI cannot catch it.
+            - Substantial AI assistance is welcome — please just
+              [disclose it](https://github.com/MSKazemi/kubeintellect/blob/main/CONTRIBUTING.md#ai-assistance)
+              in the description so reviewers know where to look.
+
+            Contributors are credited in `CHANGELOG.md` and in the release notes.

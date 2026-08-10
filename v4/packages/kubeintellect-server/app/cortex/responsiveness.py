@@ -21,13 +21,15 @@ import time
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Optional
 
-from app.streaming.emitter import StatusEvent
+from app.streaming.emitter import Event, StatusEvent
 from app.streaming.emitter import emit as _default_emit
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-EmitFn = Callable[[str, object], Awaitable[None]]
+# Contravariant in the event: an injected fake that accepts a broader type (``object``)
+# still satisfies this, which is what the tests do.
+EmitFn = Callable[[str, Event], Awaitable[None]]
 Clock = Callable[[], float]
 
 
@@ -45,13 +47,15 @@ async def heartbeat(
     The first heartbeat fires after one full interval (a fast phase emits nothing). Any error in
     the beat loop is swallowed — a progress ping must never break the wrapped work.
     """
-    emit_fn = emit_fn or _default_emit
+    # Bound to a separate non-Optional name: the closure below captures it, and a
+    # reassignment of the parameter itself would not narrow away the ``None``.
+    emit: EmitFn = emit_fn or _default_emit
 
     async def _beat() -> None:
         try:
             while True:
                 await asyncio.sleep(interval)
-                await emit_fn(session_id, StatusEvent(
+                await emit(session_id, StatusEvent(
                     phase=phase, message=message, session_id=session_id,
                 ))
         except asyncio.CancelledError:

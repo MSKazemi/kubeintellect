@@ -17,10 +17,10 @@ ACI_READ_VERB_ALLOWLIST = frozenset({"inspect", "search", "logs", "diff_change"}
 ACI_READ_VERBS = [inspect, search, logs, diff_change]
 
 __all__ = [
-    "ACI_READ_VERB_ALLOWLIST",
     "ACI_READ_VERBS",
-    "inspect",
-    "search",
-    "logs",
+    "ACI_READ_VERB_ALLOWLIST",
     "diff_change",
+    "inspect",
+    "logs",
+    "search",
 ]

@@ -39,15 +39,37 @@ The repo **root** (`Makefile`, `deploy/`, `scripts/`) manages the *shared infras
 
 ## Dev setup
 
-**Requirements:** Python **3.12+**, [`uv`](https://docs.astral.sh/uv/getting-started/installation/),
-Docker, [`kind`](https://kind.sigs.k8s.io/), `kubectl`, `helm`.
+### Fastest path — one command
+
+**You do not need a Kubernetes cluster, an LLM API key, or Docker to contribute.** The test
+suites are fully mocked. Only Python 3.12+ is required.
 
 ```bash
 # Canonical repo. (github.com/kubeintellect/kubeintellect is an archived mirror.)
 git clone https://github.com/MSKazemi/kubeintellect.git
+cd kubeintellect
+make setup          # or: ./scripts/dev-setup.sh
+```
+
+That installs [`uv`](https://docs.astral.sh/uv/) if missing, installs the whole `v4`
+workspace, and then runs **the exact six gates CI runs** (ruff, mypy, both test suites, file
+modes, syntax warnings) so you know your environment is correct before you change anything. It
+takes about a minute and prints what to do next.
+
+**Zero-install alternative:** open the repo in a
+[GitHub Codespace](https://codespaces.new/MSKazemi/kubeintellect) or in VS Code with the Dev
+Containers extension — `.devcontainer/devcontainer.json` runs the same setup automatically.
+
+### Manual path
+
+**Requirements:** Python **3.12+**, [`uv`](https://docs.astral.sh/uv/getting-started/installation/).
+Docker, [`kind`](https://kind.sigs.k8s.io/), `kubectl` and `helm` are needed **only** for
+end-to-end work against a real cluster.
+
+```bash
 cd kubeintellect/v4
 
-cp .env.example .env      # fill in your LLM API key at minimum (OpenAI or Azure OpenAI)
+cp .env.example .env      # only needed to RUN the app; not needed to run the tests
 uv sync                    # install the workspace (kubeintellect-server, kube-q, ki-protocol)
 ```
 
@@ -144,7 +166,7 @@ assistance (see below — it is welcome, just disclosed).
 
 **9. Expect a reply, not silence.** Every PR gets a first response, even if the
 answer is "not this way". If CI fails on something unrelated to your change, say so
-in the PR — pre-existing `mypy` and `ruff format` debt is not your bug.
+in the PR — pre-existing `ruff format` debt is not your bug.
 
 **Stuck at any step?** That is a documentation defect, not a you problem — say so in
 [Discussions](https://github.com/MSKazemi/kubeintellect/discussions/categories/q-a)
@@ -163,11 +185,43 @@ uv sync                                                        # once, after clo
 # 1. Lint — the CI gate is `ruff check` only (not `ruff format`; see the note below)
 uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/
 
-# 2. Tests — two suites, run separately: the two `tests` packages collide
+# 2. Types — must stay at zero errors
+uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q
+
+# 3. Tests — two suites, run separately: the two `tests` packages collide
 #    under a single pytest invocation.
-uv run python -m pytest tests/ -q                              # server (~986 tests)
-cd packages/kube-q && uv run python -m pytest tests/ -q        # kq CLI (~297 tests)
+uv run python -m pytest tests/ -q                              # server (~990 tests)
+cd packages/kube-q && uv run python -m pytest tests/ -q        # kq CLI (~312 tests)
 ```
+
+CI runs those two test suites **twice** — on Python 3.12 and on Python 3.13. 3.13 is not
+optional coverage: `v4/Dockerfile`'s runtime stage is `python:3.13-slim`, so it is the
+interpreter the shipped container executes. If your change passes on one and fails on the
+other, that difference is the bug.
+
+There are two more gates, run from the **repo root**. Both need no virtualenv and take a
+second:
+
+```bash
+make check-modes    # a tracked file is executable if and only if it has a shebang
+make fix-modes      # corrects any violation in place, then re-check
+
+make check-syntax   # every tracked .py compiles with no SyntaxWarning
+```
+
+Both exist to cover blind spots the main gates structurally cannot see. `ruff` is pinned
+`<0.16` here, and `EXE002` ("executable file with no shebang") only became a default rule in
+0.16 — so the lint gate cannot see a stray `+x` bit at all. That blind spot is how 94 library
+modules ended up marked executable before
+[#70](https://github.com/MSKazemi/kubeintellect/pull/70) cleared them. In practice this only
+affects you if you add a new file: leave it non-executable unless it is a script with a shebang.
+
+The syntax gate is the same story for invalid escape sequences (`"\d"` where you meant
+`r"\d"`). The pinned `ruff` does not report them in the linted scope, `mypy` never compiles
+source, and `pytest` only raises the warning on a cold `.pyc` cache — so a green suite proved
+nothing, and [#63](https://github.com/MSKazemi/kubeintellect/issues/63) reached an outside
+contributor. It was not cosmetic either: the same string was corrupting the jsonpath examples
+in the coordinator prompt. Fix the string; never silence the warning.
 
 A PR that fails these will fail CI. If a gate is failing for a reason unrelated to your change,
 say so in the PR.
@@ -181,17 +235,23 @@ say so in the PR.
 - [ ] New behavior has both a happy-path **and** an error-path test
 - [ ] **Every write/mutating operation keeps its dry-run + diff + human-approval (HITL) gate** — this is a safety requirement, not a UX choice
 - [ ] Secret values are never logged or returned (key names only)
-- [ ] `pytest` and `ruff check` pass locally (these are the CI gates)
-- [ ] `mypy` shows no *new* errors from your change — see the note below
+- [ ] `pytest`, `ruff check` and `mypy` pass locally (these are the CI gates)
+- [ ] `make check-modes` passes (only relevant if you added a file)
+- [ ] `make check-syntax` passes (no `SyntaxWarning` on the newest supported interpreter)
 - [ ] Docs updated if behavior/CLI/flags changed
 - [ ] Commits are signed off (DCO)
 
-> **On `mypy` and `ruff format`:** neither is a blocking CI gate yet, and you should know why
-> before you waste time on it. `mypy` currently reports **30 pre-existing errors across 12
-> files**, and `ruff format --check` would reformat ~108 files. Both are tracked as debt in
-> [ROADMAP.md](ROADMAP.md). **You are not expected to fix them in your PR** — just don't add
-> new ones. If a gate fails for a reason that has nothing to do with your change, say so in the
-> PR and we'll sort it out; it is not your bug.
+> **On `mypy`:** it is now a blocking gate and the workspace sits at **zero errors** — if it
+> reports something, it is from your change. Two annotations are load-bearing and mypy cannot
+> see why: LangGraph and LangChain both decide whether to inject the run config by
+> *pattern-matching the `config` parameter's annotation*, so respelling it silently disables
+> RBAC and the HITL gate. `tests/test_workflow_config_injection.py` guards this — if it fails,
+> read its docstring before changing an annotation.
+>
+> **On `ruff format`:** still **not** a gate — it would reformat ~108 files, which needs to land
+> as its own commit. Tracked in [ROADMAP.md](ROADMAP.md). You are not expected to fix that in
+> your PR. If a gate fails for a reason unrelated to your change, say so in the PR; it is not
+> your bug.
 
 ---
 

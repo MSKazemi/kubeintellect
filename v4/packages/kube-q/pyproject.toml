@@ -6,7 +6,8 @@ version = "1.5.0"
 requires-python = ">=3.12"
 description = "Interactive terminal CLI for chatting with your Kubernetes cluster via an AI backend."
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
 authors = [
     { name = "Mohsen Seyedkazemi Ardebili", email = "mskazemi@gmail.com" },
 ]
@@ -16,7 +17,6 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
@@ -31,15 +31,19 @@ dependencies = [
     "pygments>=2.18",
     "pydantic>=2.0",
     "ki-protocol>=1.0.0",
+    # `kq export --format yaml`
+    "pyyaml>=6.0.3",
 ]
 
 [tool.uv.sources]
 ki-protocol = { workspace = true }
 
 [project.urls]
-Homepage = "https://github.com/MSKazemi/kube_q"
-Repository = "https://github.com/MSKazemi/kube_q"
-"Bug Tracker" = "https://github.com/MSKazemi/kube_q/issues"
+Homepage = "https://github.com/MSKazemi/kubeintellect"
+Documentation = "https://github.com/MSKazemi/kubeintellect#readme"
+Repository = "https://github.com/MSKazemi/kubeintellect"
+Changelog = "https://github.com/MSKazemi/kubeintellect/blob/main/v4/packages/kube-q/CHANGELOG.md"
+Issues = "https://github.com/MSKazemi/kubeintellect/issues"
 
 [project.scripts]
 kq = "kube_q.cli.main:main"

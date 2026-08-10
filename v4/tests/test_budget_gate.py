@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import pytest
-
 from app.autonomy.budget import (
     auto_write_permitted,
     check_spend,

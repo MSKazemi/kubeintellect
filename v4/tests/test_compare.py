@@ -77,8 +77,9 @@ def test_load_run_includes_judge_total_from_scores_json(tmp_path):
 # ── Task 12: Table computation tests ─────────────────────────────────────────
 
 def _make_run_summary(version, records_data):
-    from evaluation.compare import RunRecord, RunSummary
     from pathlib import Path
+
+    from evaluation.compare import RunRecord, RunSummary
     records = [
         RunRecord(
             scenario_id=r["id"], version=version, category=r["cat"],

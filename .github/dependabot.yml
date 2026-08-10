@@ -17,6 +17,14 @@ updates:
       interval: weekly
     labels: [dependencies]
     open-pull-requests-limit: 5
+    ignore:
+      # ruff is pinned <0.16 on purpose — 0.16 enables new default rules that
+      # reported 438 findings across app/, now 342 after #70 cleared EXE002.
+      # Adopting the rest is a standalone cleanup, not a dependency bump, and
+      # there is no advisory forcing it. Without this, dependabot reopens the
+      # same failing PR every release (see #60). Remove once that cleanup lands.
+      - dependency-name: ruff
+        versions: [">=0.16"]
     groups:
       # One PR per week for routine patch/minor bumps keeps review cost low;
       # majors still arrive as individual PRs so they get read properly.

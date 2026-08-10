@@ -5,7 +5,6 @@ import asyncio
 import json
 import time
 
-
 from app.db import flight_recorder as fr
 
 
@@ -140,9 +139,8 @@ class TestEmitterIntegration:
 
 class TestReplayEndpoint:
     async def test_replay_streams_meta_and_events(self, mocker):
-        from httpx import ASGITransport, AsyncClient
-
         from app.main import app
+        from httpx import ASGITransport, AsyncClient
 
         rows = _build_chain(SAMPLE, episode_id="ep-replay")
         mocker.patch("app.api.v1.endpoints.episodes.fetch_episode", return_value=rows)
@@ -162,9 +160,8 @@ class TestReplayEndpoint:
         assert [f["type"] for f in frames[1:]] == [k for k, _ in SAMPLE]
 
     async def test_replay_flags_broken_chain(self, mocker):
-        from httpx import ASGITransport, AsyncClient
-
         from app.main import app
+        from httpx import ASGITransport, AsyncClient
 
         rows = _build_chain(SAMPLE, episode_id="ep-bad")
         rows[1]["payload"] = {"type": "tool_call", "tool": "run_kubectl", "command": "tampered"}
@@ -176,9 +173,8 @@ class TestReplayEndpoint:
         assert meta["chain_valid"] is False
 
     async def test_replay_unknown_episode_404(self, mocker):
-        from httpx import ASGITransport, AsyncClient
-
         from app.main import app
+        from httpx import ASGITransport, AsyncClient
 
         mocker.patch("app.api.v1.endpoints.episodes.fetch_episode", return_value=[])
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:

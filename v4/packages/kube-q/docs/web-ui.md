@@ -38,8 +38,8 @@ Open `http://localhost:3000`. Each browser tab gets its own independent `kq` pro
 ### Build your own image
 
 ```bash
-git clone https://github.com/MSKazemi/kube_q
-cd kube_q
+git clone https://github.com/MSKazemi/kubeintellect.git
+cd kubeintellect/v4/packages/kube-q
 docker build -t kube-q-web .
 docker run -p 3000:3000 -e KUBE_Q_URL=... kube-q-web
 ```

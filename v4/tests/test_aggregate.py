@@ -1,10 +1,8 @@
 """Unit tests for evaluation/scorers/aggregate.py."""
 from __future__ import annotations
 
-
 from evaluation.models import AgentTelemetry, SignalScores, TraceIssue
 from evaluation.scorers.aggregate import WEIGHTS, WEIGHTS_WITH_VERIFY, aggregate
-
 
 # ── Weight invariants ─────────────────────────────────────────────────────────
 

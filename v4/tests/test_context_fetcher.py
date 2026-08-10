@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from app.agent.nodes.context_fetcher import _scan_snapshot
 
-
 HEALTHY_PODS = """\
 NAMESPACE     NAME                              READY   STATUS    RESTARTS   AGE
 default       app-1                             1/1     Running   0          2h

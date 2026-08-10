@@ -1,11 +1,31 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState, useSyncExternalStore } from "react";
 import PtyTerminal, {
   type PtyStatus,
   type PtyTerminalHandle,
 } from "../components/PtyTerminal";
 
 const TOKEN_KEY = "kq_pty_token";
+
+// `sessionStorage` is an external store, so it is read through
+// `useSyncExternalStore` rather than copied into state by a mount effect. The
+// effect version cascaded an extra render on every page load, and there is no
+// SSR-safe way to seed `useState` from a browser-only API.
+//
+// Both writers (`saveTokenAndReload`, `clearToken`) reload the page, so the value
+// cannot change within the lifetime of one document and the store needs no
+// listener — hence a subscribe that registers nothing. Every snapshot function is
+// module-level so its identity is stable across renders, as the hook requires.
+const NO_SUBSCRIPTION = () => () => {};
+
+const readStoredToken = (): string | undefined =>
+  window.sessionStorage.getItem(TOKEN_KEY) || undefined;
+
+/** Server/pre-hydration snapshot: there is no `sessionStorage` yet. */
+const noStoredToken = (): undefined => undefined;
+
+const afterHydration = () => true;
+const beforeHydration = () => false;
 
 function statusColor(s: PtyStatus): string {
   switch (s) {
@@ -32,28 +52,30 @@ function statusLabel(s: PtyStatus, detail?: string): string {
 
 export default function Home() {
   const termRef = useRef<PtyTerminalHandle>(null);
-  const [token, setToken] = useState<string | undefined>(undefined);
-  const [tokenReady, setTokenReady] = useState(false);
   const [status, setStatus] = useState<PtyStatus>("idle");
   const [statusDetail, setStatusDetail] = useState<string | undefined>();
   const [showTokenPrompt, setShowTokenPrompt] = useState(false);
   const [tokenDraft, setTokenDraft] = useState("");
 
-  // Load token from sessionStorage on mount (client-only).
-  useEffect(() => {
-    const saved = typeof window !== "undefined"
-      ? window.sessionStorage.getItem(TOKEN_KEY) ?? ""
-      : "";
-    setToken(saved || undefined);
-    setTokenReady(true);
-  }, []);
+  // The stored PTY token, derived during render instead of stored in state.
+  const token = useSyncExternalStore(NO_SUBSCRIPTION, readStoredToken, noStoredToken);
 
-  // If the PTY rejected us for auth, prompt for a token.
-  useEffect(() => {
-    if (status === "error" && /authentication/i.test(statusDetail ?? "")) {
+  // True only once the browser has taken over from the server-rendered markup.
+  // Gates the terminal so it never opens a websocket with the pre-hydration
+  // `undefined` token and then tears the connection down to reconnect with the
+  // real one — `PtyTerminal` re-runs its whole connect effect when `authToken`
+  // changes.
+  const hydrated = useSyncExternalStore(NO_SUBSCRIPTION, afterHydration, beforeHydration);
+
+  const handleStatusChange = useCallback((s: PtyStatus, detail?: string) => {
+    setStatus(s);
+    setStatusDetail(detail);
+    // The PTY rejected us for auth. Prompt here, in the callback that causes the
+    // change, rather than from an effect watching the state it just wrote.
+    if (s === "error" && /authentication/i.test(detail ?? "")) {
       setShowTokenPrompt(true);
     }
-  }, [status, statusDetail]);
+  }, []);
 
   const saveTokenAndReload = () => {
     if (typeof window === "undefined") return;
@@ -265,14 +287,11 @@ export default function Home() {
 
       {/* Terminal — takes remaining height */}
       <div style={{ flex: 1, minHeight: 0, overflow: "hidden", position: "relative" }}>
-        {tokenReady && (
+        {hydrated && (
           <PtyTerminal
             ref={termRef}
             authToken={token}
-            onStatusChange={(s, detail) => {
-              setStatus(s);
-              setStatusDetail(detail);
-            }}
+            onStatusChange={handleStatusChange}
           />
         )}
       </div>

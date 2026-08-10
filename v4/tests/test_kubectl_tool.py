@@ -9,7 +9,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ── Shell injection guard ─────────────────────────────────────────────────────
 
 class TestShellInjectionGuard:

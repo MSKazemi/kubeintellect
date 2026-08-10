@@ -12,7 +12,7 @@ contributor ladder in [GOVERNANCE.md](GOVERNANCE.md).
 ## The flow
 
 ```
-opened ──▶ needs-triage ──▶ accepted (area/* + kind/* + priority/*) ──▶ assigned ──▶ PR ──▶ closed
+opened ──▶ needs-triage ──▶ accepted (area/* + kind/* + priority/*) ──▶ claimed ──▶ PR ──▶ closed
                 │
                 ├──▶ needs more info ──▶ (stale after 30d) ──▶ closed, reopenable
                 ├──▶ duplicate / invalid / wontfix ──▶ closed with a reason
@@ -79,14 +79,20 @@ Once those are answered, drop `needs-triage` and add `priority/*`.
 | `discussion` | Needs community input before anyone should start work. |
 | `needs-triage` | Not yet reviewed by a maintainer. Removing this is the triage act. |
 | `needs-info` | Waiting on the reporter. Closed after 30 quiet days, and reopened the moment the info arrives. |
+| `claimed` | Someone said they are working on it. Pick a different issue. Comes off after two quiet weeks. |
 
 ## Claiming an issue
 
 Comment "I'd like to take this." That's it — no permission needed, no assignment
-ceremony. The maintainer will assign it to you so nobody duplicates your work.
+ceremony.
 
-If you go quiet for **two weeks** on an assigned issue, it gets unassigned so
-someone else can pick it up. This is not a reprimand and you can re-claim it; life
+The issue then gets the **`claimed`** label so nobody duplicates your work, and a
+reply confirming it is yours. *(GitHub only allows assigning issues to repository
+collaborators, so the label — not the assignee field — is what reserves an issue
+for an outside contributor. The reservation is exactly as real.)*
+
+If you go quiet for **two weeks** on a claimed issue, the `claimed` label comes off
+so someone else can pick it up. This is not a reprimand and you can re-claim it; life
 happens, and a silently-blocked issue is worse for you than for the project.
 
 Before starting anything **larger than a `good first issue`**, say what you plan to
@@ -94,13 +100,35 @@ do and wait for a 👍. Fifteen minutes of alignment is cheaper than a rewritten
 and the maintainer will tell you if there's a design constraint you can't see from
 outside.
 
+## What you can expect back
+
+**Every issue and every pull request gets a human first response.** Even when the
+answer is "not this way", it arrives rather than silence.
+
+**There is no time commitment attached to that, on purpose.** This is a
+single-maintainer volunteer project, and a number written down here that gets
+missed during a busy fortnight is worse than no number at all. In practice issues
+are usually triaged within a week. If a thread of yours goes quiet, a nudge is
+welcome rather than rude — it is a backlog, not a rejection.
+
 ## PR review
 
-- **Every PR gets a first response.** Even if the answer is "not this way", it
-  arrives rather than silence.
-- CI must be green: `ruff check` and both pytest suites. The exact commands are in
-  [CONTRIBUTING.md § Quality gates](CONTRIBUTING.md#quality-gates--green-before-you-push).
-  `mypy` and `ruff format` are known debt and are **not** blocking.
+- CI must be green. `main` requires **nine** checks:
+
+  | Check | Runs locally? |
+  |---|---|
+  | `Lint (ruff)` · `Types (mypy)` · `Tests (server)` · `Tests (kube-q CLI)` · `File modes` · `Syntax warnings` | ✅ `make setup` runs all six |
+  | `Install smoke test` · `Tests (server · py3.13)` · `Tests (kube-q CLI · py3.13)` | ❌ CI only |
+
+  So a green `make setup` covers six of the nine. If your PR is red on one of the
+  other three alone, that is a real failure worth reading, not flake. Exact commands
+  are in [CONTRIBUTING.md § Quality gates](CONTRIBUTING.md#quality-gates--green-before-you-push).
+- `mypy` **is** blocking as of v2.2.0 and the workspace sits at zero errors across
+  171 files — if it reports something, it is from your change.
+- `ruff format` remains known debt and is **not** a gate; a failure there is not your
+  bug. Neither is anything in the `ruff` 0.16 backlog (issue #75) — and please never
+  run a bare `ruff check --fix`, because the `UP045` autofix silently disables RBAC
+  and the human-in-the-loop gate.
 - Review looks at four things, in this order: does it preserve the safety model,
   is it tested, does it fit the design principles, is it documented.
 - Commits need a DCO sign-off (`git commit -s`).

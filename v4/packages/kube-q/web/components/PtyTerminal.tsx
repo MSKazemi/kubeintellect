@@ -11,7 +11,7 @@
  * Requires the custom Next.js server:  npm run dev:pty
  */
 
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 
 // Dev: set NEXT_PUBLIC_PTY_PORT=3001 (separate pty-server.mjs port).
 // Production: leave unset → connect to /pty-ws on the same origin (server.mjs).
@@ -50,11 +50,18 @@ const PtyTerminal = forwardRef<PtyTerminalHandle, PtyTerminalProps>(
   ({ authToken, onStatusChange }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<import("@xterm/xterm").Terminal | null>(null);
-  const statusRef = useRef<PtyStatus>("idle");
-  const setStatus = (s: PtyStatus, detail?: string) => {
-    statusRef.current = s;
-    onStatusChange?.(s, detail);
-  };
+  // Latest-callback ref. Lets the connection effect below depend on `authToken`
+  // alone — a changed `onStatusChange` identity must not tear down a live PTY
+  // session — while still dispatching to the current callback.
+  //
+  // The ref is seeded at construction and updated from an effect, never during
+  // render: React may start a render and discard it, and a ref written in that
+  // render would survive the render that never committed.
+  // https://react.dev/reference/react/useRef#caveats
+  const onStatusChangeRef = useRef(onStatusChange);
+  useEffect(() => {
+    onStatusChangeRef.current = onStatusChange;
+  }, [onStatusChange]);
 
   useImperativeHandle(ref, () => ({
     downloadBuffer() {
@@ -92,6 +99,8 @@ const PtyTerminal = forwardRef<PtyTerminalHandle, PtyTerminalProps>(
 
   useEffect(() => {
     if (!containerRef.current) return;
+    const notifyStatus = (s: PtyStatus, detail?: string) =>
+      onStatusChangeRef.current?.(s, detail);
     const el = containerRef.current;
     let destroyed = false;
     let ws: WebSocket | null = null;
@@ -105,10 +114,10 @@ const PtyTerminal = forwardRef<PtyTerminalHandle, PtyTerminalProps>(
       if (destroyed || !term) return;
 
       if (attempt === 0) {
-        setStatus("connecting");
+        notifyStatus("connecting");
         term.write("\x1b[2mConnecting to kq…\x1b[0m");
       } else {
-        setStatus("reconnecting", `attempt ${attempt}/${MAX_ATTEMPTS}`);
+        notifyStatus("reconnecting", `attempt ${attempt}/${MAX_ATTEMPTS}`);
         term.write(`\r\n\x1b[33m↻ Reconnecting (attempt ${attempt}/${MAX_ATTEMPTS})…\x1b[0m\r\n`);
       }
 
@@ -119,7 +128,7 @@ const PtyTerminal = forwardRef<PtyTerminalHandle, PtyTerminalProps>(
       ws.onopen = () => {
         if (destroyed || !term) return;
         attempt = 0;
-        setStatus("connected");
+        notifyStatus("connected");
         term.write("\r\x1b[K");
       };
 
@@ -134,7 +143,7 @@ const PtyTerminal = forwardRef<PtyTerminalHandle, PtyTerminalProps>(
 
       ws.onerror = () => {
         if (destroyed) return;
-        setStatus("error", "websocket error");
+        notifyStatus("error", "websocket error");
       };
 
       ws.onclose = ({ code, reason }) => {
@@ -142,7 +151,7 @@ const PtyTerminal = forwardRef<PtyTerminalHandle, PtyTerminalProps>(
 
         // 1008 = policy violation (auth failure). Do not retry.
         if (code === 1008) {
-          setStatus("error", reason || "authentication failed");
+          notifyStatus("error", reason || "authentication failed");
           term.write("\r\x1b[K");
           term.write(`\r\n\x1b[31m✗  ${reason || "Authentication failed."}\x1b[0m\r\n`);
           term.write("\x1b[2m  Check your PTY_AUTH_TOKEN and reload the page.\x1b[0m\r\n");
@@ -151,7 +160,7 @@ const PtyTerminal = forwardRef<PtyTerminalHandle, PtyTerminalProps>(
 
         // Normal close — session ended cleanly.
         if (code === 1000) {
-          setStatus("ended", reason || "session ended");
+          notifyStatus("ended", reason || "session ended");
           term.write(`\r\n\x1b[2m[session ended: ${reason || "closed"}]\x1b[0m\r\n`);
           return;
         }
@@ -159,7 +168,7 @@ const PtyTerminal = forwardRef<PtyTerminalHandle, PtyTerminalProps>(
         // Unexpected close — retry with exponential backoff.
         attempt++;
         if (attempt > MAX_ATTEMPTS) {
-          setStatus("error", "max reconnect attempts reached");
+          notifyStatus("error", "max reconnect attempts reached");
           term.write(
             `\r\n\x1b[31m✗  Connection lost (${reason || code}). ` +
               `Max reconnect attempts reached — reload the page.\x1b[0m\r\n`
@@ -167,7 +176,7 @@ const PtyTerminal = forwardRef<PtyTerminalHandle, PtyTerminalProps>(
           return;
         }
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 15000);
-        setStatus("reconnecting", `retry in ${Math.round(delay / 1000)}s`);
+        notifyStatus("reconnecting", `retry in ${Math.round(delay / 1000)}s`);
         term.write(
           `\r\n\x1b[33m⚠  Disconnected (${reason || code}). ` +
             `Reconnecting in ${Math.round(delay / 1000)}s…\x1b[0m\r\n`
@@ -225,11 +234,15 @@ const PtyTerminal = forwardRef<PtyTerminalHandle, PtyTerminalProps>(
     init().catch(err => {
       // xterm failed to load — show plain-text error in the container
       console.error("[PtyTerminal] init failed:", err);
-      setStatus("error", String(err));
-      el.innerHTML =
-        `<pre style="color:#f88;padding:16px;font-family:monospace">` +
+      notifyStatus("error", String(err));
+      // Built as a text node rather than assigned through innerHTML: `err` is
+      // third-party (a dynamic-import failure) and must never be parsed as markup.
+      const pre = document.createElement("pre");
+      pre.style.cssText = "color:#f88;padding:16px;font-family:monospace";
+      pre.textContent =
         `✗  Terminal failed to initialise:\n${err}\n\n` +
-        `Check the browser console for details.</pre>`;
+        `Check the browser console for details.`;
+      el.replaceChildren(pre);
     });
 
     return () => {

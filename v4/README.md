@@ -177,7 +177,7 @@ kq "why is my pod crashlooping?"
 ```
 
 [![PyPI](https://img.shields.io/pypi/v/kube-q.svg)](https://pypi.org/project/kube-q/)
-[![GitHub](https://img.shields.io/badge/github-MSKazemi%2Fkube__q-blue)](https://github.com/MSKazemi/kube_q)
+[![GitHub](https://img.shields.io/badge/github-MSKazemi%2Fkubeintellect-blue)](https://github.com/MSKazemi/kubeintellect)
 
 ---
 

@@ -33,4 +33,4 @@ Install: `pip install kubeintellect` or Docker Compose or Helm.
 - [GitHub — kubeintellect](https://github.com/MSKazemi/kubeintellect): Full source (AGPL-3.0). Backend + Helm charts + Docker Compose.
 - [PyPI — kubeintellect](https://pypi.org/project/kubeintellect/): `pip install kubeintellect` — server backend + CLI wizard.
 - [PyPI — kube-q](https://pypi.org/project/kube-q/): `pip install kube-q` — terminal REPL client (`kq`).
-- [GitHub — kube-q](https://github.com/MSKazemi/kube_q): kube-q CLI source code.
+- [GitHub — kube-q](https://github.com/MSKazemi/kubeintellect/tree/main/v4/packages/kube-q): kube-q CLI source code, in the KubeIntellect monorepo.

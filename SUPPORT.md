@@ -14,7 +14,7 @@ here is a formality — every channel below is read.
 | **Request a feature or an integration** | [Feature request](https://github.com/MSKazemi/kubeintellect/issues/new?template=feature_request.yml) |
 | **Propose a design change** | [RFC](https://github.com/MSKazemi/kubeintellect/issues/new?template=rfc.yml) — discuss before implementing |
 | **Show what you built / where you run it** | [Show and tell](https://github.com/MSKazemi/kubeintellect/discussions/categories/show-and-tell) |
-| **Tell us you're using it** | [Who's using KubeIntellect?](https://github.com/MSKazemi/kubeintellect/discussions/categories/show-and-tell) and [`ADOPTERS.md`](ADOPTERS.md) |
+| **Tell us you're using it** | [Who's using KubeIntellect? (#51)](https://github.com/MSKazemi/kubeintellect/issues/51) — one comment, or a PR adding a row to [`ADOPTERS.md`](ADOPTERS.md) |
 | **Report a security vulnerability** | **Privately** — [open a security advisory](https://github.com/MSKazemi/kubeintellect/security/advisories/new). See [SECURITY.md](SECURITY.md). Never in a public issue. |
 | **Ask about commercial licensing** | mohsen.seyedkazemi@gmail.com — see [LICENSING.md](LICENSING.md) |
 
@@ -24,6 +24,7 @@ Most first-run problems are covered already:
 
 - **[v4 README](v4/README.md)** — every install path (browser, CLI-only, local Kind, Docker Compose, existing cluster)
 - **[v4 docs](v4/docs/)** — install, quickstart, configuration, architecture, security, CLI reference
+- **[Data handling](v4/docs/data-handling.md)** — model inputs, persistence, redaction, and telemetry boundaries
 - **[Troubleshooting](v4/docs/troubleshooting.md)** and **[FAQ](v4/docs/faq.md)**
 - **[ROADMAP.md](ROADMAP.md)** — including what the project deliberately *will not* do
 

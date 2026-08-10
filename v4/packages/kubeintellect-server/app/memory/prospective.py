@@ -24,7 +24,7 @@ prospective failure must never break a request or stall the consolidation loop.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from typing import Any
 
 from app.autonomy.ladder import at_least, level_for_namespace
@@ -188,4 +188,4 @@ async def _record_outcome(pool, recheck_id, outcome: str) -> None:
 
 
 def _ts(value: float) -> datetime:
-    return datetime.fromtimestamp(value, tz=timezone.utc)
+    return datetime.fromtimestamp(value, tz=UTC)

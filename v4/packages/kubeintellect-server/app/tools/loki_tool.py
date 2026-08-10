@@ -191,5 +191,5 @@ def _range_query(
 def _fmt_ts(ts_ns: int) -> str:
     """Format a nanosecond timestamp as HH:MM:SS."""
     import datetime
-    dt = datetime.datetime.fromtimestamp(ts_ns / 1e9, tz=datetime.timezone.utc)
+    dt = datetime.datetime.fromtimestamp(ts_ns / 1e9, tz=datetime.UTC)
     return dt.strftime("%H:%M:%S")

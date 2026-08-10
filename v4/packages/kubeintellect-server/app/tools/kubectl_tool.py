@@ -16,12 +16,12 @@ import os
 import re
 import shlex
 import subprocess
+from typing import Annotated
 
 import yaml
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import InjectedToolArg, tool
 from langgraph.types import interrupt
-from typing import Annotated
 
 from app.core.config import settings
 from app.tools import kubectl_errors
@@ -357,7 +357,13 @@ def _capture_rollback_point(verb: str, args: list, stdin: str | None, config, en
 def run_kubectl(
     command: str,
     stdin: str | None = None,
-    config: Annotated[RunnableConfig, InjectedToolArg] = None,
+    # The annotation MUST stay exactly `RunnableConfig` — langchain_core's
+    # _get_runnable_config_param matches with `type_ is RunnableConfig`, so widening it
+    # to `RunnableConfig | None` stops the run config being injected at all. The tool
+    # then sees config=None and silently loses user_role (RBAC) and hitl_bypass, which
+    # turns the HITL gate into a no-op. Covered by tests/test_kubectl_tool.py
+    # ::TestAlwaysConfirm. The body already treats config as optional.
+    config: Annotated[RunnableConfig, InjectedToolArg] = None,  # type: ignore[assignment]
 ) -> str:
     """Run any kubectl command against the configured cluster.
 
@@ -438,7 +444,8 @@ def run_kubectl(
     # readonly   : all writes blocked
     # operator   : medium-risk allowed (HITL-gated); high-risk blocked
     # admin      : everything allowed (HITL-gated); infra namespace writes blocked
-    # superadmin : everything allowed (HITL-gated); no namespace write restrictions
+    # superadmin : everything allowed (HITL-gated); no namespace restrictions at all
+    #              (reads of infra namespaces included) - but never the resource block
     user_role = "admin"
     if config:
         user_role = (config.get("configurable") or {}).get("user_role", "admin")
@@ -457,7 +464,8 @@ def run_kubectl(
     # ── 4b. Protected namespace / resource check ──────────────────────────────
     # Runs before HITL so users never even get an approval prompt for
     # commands that would expose internal credentials.
-    # superadmin bypasses the namespace write block but not the resource block
+    # superadmin bypasses the namespace block ENTIRELY - for any verb, so reads of
+    # infrastructure namespaces too, not only writes - but never the resource block
     # (secrets/serviceaccounts remain shielded for all roles).
     protected_err = _check_protected_access(verb, args)
     if protected_err and user_role == "superadmin":
