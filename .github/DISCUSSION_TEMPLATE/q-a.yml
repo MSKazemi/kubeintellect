@@ -1,0 +1,116 @@
+title: "[Question] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Questions are welcome and are never a bother — an unclear doc is our bug, not yours.
+
+        Everything below is optional. It exists because a question with a version and a
+        command attached usually gets answered in one round-trip, and without them the first
+        reply is just going to ask for them.
+
+        **Security issue?** Please don't post it here — use
+        [private reporting](https://github.com/MSKazemi/kubeintellect/security/advisories/new).
+
+  - type: textarea
+    id: question
+    attributes:
+      label: What are you trying to do?
+      description: The goal, not just the error. Knowing what you were aiming for often changes the answer.
+      placeholder: |
+        I'm trying to get kq to talk to my own cluster instead of the hosted demo API…
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What did you run, and what happened?
+      description: |
+        The exact command and the actual output, in a code block rather than a screenshot.
+      value: |
+        ```console
+        $
+        ```
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`kq --version` or `kubeintellect --version`. Current releases are kube-q 1.5.0 and kubeintellect 2.2.0 — an older build explains a surprising number of reports."
+      placeholder: "kube-q 1.5.0"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: How did you install it?
+      options:
+        - pip install kube-q (CLI only)
+        - pip install kubeintellect (server)
+        - Container image (ghcr.io)
+        - From source / git clone
+        - The hosted browser demo
+        - Not installed yet — asking before I try
+    validations:
+      required: false
+
+  - type: dropdown
+    id: cluster
+    attributes:
+      label: Cluster
+      options:
+        - Kind (local)
+        - k3s / k3d
+        - EKS
+        - GKE
+        - AKS
+        - On-prem / bare metal
+        - OpenShift
+        - None — no cluster involved
+        - Other
+    validations:
+      required: false
+
+  - type: dropdown
+    id: backend
+    attributes:
+      label: LLM backend
+      options:
+        - The hosted KubeIntellect API
+        - OpenAI
+        - Azure OpenAI
+        - An OpenAI-compatible endpoint (Ollama, vLLM, …)
+        - Qwen / DashScope
+        - Anthropic
+        - Not sure
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Debug output (optional)
+      description: |
+        Re-run with `kq --debug` (or `KUBE_Q_LOG_LEVEL=DEBUG`).
+
+        ⚠️ **Redact before you paste.** Cluster output frequently contains node names,
+        namespaces, image registries, and occasionally secrets. Nothing posted publicly can be
+        un-published.
+      render: shell
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        Answers here get marked as the accepted answer so the next person finds them — which
+        means your question makes the docs better even if you never open a PR.
+
+        Answering someone else's question is a real contribution and is credited the same way
+        as code ([GOVERNANCE.md](https://github.com/MSKazemi/kubeintellect/blob/main/GOVERNANCE.md)).
