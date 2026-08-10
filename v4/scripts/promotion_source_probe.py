@@ -13,7 +13,6 @@ import os
 import sys
 
 import asyncpg
-
 from app.autonomy.promotion_source import decide_from_store, record_outcome
 from app.autonomy.promotion_stats import Event
 

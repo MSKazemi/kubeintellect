@@ -1,10 +1,9 @@
 """Cortex V4 graph — triage parsing, routing, tool loop, plan transitions (P4)."""
 from __future__ import annotations
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-
 from app.agent.state import PlanStep
 from app.cortex import graph as cx
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 
 def _state(**over):

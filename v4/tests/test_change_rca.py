@@ -1,8 +1,6 @@
 """Change-first RCA policy (v5 P2, A-CH-02-07) — rank + render + pluggable source + injection."""
 from __future__ import annotations
 
-from langchain_core.messages import HumanMessage
-
 from app.cortex import graph as cx
 from app.cortex.change_rca import (
     ChangeRecord,
@@ -12,6 +10,7 @@ from app.cortex.change_rca import (
     render_change_prior,
     set_change_source,
 )
+from langchain_core.messages import HumanMessage
 
 _CHANGES = [
     ChangeRecord(kind="image", target="deploy/web", ts_epoch=100.0, namespace="demo", detail=":v2 -> :v3"),

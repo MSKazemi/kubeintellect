@@ -394,7 +394,10 @@ async def remember(state: CortexState, config: RunnableConfig) -> dict:
     deserve recall later — they get a lightweight report_only episode.
     """
     try:
-        from app.agent.nodes.coordinator import _maybe_record_direct_outcome, _ran_mutation
+        from app.agent.nodes.coordinator import (
+            _maybe_record_direct_outcome,
+            _ran_mutation,
+        )
         turn_messages = list(state["messages"])[state.get("turn_start_index", 0):]
         mutated, mut_cmds = _ran_mutation(turn_messages)
         if mutated:
@@ -429,7 +432,10 @@ async def remember(state: CortexState, config: RunnableConfig) -> dict:
             ))
             # Investigation write-back (P2): reinforce the topology from what this turn observed.
             if settings.CORTEX_V5_ENABLED and settings.KI_V5_INVESTIGATION_WRITEBACK:
-                from app.memory.writeback import apply_writeback, signals_from_investigation
+                from app.memory.writeback import (
+                    apply_writeback,
+                    signals_from_investigation,
+                )
                 signals = signals_from_investigation(
                     cluster_id, list(state.get("matched_playbooks") or []))
                 if signals:

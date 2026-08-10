@@ -16,12 +16,12 @@ import os
 import re
 import shlex
 import subprocess
+from typing import Annotated
 
 import yaml
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import InjectedToolArg, tool
 from langgraph.types import interrupt
-from typing import Annotated
 
 from app.core.config import settings
 from app.tools import kubectl_errors

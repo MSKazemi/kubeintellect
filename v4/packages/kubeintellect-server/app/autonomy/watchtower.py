@@ -121,8 +121,8 @@ async def _investigate(finding: Finding, level: str) -> None:
             f" level={level} auto_fix={auto_fix} session={session_id}"
         )
         try:
-            from app.streaming.emitter import prepare_session, stream
             from app.agent.workflow import run_session
+            from app.streaming.emitter import prepare_session, stream
 
             prepare_session(session_id)
             runner = asyncio.create_task(run_session(

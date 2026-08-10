@@ -162,5 +162,6 @@ app.add_middleware(
 app.add_middleware(RequestLoggingMiddleware)
 
 from app.api.v1.endpoints.health import router as health_router
+
 app.include_router(health_router)          # /healthz — probe path (no version prefix)
 app.include_router(api_router, prefix=settings.API_V1_STR)

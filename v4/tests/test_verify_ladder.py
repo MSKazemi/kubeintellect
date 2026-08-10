@@ -4,8 +4,6 @@ Fake-LLM unit tests (no network) plus the synthesize wiring behind KI_V5_VERIFY_
 """
 from __future__ import annotations
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-
 from app.cortex import graph as cx
 from app.cortex import verify
 from app.cortex.verify import (
@@ -15,6 +13,7 @@ from app.cortex.verify import (
     render_review_note,
     review_rca,
 )
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 
 class _LLM:

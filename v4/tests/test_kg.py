@@ -6,10 +6,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
-
 from app.memory import kg
 from app.sensorium.observations import Observation
-
 
 # ── Fakes ─────────────────────────────────────────────────────────────────────
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from app.cortex.harness import (
     SubagentContract,
     bound_summary,

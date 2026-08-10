@@ -11,7 +11,11 @@ from __future__ import annotations
 import os
 import sys
 
-from app.autonomy.budget import BudgetDecision, disengage_kill_switch, engage_kill_switch
+from app.autonomy.budget import (
+    BudgetDecision,
+    disengage_kill_switch,
+    engage_kill_switch,
+)
 from app.core.config import settings
 from app.tools.aci.mutating import (
     IRREVERSIBLE,

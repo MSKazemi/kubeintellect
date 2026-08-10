@@ -59,10 +59,9 @@ class TestVersionInfoAndLine:
 
 
 def test_healthz_reports_version_identity():
-    from starlette.testclient import TestClient
-
     from app.api.v1.endpoints.health import router
     from fastapi import FastAPI
+    from starlette.testclient import TestClient
 
     app = FastAPI()
     app.include_router(router)
