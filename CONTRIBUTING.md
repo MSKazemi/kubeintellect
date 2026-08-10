@@ -300,10 +300,9 @@ prompt injection.
 
 ---
 
+## Licensing: DCO sign-off
 
-project you are contributing to. Two small things keep that model honest, and they do different jobs.
-
-### 1. DCO sign-off — on every commit
+create, nothing for your employer's legal team to review.
 
 Add `-s` to your commit:
 
@@ -312,17 +311,14 @@ git commit -s -m "fix: truncate pod logs at token budget"
 ```
 
 This appends a `Signed-off-by:` trailer certifying you wrote the patch, or have the right to submit
-it, under the [Developer Certificate of Origin](https://developercertificate.org/).
+`git commit --amend --signoff && git push --force-with-lease`. Want it always on?
+`git config --global format.signOff true`.
 
+same license as the rest of the project, and you can keep using your own code anywhere else you like.
 
-**You keep the copyright in your work.** You are granting a license, not transferring ownership, and
-you can keep using your own code anywhere else you like.
+not reach your contribution, and nothing here asks you to let it.
 
-Signing is one comment on your first PR — a bot posts the link, you reply once, and it covers every
-contribution you make afterwards. Nothing else changes about how you contribute.
-
-If you can't or don't want to agree to any of this, **open a Discussion** and we'll figure it out
-together. We would rather adapt than lose your work.
+Questions about any of this? **Open a Discussion** — we would rather adapt than lose your work.
 
 ---
 
