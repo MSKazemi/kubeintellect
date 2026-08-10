@@ -111,6 +111,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   path now builds its message as a text node instead of assigning `innerHTML`.
 
 ### Added
+- **A `DeploymentRolloutStuck` playbook** (#98, #112) — the 20th, contributed by
+  [@hariomlohardev](https://github.com/hariomlohardev). It covers the rollout that fails
+  *without an outage*: the new ReplicaSet never becomes Available, the old one keeps serving
+  traffic, and nothing looks broken from the outside until someone asks why the deploy never
+  finished. It compiles to a detector (17 of the 20 playbooks now do), with a 600-second
+  debounce so a slow-but-progressing rollout does not fire it.
+
+  The part worth copying is that it **routes rather than duplicates**: `ProgressDeadlineExceeded`
+  is almost always a symptom, so the investigation steps chain to `ReadinessProbeFailing`,
+  `PendingInsufficientResources`, `PendingSchedulingConstraints` and `ImagePullBackOff` for the
+  actual cause, and the fix template opens with "do **not** force-delete pods." The fourth
+  `expected_evidence` entry names the condition under which the playbook does *not* apply,
+  which is a discipline none of the previous nineteen had.
+
 - **A `NetworkPolicyBlocking` playbook** (#99, #108) — the 19th, contributed by
   [@Priyanshu608](https://github.com/Priyanshu608). It covers the one failure in the set that
   emits **no evidence at all**: a NetworkPolicy denial is discarded in the CNI datapath, so the
