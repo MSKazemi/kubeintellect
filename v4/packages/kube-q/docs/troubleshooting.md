@@ -5,7 +5,7 @@ tags:
 
 # Troubleshooting
 
-Solutions to the most common problems. If your issue isn't here, open an issue on [GitHub](https://github.com/MSKazemi/kube_q/issues).
+Solutions to the most common problems. If your issue isn't here, open an issue on [GitHub](https://github.com/MSKazemi/kubeintellect/issues).
 
 ---
 
@@ -260,7 +260,7 @@ The log shows the full SSE event stream, headers, and retry attempts — useful 
 ## Still stuck?
 
 1. Check the [FAQ](faq.md) for common questions
-2. Search [GitHub Issues](https://github.com/MSKazemi/kube_q/issues) — your problem may already be reported
+2. Search [GitHub Issues](https://github.com/MSKazemi/kubeintellect/issues) — your problem may already be reported
 3. Open a new issue with:
    - kube-q version (`kq --version`)
    - The exact error message
