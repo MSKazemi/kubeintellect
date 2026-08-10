@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from typing import Any
 
 import asyncpg
@@ -51,7 +51,7 @@ def close_kg() -> None:
 
 def _ts(value: float) -> datetime:
     """Unix float → tz-aware datetime for asyncpg TIMESTAMPTZ params."""
-    return datetime.fromtimestamp(value, tz=timezone.utc)
+    return datetime.fromtimestamp(value, tz=UTC)
 
 
 def _attrs_json(attrs: dict[str, Any] | None) -> str:

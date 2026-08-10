@@ -53,10 +53,10 @@ __all__ = [
     "TokenEvent",
     "ToolCallEvent",
     "ToolResultEvent",
-    "prepare_session",
-    "emit",
     "close_session",
+    "emit",
     "get_history",
+    "prepare_session",
     "stream",
 ]
 
@@ -134,7 +134,7 @@ async def stream(session_id: str, heartbeat_interval: float = 15.0):
     while True:
         try:
             item = await asyncio.wait_for(q.get(), timeout=heartbeat_interval)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             yield None   # caller emits ": heartbeat\n\n"
             continue
         if item is _DONE:

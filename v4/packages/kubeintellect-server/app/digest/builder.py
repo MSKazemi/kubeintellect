@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from app.utils.logger import get_logger
 
@@ -27,7 +27,7 @@ def _get_pool():
 async def build_digest(hours: float = 24.0) -> dict:
     """Structured digest for the last N hours. Empty sections when quiet."""
     pool = _get_pool()
-    cutoff = datetime.fromtimestamp(time.time() - hours * 3600, tz=timezone.utc)
+    cutoff = datetime.fromtimestamp(time.time() - hours * 3600, tz=UTC)
     digest: dict = {
         "window_hours": hours,
         "generated_at": time.time(),
