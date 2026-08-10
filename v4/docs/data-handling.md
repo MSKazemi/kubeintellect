@@ -17,7 +17,7 @@ application output is safe to send to a provider.
 - With the default resource blocklist, `Secret` and `ServiceAccount` resources
   are rejected by the kubectl tool before kubectl is called. This check also
   applies to `superadmin`; that role only bypasses the infrastructure-namespace
-  write block.
+  block.
 - The redactor is primarily a storage safeguard. It is not an egress filter for
   the live prompt, tool results, or telemetry callbacks.
 - Langfuse tracing is off by default. When enabled and configured, treat the
@@ -60,8 +60,10 @@ For a resource or verb that the tool classifies, `_check_protected_access`
 rejects a blocked resource before executing kubectl and before presenting an
 approval prompt. The resource check is independent of the requester's role,
 including `superadmin`. The namespace check also protects infrastructure
-namespaces; `superadmin` may bypass the namespace write restriction, but not the
-resource block.
+namespaces. `superadmin` bypasses that namespace block **entirely — including
+reads** of infrastructure namespaces, not only writes: the bypass clears the
+namespace error for any verb whenever the target resource is not itself
+blocklisted. It never clears the resource block.
 
 This is a structural tool-layer policy for the configured blocklist, not a
 claim that every possible cluster string is harmless. In particular:
