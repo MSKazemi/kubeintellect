@@ -45,7 +45,7 @@ The repo **root** (`Makefile`, `deploy/`, `scripts/`) manages the *shared infras
 suites are fully mocked. Only Python 3.12+ is required.
 
 ```bash
-# Canonical repo. (github.com/kubeintellect/kubeintellect is an archived mirror.)
+# Canonical repo.
 git clone https://github.com/MSKazemi/kubeintellect.git
 cd kubeintellect
 make setup          # or: ./scripts/dev-setup.sh
