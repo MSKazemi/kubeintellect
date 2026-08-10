@@ -38,6 +38,9 @@ Security-relevant areas we especially care about:
 - **Privilege escalation** — a tool obtaining Kubernetes permissions beyond least-privilege.
 - **Sandbox escape** — for any generated/dynamic code execution path.
 
+For the separate question of what cluster data can enter model prompts,
+telemetry, and persistent stores, see [Data handling in v4](v4/docs/data-handling.md).
+
 ## Out of scope
 
 - Vulnerabilities in third-party dependencies should generally be reported upstream (tell us too if

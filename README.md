@@ -133,6 +133,7 @@ Run `make help` at the root at any time to see the available infra targets.
 
 - **[Website](https://kubeintellect.com/)** — overview, live demo, and hosted API.
 - **[v4 docs](v4/docs/)** — install, quickstart, configuration, architecture, security, CLI reference, and troubleshooting for the current version.
+- **[Data handling](v4/docs/data-handling.md)** — what v4 sends to model and telemetry endpoints, stores, and redacts.
 - **[v4 README](v4/README.md)** — every install path in detail.
 - Each version directory (`v1/`–`v4/`) ships its own `README.md` and `docs/`.
 
@@ -168,8 +169,9 @@ Known and deliberate, so you can judge fit before installing:
 - **An LLM API key is required.** OpenAI or Azure OpenAI out of the box; v4 also
   supports Anthropic, Qwen, and OpenAI-compatible endpoints. Queries cost tokens.
 - **Cluster context leaves your network** unless you point it at a self-hosted or
-  in-cluster model endpoint. Review [SECURITY.md](SECURITY.md) before running it
-  against production.
+  in-cluster model endpoint. Review [SECURITY.md](SECURITY.md) and the
+  [data-handling notes](v4/docs/data-handling.md) before running it against
+  production.
 - **It is not a replacement** for your observability stack, a GitOps/CD pipeline,
   or on-call judgment. It queries the tools you already run.
 - **LLM answers can be wrong.** The approval gate exists precisely because the
