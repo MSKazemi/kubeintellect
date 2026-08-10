@@ -12,7 +12,11 @@ import os
 import sys
 
 from app.core.config import settings
-from app.tools.aci.postcondition import PostconditionResult, deployment_ready, parse_ready_column
+from app.tools.aci.postcondition import (
+    PostconditionResult,
+    deployment_ready,
+    parse_ready_column,
+)
 from app.tools.aci.transactional import COMMITTED, ROLLED_BACK, execute_transactional
 
 FAIL: list[str] = []

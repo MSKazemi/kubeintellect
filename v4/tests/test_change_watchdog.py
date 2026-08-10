@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import pytest
-
 from app.cortex.change_rca import ChangeRecord
 from app.sensorium.change_watchdog import (
     WatchdogTask,

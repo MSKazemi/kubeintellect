@@ -6,7 +6,6 @@ or Postgres connection.
 """
 import pytest
 
-
 # ── Approval / denial detection ───────────────────────────────────────────────
 
 class TestApprovalDetection:
@@ -77,8 +76,9 @@ class TestSessionIDHandling:
         )
 
     def _make_request(self, headers=None):
+        from unittest.mock import AsyncMock, patch
+
         from fastapi.testclient import TestClient
-        from unittest.mock import patch, AsyncMock
 
         async def fake_run(*args, **kwargs):
             pass
@@ -102,7 +102,7 @@ class TestSessionIDHandling:
 
     def test_session_id_from_header_is_used(self):
         """When X-Session-ID is present, emitter_stream must receive that exact value."""
-        from unittest.mock import patch, AsyncMock
+        from unittest.mock import AsyncMock, patch
         captured = {}
 
         async def fake_run(*args, **kwargs):
@@ -117,8 +117,8 @@ class TestSessionIDHandling:
              patch("app.api.v1.endpoints.chat_completions.prepare_session"), \
              patch("app.api.v1.endpoints.chat_completions.emitter_stream", side_effect=fake_emitter), \
              patch("app.api.v1.endpoints.chat_completions._audit_log", new_callable=AsyncMock):
-            from fastapi.testclient import TestClient
             from app.main import app
+            from fastapi.testclient import TestClient
             client = TestClient(app)
             client.post(
                 "/v1/chat/completions",
@@ -130,7 +130,7 @@ class TestSessionIDHandling:
     def test_missing_session_id_generates_uuid(self):
         """Without X-Session-ID, a fresh UUID must be generated per request."""
         import re
-        from unittest.mock import patch, AsyncMock
+        from unittest.mock import AsyncMock, patch
         captured_ids = []
 
         async def fake_run(*args, **kwargs):
@@ -145,8 +145,8 @@ class TestSessionIDHandling:
              patch("app.api.v1.endpoints.chat_completions.prepare_session"), \
              patch("app.api.v1.endpoints.chat_completions.emitter_stream", side_effect=fake_emitter), \
              patch("app.api.v1.endpoints.chat_completions._audit_log", new_callable=AsyncMock):
-            from fastapi.testclient import TestClient
             from app.main import app
+            from fastapi.testclient import TestClient
             client = TestClient(app)
             for _ in range(2):
                 client.post(

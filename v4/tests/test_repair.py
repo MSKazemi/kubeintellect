@@ -1,9 +1,8 @@
 """Misconfig auto-repair (v5 P3) — LLM fix proposal, fail-safe."""
 from __future__ import annotations
 
-from langchain_core.messages import AIMessage
-
 from app.tools.aci.repair import _strip_fences, propose_fix
+from langchain_core.messages import AIMessage
 
 _ORIG = "apiVersion: apps/v1\nkind: Deployment\nspec:\n  securityContext:\n    runAsNonRoot: false\n"
 _FIXED = "apiVersion: apps/v1\nkind: Deployment\nspec:\n  securityContext:\n    runAsNonRoot: true\n"

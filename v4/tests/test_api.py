@@ -14,7 +14,6 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 
@@ -25,8 +24,8 @@ def app():
     async def noop_lifespan(a):
         yield
 
-    from app.api.v1.router import api_router
     from app.api.v1.endpoints.health import router as health_router
+    from app.api.v1.router import api_router
 
     test_app = FastAPI(lifespan=noop_lifespan)
     test_app.include_router(health_router)

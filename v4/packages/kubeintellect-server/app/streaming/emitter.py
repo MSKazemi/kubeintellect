@@ -25,8 +25,6 @@ from __future__ import annotations
 
 import asyncio
 
-from app.db import flight_recorder
-
 # Event models live in the shared ki-protocol package since the V4 monorepo
 # merge (ADR-004); re-exported here so existing imports keep working.
 from ki_protocol.wire import (
@@ -41,6 +39,8 @@ from ki_protocol.wire import (
     ToolCallEvent,
     ToolResultEvent,
 )
+
+from app.db import flight_recorder
 
 __all__ = [
     "PROTOCOL_VERSION",

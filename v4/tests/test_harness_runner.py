@@ -7,8 +7,6 @@ isolation + all-fail fallback to flat gather).
 from __future__ import annotations
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage
-
 from app.agent.state import PlanStep
 from app.cortex import graph as cx
 from app.cortex.harness import (
@@ -17,7 +15,12 @@ from app.cortex.harness import (
     run_fanout,
     run_subagent,
 )
-from app.cortex.harness.subagent import ACI_READ_VERB_ALLOWLIST, SubagentContract, SubagentResult
+from app.cortex.harness.subagent import (
+    ACI_READ_VERB_ALLOWLIST,
+    SubagentContract,
+    SubagentResult,
+)
+from langchain_core.messages import AIMessage, HumanMessage
 
 
 def _state(**over):

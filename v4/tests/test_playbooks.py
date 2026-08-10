@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from app.agent.playbooks import get_playbook, list_playbooks, match_playbooks
 
-
 CRASHLOOP_PODS = """\
 NAMESPACE   NAME    READY   STATUS             RESTARTS   AGE
 default     app-1   0/1     CrashLoopBackOff   5          10m

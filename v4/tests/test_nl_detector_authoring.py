@@ -151,10 +151,9 @@ class TestStageAndPromote:
 
 class TestEndpoint:
     async def test_disabled_returns_404(self, mocker):
-        from httpx import ASGITransport, AsyncClient
-
         from app.api.v1.endpoints import detectors as ep
         from app.main import app
+        from httpx import ASGITransport, AsyncClient
 
         mocker.patch.object(ep.settings, "NL_DETECTOR_AUTHORING_ENABLED", False)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:

@@ -13,7 +13,6 @@ import os
 import sys
 
 import asyncpg
-
 from app.memory.fleet_exchange import FleetEntry
 from app.memory.fleet_store_pg import publish, read_fleet
 

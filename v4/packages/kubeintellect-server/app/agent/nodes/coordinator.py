@@ -979,7 +979,10 @@ def _verify_resolution(namespace: str | None, pre_state: dict | None = None) -> 
     if not settings.REFLEXION_VERIFY_RESOLUTION:
         return None, None
     try:
-        from app.agent.nodes.context_fetcher import _run_kubectl_snapshot, _scan_snapshot
+        from app.agent.nodes.context_fetcher import (
+            _run_kubectl_snapshot,
+            _scan_snapshot,
+        )
 
         # Wait for any rolling deployment to settle before snapshotting.
         # Without this, freshly-applied fixes get penalised for transitional
