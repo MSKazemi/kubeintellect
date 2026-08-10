@@ -123,7 +123,7 @@ detects a matching pattern in the snapshot, the coordinator's system prompt
 includes the playbook(s) inline — guiding it to follow proven steps before
 improvising.
 
-**Playbooks shipped (19):**
+**Playbooks shipped (20):**
 
 *Pod / container lifecycle*
 
@@ -151,6 +151,7 @@ improvising.
 - `ServiceNoEndpoints` (selector / label drift)
 - `ServiceUnreachable`
 - `NetworkPolicyBlocking` (policy drops traffic silently — no event is ever emitted)
+- `DeploymentRolloutStuck` (`ProgressDeadlineExceeded` — new ReplicaSet never becomes Available)
 - `WebhookAdmissionRejected`
 
 **Schema** (drop a YAML file into `app/agent/playbooks/`):
@@ -419,7 +420,7 @@ triggers:
 - `detect: null` marks a playbook as **LLM-only** (no machine signal exists,
   or the signal is owned by another playbook).
 
-Of the 19 shipped playbooks, **16 compile to detectors**; 3 are LLM-only
+Of the 20 shipped playbooks, **17 compile to detectors**; 3 are LLM-only
 (`CommandHardcodedFailure` — disambiguated from CrashLoopBackOff only by
 reading the pod spec — `ServiceUnreachable`, and `NetworkPolicyBlocking`,
 where the packet is discarded in the CNI datapath so no machine signal
