@@ -1,0 +1,26 @@
+name: NetworkPolicyBlocking
+detect:
+  watch_predicates: []
+  debounce_seconds: 30
+  triggers:
+    - event_message_regex: ".*(connection timed out|i/o timeout|connection refused).*"
+
+investigation_steps:
+  - "kubectl get pods -n <namespace> -o wide"
+  - "kubectl get svc,endpoints -n <namespace>"
+  - "kubectl get networkpolicies -n <namespace>"
+  - "kubectl describe networkpolicy -n <namespace>"
+
+expected_evidence:
+  - "Target pods, Service, and Endpoints are in a Healthy/Ready state."
+  - "DNS resolution succeeds, but network traffic between source and destination pods consistently times out."
+  - "At least one NetworkPolicy exists in the target namespace selecting target pods without explicit allow rules for incoming/outgoing traffic."
+  - "Absence of evidence: NetworkPolicies fail closed silently, so no Kubernetes warning events will be recorded for dropped connections."
+
+recommended_fix_template: |
+  A NetworkPolicy in namespace '<namespace>' is restricting network access to target pods.
+  Review active NetworkPolicies and update ingress/egress rules to allow traffic from the source pod or namespace:
+  
+  kubectl edit networkpolicy <policy-name> -n <namespace>
+  
+  Ensure 'spec.ingress' or 'spec.egress' explicitly permits traffic on the designated port and pod selectors.
