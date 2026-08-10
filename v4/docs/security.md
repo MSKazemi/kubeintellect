@@ -5,6 +5,10 @@ description: >-
 
 # KubeIntellect V2 — Security Model
 
+For the v4 data-flow boundary — what can reach model and telemetry endpoints,
+what is persisted, and where the storage redactor does not apply — see
+[Data handling](data-handling.md).
+
 ---
 
 ## Table of Contents

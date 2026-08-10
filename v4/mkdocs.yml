@@ -139,6 +139,7 @@ nav:
     - Flight Recorder: flight-recorder.md
     - Reflexion Subsystem: reflexion.md
     - Security: security.md
+    - Data handling: data-handling.md
     - API Reference: api-reference.md
     - Glossary: glossary.md
     - Changelog: changelog.md
