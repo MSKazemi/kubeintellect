@@ -229,6 +229,20 @@ Where the project is going — and what it deliberately **won't** do — is in *
 
 If KubeIntellect is useful to you, a ⭐ helps other people find it — and [#51](https://github.com/MSKazemi/kubeintellect/issues/51) is where to say what you're using it for.
 
+### Contributors
+
+People other than the maintainer whose work is in the shipped code. The list is short because
+the project is young — which is exactly why being on it is worth something.
+
+| | Contributed |
+|---|---|
+| **[@hariomlohardev](https://github.com/hariomlohardev)** | Removed the executable bit from 94 non-script modules ([#70](https://github.com/MSKazemi/kubeintellect/pull/70)) — mode-only, zero content lines, and it fixed the cause rather than silencing the rule. Also [#57](https://github.com/MSKazemi/kubeintellect/pull/57) and [#65](https://github.com/MSKazemi/kubeintellect/pull/65). |
+| **[@AdvaitVarhade](https://github.com/AdvaitVarhade)** | Fixed the demo UI's `set-state-in-effect` errors ([#73](https://github.com/MSKazemi/kubeintellect/pull/73)) — and corrected the issue itself, which had named the wrong file. Also proposed the `kq export` command and reported the Python 3.13 syntax warnings. |
+
+Every merged contribution is credited by name in [CHANGELOG.md](CHANGELOG.md) and in the
+release notes. Non-code work — triage, a reproducible bug report, docs, testing on a platform
+we lack — counts the same way; see [GOVERNANCE.md](GOVERNANCE.md).
+
 ## License
 
 KubeIntellect is **dual-licensed** under the **[GNU AGPL-3.0-or-later](LICENSE)** *or* a **commercial license**. Self-host and modify freely under the AGPL; for closed/SaaS use without AGPL's network-copyleft obligations, a commercial license is available. See **[LICENSING.md](LICENSING.md)**; contact **mohsen.seyedkazemi@gmail.com**.

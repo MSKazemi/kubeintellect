@@ -36,7 +36,7 @@ Pick whichever is less friction for you — both are equally welcome:
 
 1. **Open a PR** editing this file. It is one table row, it needs no tests, and it
    is a completely legitimate first contribution to the project.
-2. **Comment on the [Who's using KubeIntellect? issue](https://github.com/MSKazemi/kubeintellect/issues?q=is%3Aissue+label%3Aadoption)**
+2. **Comment on [Who's using KubeIntellect? (#51)](https://github.com/MSKazemi/kubeintellect/issues/51)**
    with the same information and a maintainer will add the row for you.
 
 If you'd rather not be listed publicly but still want the maintainer to know the

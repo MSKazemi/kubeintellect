@@ -94,17 +94,35 @@ do and wait for a 👍. Fifteen minutes of alignment is cheaper than a rewritten
 and the maintainer will tell you if there's a design constraint you can't see from
 outside.
 
+## What you can expect back
+
+**Every issue and every pull request gets a human first response.** Even when the
+answer is "not this way", it arrives rather than silence.
+
+**There is no time commitment attached to that, on purpose.** This is a
+single-maintainer volunteer project, and a number written down here that gets
+missed during a busy fortnight is worse than no number at all. In practice issues
+are usually triaged within a week. If a thread of yours goes quiet, a nudge is
+welcome rather than rude — it is a backlog, not a rejection.
+
 ## PR review
 
-- **Every PR gets a first response.** Even if the answer is "not this way", it
-  arrives rather than silence.
-- CI must be green: `ruff check`, `mypy`, both pytest suites (on Python 3.12 **and** 3.13),
-  file modes, and syntax warnings. The exact commands are in
-  [CONTRIBUTING.md § Quality gates](CONTRIBUTING.md#quality-gates--green-before-you-push),
-  and `make setup` from the repo root runs all six for you. `mypy` **is** blocking as of
-  v2.2.0 and the workspace sits at zero errors — if it reports something, it is from your
-  change. `ruff format` remains known debt and is **not** a gate; a failure there is not
-  your bug.
+- CI must be green. `main` requires **nine** checks:
+
+  | Check | Runs locally? |
+  |---|---|
+  | `Lint (ruff)` · `Types (mypy)` · `Tests (server)` · `Tests (kube-q CLI)` · `File modes` · `Syntax warnings` | ✅ `make setup` runs all six |
+  | `Install smoke test` · `Tests (server · py3.13)` · `Tests (kube-q CLI · py3.13)` | ❌ CI only |
+
+  So a green `make setup` covers six of the nine. If your PR is red on one of the
+  other three alone, that is a real failure worth reading, not flake. Exact commands
+  are in [CONTRIBUTING.md § Quality gates](CONTRIBUTING.md#quality-gates--green-before-you-push).
+- `mypy` **is** blocking as of v2.2.0 and the workspace sits at zero errors across
+  171 files — if it reports something, it is from your change.
+- `ruff format` remains known debt and is **not** a gate; a failure there is not your
+  bug. Neither is anything in the `ruff` 0.16 backlog (issue #75) — and please never
+  run a bare `ruff check --fix`, because the `UP045` autofix silently disables RBAC
+  and the human-in-the-loop gate.
 - Review looks at four things, in this order: does it preserve the safety model,
   is it tested, does it fit the design principles, is it documented.
 - Commits need a DCO sign-off (`git commit -s`).
