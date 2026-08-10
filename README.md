@@ -238,6 +238,7 @@ the project is young — which is exactly why being on it is worth something.
 |---|---|
 | **[@hariomlohardev](https://github.com/hariomlohardev)** | Removed the executable bit from 94 non-script modules ([#70](https://github.com/MSKazemi/kubeintellect/pull/70)) — mode-only, zero content lines, and it fixed the cause rather than silencing the rule. Also [#57](https://github.com/MSKazemi/kubeintellect/pull/57) and [#65](https://github.com/MSKazemi/kubeintellect/pull/65). |
 | **[@AdvaitVarhade](https://github.com/AdvaitVarhade)** | Fixed the demo UI's `set-state-in-effect` errors ([#73](https://github.com/MSKazemi/kubeintellect/pull/73)) — and corrected the issue itself, which had named the wrong file. Also proposed the `kq export` command and reported the Python 3.13 syntax warnings. |
+| **[@shaurya703](https://github.com/shaurya703)** | Repointed the PyPI metadata at the canonical repository and adopted PEP 639 ([#78](https://github.com/MSKazemi/kubeintellect/pull/78)) — noticing that `license-files` resolves per package, which meant two wheels had been shipping **without the AGPL text at all**. Spotted the same defect in `mkdocs.yml`, which led to a 13-file sweep. Also cleared the `I001` import backlog ([#77](https://github.com/MSKazemi/kubeintellect/pull/77)). |
 
 Every merged contribution is credited by name in [CHANGELOG.md](CHANGELOG.md) and in the
 release notes. Non-code work — triage, a reproducible bug report, docs, testing on a platform
