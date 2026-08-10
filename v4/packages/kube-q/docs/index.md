@@ -15,7 +15,7 @@ hide:
 `kube-q` is an AI-native terminal client for Kubernetes. Query, debug, and operate any cluster the way you think — with streaming answers, session memory, human-in-the-loop approvals, and a full browser REPL.
 
 [Get Started &nbsp; :material-rocket-launch:](quickstart.md){ .md-button .md-button--primary }
-[View on GitHub &nbsp; :material-github:](https://github.com/MSKazemi/kube_q){ .md-button }
+[View on GitHub &nbsp; :material-github:](https://github.com/MSKazemi/kubeintellect){ .md-button }
 
 <div class="kq-badges">
   <span class="kq-badge">:material-tag: v1.4.0</span>
@@ -382,6 +382,6 @@ kube-q turns the terminal into a conversation. The things I used to copy-paste f
 Install in one command. Point at your backend. Start asking questions.
 
 [Quick Start &nbsp; :material-rocket-launch:](quickstart.md){ .md-button .md-button--primary }
-[Star on GitHub &nbsp; :material-star-outline:](https://github.com/MSKazemi/kube_q){ .md-button }
+[Star on GitHub &nbsp; :material-star-outline:](https://github.com/MSKazemi/kubeintellect){ .md-button }
 
 </div>
