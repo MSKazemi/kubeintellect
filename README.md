@@ -243,6 +243,8 @@ the project is young — which is exactly why being on it is worth something.
 | **[@AdvaitVarhade](https://github.com/AdvaitVarhade)** | Fixed the demo UI's `set-state-in-effect` errors ([#73](https://github.com/MSKazemi/kubeintellect/pull/73)) — and corrected the issue itself, which had named the wrong file. Also proposed the `kq export` command and reported the Python 3.13 syntax warnings. |
 | **[@shaurya703](https://github.com/shaurya703)** | Repointed the PyPI metadata at the canonical repository and adopted PEP 639 ([#78](https://github.com/MSKazemi/kubeintellect/pull/78)) — noticing that `license-files` resolves per package, which meant two wheels had been shipping **without the AGPL text at all**. Spotted the same defect in `mkdocs.yml`, which led to a 13-file sweep. Also cleared the `I001` import backlog ([#77](https://github.com/MSKazemi/kubeintellect/pull/77)). |
 
+| **[@uuzzrm](https://github.com/uuzzrm)** | Wrote [`v4/docs/data-handling.md`](v4/docs/data-handling.md) ([#105](https://github.com/MSKazemi/kubeintellect/pull/105)) — the page that states what reaches a model provider, what is persisted, and precisely where the redactor does **not** apply. Every claim in it was verified against source. Their honest test-failure report also uncovered [#106](https://github.com/MSKazemi/kubeintellect/issues/106), a real environment-sensitivity bug in our own suite. |
+
 Every merged contribution is credited by name in [CHANGELOG.md](CHANGELOG.md) and in the
 release notes.
 
