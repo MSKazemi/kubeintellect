@@ -12,6 +12,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Fixed
+- **The `kq` test suite failed depending on the contributor's terminal** (#106, #109) — fixed by
+  [@floze-the-genius](https://github.com/floze-the-genius). The suite inherited `COLUMNS`, `TERM`
+  and `NO_COLOR` from the invoking shell, which changed Rich's table wrapping and the theme the
+  module-level console is built with. A contributor on an 80-column terminal could watch tests
+  fail before touching a line of code, on a suite that was green in CI. On `2c1f676`:
+  `COLUMNS=40` → 5 failed, `COLUMNS=60` → 1 failed, `TERM=dumb` → 1 failed, `NO_COLOR=1` →
+  1 failed.
+
+  The fix pins the rendering environment in `pytest_configure` — **before** test modules are
+  imported — and re-applies it per test with an autouse fixture that `monkeypatch` can still
+  override, restoring the invoking environment in `pytest_unconfigure`. **No assertion was
+  weakened**, which was the point: the tempting fix is to loosen assertions until they pass at
+  any width, which makes the suite green and stops it testing anything.
+
+  The `pytest_configure` half is load-bearing, and
+  [@AshSgDe29071999](https://github.com/AshSgDe29071999) is why that is documented rather than
+  assumed. They independently diagnosed the same root cause and submitted the fixture-only
+  form (#107); running it as a control showed it clears four of the five environments and
+  still fails under `NO_COLOR=1`, because an autouse fixture runs after collection, by which
+  point the module-level console already exists with the stripped theme. Now 312/312 on all
+  five single-variable runs, on all three applied together, and on a clean environment.
 - **The published `kube-q` package pointed users, and their bug reports, at the wrong
   repository** (#74, #78) — every `[project.urls]` entry resolved to `MSKazemi/kube_q`, a
   pre-AGPL snapshot that is not where `kube-q` is developed. On a package serving ~160
