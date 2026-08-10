@@ -394,8 +394,8 @@ if __name__ == "__main__":
 
 __all__ = [
     "Config",  # re-exported for type hints in callers
-    "run",
-    "cmd_show",
-    "cmd_set",
     "cmd_reset",
+    "cmd_set",
+    "cmd_show",
+    "run",
 ]
