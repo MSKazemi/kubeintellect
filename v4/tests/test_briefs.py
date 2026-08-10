@@ -1,12 +1,15 @@
 """Escalation-avoidance briefs (v5 P2, A-CH-17-07) — build (fail-safe) + render + wiring."""
 from __future__ import annotations
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-
 from app.cortex import briefs as bm
 from app.cortex import graph as cx
-from app.cortex.briefs import EscalationBrief, build_brief, render_brief
-from app.cortex.briefs import _FALLBACK_ESCALATE_IF
+from app.cortex.briefs import (
+    _FALLBACK_ESCALATE_IF,
+    EscalationBrief,
+    build_brief,
+    render_brief,
+)
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 
 class _LLM:

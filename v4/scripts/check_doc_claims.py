@@ -41,7 +41,9 @@ class Canonical:
 
 def _canonical() -> Canonical:
     """Return the authoritative values the docs must agree with."""
-    from app.agent.playbooks.loader import list_playbooks  # type: ignore[import-untyped]
+    from app.agent.playbooks.loader import (
+        list_playbooks,  # type: ignore[import-untyped]
+    )
     from app.core.config import Settings  # type: ignore[import-untyped]
     from app.detectors.engine import load_detectors  # type: ignore[import-untyped]
 

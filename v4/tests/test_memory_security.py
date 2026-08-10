@@ -6,7 +6,6 @@ AC-D8: a MINJA-style query-only injection targeting memory is blocked at write.
 from __future__ import annotations
 
 import pytest
-
 from app.memory import episodes, security
 
 

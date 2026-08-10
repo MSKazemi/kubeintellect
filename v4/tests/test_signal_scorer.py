@@ -1,9 +1,7 @@
 """Unit tests for evaluation/scorers/signal_scorer.py."""
 from __future__ import annotations
 
-
 from evaluation.models import EvalResult, LangfuseTrace, LokiLogs
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

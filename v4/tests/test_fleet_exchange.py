@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import pytest
-
 from app.memory.fleet_exchange import FleetEntry, _clear, publish, read_fleet, tenants
 
 

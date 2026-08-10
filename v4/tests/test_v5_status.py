@@ -1,12 +1,11 @@
 """GET /v5/status — v5 trust-plane observability endpoint."""
 from __future__ import annotations
 
-from fastapi import FastAPI
-from starlette.testclient import TestClient
-
 from app.api.v1.endpoints.v5_status import router
 from app.autonomy.budget import disengage_kill_switch, engage_kill_switch
 from app.core.config import settings
+from fastapi import FastAPI
+from starlette.testclient import TestClient
 
 
 def _client():

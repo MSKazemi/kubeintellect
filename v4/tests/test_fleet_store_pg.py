@@ -1,7 +1,6 @@
 """Postgres-backed fleet store (v5 P5) — query construction + tenant-isolation predicate."""
 from __future__ import annotations
 
-
 from app.memory.fleet_exchange import FleetEntry
 from app.memory.fleet_store_pg import publish, read_fleet
 

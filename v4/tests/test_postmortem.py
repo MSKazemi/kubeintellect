@@ -138,9 +138,8 @@ class TestNarrative:
 
 class TestPostmortemEndpoint:
     async def test_endpoint_json_and_markdown(self, mocker):
-        from httpx import ASGITransport, AsyncClient
-
         from app.main import app
+        from httpx import ASGITransport, AsyncClient
 
         _patch_fetch(mocker, _chain("ep-1", _EVENTS))
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:

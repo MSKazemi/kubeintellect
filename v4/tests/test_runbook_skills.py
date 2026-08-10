@@ -1,11 +1,10 @@
 """Runbooks-as-skills v0 (v5 P2) — on-demand rendering + gather-prompt injection."""
 from __future__ import annotations
 
-from langchain_core.messages import HumanMessage
-
 from app.agent.playbooks.loader import Playbook
 from app.cortex import graph as cx
 from app.cortex.skills import render_matched_skills, render_skill
+from langchain_core.messages import HumanMessage
 
 
 def test_render_skill_has_all_sections():

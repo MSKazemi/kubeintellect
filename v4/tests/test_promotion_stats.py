@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from app.autonomy.promotion_stats import (
     Event,
     evaluate_promotion,

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import pytest
-
 from app.autonomy.promotion_engine import (
     _empty_source,
     decide,

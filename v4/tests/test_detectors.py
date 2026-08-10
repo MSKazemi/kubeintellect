@@ -259,9 +259,8 @@ class TestJsonStream:
 
 class TestFindingsEndpoint:
     async def test_findings_disabled(self, mocker):
-        from httpx import ASGITransport, AsyncClient
-
         from app.main import app
+        from httpx import ASGITransport, AsyncClient
 
         mocker.patch("app.api.v1.endpoints.findings.get_engine", return_value=None)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
@@ -270,9 +269,8 @@ class TestFindingsEndpoint:
         assert response.json()["sensorium"] == "disabled"
 
     async def test_findings_active(self, mocker):
-        from httpx import ASGITransport, AsyncClient
-
         from app.main import app
+        from httpx import ASGITransport, AsyncClient
 
         mocker.patch("app.detectors.engine.flight_recorder.record")
         engine = _engine({**CRASHLOOP, "debounce_seconds": 0})

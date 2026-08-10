@@ -68,9 +68,8 @@ class TestGraphNodeConfigInjection:
 class TestToolConfigInjection:
     def test_run_kubectl_config_param_is_detected(self):
         """LangChain injects the run config only on an exact `RunnableConfig` annotation."""
-        from langchain_core.tools.base import _get_runnable_config_param
-
         from app.tools.kubectl_tool import run_kubectl
+        from langchain_core.tools.base import _get_runnable_config_param
 
         assert _get_runnable_config_param(run_kubectl.func) == "config", (
             "run_kubectl no longer receives the run config — user_role and hitl_bypass "

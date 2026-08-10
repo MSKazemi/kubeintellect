@@ -42,9 +42,9 @@ from app.streaming.emitter import (
     ErrorEvent,
     HitlRequestEvent,
     StatusEvent,
+    TokenEvent,
     ToolCallEvent,
     ToolResultEvent,
-    TokenEvent,
     close_session,
     emit,
 )
@@ -232,6 +232,7 @@ async def init_graph() -> None:
             builder = build_graph()
         if settings.USE_SQLITE:
             from pathlib import Path
+
             from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
             db_path = str(Path(settings.SQLITE_PATH).expanduser())
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
