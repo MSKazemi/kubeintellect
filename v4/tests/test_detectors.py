@@ -192,13 +192,17 @@ class TestTerminatingStuckReliability:
 
 
 class TestPlaybookDetectorLoading:
-    def test_sixteen_compiled_two_llm_only(self):
+    def test_seventeen_compiled_three_llm_only(self):
         detectors = load_detectors()
-        assert len(detectors) == 16
+        assert len(detectors) == 17
         names = {d.playbook for d in detectors}
         assert "CommandHardcodedFailure" not in names   # LLM-only by design
         assert "ServiceUnreachable" not in names
+        # A NetworkPolicy denial is dropped in the CNI datapath, so no signal
+        # ever reaches the API server — there is nothing to compile.
+        assert "NetworkPolicyBlocking" not in names
         assert "CrashLoopBackOff" in names
+        assert "DeploymentRolloutStuck" in names
 
     def test_all_compiled_blocks_have_predicates(self):
         for det in load_detectors():
