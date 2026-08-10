@@ -16,7 +16,6 @@ from __future__ import annotations
 import time
 
 import pytest
-
 from app.detectors.engine import DetectorEngine, load_detectors
 from app.sensorium.observations import Observation
 

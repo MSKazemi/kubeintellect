@@ -3,11 +3,10 @@ from __future__ import annotations
 
 import asyncio
 
-from langchain_core.messages import AIMessage, ToolMessage
-
 from app.agent.state import PlanStep
 from app.cortex import graph as cx
 from app.cortex.responsiveness import PhaseBudget, heartbeat
+from langchain_core.messages import AIMessage, ToolMessage
 
 
 class _Clock:

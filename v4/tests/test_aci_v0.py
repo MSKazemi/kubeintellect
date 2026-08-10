@@ -4,15 +4,14 @@ is patched, so these run without a live cluster."""
 from __future__ import annotations
 
 import pytest
-
 from app.tools.aci import (
     ACI_READ_VERB_ALLOWLIST,
     diff_change,
     inspect,
     logs,
+    read_verbs,
     search,
 )
-from app.tools.aci import read_verbs
 from app.tools.aci.bounds import empty_message, is_read_only, normalize_krm, window
 from app.tools.aci.models import AciContractError, AciResult, Health
 

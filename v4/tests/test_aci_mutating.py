@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import pytest
-
-from app.autonomy.budget import BudgetDecision, disengage_kill_switch, engage_kill_switch
+from app.autonomy.budget import (
+    BudgetDecision,
+    disengage_kill_switch,
+    engage_kill_switch,
+)
 from app.tools.aci.mutating import (
     DECLARATIVE_REVERT,
     IRREVERSIBLE,

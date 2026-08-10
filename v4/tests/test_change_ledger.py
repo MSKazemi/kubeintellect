@@ -2,13 +2,12 @@
 from __future__ import annotations
 
 import pytest
-
 from app.cortex.change_rca import recent_changes, render_change_prior
 from app.memory.change_ledger import (
     _clear,
     parse_kubectl_change,
-    record_from_commands,
     recent,
+    record_from_commands,
 )
 
 

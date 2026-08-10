@@ -7,12 +7,11 @@ without a real graph, and without Postgres.
 The coordinator node itself (LLM + tool calls) is not unit-tested here;
 that belongs in integration / eval tests against a real cluster.
 """
+from app.agent.state import AgentFinding, RCAResult
+from app.agent.workflow import route_coordinator
 from langchain_core.messages import HumanMessage
 from langgraph.graph import END
 from langgraph.types import Send
-
-from app.agent.state import AgentFinding, RCAResult
-from app.agent.workflow import route_coordinator
 
 
 def _state(**overrides) -> dict:

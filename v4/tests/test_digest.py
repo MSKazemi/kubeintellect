@@ -90,9 +90,8 @@ class TestDigestBuilder:
 
 class TestDigestEndpoint:
     async def test_endpoint_json_and_markdown(self, mocker):
-        from httpx import ASGITransport, AsyncClient
-
         from app.main import app
+        from httpx import ASGITransport, AsyncClient
 
         mocker.patch.object(builder, "_get_pool", return_value=FakePool())
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:

@@ -19,7 +19,6 @@ from collections import namedtuple
 from collections.abc import Callable
 from pathlib import Path
 
-
 _CONFIG_DIR = Path.home() / ".kubeintellect"
 _CONFIG_FILE = _CONFIG_DIR / ".env"
 
@@ -1539,8 +1538,8 @@ def _ensure_tool(name: str, installer: Callable[[], None]) -> None:
 
 
 def _install_kind() -> None:
-    import urllib.request
     import platform
+    import urllib.request
     arch = "amd64" if platform.machine() in ("x86_64", "AMD64") else "arm64"
     system = platform.system().lower()
     url = f"https://kind.sigs.k8s.io/dl/v0.23.0/kind-{system}-{arch}"
@@ -1550,8 +1549,8 @@ def _install_kind() -> None:
 
 
 def _install_kubectl() -> None:
-    import urllib.request
     import platform
+    import urllib.request
     arch = "amd64" if platform.machine() in ("x86_64", "AMD64") else "arm64"
     system = platform.system().lower()
     stable = urllib.request.urlopen("https://dl.k8s.io/release/stable.txt").read().decode().strip()

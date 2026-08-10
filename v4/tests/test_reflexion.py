@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-
 # ── R8: secret redaction ──────────────────────────────────────────────────────
 
 

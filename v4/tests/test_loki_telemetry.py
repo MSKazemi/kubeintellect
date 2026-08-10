@@ -3,10 +3,8 @@ from __future__ import annotations
 
 import json
 
-
+from evaluation.collectors.loki_collector import _parse_log_line, parse_telemetry
 from evaluation.models import LokiLogLine, LokiLogs
-from evaluation.collectors.loki_collector import parse_telemetry, _parse_log_line
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

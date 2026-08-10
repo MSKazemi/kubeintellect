@@ -26,8 +26,12 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 
-from app.cortex.harness.subagent import SubagentContract, SubagentResult, finalize_result
 from app.core.config import settings
+from app.cortex.harness.subagent import (
+    SubagentContract,
+    SubagentResult,
+    finalize_result,
+)
 from app.tools.aci import ACI_READ_VERBS
 from app.utils.logger import get_logger
 
@@ -168,7 +172,9 @@ async def run_fanout(
     Returns a single evidence-bundle AIMessage (no tool_calls ⇒ the graph routes straight to
     synthesize, which concludes from the fan-out evidence). ``runner`` is injectable for tests.
     """
-    from app.cortex.graph import gather_once  # lazy: avoids a graph<->runner import cycle.
+    from app.cortex.graph import (
+        gather_once,  # lazy: avoids a graph<->runner import cycle.
+    )
 
     contracts = plan_subagents(state, settings.KI_V5_HARNESS_MAX_SUBAGENTS)
     if not contracts:
