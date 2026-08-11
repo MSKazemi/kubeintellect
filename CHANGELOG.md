@@ -148,6 +148,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   path now builds its message as a text node instead of assigning `innerHTML`.
 
 ### Added
+- **An `HPANotScaling` playbook** (#97, #114) — the 21st, contributed by
+  [@Chris7717](https://github.com/Chris7717). It covers the autoscaler that does nothing and
+  looks identical to one that is simply not needed, and it separates the two root causes that
+  Kubernetes reports through the *same* `FailedGetResourceMetric` /
+  `FailedComputeMetricsReplicas` events but that need different fixes: metrics-server missing or
+  unreachable (cluster-wide) versus a container with no `resources.requests.cpu`
+  (workload-specific). Both were reproduced against a kind cluster, so the
+  `investigation_steps` and `expected_evidence` are transcribed from real `kubectl` output
+  rather than reasoned. It compiles to a detector — 18 of the 21 playbooks now do.
+
+  Adopted with two maintainer fixes to the `detect:` block, neither of which any existing gate
+  could see. The `reason_regex` was `"^(FailedGetResourceMetric | FailedComputeMetricsReplicas)$"`:
+  the spaces around the alternation bar bind to the branches, so the compiled predicate required
+  an event reason *containing a space* and could therefore never match anything — the detector
+  loaded, counted, and passed the schema check while being a permanent no-op. The stored PromQL
+  named `kube_horizontalpoduatoscaler_status_condition` (transposed) and matched `status="False"`,
+  where kube-state-metrics emits the status label lower-case; that arm is latent until #20 lands,
+  but it was stored wrong.
+
+  The gate gap mattered more than either typo: the PR's tests exercised `match_playbooks()` — the
+  prompt-side `triggers:` path — and nothing anywhere asserted that a compiled predicate can
+  actually *fire*. `test_detectors.py` now checks this playbook against both real event reasons,
+  and a new class guard rejects any shipped `reason_regex` whose alternatives carry surrounding
+  whitespace, since a Kubernetes event reason never contains a space. Both fail against the
+  original file.
+
 - **A `DeploymentRolloutStuck` playbook** (#98, #112) — the 20th, contributed by
   [@hariomlohardev](https://github.com/hariomlohardev). It covers the rollout that fails
   *without an outage*: the new ReplicaSet never becomes Available, the old one keeps serving
