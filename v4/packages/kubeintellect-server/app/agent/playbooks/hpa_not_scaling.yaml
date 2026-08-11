@@ -1,0 +1,25 @@
+name: HPANotScaling
+detect:
+    watch_predicates:
+        - kind: Event
+          involved_kind: HorizontalPodAutoscaler
+          reason_regex: "^(FailedGetResourceMetric | FailedComputeMetricsReplicas)$"
+    promql:
+    - >-
+        kube_horizontalpoduatoscaler_status_condition{status="False",condition="ScalingActive"} == 1
+    debounce_seconds: 60
+triggers:
+  - event_reason_regex: "FailedGetResourceMetric|FailedComputeMetricsReplicas"
+  - event_message_regex: "pods.metrics.k8s.io|missing request for cpu"
+investigation_steps:
+  - "kubectl describe hpa <hpa-name> -n <ns> — check the status conditions and detailed messages."
+  - "kubectl get apiservice v1beta1.metrics.k8s.io — verify if metrics-server API is registered and healthy at the cluster scope."
+  - "kubectl get deployment <target-deployment> -n <ns> -o yaml — inspect container resource blocks for requests.cpu."
+  - "Identify the root cause — either missing metrics-server API or unconfigured CPU/memory requests in the workload."
+expected_evidence:
+  - "The apiservice `v1beta1.metrics.k8s.io` is missing or not found on the cluster."
+  - "The target deployment container spec lacks the required `resources.requests.cpu` configuration."
+recommended_fix_template: |
+  HPA <HPA_NAME> in namespace <NS> cannot compute scaling metrics. Apply the fix corresponding to the identified root cause:
+  - Root Cause A (Cluster-wide): If apiservice `v1beta1.metrics.k8s.io` is missing, deploy or restart the metrics-server component in the cluster.
+  - Root Cause B (Workload-specific): If the container specification lacks requests, update deployment `<DEPLOYMENT_NAME>` in namespace <NS> to include explicit `resources.requests.cpu` under the container spec.
