@@ -192,9 +192,9 @@ class TestTerminatingStuckReliability:
 
 
 class TestPlaybookDetectorLoading:
-    def test_seventeen_compiled_three_llm_only(self):
+    def test_eighteen_compiled_three_llm_only(self):
         detectors = load_detectors()
-        assert len(detectors) == 17
+        assert len(detectors) == 18
         names = {d.playbook for d in detectors}
         assert "CommandHardcodedFailure" not in names   # LLM-only by design
         assert "ServiceUnreachable" not in names
@@ -208,6 +208,67 @@ class TestPlaybookDetectorLoading:
         for det in load_detectors():
             assert det.watch_predicates, f"{det.playbook} has no watch predicates"
             assert det.debounce_seconds >= 0
+
+    def test_no_reason_regex_alternative_contains_whitespace(self):
+        """A Kubernetes event `reason` is a CamelCase identifier — it never contains
+        a space. So an alternative that requires one can never match, and the
+        detector compiles, loads, counts, and is silently dead forever.
+
+        This is not hypothetical: `"^(FailedGetResourceMetric | FailedCompute...)$"`
+        (#114) passed every gate — load, count, schema, both suites — while being a
+        permanent no-op, because nothing else asserts a predicate can actually fire.
+        """
+        for det in load_detectors():
+            for pred in det.watch_predicates:
+                if pred.reason_regex is None:
+                    continue
+                pattern = pred.reason_regex.pattern
+                for alt in pattern.strip("^$()").split("|"):
+                    assert alt == alt.strip(), (
+                        f"{det.playbook}: reason_regex alternative {alt!r} in "
+                        f"{pattern!r} has leading/trailing whitespace — an event "
+                        f"reason never contains a space, so this can never match"
+                    )
+
+
+class TestHPANotScalingDetector:
+    """The detect: arm of the #97 playbook, checked against the two real reasons.
+
+    The PR's own tests only exercised `match_playbooks()` (the prompt-side
+    `triggers:` path), which is why a broken `detect:` block went unnoticed.
+    """
+
+    def _predicate(self):
+        det = next(d for d in load_detectors() if d.playbook == "HPANotScaling")
+        return det.watch_predicates[0]
+
+    def test_fires_on_metrics_server_missing(self):
+        assert self._predicate().matches(_obs(
+            kind="event", reason="FailedGetResourceMetric", event_type="Warning",
+            message="the server could not find the requested resource (get pods.metrics.k8s.io)",
+            involved_kind="HorizontalPodAutoscaler",
+        ))
+
+    def test_fires_on_missing_cpu_request(self):
+        assert self._predicate().matches(_obs(
+            kind="event", reason="FailedComputeMetricsReplicas", event_type="Warning",
+            message="missing request for cpu in container nginx of Pod nginx-6f9c74cfd4-ssctc",
+            involved_kind="HorizontalPodAutoscaler",
+        ))
+
+    def test_does_not_fire_on_a_healthy_hpa_event(self):
+        assert not self._predicate().matches(_obs(
+            kind="event", reason="SuccessfulRescale", event_type="Normal",
+            message="New size: 4; reason: cpu resource utilization above target",
+            involved_kind="HorizontalPodAutoscaler",
+        ))
+
+    def test_does_not_fire_on_the_same_reason_from_another_kind(self):
+        assert not self._predicate().matches(_obs(
+            kind="event", reason="FailedGetResourceMetric", event_type="Warning",
+            message="the server could not find the requested resource",
+            involved_kind="Pod",
+        ))
 
 
 class TestPodDisplayStatus:
