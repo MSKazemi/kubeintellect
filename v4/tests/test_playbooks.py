@@ -323,3 +323,22 @@ def test_rollout_stuck_does_not_fire_on_a_healthy_rollout() -> None:
         "default     10s        Normal   ScalingReplicaSet  deployment/api  Scaled up replica set api-1 to 3\n"
     )
     assert "DeploymentRolloutStuck" not in match_playbooks(HEALTHY_PODS, events)
+
+# ── HPANotScaling triggers (#97) ──────────────────────────────────────────────
+HPA_METRICS_SERVER_MISSING_EVENTS = """\
+NAMESPACE   LAST SEEN   TYPE      REASON                    OBJECT                          MESSAGE
+default     10s         Warning   FailedGetResourceMetric   horizontalpodautoscaler/nginx   the server could not find the requested resource (get pods.metrics.k8s.io)
+"""
+
+def test_match_hpa_not_scaling_by_metrics_server_missing() -> None:
+    matched = match_playbooks(HEALTHY_PODS, HPA_METRICS_SERVER_MISSING_EVENTS)
+    assert "HPANotScaling" in matched
+
+HPA_MISSING_CPU_REQUEST_EVENTS = """\
+NAMESPACE   LAST SEEN   TYPE      REASON                     OBJECT                                  MESSAGE
+default     12s         Warning   FailedComputeMetricsReplicas   horizontalpodautoscaler/nginx-norequests   missing request for cpu in container nginx of Pod nginx-norequests-6f9c74cfd4-ssctc
+"""
+
+def test_match_hpa_not_scaling_by_missing_cpu_request() -> None:
+    matched = match_playbooks(HEALTHY_PODS, HPA_MISSING_CPU_REQUEST_EVENTS)
+    assert "HPANotScaling" in matched
