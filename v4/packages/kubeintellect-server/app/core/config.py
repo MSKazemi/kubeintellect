@@ -210,6 +210,9 @@ class Settings(BaseSettings):
     # baseline single-channel trgm recall. Additive; no schema change required
     # (ts_rank is computed inline; a stored tsvector + GIN index is the P0 speedup).
     MEMORY_HYBRID_RETRIEVAL: bool = False
+    # Minimum pg_trgm similarity used by the baseline recall and summary channels.
+    # Keep this configurable for deployments with different memory vocabularies.
+    MEMORY_RECALL_SIMILARITY_FLOOR: float = Field(default=0.02, ge=0.0, le=1.0)
     # Memory V5 P2 (ADR-013): bi-temporal KG. When on, edge writes stamp event-time
     # valid_from (from the observation) and supersede via retract (retracted_at) instead
     # of only closing (valid_to); point-in-time `as_of(valid_t, tx_t)` queries become
