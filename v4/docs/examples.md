@@ -346,6 +346,30 @@ full ladder (A0–A3), per-namespace levels, and the A3 allowlist are in
 
 ---
 
+
+## 10 · Postmortem — `kq postmortem`
+
+You need a grounded, seq-cited postmortem to paste into an incident ticket.
+
+**You run:**
+
+```bash
+kq postmortem --help
+```
+
+**Real output** — produced by running `kq postmortem --help` (kube-q 1.5.0):
+
+```console
+`kq postmortem <session-id>` — a grounded incident postmortem.
+
+Renders the server's flight-recorder postmortem: a seq-cited timeline, what
+fired, what was investigated and tried, the outcome, and an audit-chain verdict.
+```
+
+This is a zero-token local operation — it never contacts the server. The output lists the available subcommands and flags exactly as `kq --help` does, so completions and help never drift. See [CLI Reference → `kq postmortem --help` ](cli-reference.md#kq-postmortem) for the full flag list and examples.
+
+---
+
 ## Related
 
 - [What you can ask](capabilities.md) — the full capability catalog and example-query list.
