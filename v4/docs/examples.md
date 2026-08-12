@@ -346,6 +346,40 @@ full ladder (A0–A3), per-namespace levels, and the A3 allowlist are in
 
 ---
 
+
+## 10 · Preference — `kq preference`
+
+You want the agent to remember your preferences across sessions.
+
+**You run:**
+
+```bash
+kq preference --help
+```
+
+**Real output** — produced by running `kq preference --help` (kube-q 1.5.0):
+
+```console
+`kq preference` — view and manage the agent's memory of your preferences.
+
+KubeIntellect remembers how you like to operate (explicit + behaviour-inferred)
+and recalls it across sessions. This command manages the explicit ones.
+
+Usage:
+  kq preference list [--user U]
+  kq preference set <key> <value> [--user U]
+  kq preference forget <key> [--user U]
+
+Examples:
+  kq preference set default_namespace payments
+  kq preference set remediation dry-run-first
+  kq preference list
+```
+
+This is a zero-token local operation — it never contacts the server. The output lists the available subcommands and flags exactly as `kq --help` does, so completions and help never drift. See [CLI Reference → `kq preference --help` ](cli-reference.md#kq-preference-listsetforget) for the full flag list and examples.
+
+---
+
 ## Related
 
 - [What you can ask](capabilities.md) — the full capability catalog and example-query list.
