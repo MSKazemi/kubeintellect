@@ -231,7 +231,7 @@ Response:
 ```json
 {
   "sensorium": "active",
-  "detectors": 18,
+  "detectors": 19,
   "findings": [
     {
       "type": "finding",
