@@ -94,10 +94,13 @@ A change that violates these will be asked to change, no matter how useful it ot
 ## Licensing & contributions
 
 KubeIntellect is **dual-licensed** (AGPL-3.0-or-later **or** commercial — see
-[LICENSING.md](LICENSING.md)). To keep the commercial option available, contributions are accepted
-under a **Developer Certificate of Origin (DCO)** sign-off (`git commit -s`), which certifies you
-have the right to submit the code and agree it may be distributed under the project's licenses.
-See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+[LICENSING.md](LICENSING.md)). **Contributing asks nothing of you** — no CLA, no DCO sign-off,
+no copyright assignment. Your contribution is licensed under AGPL-3.0-or-later and **you keep
+the copyright in it.**
+
+The commercial licence covers the copyright holder's own code. It does **not** reach your
+contribution, and nothing here asks you to let it. See [CONTRIBUTING.md](CONTRIBUTING.md) and
+[`DCO.md`](DCO.md).
 
 ## Changing this document
 

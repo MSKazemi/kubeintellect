@@ -131,7 +131,7 @@ welcome rather than rude — it is a backlog, not a rejection.
   and the human-in-the-loop gate.
 - Review looks at four things, in this order: does it preserve the safety model,
   is it tested, does it fit the design principles, is it documented.
-- Commits need a DCO sign-off (`git commit -s`).
+- Commits need nothing signed — no DCO, no CLA.
 - A PR that only edits [ADOPTERS.md](ADOPTERS.md), docs, or a typo gets a fast lane.
 
 ## How things get closed
