@@ -46,8 +46,9 @@ research use, cite the project — see [CITATION.cff](CITATION.cff).
 ## Contributions
 
 Contributions you submit are provided under AGPL-3.0-or-later, the same license as the rest
-of the project. **There is no CLA** — contributing takes a single `Signed-off-by` line under
-the [Developer Certificate of Origin](DCO.md), and you keep the copyright in your own work.
+of the project. **There is nothing to sign** — no CLA, no DCO sign-off line, no copyright
+assignment — and you keep the copyright in your own work. See [`DCO.md`](DCO.md) for how the
+licence attaches without asking anything of you.
 
 The commercial license above covers the copyright holder's own code. It does not reach your
 contribution, and nothing here asks you to let it.

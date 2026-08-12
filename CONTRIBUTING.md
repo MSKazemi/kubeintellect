@@ -96,8 +96,8 @@ See the [v4 README](v4/README.md) for every install path in detail.
 2. **Fork & branch.** Branch from `main`: `git checkout -b fix/pod-log-truncation`.
 3. **Write the change *and its tests* in one pass.** Every code change ships with tests.
 4. **Run the gates locally** (below) — green before you push.
-5. **Sign off your commits** (DCO, below).
-6. **Open a PR** using the template. Link the issue (`Closes #123`), describe the *why*.
+5. **Open a PR** using the template. Link the issue (`Closes #123`), describe the *why*.
+   There is nothing to sign — no CLA, no sign-off line.
 
 How issues get labelled, prioritised, assigned, and closed is written down in
 [TRIAGE.md](TRIAGE.md) — including how to claim an issue and what "quiet for two
@@ -147,12 +147,11 @@ uv run ruff check scripts/fix_pr_probe.py     # now clean
 For a one-line lint fix, `ruff check` plus the suite for the package you touched is
 enough; run both suites if you're unsure.
 
-**7. Commit with a DCO sign-off** — the `-s` is required, and CI checks it. Forgot?
-`git commit --amend --signoff && git push --force-with-lease` fixes it. To never
-think about it again: `git config --global format.signOff true`.
+**7. Commit and push.** There is nothing to sign off — no `-s`, no trailer, and no check
+looking for one.
 
 ```bash
-git commit -s -m "fix(server): drop f-prefix from placeholder-free string (F541)"
+git commit -m "fix(server): drop f-prefix from placeholder-free string (F541)"
 git push -u origin fix/f541-fix-pr-probe
 ```
 
@@ -240,7 +239,6 @@ say so in the PR.
 - [ ] `make check-modes` passes (only relevant if you added a file)
 - [ ] `make check-syntax` passes (no `SyntaxWarning` on the newest supported interpreter)
 - [ ] Docs updated if behavior/CLI/flags changed
-- [ ] Commits are signed off (DCO)
 
 > **On `mypy`:** it is now a blocking gate and the workspace sits at **zero errors** — if it
 > reports something, it is from your change. Two annotations are load-bearing and mypy cannot
@@ -265,7 +263,7 @@ Regardless of how you wrote it, you must:
 
 - **Understand it** — every line, well enough to explain the approach in review.
 - **Have run the tests locally**, and read the output.
-- **Take responsibility for it** as your own work, including the DCO sign-off.
+- **Take responsibility for it** as your own work.
 
 Please **disclose substantial AI assistance** in the PR description. This is not a black mark;
 it just helps reviewers know where to look, exactly like "I copied this pattern from the
@@ -301,21 +299,16 @@ prompt injection.
 
 ---
 
-## Licensing: DCO sign-off
+## Licensing
 
-**There is no CLA.** Contributing takes one line on your commit — nothing to sign, no account to
-create, nothing for your employer's legal team to review.
+**There is nothing to sign.** No CLA, no DCO sign-off, no `git commit -s`, no box to tick, no
+account to create, and nothing for an employer's legal team to review. Opening the pull
+request is the whole contract, and nothing checks for a sign-off — so there is nothing you can
+get wrong.
 
-Add `-s` to your commit:
-
-```bash
-git commit -s -m "fix: truncate pod logs at token budget"
-```
-
-This appends a `Signed-off-by:` trailer certifying you wrote the patch, or have the right to submit
-it, under the [Developer Certificate of Origin](DCO.md). Forgot it?
-`git commit --amend --signoff && git push --force-with-lease`. Want it always on?
-`git config --global format.signOff true`.
+Your contribution is licensed under AGPL-3.0-or-later, the same licence as the project, under
+GitHub's Terms of Service for contributions to a licensed repository. [`DCO.md`](DCO.md)
+explains the reasoning and the trade-off in full.
 
 **You keep the copyright in your work.** Your contribution is licensed under AGPL-3.0-or-later, the
 same license as the rest of the project, and you can keep using your own code anywhere else you like.
