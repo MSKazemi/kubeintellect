@@ -89,9 +89,9 @@ A change that violates these will be asked to change, no matter how useful it ot
 
 ## Licensing & contributions
 
-under a **Developer Certificate of Origin (DCO)** sign-off (`git commit -s`), which certifies you
-have the right to submit the code and agree it may be distributed under the project's licenses.
-See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+the copyright in it.**
+
+contribution, and nothing here asks you to let it. See [CONTRIBUTING.md](CONTRIBUTING.md) and
 
 ## Changing this document
 

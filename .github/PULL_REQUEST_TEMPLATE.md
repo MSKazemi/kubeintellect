@@ -32,7 +32,6 @@ Closes #
 - [ ] `uv run ruff check .` passes locally
 - [ ] `uv run mypy src` passes locally
 - [ ] Docs updated if behavior/CLI/flags changed
-- [ ] Commits are signed off (`git commit -s` — DCO)
 
 ## Notes for reviewers
 
