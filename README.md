@@ -267,6 +267,16 @@ thing the project cannot get any other way.
 > graph too, the one-line docs PR that comes out of what you found will do it — and is usually
 > warranted anyway. See [GOVERNANCE.md](GOVERNANCE.md) for the full ladder.
 
+## Other projects by the same author
+
+- **[YazSes](https://github.com/MSKazemi/yazses)** — offline voice dictation for Linux, macOS
+  and Windows. Hold a key, speak, release; speech-to-text runs on your own CPU and nothing is
+  sent to a server. Apache-2.0, and [good first issues are tagged and
+  waiting](https://github.com/MSKazemi/yazses/issues?q=is%3Aopen+label%3A%22good+first+issue%22).
+- **[AOBench](https://github.com/MSKazemi/aobench)** — role-aware, permission-enforced
+  benchmark for LLM agents operating HPC systems. A policy violation hard-fails the task,
+  however correct the answer looked.
+
 ## License
 
 KubeIntellect is **dual-licensed** under the **[GNU AGPL-3.0-or-later](LICENSE)** *or* a **commercial license**. Self-host and modify freely under the AGPL; for closed/SaaS use without AGPL's network-copyleft obligations, a commercial license is available. See **[LICENSING.md](LICENSING.md)**; contact **mohsen.seyedkazemi@gmail.com**.
