@@ -189,6 +189,52 @@ jobs:
         working-directory: ${{ matrix.workdir }}
         run: uv run --python 3.13 python -m pytest ${{ matrix.path }} -q
 
+  test-candidate:
+    name: Tests (${{ matrix.suite }} · py3.14)
+    runs-on: ubuntu-latest
+    # The interpreter the project does NOT ship on yet — this job exists so the
+    # decision on #71 (bump the runtime base image to python:3.14-slim) rests on
+    # evidence from CI rather than on one laptop.
+    #
+    # Deliberately NOT a required check: 3.14 is ahead of what any container or
+    # `pip install` currently resolves to, so a red run here is information, not
+    # a reason to block an unrelated PR. Promote it to required in the same
+    # change that bumps the Dockerfile, never before — the point of the py3.13
+    # job (#62) was that CI must cover whatever actually ships.
+    #
+    # `continue-on-error` keeps that true even if a transient wheel gap appears:
+    # the result is visible on every PR, and it cannot gate anyone.
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: server
+            workdir: v4
+            path: tests/
+          - suite: kube-q CLI
+            workdir: v4/packages/kube-q
+            path: tests/
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        run: pip install "uv==${UV_VERSION}"
+
+      # Same reason as the py3.13 job: without `--python 3.14` uv rebuilds the
+      # interpreter recorded in uv.lock and this job silently duplicates it.
+      - name: Sync dependencies
+        working-directory: v4
+        run: uv sync --python 3.14
+
+      - name: Run pytest
+        working-directory: ${{ matrix.workdir }}
+        run: uv run --python 3.14 python -m pytest ${{ matrix.path }} -q
+
   install-smoke:
     name: Install smoke test
     runs-on: ubuntu-latest
