@@ -350,6 +350,9 @@ full ladder (A0–A3), per-namespace levels, and the A3 allowlist are in
 ## 10 · Config — `kq config`
 
 You want to inspect or change where `kq` points without hand-editing `~/.kube-q/.env`.
+## 10 · Replay — `kq replay`
+
+You need to audit a prior session and verify its hash-chained decision log is intact.
 
 **You run:**
 
@@ -396,6 +399,22 @@ kq config show
 ```
 
 This is a zero-token local operation — it never contacts the server. The output lists the available subcommands and flags exactly as `kq --help` does, so completions and help never drift. See [CLI Reference → `kq config show` ](cli-reference.md#kq-config-showsetresetprofile) for the full flag list and examples.
+kq replay --help
+```
+
+**Real output** — produced by running `kq replay --help` (kube-q 1.5.0):
+
+```console
+`kq replay <episode_id>` — replay a recorded episode from the flight recorder.
+
+Fetches GET /v1/episodes/{id}/replay (KubeIntellect's durable, hash-chained
+decision log) and renders the event sequence with a chain-integrity verdict.
+
+Usage:
+  kq replay <episode_id>          # episode_id == session_id (see /id in the REPL)
+```
+
+This is a zero-token local operation — it never contacts the server. The output lists the available subcommands and flags exactly as `kq --help` does, so completions and help never drift. See [CLI Reference → `kq replay --help` ](cli-reference.md#kq-replay) for the full flag list and examples.
 
 ---
 
