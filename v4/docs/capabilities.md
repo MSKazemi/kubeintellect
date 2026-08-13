@@ -36,7 +36,7 @@ Metrics and logs are optional — without them, KubeIntellect still answers ever
 
 V4 also works *between* your questions:
 
-- **Zero-token known-failure detection** — the playbook library covers the 21 most common failures, and compiled detectors recognize 18 of them straight off the live cluster stream without spending a single LLM token. → [Agent Behaviors → V4 additions](agent-behaviors.md#v4-additions)
+- **Zero-token known-failure detection** — the playbook library covers the 23 most common failures, and compiled detectors recognize 20 of them straight off the live cluster stream without spending a single LLM token. → [Agent Behaviors → V4 additions](agent-behaviors.md#v4-additions)
 - **Self-opened investigations** — a firing detector opens its own investigation and publishes the report; how far it may go is set per namespace (A0–A3). → [Autonomous Operations](autonomy.md)
 - **Morning digest** — `kq digest` summarizes findings, autonomous investigations, and rollback points from the last N hours. → [Autonomous Operations → digest](autonomy.md#the-morning-digest)
 - **Tamper-evident audit replay** — every session is hash-chained in an append-only log; `kq replay <session-id>` reproduces it and verifies integrity. → [Flight Recorder & Replay](flight-recorder.md)
@@ -48,7 +48,7 @@ V4 also works *between* your questions:
 
 ## Failure patterns it recognizes
 
-KubeIntellect ships **21 built-in playbooks** — deterministic investigation
+KubeIntellect ships **23 built-in playbooks** — deterministic investigation
 recipes for the most common Kubernetes failures. When the cluster snapshot
 matches a pattern, the matching playbook guides the investigation automatically.
 You don't invoke these by name; they fire on their own.
