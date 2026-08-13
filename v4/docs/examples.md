@@ -651,8 +651,6 @@ See [CLI Reference → `kq completion`](cli-reference.md#kq-completion-bashzshfi
 
 ---
 
----
-
 ## Related
 
 - [What you can ask](capabilities.md) — the full capability catalog and example-query list.
