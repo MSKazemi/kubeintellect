@@ -353,6 +353,9 @@ You want to inspect or change where `kq` points without hand-editing `~/.kube-q/
 ## 10 · Replay — `kq replay`
 
 You need to audit a prior session and verify its hash-chained decision log is intact.
+## 10 · Postmortem — `kq postmortem`
+
+You need a grounded, seq-cited postmortem to paste into an incident ticket.
 
 **You run:**
 
@@ -415,6 +418,19 @@ Usage:
 ```
 
 This is a zero-token local operation — it never contacts the server. The output lists the available subcommands and flags exactly as `kq --help` does, so completions and help never drift. See [CLI Reference → `kq replay --help` ](cli-reference.md#kq-replay) for the full flag list and examples.
+kq postmortem --help
+```
+
+**Real output** — produced by running `kq postmortem --help` (kube-q 1.5.0):
+
+```console
+`kq postmortem <session-id>` — a grounded incident postmortem.
+
+Renders the server's flight-recorder postmortem: a seq-cited timeline, what
+fired, what was investigated and tried, the outcome, and an audit-chain verdict.
+```
+
+This is a zero-token local operation — it never contacts the server. The output lists the available subcommands and flags exactly as `kq --help` does, so completions and help never drift. See [CLI Reference → `kq postmortem --help` ](cli-reference.md#kq-postmortem) for the full flag list and examples.
 
 ---
 
