@@ -423,6 +423,36 @@ triggers:
 - `detect: null` marks a playbook as **LLM-only** (no machine signal exists,
   or the signal is owned by another playbook).
 
+!!! warning "`kind:` is the observation channel, not the Kubernetes object"
+    `kind:` selects which normalised stream the predicate reads — it is one of
+    exactly **`Pod`**, **`Event`**, **`Node`**, and nothing else. Writing the
+    object you care about (`kind: PersistentVolumeClaim`, `kind: Deployment`)
+    parses, loads into the registry, counts toward the detector total and passes
+    the schema check — and then matches nothing, ever, because
+    `WatchPredicate.matches()` falls through to `False` for any other value.
+    To narrow an Event to a subject, use `involved_kind:`:
+
+    ```yaml
+    - kind: Event                              # the channel
+      reason_regex: "^(FailedBinding|ProvisioningFailed)$"
+      involved_kind: PersistentVolumeClaim     # the object
+    ```
+
+    **`triggers:` and `detect:` are two independent features.** A playbook can
+    have a perfect `triggers:` block and a permanently dead `detect:` block; only
+    the zero-token detection is lost, and nothing goes red. So a playbook PR needs
+    a test that the compiled predicate *fires* on a realistic event and does *not*
+    fire on a neighbouring one — see `TestPvcPendingDetector` and
+    `TestProbeDetectorsDoNotCrossFire` in `tests/test_detectors.py` for the shape.
+    Two class guards (`test_every_watch_predicate_uses_a_known_observation_kind`,
+    `test_no_reason_regex_alternative_contains_whitespace`) catch the two ways
+    this has actually happened.
+
+    Where a reason is shared by more than one failure — the kubelet emits
+    `Unhealthy` for *both* readiness and liveness probes — the `message_regex`
+    co-condition is what separates them. Without it, two playbooks fire on one
+    event and the operator is told about a restart loop that is not happening.
+
 Of the 23 shipped playbooks, **20 compile to detectors**; 3 are LLM-only
 (`CommandHardcodedFailure` — disambiguated from CrashLoopBackOff only by
 reading the pod spec — `ServiceUnreachable`, and `NetworkPolicyBlocking`,
