@@ -30,7 +30,8 @@
       "contributions": [
         "code",
         "infra",
-        "maintenance"
+        "maintenance",
+        "doc"
       ]
     },
     {
@@ -62,7 +63,8 @@
       "profile": "https://github.com/uuzzrm",
       "contributions": [
         "doc",
-        "security"
+        "security",
+        "code"
       ]
     }
   ]
