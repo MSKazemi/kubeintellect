@@ -356,6 +356,9 @@ You need to audit a prior session and verify its hash-chained decision log is in
 ## 10 · Postmortem — `kq postmortem`
 
 You need a grounded, seq-cited postmortem to paste into an incident ticket.
+## 10 · Export — `kq export`
+
+You need a machine-readable diagnosis report for archiving or feeding another tool.
 
 **You run:**
 
@@ -431,6 +434,31 @@ fired, what was investigated and tried, the outcome, and an audit-chain verdict.
 ```
 
 This is a zero-token local operation — it never contacts the server. The output lists the available subcommands and flags exactly as `kq --help` does, so completions and help never drift. See [CLI Reference → `kq postmortem --help` ](cli-reference.md#kq-postmortem) for the full flag list and examples.
+kq export --help
+```
+
+**Real output** — produced by running `kq export --help` (kube-q 1.5.0):
+
+```console
+`kq export <session-id> [--format json|yaml] [--output PATH]` — export a diagnosis report.
+
+Serializes the server's grounded postmortem (ADR-011) for one episode to JSON or
+YAML, for archiving, attaching to a ticket, or feeding another tool.
+
+The exported document is the *same* structure `kq postmortem` renders — a view
+over the hash-chained decision_log. Nothing is synthesized here: if the recorder
+has no events for the episode, this command exports nothing and says so, rather
+than emitting a plausible-looking empty report.
+
+Exit codes:
+  0  exported, audit chain intact
+  1  fetch or write failed
+  2  usage error
+  3  exported, but the audit chain is BROKEN (matches `kq replay`)
+  4  no recorded events for that episode — nothing exported
+```
+
+This is a zero-token local operation — it never contacts the server. The output lists the available subcommands and flags exactly as `kq --help` does, so completions and help never drift. See [CLI Reference → `kq export --help` ](cli-reference.md#kq-export) for the full flag list and examples.
 
 ---
 
