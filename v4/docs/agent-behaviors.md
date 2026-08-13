@@ -123,7 +123,7 @@ detects a matching pattern in the snapshot, the coordinator's system prompt
 includes the playbook(s) inline — guiding it to follow proven steps before
 improvising.
 
-**Playbooks shipped (22):**
+**Playbooks shipped (23):**
 
 *Pod / container lifecycle*
 
@@ -133,7 +133,8 @@ improvising.
 - `CreateContainerConfigError` (missing ConfigMap / Secret refs)
 - `ContainerCreatingStuck` (volume / CSI)
 - `InitContainerFailing`
-- `ReadinessProbeFailing` (also covers liveness)
+- `ReadinessProbeFailing` (pod held out of Service endpoints)
+- `LivenessProbeFailing` (kubelet restarts a container that is alive but not answering)
 - `CommandHardcodedFailure` (hardcoded `exit 1` / error in container command)
 - `Evicted` (node-pressure eviction)
 - `TerminatingStuck` (finalizers)
@@ -144,6 +145,7 @@ improvising.
 - `PendingSchedulingConstraints` (taints / affinity / nodeSelector)
 - `QuotaExceeded` (ResourceQuota)
 - `NodeNotReady`
+- `PvcPending` (claim never binds — missing StorageClass or no matching PV)
 
 *Workloads, networking & admission*
 
@@ -421,7 +423,7 @@ triggers:
 - `detect: null` marks a playbook as **LLM-only** (no machine signal exists,
   or the signal is owned by another playbook).
 
-Of the 22 shipped playbooks, **19 compile to detectors**; 3 are LLM-only
+Of the 23 shipped playbooks, **20 compile to detectors**; 3 are LLM-only
 (`CommandHardcodedFailure` — disambiguated from CrashLoopBackOff only by
 reading the pod spec — `ServiceUnreachable`, and `NetworkPolicyBlocking`,
 where the packet is discarded in the CNI datapath so no machine signal

@@ -1,14 +1,25 @@
 name: PvcPending
 detect:
   watch_predicates:
-    - kind: PersistentVolumeClaim
-      reason_regex: "^(FailedBinding|ProvisioningFailed|StorageClassNotFound)$"
+    # The sensorium streams `kubectl get events`, so a PVC failure arrives as an
+    # Event whose involvedObject is the claim — `kind:` selects the observation
+    # channel (Pod | Event | Node) and `involved_kind:` narrows the subject.
+    # `kind: PersistentVolumeClaim` would parse, load and count, but WatchPredicate
+    # .matches() only knows those three channels, so it could never fire (cf. #114).
+    #
+    # Both reasons are emitted by the storage controllers: `FailedBinding` by the
+    # in-tree persistentvolume-controller ("no persistent volumes available for
+    # this claim…"), `ProvisioningFailed` by the CSI external-provisioner (which
+    # carries the `storageclass.storage.k8s.io "x" not found` message).
+    - kind: Event
+      reason_regex: "^(FailedBinding|ProvisioningFailed)$"
+      involved_kind: PersistentVolumeClaim
   promql:
     - >-
       kube_persistentvolumeclaim_status_phase{phase="Pending"} == 1
   debounce_seconds: 300
 triggers:
-  - event_reason_regex: "FailedBinding|ProvisioningFailed|StorageClassNotFound"
+  - event_reason_regex: "FailedBinding|ProvisioningFailed"
   - event_message_regex: "no persistent volumes available|storageclass.*not found|waiting for.*to be created"
 investigation_steps:
   - "kubectl get pvc -A — list all PVCs and check which have STATUS=Pending and how long."
