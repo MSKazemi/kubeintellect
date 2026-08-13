@@ -365,6 +365,9 @@ You want to teach KubeIntellect a new failure pattern in plain English.
 ## 10 · Preference — `kq preference`
 
 You want the agent to remember your preferences across sessions.
+## 10 · Trust-plane — `kq v5-status`
+
+You want to confirm which v5 flags and safety brakes are currently active.
 
 **You run:**
 
@@ -507,6 +510,22 @@ Examples:
 ```
 
 This is a zero-token local operation — it never contacts the server. The output lists the available subcommands and flags exactly as `kq --help` does, so completions and help never drift. See [CLI Reference → `kq preference --help` ](cli-reference.md#kq-preference-listsetforget) for the full flag list and examples.
+kq v5-status --help
+```
+
+**Real output** — produced by running `kq v5-status --help` (kube-q 1.5.0):
+
+```console
+`kq v5-status` — show the v5 trust-plane state (version, active flags, safety brakes).
+
+Reads GET /v1/v5/status: which v5 slices are active, and whether the fail-closed brakes
+(kill switch, change freeze) are engaged. Zero LLM tokens.
+
+Usage:
+  kq v5-status
+```
+
+This is a zero-token local operation — it never contacts the server. The output lists the available subcommands and flags exactly as `kq --help` does, so completions and help never drift. See [CLI Reference → `kq v5-status --help` ](cli-reference.md#kq-v5-status) for the full flag list and examples.
 
 ---
 
