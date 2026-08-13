@@ -359,6 +359,9 @@ You need a grounded, seq-cited postmortem to paste into an incident ticket.
 ## 10 · Export — `kq export`
 
 You need a machine-readable diagnosis report for archiving or feeding another tool.
+## 10 · Detector — `kq detector`
+
+You want to teach KubeIntellect a new failure pattern in plain English.
 
 **You run:**
 
@@ -459,6 +462,25 @@ Exit codes:
 ```
 
 This is a zero-token local operation — it never contacts the server. The output lists the available subcommands and flags exactly as `kq --help` does, so completions and help never drift. See [CLI Reference → `kq export --help` ](cli-reference.md#kq-export) for the full flag list and examples.
+kq detector --help
+```
+
+**Real output** — produced by running `kq detector --help` (kube-q 1.5.0):
+
+```console
+`kq detector` — teach the operator a new failure pattern in plain English (ADR-012).
+
+  kq detector new "<plain-English failure description>"   compile + stage as shadow
+  kq detector list [--status shadow|active|demoted]        the candidate queue
+  kq detector shadow <name>                                what a shadow detector fired
+  kq detector promote <name>                               shadow -> active (it can now act)
+  kq detector reject <name>                                stop it firing
+
+New detectors enter SHADOW mode: they observe and accrue precision but never act
+until you promote them.
+```
+
+This is a zero-token local operation — it never contacts the server. The output lists the available subcommands and flags exactly as `kq --help` does, so completions and help never drift. See [CLI Reference → `kq detector --help` ](cli-reference.md#kq-detector-newlistpromote) for the full flag list and examples.
 
 ---
 
