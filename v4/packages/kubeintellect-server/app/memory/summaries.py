@@ -28,9 +28,6 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Unrelated summaries below this trgm score don't help a theme query.
-_SUMMARY_FLOOR = 0.02
-
 # Per-cluster KG edge count — the change-rate watermark (R7.1).
 _SQL_KG_WATERMARK = "SELECT cluster_id, count(*) AS n FROM kg_edges GROUP BY cluster_id"
 
@@ -150,7 +147,7 @@ async def recall_theme_summaries(
         return []
     return [
         dict(r) for r in rows
-        if r["sim"] is None or r["sim"] > _SUMMARY_FLOOR
+        if r["sim"] is None or r["sim"] > settings.MEMORY_RECALL_SIMILARITY_FLOOR
     ]
 
 
