@@ -194,7 +194,7 @@ class TestTerminatingStuckReliability:
 class TestPlaybookDetectorLoading:
     def test_eighteen_compiled_three_llm_only(self):
         detectors = load_detectors()
-        assert len(detectors) == 18
+        assert len(detectors) == 19
         names = {d.playbook for d in detectors}
         assert "CommandHardcodedFailure" not in names   # LLM-only by design
         assert "ServiceUnreachable" not in names
