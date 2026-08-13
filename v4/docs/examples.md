@@ -346,31 +346,9 @@ full ladder (A0–A3), per-namespace levels, and the A3 allowlist are in
 
 ---
 
+## 10 · Inspect the client config — `kq config`
 
-## 10 · Config — `kq config`
-
-You want to inspect or change where `kq` points without hand-editing `~/.kube-q/.env`.
-## 10 · Replay — `kq replay`
-
-You need to audit a prior session and verify its hash-chained decision log is intact.
-## 10 · Postmortem — `kq postmortem`
-
-You need a grounded, seq-cited postmortem to paste into an incident ticket.
-## 10 · Export — `kq export`
-
-You need a machine-readable diagnosis report for archiving or feeding another tool.
-## 10 · Detector — `kq detector`
-
-You want to teach KubeIntellect a new failure pattern in plain English.
-## 10 · Preference — `kq preference`
-
-You want the agent to remember your preferences across sessions.
-## 10 · Trust-plane — `kq v5-status`
-
-You want to confirm which v5 flags and safety brakes are currently active.
-## 10 · Shell completion — `kq completion`
-
-You have `kq` installed and want `<TAB>` to complete subcommands, verbs, and flags instead of typing them from memory.
+You want to see where `kq` is pointing, and which of those settings you actually set, without opening `~/.kube-q/.env`.
 
 **You run:**
 
@@ -381,7 +359,7 @@ kq config show
 **Real output** — produced by running `kq config show` (kube-q 1.5.0):
 
 ```console
-                 kube-q config  (/home/hariom/.kube-q/.env)                  
+                 kube-q config  (/home/you/.kube-q/.env)                  
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
 ┃ Key                             ┃ Value                         ┃ Source  ┃
 ┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
@@ -416,11 +394,23 @@ kq config show
 └─────────────────────────────────┴───────────────────────────────┴─────────┘
 ```
 
-This is a zero-token local operation — it never contacts the server. The output lists the available subcommands and flags exactly as `kq --help` does, so completions and help never drift. See [CLI Reference → `kq config show` ](cli-reference.md#kq-config-showsetresetprofile) for the full flag list and examples.
-kq replay --help
+This one really is local: `kq config show` resolves your settings and prints them without contacting the server or spending a token. The **Source** column is the part worth reading — `default` means nothing has overridden the built-in value, and it changes to the profile or environment variable that won once you set one. The path in the title is the file `set` and `reset` will write to.
+
+See [CLI Reference → `kq config`](cli-reference.md#kq-config-view-and-persist-client-settings) for `set`, `reset`, and switching between a local server and the hosted API with profiles.
+
+---
+
+## 11 · Audit a past session — `kq replay`
+
+You need to audit a prior session and prove its hash-chained decision log has not been tampered with.
+
+**You run:**
+
+```bash
+kq replay <session-id>        # session id: type /id in the REPL
 ```
 
-**Real output** — produced by running `kq replay --help` (kube-q 1.5.0):
+Replaying needs a session the recorder has actually seen, so the transcript below is what the command tells you about itself — verbatim from `kq replay --help` (kube-q 1.5.0):
 
 ```console
 `kq replay <episode_id>` — replay a recorded episode from the flight recorder.
@@ -432,11 +422,23 @@ Usage:
   kq replay <episode_id>          # episode_id == session_id (see /id in the REPL)
 ```
 
-This is a zero-token local operation — it never contacts the server. The output lists the available subcommands and flags exactly as `kq --help` does, so completions and help never drift. See [CLI Reference → `kq replay --help` ](cli-reference.md#kq-replay) for the full flag list and examples.
-kq postmortem --help
+`--help` is local, but `kq replay` itself calls the server: it fetches `GET /v1/episodes/{id}/replay` and re-renders the recorded events, then prints a chain-integrity verdict. **It exits `3` when the chain is broken**, which is what makes it usable as an audit step in a script or in CI rather than something a human has to eyeball.
+
+See [CLI Reference → `kq replay`](cli-reference.md#kq-replay-session-id) and [Flight Recorder & Replay](flight-recorder.md) for how the chain is built.
+
+---
+
+## 12 · Write up the incident — `kq postmortem`
+
+The incident is over and you need a grounded, citable write-up to paste into the ticket.
+
+**You run:**
+
+```bash
+kq postmortem <session-id>
 ```
 
-**Real output** — produced by running `kq postmortem --help` (kube-q 1.5.0):
+A postmortem is rendered from a recorded episode, so the transcript below is what the command tells you about itself — verbatim from `kq postmortem --help` (kube-q 1.5.0):
 
 ```console
 `kq postmortem <session-id>` — a grounded incident postmortem.
@@ -445,11 +447,23 @@ Renders the server's flight-recorder postmortem: a seq-cited timeline, what
 fired, what was investigated and tried, the outcome, and an audit-chain verdict.
 ```
 
-This is a zero-token local operation — it never contacts the server. The output lists the available subcommands and flags exactly as `kq --help` does, so completions and help never drift. See [CLI Reference → `kq postmortem --help` ](cli-reference.md#kq-postmortem) for the full flag list and examples.
-kq export --help
+`--help` is local; `kq postmortem` itself reads the flight recorder on the server. Nothing in the narrative is composed after the fact — every claim is cited back to a `seq` in the hash-chained decision log, and the audit verdict tells you whether that log is intact. That is the difference between a postmortem you can attach to a review and a plausible story.
+
+See [CLI Reference → `kq postmortem`](cli-reference.md#kq-postmortem-session-id).
+
+---
+
+## 13 · Hand the report to another tool — `kq export`
+
+You need the same diagnosis as machine-readable JSON or YAML, to archive it or feed it to something else.
+
+**You run:**
+
+```bash
+kq export <session-id> --format json --output incident-4711.json
 ```
 
-**Real output** — produced by running `kq export --help` (kube-q 1.5.0):
+Exporting needs a recorded episode, so the transcript below is what the command tells you about itself — verbatim from `kq export --help` (kube-q 1.5.0):
 
 ```console
 `kq export <session-id> [--format json|yaml] [--output PATH]` — export a diagnosis report.
@@ -470,11 +484,23 @@ Exit codes:
   4  no recorded events for that episode — nothing exported
 ```
 
-This is a zero-token local operation — it never contacts the server. The output lists the available subcommands and flags exactly as `kq --help` does, so completions and help never drift. See [CLI Reference → `kq export --help` ](cli-reference.md#kq-export) for the full flag list and examples.
-kq detector --help
+`--help` is local; the export itself pulls the postmortem from the server. The exit codes are the contract worth knowing: `3` means the document was written but its audit chain is **broken**, and `4` means the recorder held no events for that episode, so nothing was written at all — deliberately, instead of emitting an empty report that looks like a clean bill of health.
+
+See [CLI Reference → `kq export`](cli-reference.md#kq-export-session-id).
+
+---
+
+## 14 · Teach it a new failure — `kq detector`
+
+Your cluster fails in a way the 23 shipped playbooks do not cover, and you want it recognised without writing Python.
+
+**You run:**
+
+```bash
+kq detector new "PVC stuck Pending because the storage class is missing"
 ```
 
-**Real output** — produced by running `kq detector --help` (kube-q 1.5.0):
+This one talks to a server with detector authoring enabled, so the transcript below is what the command tells you about itself — verbatim from `kq detector --help` (kube-q 1.5.0):
 
 ```console
 `kq detector` — teach the operator a new failure pattern in plain English (ADR-012).
@@ -489,11 +515,23 @@ New detectors enter SHADOW mode: they observe and accrue precision but never act
 until you promote them.
 ```
 
-This is a zero-token local operation — it never contacts the server. The output lists the available subcommands and flags exactly as `kq --help` does, so completions and help never drift. See [CLI Reference → `kq detector --help` ](cli-reference.md#kq-detector-newlistpromote) for the full flag list and examples.
-kq preference --help
+`--help` is local; `new`, `list`, `shadow`, `promote` and `reject` all call the server. The default is the safety property: a newly compiled detector enters **shadow** mode, where it records what it *would* have fired on and accrues a precision score, and it cannot open an investigation or act until a human promotes it. Authoring is behind `NL_DETECTOR_AUTHORING_ENABLED`, which is off by default.
+
+See [CLI Reference → `kq detector`](cli-reference.md#kq-detector-teach-a-new-failure-in-plain-english) and [Agent Behaviors → Playbook library](agent-behaviors.md#playbook-library).
+
+---
+
+## 15 · Make it remember how you work — `kq preference`
+
+You are tired of repeating "in the payments namespace, and dry-run it first" on every question.
+
+**You run:**
+
+```bash
+kq preference set default_namespace payments
 ```
 
-**Real output** — produced by running `kq preference --help` (kube-q 1.5.0):
+Preferences live in the server's memory, so the transcript below is what the command tells you about itself — verbatim from `kq preference --help` (kube-q 1.5.0):
 
 ```console
 `kq preference` — view and manage the agent's memory of your preferences.
@@ -512,11 +550,23 @@ Examples:
   kq preference list
 ```
 
-This is a zero-token local operation — it never contacts the server. The output lists the available subcommands and flags exactly as `kq --help` does, so completions and help never drift. See [CLI Reference → `kq preference --help` ](cli-reference.md#kq-preference-listsetforget) for the full flag list and examples.
-kq v5-status --help
+`--help` is local; `list`, `set` and `forget` read and write the server's memory. What you set is recalled on later sessions, so it changes what subsequent questions assume without you restating it. This needs the memory hierarchy (`MEMORY_HIERARCHY_ENABLED`, on by default) and a PostgreSQL backend; on SQLite the command has nothing to read.
+
+See [CLI Reference → `kq preference`](cli-reference.md#kq-preference-view-and-manage-learned-operator-preferences).
+
+---
+
+## 16 · Check the trust plane — `kq v5-status`
+
+Before you rely on anything autonomous, you want to know which v5 slices are live and whether the safety brakes are engaged.
+
+**You run:**
+
+```bash
+kq v5-status
 ```
 
-**Real output** — produced by running `kq v5-status --help` (kube-q 1.5.0):
+This reads live server state, so the transcript below is what the command tells you about itself — verbatim from `kq v5-status --help` (kube-q 1.5.0):
 
 ```console
 `kq v5-status` — show the v5 trust-plane state (version, active flags, safety brakes).
@@ -528,7 +578,19 @@ Usage:
   kq v5-status
 ```
 
-This is a zero-token local operation — it never contacts the server. The output lists the available subcommands and flags exactly as `kq --help` does, so completions and help never drift. See [CLI Reference → `kq v5-status --help` ](cli-reference.md#kq-v5-status) for the full flag list and examples.
+`--help` is local; `kq v5-status` itself reads `GET /v1/v5/status`. Either way it spends no LLM tokens. Read it before trusting an autonomous action: it tells you which slices are active and whether the fail-closed brakes — the kill switch and the change freeze — are currently engaged.
+
+See [CLI Reference → `kq v5-status`](cli-reference.md#kq-v5-status) and [Autonomous Operations](autonomy.md).
+
+---
+
+## 17 · Shell completion — `kq completion`
+
+You have `kq` installed and want `<TAB>` to complete subcommands, verbs, and flags instead of typing them from memory.
+
+**You run:**
+
+```bash
 kq completion bash
 ```
 
@@ -586,6 +648,8 @@ kq completion fish | source     # or: kq completion fish > ~/.config/fish/comple
 ```
 
 See [CLI Reference → `kq completion`](cli-reference.md#kq-completion-bashzshfish) for the full per-shell snippets and flag list.
+
+---
 
 ---
 

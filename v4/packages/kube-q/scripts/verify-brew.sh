@@ -17,9 +17,6 @@ if [ ! -f "$ROOT/v4/packages/kube-q/Formula/kube-q.rb" ] && command -v git >/dev
   fi
 fi
 FORMULA="$ROOT/v4/packages/kube-q/Formula/kube-q.rb"
-# Issue #113 references Formula/kube-q.rb at repo root pre-v4 layout; real path is v4/packages/...
-# Support both for audit invocation.
-ALT_FORMULA="$ROOT/Formula/kube-q.rb"
 
 echo "=== KubeIntellect brew verification — #113 ==="
 echo "Formula: $FORMULA"
@@ -28,14 +25,18 @@ echo
 
 # ── Static checks that brew audit --strict would enforce (no brew needed) ──
 echo "--- Static audit (no brew required) ---"
+# brew audit measures "<name>: <desc>", NOT the desc alone — a 75-char desc on a
+# 6-char formula is still 83 and still fails. Checking the desc against 80 is the
+# wrong threshold and reports PASS on a formula brew would reject.
+NAME=$(basename "$FORMULA" .rb)
 DESC=$(grep -E '^\s*desc ' "$FORMULA" | sed -E 's/.*desc "(.*)".*/\1/')
-DESC_LEN=${#DESC}
-echo "desc: \"$DESC\" ($DESC_LEN chars)"
-if [ "$DESC_LEN" -gt 80 ]; then
-  echo "FAIL: desc >80 chars — brew audit would flag"
+FULL="$NAME: $DESC"
+echo "desc: \"$DESC\" (${#DESC} chars; \"$FULL\" = ${#FULL})"
+if [ "${#FULL}" -gt 80 ]; then
+  echo "FAIL: \"<name>: <desc>\" is ${#FULL} chars — brew audit rejects >80"
   exit 1
 else
-  echo "PASS: desc length <=80"
+  echo "PASS: \"<name>: <desc>\" length ${#FULL} <= 80"
 fi
 
 # Resource ordering
@@ -88,10 +89,9 @@ if ! command -v brew >/dev/null 2>&1; then
   echo "  brew audit --strict --online \"$FORMULA\""
   echo "  brew install --build-from-source \"$FORMULA\" && kq --version  # expect 1.5.0"
   echo
-  echo "Static checks PASSED. Real brew steps require a runner with brew + rust/maturin + libyaml."
-  echo " pydantic-core builds from sdist needing maturin/rust (declared as :build)"
-  echo " PyYAML builds against Homebrew libyaml (declared)"
-  echo " Issue #113 can be closed as 'static-pass, install pending runner' or kept open until a macOS job runs."
+  echo "Static checks PASSED. The real brew steps need a runner with brew + rust/maturin + libyaml:"
+  echo "  - pydantic-core builds from sdist and needs maturin/rust (declared as :build)"
+  echo "  - PyYAML builds against Homebrew libyaml (declared)"
   exit 0
 fi
 

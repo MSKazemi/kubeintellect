@@ -1,24 +1,31 @@
 name: ReadinessProbeFailing
 detect:
   watch_predicates:
+    # Liveness moved to its own playbook (#95): a failed readiness probe pulls the
+    # pod out of Service endpoints, a failed liveness probe makes the kubelet
+    # restart the container. Different symptom, different fix — so this one no
+    # longer claims "Liveness probe failed", which would double-fire with
+    # LivenessProbeFailing on the same event.
     - kind: Event
       reason_regex: "^Unhealthy$"
-      message_regex: "Readiness probe failed|Liveness probe failed"
+      message_regex: "Readiness probe failed"
       involved_kind: Pod
   promql:
     - 'min_over_time(kube_pod_status_ready{condition="false"}[5m]) == 1'
   debounce_seconds: 180
 triggers:
-  - event_reason_regex: "Unhealthy"
-  - event_message_regex: "Readiness probe failed|Liveness probe failed"
+  - event_message_regex: "Readiness probe failed"
 investigation_steps:
   - "kubectl describe pod <pod> -n <ns> — read Events for the exact probe failure response."
-  - "Inspect spec.containers[].readinessProbe / livenessProbe — verify path, port, timing."
+  - "Inspect spec.containers[].readinessProbe — verify path, port, and timing."
   - "kubectl logs <pod> -n <ns> --tail=50 — confirm the app is actually starting."
 expected_evidence:
   - "Event 'Readiness probe failed' with HTTP status or connection refused"
   - "Probe configuration with too-short initialDelaySeconds or wrong path"
   - "Application logs showing slow startup or wrong port binding"
 recommended_fix_template: |
-  The readiness/liveness probe is failing. Suggested fix: <ACTION> (correct the path
-  or port, raise initialDelaySeconds/periodSeconds, or fix the underlying app).
+  The readiness probe on <POD> in namespace <NS> is failing, so the pod is held out
+  of its Service endpoints — it is not being restarted. Suggested fix: <ACTION>
+  (correct the path or port, raise initialDelaySeconds/periodSeconds, or fix the
+  underlying app). If the container is also being restarted, the liveness probe is
+  failing too — see the LivenessProbeFailing playbook.
