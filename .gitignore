@@ -9,6 +9,10 @@
 # ── Secrets ──────────────────────────────────────────────────────────────────
 .env
 .env.*
+# Allow the example template to be versioned — it contains only placeholders.
+# Must come *after* .env.* so the negation takes effect (git check-ignore is last-match-wins).
+!.env.example
+!**/.env.example
 *.local
 *.pem
 *.key
