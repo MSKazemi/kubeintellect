@@ -26,6 +26,9 @@ from pathlib import Path
 # Repo layout: this file is v4/scripts/check_doc_claims.py
 _V4 = Path(__file__).resolve().parent.parent
 _DOCS = _V4 / "docs"
+# Repo-root docs make the same derived claims and drift the same way. ROADMAP.md
+# sat three playbooks behind for exactly as long as nothing checked it.
+_ROOT = _V4.parent
 
 
 # ── Canonical values, read straight from the code ────────────────────────────
@@ -76,7 +79,19 @@ def _canonical() -> Canonical:
 # ── Checks ───────────────────────────────────────────────────────────────────
 
 
+_ROOT_PREFIX = "root:"
+
+
 def _read(doc: str) -> str:
+    """Read a doc, by default from ``v4/docs/``.
+
+    A name prefixed ``root:`` resolves from the repo root instead, so root-level
+    surfaces like ``ROADMAP.md`` can be checked alongside the v4 docs. The prefix
+    is explicit on purpose — an implicit fallback would turn a typo in a docs
+    filename into a confusing lookup somewhere else.
+    """
+    if doc.startswith(_ROOT_PREFIX):
+        return (_ROOT / doc[len(_ROOT_PREFIX):]).read_text(encoding="utf-8")
     return (_DOCS / doc).read_text(encoding="utf-8")
 
 
@@ -118,6 +133,18 @@ def run_checks() -> list[str]:
     errors += _check_number(
         "architecture.md", r"\((\d+) playbooks\)", pc, "playbook count"
     )
+    # Repo-root ROADMAP.md — the surface a first-time visitor reads, and the one
+    # that had drifted furthest (it claimed 20 when the library was 23) because
+    # nothing checked it.
+    errors += _check_number(
+        "root:ROADMAP.md",
+        r"\*\*(\d+) declarative failure playbooks\*\*",
+        pc,
+        "playbook count",
+    )
+    errors += _check_number(
+        "root:ROADMAP.md", r"playbook library\*\* beyond (\d+)", pc, "playbook count"
+    )
 
     dc = c.detector_count
     errors += _check_number(
@@ -125,6 +152,9 @@ def run_checks() -> list[str]:
     )
     errors += _check_number(
         "api-reference.md", r'"detectors":\s*(\d+)', dc, "detector count"
+    )
+    errors += _check_number(
+        "root:ROADMAP.md", r"(\d+) of which compile", dc, "detector count"
     )
 
     fc = c.flag_count
