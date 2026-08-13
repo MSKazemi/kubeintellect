@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import time
 
-from app.memory import episodes
+from app.core.config import settings
+from app.memory import episodes, service, summaries
 from app.memory.consolidation import _playbooks_from_key
 
 
@@ -35,6 +36,9 @@ class FakePool:
 
 
 class TestEpisodes:
+    def test_recall_similarity_floor_defaults_to_point_zero_two(self):
+        assert settings.MEMORY_RECALL_SIMILARITY_FLOOR == 0.02
+
     async def test_write_returns_id(self):
         pool = FakePool(row={"id": "ep-uuid-1"})
         episodes.init_episodes(pool)
@@ -85,6 +89,31 @@ class TestEpisodes:
         try:
             out = await episodes.recall_episodes("crashloop payments", "c1")
             assert len(out) == 1 and out[0]["id"] == "1"
+        finally:
+            episodes.close_episodes()
+
+    async def test_recall_uses_configured_similarity_floor(self, mocker):
+        mocker.patch.object(episodes.settings, "MEMORY_RECALL_SIMILARITY_FLOOR", 0.0)
+        pool = FakePool(
+            rows=[
+                {
+                    "id": "low-sim",
+                    "summary": "rare incident",
+                    "root_cause": None,
+                    "outcome": None,
+                    "verified": None,
+                    "confidence": None,
+                    "playbooks": [],
+                    "namespace": None,
+                    "started_at": None,
+                    "sim": 0.01,
+                }
+            ]
+        )
+        episodes.init_episodes(pool)
+        try:
+            out = await episodes.recall_episodes("rare incident", "c1")
+            assert [row["id"] for row in out] == ["low-sim"]
         finally:
             episodes.close_episodes()
 
@@ -173,6 +202,28 @@ class TestConsolidation:
 
         mocker.patch.object(service, "_pool", None)
         assert await consolidation.run_consolidation_once() == {}
+
+
+class TestSummaryRecall:
+    async def test_recall_uses_configured_similarity_floor(self, mocker):
+        mocker.patch.object(summaries.settings, "MEMORY_RECALL_SIMILARITY_FLOOR", 0.0)
+        pool = FakePool(
+            rows=[
+                {
+                    "theme_key": "rare incident",
+                    "summary": "one episode",
+                    "member_count": 1,
+                    "verified_count": 0,
+                    "last_episode_at": None,
+                    "sim": 0.01,
+                }
+            ]
+        )
+        mocker.patch.object(service, "_pool", pool)
+
+        out = await summaries.recall_theme_summaries("rare incident", "c1")
+
+        assert [row["theme_key"] for row in out] == ["rare incident"]
 
 
 class TestInjectionLatencyGate:

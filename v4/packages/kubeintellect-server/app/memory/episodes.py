@@ -25,8 +25,6 @@ _pool = None  # asyncpg.Pool — owned by app.memory.service
 
 # Reciprocal Rank Fusion constant (Cormack et al. 2009). Memory V5 ADR-014 / P1.
 _RRF_K = 60
-# Baseline trgm noise floor — unrelated episodes below this don't help the prompt.
-_TRGM_FLOOR = 0.02
 
 # ── Memory V5 P6 (ADR-017): importance / surprise ────────────────────────────
 # Importance derives from incident severity: a regression a fix caused is the most
@@ -312,7 +310,8 @@ async def recall_episodes(
         if hybrid:
             rows = await _pool.fetch(
                 _SQL_RECALL_HYBRID_IMP if importance else _SQL_RECALL_HYBRID,
-                query_text[:500], cluster_id, k, _RRF_K, _TRGM_FLOOR,
+                query_text[:500], cluster_id, k, _RRF_K,
+                settings.MEMORY_RECALL_SIMILARITY_FLOOR,
             )
         else:
             rows = await _pool.fetch(
@@ -338,7 +337,11 @@ async def recall_episodes(
         # Baseline path applies the trgm noise floor here; the hybrid SQL already
         # filtered to channel-matched rows (a lex-only match has sim ≤ floor but
         # is still relevant), so it must NOT re-apply the trgm floor.
-        if not hybrid and row["sim"] is not None and row["sim"] <= _TRGM_FLOOR:
+        if (
+            not hybrid
+            and row["sim"] is not None
+            and row["sim"] <= settings.MEMORY_RECALL_SIMILARITY_FLOOR
+        ):
             continue
         out.append(dict(row))
     return out

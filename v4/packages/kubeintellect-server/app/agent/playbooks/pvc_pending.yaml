@@ -1,0 +1,37 @@
+name: PvcPending
+detect:
+  watch_predicates:
+    # The sensorium streams `kubectl get events`, so a PVC failure arrives as an
+    # Event whose involvedObject is the claim — `kind:` selects the observation
+    # channel (Pod | Event | Node) and `involved_kind:` narrows the subject.
+    # `kind: PersistentVolumeClaim` would parse, load and count, but WatchPredicate
+    # .matches() only knows those three channels, so it could never fire (cf. #114).
+    #
+    # Both reasons are emitted by the storage controllers: `FailedBinding` by the
+    # in-tree persistentvolume-controller ("no persistent volumes available for
+    # this claim…"), `ProvisioningFailed` by the CSI external-provisioner (which
+    # carries the `storageclass.storage.k8s.io "x" not found` message).
+    - kind: Event
+      reason_regex: "^(FailedBinding|ProvisioningFailed)$"
+      involved_kind: PersistentVolumeClaim
+  promql:
+    - >-
+      kube_persistentvolumeclaim_status_phase{phase="Pending"} == 1
+  debounce_seconds: 300
+triggers:
+  - event_reason_regex: "FailedBinding|ProvisioningFailed"
+  - event_message_regex: "no persistent volumes available|storageclass.*not found|waiting for.*to be created"
+investigation_steps:
+  - "kubectl get pvc -A — list all PVCs and check which have STATUS=Pending and how long."
+  - "kubectl describe pvc <pvc> -n <ns> — capture events, storageClassName, accessModes, and requested capacity."
+  - "kubectl get storageclass — list StorageClasses and check if the requested class exists and has a provisioner."
+  - "kubectl get pv — list PersistentVolumes and check if any PV matches the claim's accessModes/capacity and is Available."
+  - "kubectl describe storageclass <sc> — verify provisioner, parameters, and allowVolumeExpansion."
+expected_evidence:
+  - "PVC STATUS shows Pending for >5m (not transient)"
+  - "Events contain 'no persistent volumes available' or 'storageclass.storage.k8s.io \"<name>\" not found'"
+  - "No default StorageClass when pvc.spec.storageClassName is empty and cluster has no default"
+recommended_fix_template: |
+  PVC <PVC> in namespace <NS> is Pending — it requests storageClassName=<SC>, accessModes=<MODES>, capacity=<SIZE> but no matching volume exists.
+  Either create the missing StorageClass, set a correct storageClassName, or create a static PV with matching accessModes/capacity.
+  Prefer the safer option for the workload's risk profile — do not auto-apply.

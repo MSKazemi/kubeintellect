@@ -192,9 +192,9 @@ class TestTerminatingStuckReliability:
 
 
 class TestPlaybookDetectorLoading:
-    def test_eighteen_compiled_three_llm_only(self):
+    def test_twenty_compiled_three_llm_only(self):
         detectors = load_detectors()
-        assert len(detectors) == 18
+        assert len(detectors) == 20
         names = {d.playbook for d in detectors}
         assert "CommandHardcodedFailure" not in names   # LLM-only by design
         assert "ServiceUnreachable" not in names
@@ -229,6 +229,112 @@ class TestPlaybookDetectorLoading:
                         f"{pattern!r} has leading/trailing whitespace — an event "
                         f"reason never contains a space, so this can never match"
                     )
+
+
+    def test_every_watch_predicate_uses_a_known_observation_kind(self):
+        """`kind:` selects the observation CHANNEL, not the Kubernetes object.
+
+        `WatchPredicate.matches()` only compares against "Pod", "Event" and "Node";
+        every other value falls through to `return False`. So a playbook that says
+        `kind: PersistentVolumeClaim` — the natural thing to write, and what #94
+        shipped with — parses, loads, counts toward the detector total and passes
+        the schema check, while being unable to fire on any observation, ever.
+
+        Same family as the whitespace guard above: assert the predicate is capable
+        of matching, not merely that it exists. To narrow an Event to a subject,
+        use `involved_kind:`.
+        """
+        known = {"Pod", "Event", "Node"}
+        for det in load_detectors():
+            for pred in det.watch_predicates:
+                assert pred.kind in known, (
+                    f"{det.playbook}: watch predicate kind {pred.kind!r} is not an "
+                    f"observation channel ({sorted(known)}) — it can never match. "
+                    f"Did you mean `kind: Event` + `involved_kind: {pred.kind}`?"
+                )
+
+
+class TestPvcPendingDetector:
+    """The detect: arm of the #94 playbook, against the two real controller reasons.
+
+    Shipped as `kind: PersistentVolumeClaim`, which is not an observation channel,
+    so the compiled predicate was a permanent no-op — the zero-token detection the
+    issue asked for was entirely absent while every gate stayed green.
+    """
+
+    def _predicate(self):
+        det = next(d for d in load_detectors() if d.playbook == "PvcPending")
+        return det.watch_predicates[0]
+
+    def test_fires_on_no_volumes_available(self):
+        # persistentvolume-controller, static-PV clusters with no matching volume.
+        assert self._predicate().matches(_obs(
+            kind="event", reason="FailedBinding", event_type="Warning",
+            message="no persistent volumes available for this claim and no storage class is set",
+            involved_kind="PersistentVolumeClaim",
+        ))
+
+    def test_fires_on_missing_storageclass(self):
+        # csi external-provisioner, the misspelled/absent StorageClass case.
+        assert self._predicate().matches(_obs(
+            kind="event", reason="ProvisioningFailed", event_type="Warning",
+            message='storageclass.storage.k8s.io "fast-ssd" not found',
+            involved_kind="PersistentVolumeClaim",
+        ))
+
+    def test_does_not_fire_on_successful_provisioning(self):
+        assert not self._predicate().matches(_obs(
+            kind="event", reason="ProvisioningSucceeded", event_type="Normal",
+            message="Successfully provisioned volume pvc-8f21",
+            involved_kind="PersistentVolumeClaim",
+        ))
+
+    def test_does_not_fire_on_the_same_reason_from_another_kind(self):
+        assert not self._predicate().matches(_obs(
+            kind="event", reason="ProvisioningFailed", event_type="Warning",
+            message="failed to provision volume", involved_kind="Pod",
+        ))
+
+
+class TestProbeDetectorsDoNotCrossFire:
+    """`Unhealthy` is emitted for BOTH probe kinds, so the reason alone cannot
+    separate them — only the message can.
+
+    A readiness failure removes the pod from Service endpoints; a liveness failure
+    makes the kubelet restart the container. Reporting one as the other sends the
+    operator after the wrong fix, and firing both on a single event double-counts
+    one incident in the findings feed.
+    """
+
+    def _predicate(self, playbook):
+        det = next(d for d in load_detectors() if d.playbook == playbook)
+        return det.watch_predicates[0]
+
+    def _event(self, message):
+        return _obs(
+            kind="event", reason="Unhealthy", event_type="Warning",
+            message=message, involved_kind="Pod",
+        )
+
+    def test_liveness_fires_on_liveness(self):
+        assert self._predicate("LivenessProbeFailing").matches(
+            self._event("Liveness probe failed: HTTP probe failed with statuscode: 500")
+        )
+
+    def test_liveness_does_not_fire_on_readiness(self):
+        assert not self._predicate("LivenessProbeFailing").matches(
+            self._event("Readiness probe failed: HTTP probe failed with statuscode: 503")
+        )
+
+    def test_readiness_fires_on_readiness(self):
+        assert self._predicate("ReadinessProbeFailing").matches(
+            self._event("Readiness probe failed: HTTP probe failed with statuscode: 503")
+        )
+
+    def test_readiness_does_not_fire_on_liveness(self):
+        assert not self._predicate("ReadinessProbeFailing").matches(
+            self._event("Liveness probe failed: HTTP probe failed with statuscode: 500")
+        )
 
 
 class TestHPANotScalingDetector:

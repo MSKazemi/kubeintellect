@@ -473,7 +473,7 @@ packages/
 │   │   ├── coordinator.py        — LLM decision + synthesis, tool trimmer, reflexion writes
 │   │   ├── memory_loader.py      — load pinned cluster context + failure-pattern hints
 │   │   └── subagent.py           — 4 specialist subagent runners
-│   ├── playbooks/                — YAML playbook library + loader (21 playbooks)
+│   ├── playbooks/                — YAML playbook library + loader (23 playbooks)
 │   ├── state.py                  — AgentState, SubagentInput, AgentFinding, RCAResult
 │   ├── workflow.py               — LangGraph graph, targeted_investigator, route_coordinator
 │   └── hitl.py                   — HITL approval/denial detection

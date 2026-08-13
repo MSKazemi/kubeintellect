@@ -1,7 +1,7 @@
 class KubeQ < Formula
   include Language::Python::Virtualenv
 
-  desc "Interactive terminal CLI for chatting with your Kubernetes cluster via an AI backend"
+  desc "Interactive CLI to chat with your Kubernetes cluster via an AI backend"
   homepage "https://github.com/MSKazemi/kubeintellect"
   url "https://files.pythonhosted.org/packages/92/85/5d0af5d4fcff49447325ffd338c2ef5e386d99b6a106b570f8e97bb66d60/kube_q-1.5.0.tar.gz"
   sha256 "738363d6f3c5c1f97c561924ab232e2cfc0ca6cacb5c9bdb18ab756aa1b1cfc1"
@@ -15,14 +15,14 @@ class KubeQ < Formula
 
   pypi_packages exclude_packages: "certifi"
 
-  resource "anyio" do
-    url "https://files.pythonhosted.org/packages/61/cc/a381afa6efea9f496eff839d4a6a1aed3bfafc7b3ab4b0d1b243a12573dd/anyio-4.14.2.tar.gz"
-    sha256 "cfa139f3ed1a23ee8f88a145ddb5ac7605b8bbfd8592baacd7ce3d8bb4313c7f"
-  end
-
   resource "annotated-types" do
     url "https://files.pythonhosted.org/packages/5f/56/a8120250d128bed162cd73c76d45f6ef9991f3e068f62a8ee060afa3104a/annotated_types-0.8.0.tar.gz"
     sha256 "13b2beaad985e05e2d6407ee4c4f35590b11f8d693a258a561055cac8f64cab7"
+  end
+
+  resource "anyio" do
+    url "https://files.pythonhosted.org/packages/61/cc/a381afa6efea9f496eff839d4a6a1aed3bfafc7b3ab4b0d1b243a12573dd/anyio-4.14.2.tar.gz"
+    sha256 "cfa139f3ed1a23ee8f88a145ddb5ac7605b8bbfd8592baacd7ce3d8bb4313c7f"
   end
 
   resource "h11" do

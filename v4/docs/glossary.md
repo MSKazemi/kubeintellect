@@ -18,7 +18,7 @@ page where the concept is explained in depth.
 | **Memory loader** | The step that loads pinned, cross-session context (user prefs, past root causes, failure hints) into the prompt. Active only on PostgreSQL. |
 | **Cluster snapshot** | The pre-fetched picture of cluster health (pod list + Warning events) built at the start of every turn. Drives playbook matching and the snapshot sufficiency gate. |
 | **Snapshot sufficiency gate** | A soft bias that lets the agent answer healthy, list-shaped questions straight from the snapshot instead of re-querying. Modes: `off` / `lenient` / `strict`. See [Agent Behaviors](agent-behaviors.md#snapshot-sufficiency-gate). |
-| **Playbook** | A YAML investigation recipe for a known failure (CrashLoopBackOff, OOMKilled, …). When the snapshot matches, the playbook is injected into the prompt to guide the agent. 21 ship by default. See [Playbook library](agent-behaviors.md#playbook-library). |
+| **Playbook** | A YAML investigation recipe for a known failure (CrashLoopBackOff, OOMKilled, …). When the snapshot matches, the playbook is injected into the prompt to guide the agent. 23 ship by default. See [Playbook library](agent-behaviors.md#playbook-library). |
 | **Investigation plan** | A visible, up-front checklist the agent emits for queries needing 3+ steps, streamed as a `plan` event so the UI can show it. |
 | **RCA** | **Root-Cause Analysis** — the deep investigation path where four subagents run in parallel and the coordinator synthesizes their findings into one conclusion. |
 | **RCAResult** | The structured output of an RCA: root cause, confidence, supporting evidence, conflicting evidence, reasoning, and a recommended fix. See [What you can ask](capabilities.md#what-a-root-cause-answer-looks-like). |
