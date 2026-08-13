@@ -1,7 +1,7 @@
 class KubeQ < Formula
   include Language::Python::Virtualenv
 
-  desc "Interactive CLI for chatting with your Kubernetes cluster via an AI backend"
+  desc "Interactive CLI to chat with your Kubernetes cluster via an AI backend"
   homepage "https://github.com/MSKazemi/kubeintellect"
   url "https://files.pythonhosted.org/packages/92/85/5d0af5d4fcff49447325ffd338c2ef5e386d99b6a106b570f8e97bb66d60/kube_q-1.5.0.tar.gz"
   sha256 "738363d6f3c5c1f97c561924ab232e2cfc0ca6cacb5c9bdb18ab756aa1b1cfc1"

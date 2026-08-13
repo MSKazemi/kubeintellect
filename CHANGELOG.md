@@ -11,7 +11,55 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **Two more playbooks — `PvcPending` and `LivenessProbeFailing`** (#94, #95, #127, #128) —
+  contributed by [@hariomlohardev](https://github.com/hariomlohardev). The library is now **23
+  playbooks / 20 compiled detectors / 3 LLM-only**.
+
+  Both arrived with a working `triggers:` block and a `detect:` block that could not fire, which
+  is the [#114](https://github.com/MSKazemi/kubeintellect/pull/114) failure again: `PvcPending`
+  declared `kind: PersistentVolumeClaim`, but `kind:` selects the observation *channel* and
+  `WatchPredicate.matches()` only knows `Pod`/`Event`/`Node` — every other value falls through to
+  `return False`. It parsed, loaded, counted toward the detector total and passed the schema
+  check while being a permanent no-op. Re-seated on `kind: Event` + `involved_kind:
+  PersistentVolumeClaim`, and `StorageClassNotFound` dropped because no controller emits it
+  (`FailedBinding` and `ProvisioningFailed` do).
+
+  `LivenessProbeFailing` matched `reason: ^Unhealthy$` with no message co-condition. The kubelet
+  emits `Unhealthy` for **both** probe kinds, so it fired on every readiness failure as well —
+  duplicating `ReadinessProbeFailing` and reporting a restart loop that was not happening. Both
+  playbooks now carry the message that names the probe, and `ReadinessProbeFailing` no longer
+  claims `Liveness probe failed`: a failed readiness probe pulls the pod out of Service
+  endpoints, a failed liveness probe makes the kubelet restart the container. Different symptom,
+  different fix.
+
+  Guarded in `tests/test_detectors.py`: `test_every_watch_predicate_uses_a_known_observation_kind`
+  is a class guard over every shipped detector for the dead-`kind:` family, plus `TestPvcPending
+  Detector` and `TestProbeDetectorsDoNotCrossFire` (both directions). All five fail against the
+  originals — verified by reverting.
+- **Worked examples for the remaining eight `kq` subcommands** (#86–#93, #119–#126) — contributed
+  by [@hariomlohardev](https://github.com/hariomlohardev). `v4/docs/examples.md` covered 2 of 10
+  subcommands; it now covers all 10, as sections 10–17. Every transcript is real output, checked
+  against `kube-q` 1.5.0 byte-for-byte at merge time.
+
+  Adopted with edits. The eight PRs each numbered their section `10` and each closed with the
+  same copied sentence — *"a zero-token local operation … it never contacts the server"* — which
+  is true of `kq config show` and `kq completion`, and false of `replay`, `postmortem`, `export`,
+  `detector`, `preference` and `v5-status`, all of which call the server. In an incident tool a
+  confident wrong statement is the failure mode that matters, so each section now says what its
+  command actually does. Six of the eight `cli-reference.md` anchors did not exist (`#kq-replay`
+  vs the real `#kq-replay-session-id`, etc.) and are fixed; `mkdocs build` is clean. The `kq
+  config show` transcript had the contributor's home directory in it, now `/home/you`.
+
 ### Changed
+- **The memory recall similarity floor is configurable** (#14, #116) — contributed by
+  [@uuzzrm](https://github.com/uuzzrm). The `pg_trgm` noise floor was hard-coded as `0.02` twice,
+  independently, in `memory/episodes.py` and `memory/summaries.py`, so tuning recall for a
+  cluster with an unusual vocabulary meant editing two constants in two modules and hoping they
+  stayed equal. Both now read `MEMORY_RECALL_SIMILARITY_FLOOR`, a validated setting
+  (`ge=0.0, le=1.0`) whose default is the same `0.02`. No behaviour change out of the box. The
+  hybrid RRF path still receives the threshold in SQL and still does **not** re-apply it
+  post-fetch, which is what keeps a lexical-only match from being dropped (ADR-014).
 - **Cleared three ruff-0.16 rule families from the backlog** (#79, #110) — contributed by
   [@hariomlohardev](https://github.com/hariomlohardev). `UP017` (`datetime.timezone.utc` →
   `datetime.UTC`, 5 sites), `UP041` (`asyncio.TimeoutError` → `TimeoutError`, 2 sites) and
@@ -28,6 +76,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   itself stays until the rest clears.
 
 ### Fixed
+- **`.env.example` was unreachable from a fresh clone** (#115, #117) — fixed by
+  [@hariomlohardev](https://github.com/hariomlohardev). About fifteen places
+  (`CONTRIBUTING.md`, `v4/README.md`, `v4/Makefile`, five deploy docs,
+  `langfuse-provision.sh`) tell you to `cp .env.example .env`, and the file was not in the repo.
+  The reported cause — a commit deleting it — was not the live one: `.gitignore`'s `.env.*`
+  matches `.env.example`, so it could not be re-added at all until that pattern was negated.
+  Now `!.env.example` / `!**/.env.example`, with `v4/.env.example` tracked.
+
+  Adopted with one change: the PR restored the 244-line template from before the file was lost,
+  which no longer describes the product — it omits the `qwen` and `anthropic` providers (both
+  supported, and both asserted by `test_doc_claims`) and still tells you to copy Langfuse keys
+  out of the UI, which `make langfuse-provision` replaced. Merged the current 289-line template
+  instead. Scanned: every credential field is empty or an obvious placeholder.
+- **The Homebrew formula's `desc` was still too long for `brew audit --strict`** (#113, #118) —
+  fixed by [@hariomlohardev](https://github.com/hariomlohardev), who also sorted the `resource`
+  blocks alphabetically and added `scripts/verify-brew.sh` so #113's two never-run commands are
+  reproducible.
+
+  Adopted with a correction: brew measures `"<name>: <desc>"`, not the description alone, so the
+  PR's 75-character `desc` was still 83 with the `kube-q: ` prefix and would still have been
+  flagged — and the script asserted `desc <= 80`, the wrong threshold, so it reported PASS on it.
+  Both now use the real rule; the description is 78 including the prefix. `brew audit` and `brew
+  install` themselves remain unrun — still no Homebrew on any machine here — so #113 stays open
+  for that, but the static half is now checkable by anyone with `bash`.
 - **The Homebrew formula could not install, and misstated the licence** (#56, #111) — fixed by
   [@uuzzrm](https://github.com/uuzzrm). It declared `license "MIT"` on AGPL code, pointed
   `homepage` at `MSKazemi/kube_q` (the #74/#78 defect, which the issue had not caught), targeted

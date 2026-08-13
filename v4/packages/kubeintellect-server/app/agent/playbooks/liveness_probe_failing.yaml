@@ -1,8 +1,14 @@
 name: LivenessProbeFailing
 detect:
   watch_predicates:
+    # `Unhealthy` is emitted for BOTH probe kinds, so the reason alone cannot tell
+    # them apart — the message co-condition is what makes this playbook liveness-only.
+    # Without it this predicate fires on every readiness failure as well, duplicating
+    # ReadinessProbeFailing and reporting a restart loop that is not happening.
     - kind: Event
       reason_regex: "^Unhealthy$"
+      message_regex: "Liveness probe failed"
+      involved_kind: Pod
   promql:
     - >-
       increase(kube_pod_container_status_restarts_total[5m]) > 2
@@ -10,7 +16,9 @@ detect:
       kube_pod_container_status_ready == 1
   debounce_seconds: 180
 triggers:
-  - event_reason_regex: "Unhealthy"
+  # Prompt-side matching runs over the whole events blob, so a bare "Unhealthy"
+  # reason here would pull this playbook in on readiness-only snapshots too.
+  # Match the message, which is the part that names the probe.
   - event_message_regex: "Liveness probe failed"
 investigation_steps:
   - "kubectl get pods -A — check RESTARTS column; look for rising restarts with STATUS=Running (kubelet is killing a live container)."
