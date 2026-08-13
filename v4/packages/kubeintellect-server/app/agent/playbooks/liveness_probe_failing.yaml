@@ -1,0 +1,26 @@
+name: LivenessProbeFailing
+detect:
+  watch_predicates:
+    - kind: Event
+      reason_regex: "^Unhealthy$"
+  promql:
+    - >-
+      increase(kube_pod_container_status_restarts_total[5m]) > 2
+      and
+      kube_pod_container_status_ready == 1
+  debounce_seconds: 180
+triggers:
+  - event_reason_regex: "Unhealthy"
+  - event_message_regex: "Liveness probe failed"
+investigation_steps:
+  - "kubectl get pods -A — check RESTARTS column; look for rising restarts with STATUS=Running (kubelet is killing a live container)."
+  - "kubectl describe pod <pod> -n <ns> — capture Events with Reason=Unhealthy and Message 'Liveness probe failed', and the livenessProbe spec (initialDelaySeconds, periodSeconds, timeoutSeconds, failureThreshold)."
+  - "kubectl logs <pod> -n <ns> --previous — check if the app was actually healthy before the kubelet killed it (vs CrashLoopBackOff where it exits on its own)."
+  - "kubectl get events -n <ns> --field-selector reason=Unhealthy — correlate timestamps of probe failures with restarts."
+expected_evidence:
+  - "Events contain 'Liveness probe failed' with reason Unhealthy"
+  - "RESTARTS count rising while pod stays Running (not CrashLoopBackOff)"
+  - "Probe spec shows too-short initialDelaySeconds or timeoutSeconds for the app's startup time"
+recommended_fix_template: |
+  Pod <POD> in namespace <NS> is being restarted by the kubelet — liveness probe is failing (Unhealthy / Liveness probe failed) while the container would otherwise stay alive.
+  Increase initialDelaySeconds and/or timeoutSeconds to cover the app's real startup time, or fix the endpoint the probe checks. This is distinct from CrashLoopBackOff where the process exits on its own.
