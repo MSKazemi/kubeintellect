@@ -26,6 +26,11 @@ Closes #
 ## Checklist
 
 - [ ] New behavior has both a **happy-path** and an **error-path** test
+- [ ] **Adding a playbook?** `triggers:` and `detect:` are two independent features — a test proves
+      the compiled `detect:` predicate **fires** on a realistic event and does **not** fire on a
+      neighbouring one. The counts and the schema check prove neither. (`kind:` is the observation
+      channel — `Pod` / `Event` / `Node` — never the Kubernetes object; use `involved_kind:` to
+      narrow the subject.)
 - [ ] **Every mutating/write operation keeps its dry-run + diff + human-approval (HITL) gate** (safety invariant)
 - [ ] Secret values are never logged or returned (key names only)
 - [ ] `uv run pytest` passes locally
