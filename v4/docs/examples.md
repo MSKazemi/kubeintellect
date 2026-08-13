@@ -346,6 +346,59 @@ full ladder (A0–A3), per-namespace levels, and the A3 allowlist are in
 
 ---
 
+
+## 10 · Config — `kq config`
+
+You want to inspect or change where `kq` points without hand-editing `~/.kube-q/.env`.
+
+**You run:**
+
+```bash
+kq config show
+```
+
+**Real output** — produced by running `kq config show` (kube-q 1.5.0):
+
+```console
+                 kube-q config  (/home/hariom/.kube-q/.env)                  
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃ Key                             ┃ Value                         ┃ Source  ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ KUBE_Q_URL                      │ https://api.kubeintellect.com │ default │
+│ KUBE_Q_API_KEY                  │                               │ default │
+│ KUBE_Q_TIMEOUT                  │ 120.0                         │ default │
+│ KUBE_Q_HEALTH_TIMEOUT           │ 5.0                           │ default │
+│ KUBE_Q_NAMESPACE_TIMEOUT        │ 3.0                           │ default │
+│ KUBE_Q_STARTUP_RETRY_TIMEOUT    │ 0                             │ default │
+│ KUBE_Q_STARTUP_RETRY_INTERVAL   │ 5                             │ default │
+│ KUBE_Q_STREAM                   │ True                          │ default │
+│ KUBE_Q_OUTPUT                   │ rich                          │ default │
+│ KUBE_Q_LOG_LEVEL                │ INFO                          │ default │
+│ KUBE_Q_SKIP_HEALTH_CHECK        │ False                         │ default │
+│ KUBE_Q_MODEL                    │ kubeintellect-v2              │ default │
+│ KUBE_Q_USER_NAME                │ You                           │ default │
+│ KUBE_Q_AGENT_NAME               │ kube-q                        │ default │
+│ KUBE_Q_COST_PER_1K_PROMPT       │                               │ default │
+│ KUBE_Q_COST_PER_1K_COMPLETION   │                               │ default │
+│ KUBE_Q_LOGO                     │                               │ default │
+│ KUBE_Q_TAGLINE                  │                               │ default │
+│ KUBE_Q_BACKEND                  │ kube-q                        │ default │
+│ KUBE_Q_OPENAI_API_KEY           │                               │ default │
+│ KUBE_Q_OPENAI_ENDPOINT          │ https://api.openai.com        │ default │
+│ KUBE_Q_OPENAI_MODEL             │ gpt-4o-mini                   │ default │
+│ KUBE_Q_AZURE_OPENAI_API_KEY     │                               │ default │
+│ KUBE_Q_AZURE_OPENAI_ENDPOINT    │                               │ default │
+│ KUBE_Q_AZURE_OPENAI_DEPLOYMENT  │                               │ default │
+│ KUBE_Q_AZURE_OPENAI_API_VERSION │ 2024-06-01                    │ default │
+│ KUBE_Q_CONTEXT                  │                               │ default │
+│ KUBE_Q_PROFILE                  │                               │ default │
+└─────────────────────────────────┴───────────────────────────────┴─────────┘
+```
+
+This is a zero-token local operation — it never contacts the server. The output lists the available subcommands and flags exactly as `kq --help` does, so completions and help never drift. See [CLI Reference → `kq config show` ](cli-reference.md#kq-config-showsetresetprofile) for the full flag list and examples.
+
+---
+
 ## Related
 
 - [What you can ask](capabilities.md) — the full capability catalog and example-query list.
