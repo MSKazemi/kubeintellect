@@ -29,7 +29,7 @@ The `v4/` platform is the current line and the only one you should deploy.
 - Conversational diagnosis correlating **kubectl + Prometheus + Loki**.
 - **Human-in-the-loop approval gate** with RBAC (superadmin / admin / operator / readonly) on
   every mutating action, enforced server-side at the mutating chokepoint.
-- **20 declarative failure playbooks** (`detect → investigate → remediate`), 17 of which compile
+- **23 declarative failure playbooks** (`detect → investigate → remediate`), 20 of which compile
   to zero-token detectors.
 - **Zero-token detection** — a detector engine over a kubectl `--watch` sensorium fires
   findings without invoking the LLM.
@@ -51,7 +51,7 @@ These are concrete, scoped, and mostly open to contribution.
 | **Composable detectors** — AND / NOT / temporal windows | Open | [#21](https://github.com/MSKazemi/kubeintellect/issues/21) ✅ |
 | **PromQL execution in playbook `detect` blocks** | Open | [#20](https://github.com/MSKazemi/kubeintellect/issues/20) ✅ |
 | **Temporal KG ingesting nodes / events / PVCs** | Open | [#19](https://github.com/MSKazemi/kubeintellect/issues/19) ✅ |
-| Grow the **playbook library** beyond 20 | Ongoing — a playbook is one YAML file; 18 → 20 in Aug 2026 via [#108](https://github.com/MSKazemi/kubeintellect/pull/108) and [#112](https://github.com/MSKazemi/kubeintellect/pull/112) | [#13](https://github.com/MSKazemi/kubeintellect/issues/13) ✅ |
+| Grow the **playbook library** beyond 23 | Ongoing — a playbook is one YAML file; 18 → 23 in Aug 2026 via [#108](https://github.com/MSKazemi/kubeintellect/pull/108), [#112](https://github.com/MSKazemi/kubeintellect/pull/112), [#114](https://github.com/MSKazemi/kubeintellect/pull/114), [#127](https://github.com/MSKazemi/kubeintellect/pull/127) and [#128](https://github.com/MSKazemi/kubeintellect/pull/128) | [#13](https://github.com/MSKazemi/kubeintellect/issues/13) ✅ |
 
 ## Housekeeping — known debt, stated plainly
 
