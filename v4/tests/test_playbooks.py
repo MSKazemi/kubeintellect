@@ -342,3 +342,34 @@ default     12s         Warning   FailedComputeMetricsReplicas   horizontalpodau
 def test_match_hpa_not_scaling_by_missing_cpu_request() -> None:
     matched = match_playbooks(HEALTHY_PODS, HPA_MISSING_CPU_REQUEST_EVENTS)
     assert "HPANotScaling" in matched
+
+
+def test_playbook_yaml_reads_as_utf8_regardless_of_locale(monkeypatch, tmp_path) -> None:
+    """Playbook YAML must decode as UTF-8 even when the platform default encoding is
+    not UTF-8 (Windows GBK/cp936, POSIX C locale). Regression test for #136."""
+    import pathlib
+
+    from app.agent.playbooks.loader import _load_one
+
+    real_read_text = pathlib.Path.read_text
+    encodings: list[object] = []
+
+    def recording_read_text(self, *args, **kwargs):
+        encodings.append(kwargs.get("encoding"))
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(pathlib.Path, "read_text", recording_read_text)
+    yaml_file = tmp_path / "utf8_playbook.yaml"
+    yaml_file.write_bytes(
+        (
+            "name: Utf8Playbook\n"
+            "investigation_steps:\n"
+            '  - "Investigate the em dash \u2014 in this step."\n'
+            "recommended_fix_template: >\n"
+            "  Fix it.\n"
+        ).encode("utf-8")
+    )
+    playbook = _load_one(yaml_file)
+    assert playbook.name == "Utf8Playbook"
+    assert "\u2014" in playbook.investigation_steps[0]
+    assert encodings == ["utf-8"]
