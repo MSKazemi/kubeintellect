@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import Deque, Optional
+from typing import Optional
 
 _MAX_PER_TENANT = 500
 
@@ -28,7 +28,7 @@ class FleetEntry:
 
 
 # tenant → ring buffer of entries. Partitioned by tenant so a read can NEVER cross tenants.
-_store: dict[str, Deque[FleetEntry]] = defaultdict(lambda: deque(maxlen=_MAX_PER_TENANT))
+_store: dict[str, deque[FleetEntry]] = defaultdict(lambda: deque(maxlen=_MAX_PER_TENANT))
 
 
 def publish(entry: FleetEntry) -> None:

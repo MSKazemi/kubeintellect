@@ -13,8 +13,9 @@ The ranking/rendering here is pure and fully tested against injected changes.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Optional
 
 from app.utils.logger import get_logger
 

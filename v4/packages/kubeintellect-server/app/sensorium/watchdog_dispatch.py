@@ -12,7 +12,8 @@ injectable so the wiring is unit-testable without an LLM.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Awaitable, Callable, Optional
+from collections.abc import Awaitable, Callable
+from typing import Any, Optional
 
 from langchain_core.messages import HumanMessage
 

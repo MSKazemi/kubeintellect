@@ -14,8 +14,9 @@ against the P0 replay fixtures.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Optional
+from typing import Optional
 
 from app.autonomy.promotion_stats import (
     Event,

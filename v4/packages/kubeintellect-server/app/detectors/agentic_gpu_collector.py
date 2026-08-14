@@ -9,7 +9,8 @@ Prometheus; the default reads the live PromQL endpoint.
 
 from __future__ import annotations
 
-from typing import Callable, Optional
+from collections.abc import Callable
+from typing import Optional
 
 from app.detectors.agentic_gpu import (
     AgentSignal,

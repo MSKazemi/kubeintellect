@@ -20,7 +20,8 @@ Stability contract (this is the "most stable" bar the whole feature is default-o
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Awaitable, Callable, Optional
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, Optional
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage

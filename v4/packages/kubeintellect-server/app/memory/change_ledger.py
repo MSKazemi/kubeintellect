@@ -14,12 +14,12 @@ only needs *recent* changes, and a restart losing them degrades gracefully (empt
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from typing import Deque, Optional
+from typing import Optional
 
 from app.cortex.change_rca import ChangeRecord, _empty_source, set_change_source
 
 _MAX_PER_CLUSTER = 200
-_ledger: dict[str, Deque[ChangeRecord]] = defaultdict(lambda: deque(maxlen=_MAX_PER_CLUSTER))
+_ledger: dict[str, deque[ChangeRecord]] = defaultdict(lambda: deque(maxlen=_MAX_PER_CLUSTER))
 _installed = False
 
 # kubectl mutating verb → change kind.

@@ -12,8 +12,9 @@ without git, gh, or a network.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Optional
 
 from app.tools.aci.fix_pr import FixPR
 

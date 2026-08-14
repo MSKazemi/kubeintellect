@@ -18,8 +18,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Awaitable, Callable, Optional
+from typing import Optional
 
 from app.streaming.emitter import Event, StatusEvent
 from app.streaming.emitter import emit as _default_emit

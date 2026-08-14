@@ -11,8 +11,9 @@ injectable orchestrator (fetchers + writer) so the whole thing is unit-testable 
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Optional
 
 from app.utils.logger import get_logger
 

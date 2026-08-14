@@ -12,8 +12,9 @@ path — reachable only for chokepoint-authorized, reversible classes).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Optional
 
 from app.tools.aci.postcondition import PostconditionResult
 
