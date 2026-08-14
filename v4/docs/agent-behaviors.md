@@ -123,7 +123,7 @@ detects a matching pattern in the snapshot, the coordinator's system prompt
 includes the playbook(s) inline — guiding it to follow proven steps before
 improvising.
 
-**Playbooks shipped (23):**
+**Playbooks shipped (24):**
 
 *Pod / container lifecycle*
 
@@ -156,6 +156,7 @@ improvising.
 - `DeploymentRolloutStuck` (`ProgressDeadlineExceeded` — new ReplicaSet never becomes Available)
 - `WebhookAdmissionRejected`
 - `HPANotScaling` (metrics-server missing/unreachable, or container missing `resources.requests.cpu`)
+- `DnsResolutionFailure` (in-cluster resolution failing — CoreDNS down, or broken `dnsPolicy`/`dnsConfig`/policy on port 53)
 
 **Schema** (drop a YAML file into `app/agent/playbooks/`):
 
@@ -453,11 +454,12 @@ triggers:
     co-condition is what separates them. Without it, two playbooks fire on one
     event and the operator is told about a restart loop that is not happening.
 
-Of the 23 shipped playbooks, **20 compile to detectors**; 3 are LLM-only
+Of the 24 shipped playbooks, **20 compile to detectors**; 4 are LLM-only
 (`CommandHardcodedFailure` — disambiguated from CrashLoopBackOff only by
-reading the pod spec — `ServiceUnreachable`, and `NetworkPolicyBlocking`,
+reading the pod spec — `ServiceUnreachable`, `NetworkPolicyBlocking`,
 where the packet is discarded in the CNI datapath so no machine signal
-reaches the API server at all).
+reaches the API server at all, and `DnsResolutionFailure`, which surfaces
+in application logs the watch sensorium never sees).
 
 ### Sensorium + detector engine (zero-token detection)
 

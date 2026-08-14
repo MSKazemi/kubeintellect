@@ -492,7 +492,7 @@ See [CLI Reference → `kq export`](cli-reference.md#kq-export-session-id).
 
 ## 14 · Teach it a new failure — `kq detector`
 
-Your cluster fails in a way the 23 shipped playbooks do not cover, and you want it recognised without writing Python.
+Your cluster fails in a way the 24 shipped playbooks do not cover, and you want it recognised without writing Python.
 
 **You run:**
 

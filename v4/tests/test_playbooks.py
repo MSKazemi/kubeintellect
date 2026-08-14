@@ -69,6 +69,7 @@ def test_all_playbooks_load() -> None:
         "NodeNotReady",
         "NetworkPolicyBlocking",
         "DeploymentRolloutStuck",
+        "DnsResolutionFailure",
     }
     assert expected.issubset(names), f"missing playbooks: {expected - names}"
 
@@ -342,3 +343,34 @@ default     12s         Warning   FailedComputeMetricsReplicas   horizontalpodau
 def test_match_hpa_not_scaling_by_missing_cpu_request() -> None:
     matched = match_playbooks(HEALTHY_PODS, HPA_MISSING_CPU_REQUEST_EVENTS)
     assert "HPANotScaling" in matched
+
+
+# ── DnsResolutionFailure triggers (#96) ───────────────────────────────────────
+
+DNS_FAILURE_EVENTS = """\
+NAMESPACE   LAST SEEN   TYPE      REASON     OBJECT       MESSAGE
+default     20s         Warning   Unhealthy  pod/api-1    Get "http://svc:8080/healthz": dial tcp: lookup svc on 10.96.0.10:53: no such host
+"""
+
+
+def test_match_dns_resolution_failure_by_lookup_error() -> None:
+    matched = match_playbooks(HEALTHY_PODS, DNS_FAILURE_EVENTS)
+    assert "DnsResolutionFailure" in matched
+
+
+def test_match_dns_resolution_failure_by_temporary_resolution_failure() -> None:
+    events = (
+        "NAMESPACE   LAST SEEN  TYPE     REASON  OBJECT      MESSAGE\n"
+        "default     10s        Warning  Failed  pod/worker  Temporary failure in name resolution\n"
+    )
+    matched = match_playbooks(HEALTHY_PODS, events)
+    assert "DnsResolutionFailure" in matched
+
+
+def test_dns_resolution_failure_ignores_plain_timeouts() -> None:
+    """A plain i/o timeout is a connectivity problem — NetworkPolicyBlocking's
+    lane. A lookup failure means the name itself did not resolve; the two are
+    different failure modes and should not cross-fire.
+    """
+    matched = match_playbooks(HEALTHY_PODS, TIMEOUT_EVENTS)
+    assert "DnsResolutionFailure" not in matched
