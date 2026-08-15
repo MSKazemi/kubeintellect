@@ -11,6 +11,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **Hugging Face Space** — [`mskazemi/kubeintellect`](https://huggingface.co/spaces/mskazemi/kubeintellect),
+  a Gradio chat client over the public read-only demo API (`deploy/huggingface-space/`). It renders
+  the `ki_event` side channel (status / plan / tool_call / tool_result) as collapsible activity
+  blocks, so a visitor can see the actual `kubectl` calls behind each answer. A new discovery
+  surface: the repo has never had a developer-community referrer, and HF is where the adjacent
+  Kubernetes-agent audience already is.
+
+  Two things worth knowing for anyone maintaining it. The demo key holds the `readonly` role, so a
+  write request is **refused by RBAC** and never reaches the human-approval prompt — the Space says
+  exactly that rather than implying it demonstrates the HITL flow. And a Gradio Space on the free
+  tier is pinned to ZeroGPU hardware, which aborts at startup with *"No @spaces.GPU function
+  detected"*; since this app is pure I/O it carries a guarded no-op probe purely to satisfy that
+  check. Downgrading to free `cpu-basic` requires a PRO subscription.
+
+### Fixed
+- **`kubeintellect --version` printed an argparse usage error instead of a version.** The
+  subcommand parser is declared `required=True` and no `--version` argument existed, so the flag
+  fell through to "the following arguments are required: command" and exited 2. `kq --version` had
+  worked all along, which is how this survived — the two CLIs were never checked together. It now
+  prints `kubeintellect <version>` resolved from installed distribution metadata (falling back to
+  `unknown` in a bare source tree), matching how `kube-q` already does it. `main()` also takes an
+  optional `argv` so the behaviour is testable without touching `sys.argv`, and regression tests
+  cover the flag, the version string, and that a bare invocation still exits 2.
+
+
 ## [2.3.1] – 2026-08-15
 
 ### Fixed
