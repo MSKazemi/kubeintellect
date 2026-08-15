@@ -1,0 +1,10 @@
+# Artifact Hub repository metadata is pushed as its own OCI artifact by
+# .github/workflows/helm-publish.yml — it is not part of the chart.
+artifacthub-repo.yml
+
+# Per-cloud examples are documentation, not chart input.
+*.yaml.example
+
+.DS_Store
+.git/
+*.tgz
