@@ -11,6 +11,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [2.3.1] – 2026-08-15
+
+### Fixed
+- **The krew manifest could not be rendered**, so `kubectl kq` was never submitted to
+  `krew-index` on the v2.3.0 release. `addURIAndSha` emits its `sha256:` continuation line at a
+  hard-coded four-space indent, so the template call has to sit at four spaces itself; ours was
+  nested two deeper, which put `uri:` at six and `sha256:` at four and made the mapping
+  inconsistent — krew-release-bot failed with *"error converting YAML to JSON: yaml: line 55:
+  did not find expected '-' indicator"*. Reindented to the canonical form and checked by
+  rendering the template with a stub helper, which reproduces the failure on the old file and
+  parses on the new one. The v2.3.0 release assets themselves were fine.
+
+
 ## [2.3.0] – 2026-08-15
 
 ### Added
