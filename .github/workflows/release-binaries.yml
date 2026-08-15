@@ -46,7 +46,11 @@ jobs:
           - runs-on: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
-          - runs-on: macos-13
+          # Intel macOS. NOT macos-13 — that image is retired and its jobs sit
+          # queued indefinitely (observed: 19 min while the other three
+          # platforms finished in under a minute each). macos-15-intel is the
+          # current x64 label.
+          - runs-on: macos-15-intel
             goos: darwin
             goarch: amd64
           - runs-on: macos-latest
