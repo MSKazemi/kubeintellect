@@ -11,6 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [2.3.0] – 2026-08-15
+
 ### Added
 - **Two more playbooks — `PvcPending` and `LivenessProbeFailing`** (#94, #95, #127, #128) —
   contributed by [@hariomlohardev](https://github.com/hariomlohardev). The library is now **23
@@ -51,6 +53,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   vs the real `#kq-replay-session-id`, etc.) and are fixed; `mkdocs build` is clean. The `kq
   config show` transcript had the contributor's home directory in it, now `/home/you`.
 
+- **The Helm chart is published — `oci://ghcr.io/mskazemi/charts/kubeintellect`.** It existed
+  in-tree but had never been pushed anywhere, so there was no supported way to install the
+  server. `helm-publish.yml` lints and renders the chart on every PR that touches it and pushes
+  it to GHCR on each `v*` tag, taking chart `version` and `appVersion` from the tag so they
+  cannot drift from the release. The chart is listed on Artifact Hub at
+  [artifacthub.io/packages/helm/kubeintellect/kubeintellect](https://artifacthub.io/packages/helm/kubeintellect/kubeintellect),
+  and `artifacthub-repo.yml` is pushed as a sibling OCI artifact for the Verified Publisher
+  label. A chart `README.md` documents the LLM providers, the RBAC/HITL model, and the fact that
+  the chart writes `metadata.namespace` from `.Values.namespace` rather than the release
+  namespace.
+- **Standalone `kq` binaries on every release** — linux and darwin, amd64 and arm64, frozen with
+  PyInstaller and attached to the GitHub Release with checksums. They need no Python on the
+  target machine (verified under `env -i`). `pipx install kube-q` is unchanged and remains the
+  path for anyone who already has Python; these archives exist so downstream package managers
+  have something to consume.
+- **`kubectl kq` submitted to krew** — `.krew.yaml` plus a workflow that opens the
+  `kubernetes-sigs/krew-index` PR on each release, guarded by a step that refuses to run unless
+  all four platform archives are actually on the release, so the bot can never checksum a file
+  that is not there.
 ### Changed
 - **The memory recall similarity floor is configurable** (#14, #116) — contributed by
   [@uuzzrm](https://github.com/uuzzrm). The `pg_trgm` noise floor was hard-coded as `0.02` twice,
@@ -75,6 +96,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   it silently disables RBAC and the HITL gate (AGENTS.md invariant #6). One slice of #75; the pin
   itself stays until the rest clears.
 
+- **The Homebrew formula moved to its own tap, `MSKazemi/homebrew-kube-q`.** The install docs had
+  instructed `brew tap MSKazemi/kube-q` in four places for a tap that did not exist. It does now,
+  and its CI runs `brew audit --strict --online` followed by `brew install --build-from-source`
+  and actually runs the binary, on every push and weekly. That immediately surfaced two
+  violations the `#113` fix had missed — build dependencies must precede runtime dependencies,
+  and passing `0` to `shell_output` is redundant — neither of which anyone could have seen,
+  because `brew` had never once been run against the formula. The in-tree copy under
+  `v4/packages/kube-q/Formula/` is deleted so the two cannot diverge; the tap also polls PyPI
+  daily and only commits a version bump after that same audit-and-install gate passes.
 ### Fixed
 - **`.env.example` was unreachable from a fresh clone** (#115, #117) — fixed by
   [@hariomlohardev](https://github.com/hariomlohardev). About fifteen places
@@ -219,6 +249,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   React may discard a render and a ref written there would outlive it. The xterm-init failure
   path now builds its message as a text node instead of assigning `innerHTML`.
 
+- **The Helm chart could never pull its image.** `values.yaml` defaulted `image.tag` to
+  `dev-latest`, a tag that has never existed in the registry — GHCR has `latest` and `2.0.0`
+  through `2.2.0` and nothing else — so a default `helm install` went straight to
+  `ImagePullBackOff`. The tag now defaults to the chart's `appVersion`, and a CI step renders the
+  chart and asserts the image matches, so it cannot regress silently. The same dead tag was
+  copied into all seven per-cloud `values-*.yaml.example` files and is corrected there too.
+- **The container image had never reached Docker Hub.** `docker.io/kazemi/kubeintellect` did not
+  exist. Nothing was structurally broken: the `v2.2.0` tag run predated the credentials being
+  added, and both later runs were dry runs, which log in to both registries (proving the
+  credentials) while pushing nothing. The image is now published.
 ### Added
 - **An `HPANotScaling` playbook** (#97, #114) — the 21st, contributed by
   [@Chris7717](https://github.com/Chris7717). It covers the autoscaler that does nothing and
