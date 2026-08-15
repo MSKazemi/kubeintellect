@@ -17,10 +17,17 @@ import subprocess
 import sys
 from collections import namedtuple
 from collections.abc import Callable
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
 _CONFIG_DIR = Path.home() / ".kubeintellect"
 _CONFIG_FILE = _CONFIG_DIR / ".env"
+
+try:
+    __version__ = _pkg_version("kubeintellect")
+except PackageNotFoundError:  # running from a source tree without an install
+    __version__ = "unknown"
 
 
 # ── ANSI colours (degrade gracefully on non-TTY) ──────────────────────────────
@@ -1748,7 +1755,7 @@ def _get_kube_context(kube_path: str) -> str:
 
 # ── entry point ───────────────────────────────────────────────────────────────
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="kubeintellect",
         description="KubeIntellect — AI-powered Kubernetes management platform",
@@ -1783,6 +1790,11 @@ docs:         https://kubeintellect.com
 github:       https://github.com/mskazemi/kubeintellect
 support:      mohsen.seyedkazemi@gmail.com
 """,
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"kubeintellect {__version__}",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -1908,7 +1920,7 @@ support:      mohsen.seyedkazemi@gmail.com
         help="Skip nginx ingress controller installation",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.command == "init":
         cmd_init(args)

@@ -11,10 +11,11 @@
   [![DOI](https://img.shields.io/badge/DOI-10.1007%2Fs10723--026--09837--6-blue)](https://doi.org/10.1007/s10723-026-09837-6)
   [![arXiv](https://img.shields.io/badge/arXiv-2509.02449-b31b1b.svg)](https://arxiv.org/abs/2509.02449)
   [![Website](https://img.shields.io/badge/website-kubeintellect.com-0075C4)](https://kubeintellect.com/)
+  [![Hugging Face Space](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/mskazemi/kubeintellect)
   [![good first issues](https://img.shields.io/github/issues/MSKazemi/kubeintellect/good%20first%20issue?label=good%20first%20issues&color=7057ff)](https://github.com/MSKazemi/kubeintellect/contribute)
   [![GitHub Stars](https://img.shields.io/github/stars/MSKazemi/kubeintellect?style=social)](https://github.com/MSKazemi/kubeintellect)
 
-  **[Website](https://kubeintellect.com/)** · **[Live Demo](https://kubeintellect.com/demo)** · **[Current version → `v4/`](v4/)** · **[Contributing](#contributing)** · **[Paper](https://doi.org/10.1007/s10723-026-09837-6)**
+  **[Website](https://kubeintellect.com/)** · **[Live Demo](https://kubeintellect.com/demo)** · **[🤗 Space](https://huggingface.co/spaces/mskazemi/kubeintellect)** · **[Current version → `v4/`](v4/)** · **[Contributing](#contributing)** · **[Paper](https://doi.org/10.1007/s10723-026-09837-6)**
 
   Created & maintained by **[Mohsen Seyedkazemi Ardebili](https://github.com/MSKazemi)**
 
@@ -48,7 +49,8 @@ kq "scale the frontend deployment to 5 replicas"   # pauses for your approval
 
 ## Quick start
 
-**Try it in your browser — zero install.** Open **[kubeintellect.com/demo](https://kubeintellect.com/demo)** (read-only, shared demo cluster).
+**Try it in your browser — zero install.** Open **[kubeintellect.com/demo](https://kubeintellect.com/demo)**
+or the **[🤗 Hugging Face Space](https://huggingface.co/spaces/mskazemi/kubeintellect)** (both read-only, same shared demo cluster).
 
 **Install the CLI (read-only, one `pip install`):**
 
