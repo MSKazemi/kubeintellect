@@ -7,8 +7,8 @@ type: application
 # and are both rewritten from the git tag by .github/workflows/helm-publish.yml,
 # so the values checked in here only matter for `helm install` straight from a
 # clone. Bump them by hand only for a chart-only change between releases.
-version: 2.2.0
-appVersion: "2.2.0"
+version: 2.3.0
+appVersion: "2.3.0"
 
 home: https://kubeintellect.com
 icon: https://raw.githubusercontent.com/MSKazemi/kubeintellect/main/v4/docs/assets/brand/ki-icon.svg
