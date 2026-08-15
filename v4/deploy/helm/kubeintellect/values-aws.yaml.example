@@ -10,14 +10,14 @@
 # ── Image ─────────────────────────────────────────────────────────────────────
 # EKS nodes can pull GHCR directly. To keep pulls in-region, mirror to Amazon ECR:
 #   aws ecr create-repository --repository-name kubeintellect
-#   docker pull ghcr.io/mskazemi/kubeintellect:dev-latest
-#   docker tag  ghcr.io/mskazemi/kubeintellect:dev-latest \
-#               <acct>.dkr.ecr.<region>.amazonaws.com/kubeintellect:dev-latest
+#   docker pull ghcr.io/mskazemi/kubeintellect:2.2.0
+#   docker tag  ghcr.io/mskazemi/kubeintellect:2.2.0 \
+#               <acct>.dkr.ecr.<region>.amazonaws.com/kubeintellect:2.2.0
 #   aws ecr get-login-password --region <region> | docker login --username AWS --password-stdin <acct>.dkr.ecr.<region>.amazonaws.com
-#   docker push <acct>.dkr.ecr.<region>.amazonaws.com/kubeintellect:dev-latest
+#   docker push <acct>.dkr.ecr.<region>.amazonaws.com/kubeintellect:2.2.0
 image:
   repository: ghcr.io/mskazemi/kubeintellect   # ← or <acct>.dkr.ecr.<region>.amazonaws.com/kubeintellect
-  tag: dev-latest
+  tag: ""   # empty = the chart appVersion
   pullPolicy: Always
 
 # amd64 only — the Dockerfile fetches linux/amd64 kubectl. Use an amd64 node group
