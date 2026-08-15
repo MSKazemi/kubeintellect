@@ -1,6 +1,6 @@
 [project]
 name = "kubeintellect"
-version = "2.2.0"
+version = "2.3.0"
 description = "AI-powered Kubernetes management — local server and CLI"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
