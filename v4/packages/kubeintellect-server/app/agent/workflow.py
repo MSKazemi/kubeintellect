@@ -90,7 +90,7 @@ async def targeted_investigator(state: AgentState) -> dict:
         session_id=session_id,
     ))
 
-    describe_out, events_out, deploy_out = await asyncio.gather(
+    describe, events, deployments = await asyncio.gather(
         asyncio.to_thread(_run_kubectl_snapshot, ["describe", "pod", pod, "-n", ns]),
         asyncio.to_thread(_run_kubectl_snapshot, ["get", "events", "-n", ns, "--sort-by=.lastTimestamp"]),
         asyncio.to_thread(_run_kubectl_snapshot, ["get", "deployments", "-n", ns]),
@@ -99,9 +99,9 @@ async def targeted_investigator(state: AgentState) -> dict:
     detail = (
         f"## Targeted Investigation: {pod} in {ns}\n"
         f"**Issue**: {issue}\n\n"
-        f"### Pod Description\n```\n{describe_out}\n```\n\n"
-        f"### Namespace Events\n```\n{events_out}\n```\n\n"
-        f"### Deployments\n```\n{deploy_out}\n```"
+        f"### Pod Description\n```\n{describe.with_note()}\n```\n\n"
+        f"### Namespace Events\n```\n{events.with_note()}\n```\n\n"
+        f"### Deployments\n```\n{deployments.with_note()}\n```"
     )
 
     existing = state.get("cluster_snapshot", "")
