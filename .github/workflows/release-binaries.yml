@@ -1,0 +1,129 @@
+name: Release binaries
+
+# Builds self-contained `kq` binaries (no Python required on the target machine)
+# for linux/darwin x amd64/arm64, and attaches them to the GitHub Release for a
+# v* tag along with a checksums file.
+#
+# These archives are what the downstream package managers consume: krew reads
+# them directly (see .krew.yaml), and Scoop/AUR-bin can too. PyPI
+# (`pipx install kube-q`) remains the install path for anyone who already has
+# Python, and needs none of this.
+#
+# Archive layout is fixed by krew's expectations: each tar.gz contains the
+# binary at the root plus LICENSE, and is named kq_<os>_<arch>.tar.gz.
+#
+# Note for contributors: workflows only run when they live in the repository
+# ROOT .github/workflows/.
+
+on:
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    paths:
+      - ".github/workflows/release-binaries.yml"
+      - "v4/packages/kube-q/**"
+      - "v4/packages/ki-protocol/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: binaries-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.goos }}-${{ matrix.goarch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runs-on: ubuntu-latest
+            goos: linux
+            goarch: amd64
+          - runs-on: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+          # Intel macOS. NOT macos-13 — that image is retired and its jobs sit
+          # queued indefinitely (observed: 19 min while the other three
+          # platforms finished in under a minute each). macos-15-intel is the
+          # current x64 label.
+          - runs-on: macos-15-intel
+            goos: darwin
+            goarch: amd64
+          - runs-on: macos-latest
+            goos: darwin
+            goarch: arm64
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      # ki-protocol is not on PyPI as a dependency of the frozen build — install
+      # it from the workspace in the same pip call so kube-q's
+      # `ki-protocol>=1.0.0` requirement resolves locally rather than remotely.
+      - name: Install kq and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller ./v4/packages/ki-protocol ./v4/packages/kube-q
+
+      - name: Freeze
+        run: |
+          pyinstaller --onefile --name kq --console \
+            --collect-submodules kube_q \
+            --collect-submodules ki_protocol \
+            --copy-metadata kube-q \
+            v4/packages/kube-q/kube_q/cli/main.py
+
+      # A frozen binary can build cleanly and still fail at import time on a
+      # missing hidden dependency, so run it rather than trusting the exit code
+      # of pyinstaller.
+      - name: Smoke test
+        run: |
+          ./dist/kq --version
+          ./dist/kq --help > /dev/null
+          echo "Binary works: $(./dist/kq --version)"
+
+      - name: Package
+        run: |
+          mkdir -p out staging
+          cp dist/kq staging/kq
+          cp LICENSE staging/LICENSE
+          tar -czf "out/kq_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz" -C staging kq LICENSE
+          ls -lh out/
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: kq-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: out/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Attach to release
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum *.tar.gz | tee checksums.txt
+
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" dist/*.tar.gz dist/checksums.txt \
+            --repo "${GITHUB_REPOSITORY}" --clobber

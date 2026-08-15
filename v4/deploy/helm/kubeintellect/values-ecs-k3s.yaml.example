@@ -19,7 +19,7 @@
 # mirror is needed for the cheap path. (Only mainland-China regions need ACR.)
 image:
   repository: ghcr.io/mskazemi/kubeintellect
-  tag: dev-latest
+  tag: ""   # empty = the chart appVersion
   pullPolicy: IfNotPresent
 
 # amd64 only — the Dockerfile fetches linux/amd64 kubectl. Pick an amd64 ECS.

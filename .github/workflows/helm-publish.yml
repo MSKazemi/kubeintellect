@@ -1,0 +1,152 @@
+name: Publish Helm chart
+
+# Lints the chart on every PR that touches it, and publishes it to GHCR as an
+# OCI artifact when a v* tag is pushed:
+#
+#   helm install kubeintellect oci://ghcr.io/mskazemi/charts/kubeintellect
+#
+# The chart version and appVersion are taken from the git tag at package time,
+# so Chart.yaml never has to be bumped in lockstep by hand — see the note in
+# Chart.yaml. GHCR needs no manually-managed secret: GITHUB_TOKEN plus the
+# packages:write permission below is enough.
+#
+# Note for contributors: workflows only run when they live in the repository
+# ROOT .github/workflows/.
+
+on:
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    paths:
+      - "v4/deploy/helm/kubeintellect/**"
+      - ".github/workflows/helm-publish.yml"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (package only, do not push)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: helm-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CHART_DIR: v4/deploy/helm/kubeintellect
+  OCI_REPO: oci://ghcr.io/mskazemi/charts
+
+jobs:
+  lint:
+    name: Lint and render
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # helm ships on the GitHub-hosted runner image; install only if that changes.
+      - name: Ensure helm
+        run: |
+          if ! command -v helm >/dev/null; then
+            curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+          fi
+          helm version --short
+
+      - name: Lint
+        run: helm lint "${CHART_DIR}"
+
+      # Rendering is the part that actually catches breakage: a template can be
+      # lint-clean and still fail to produce valid manifests under real values.
+      - name: Render with default values
+        run: helm template kubeintellect "${CHART_DIR}" > /tmp/default.yaml
+
+      - name: Render with ingress, external DB and cluster-ops RBAC enabled
+        run: |
+          helm template kubeintellect "${CHART_DIR}" \
+            --set ingress.enabled=true \
+            --set rbac.createClusterOps=true \
+            --set rbac.allowExec=true \
+            --set postgres.external.enabled=true \
+            --set postgres.external.url="postgresql://u:p@db:5432/ki" \
+            > /tmp/full.yaml
+
+      # The default image tag regressed to a tag that never existed in the
+      # registry (`dev-latest`), which broke every default install. Assert that
+      # the rendered tag is the chart's appVersion.
+      - name: Assert default image tag tracks appVersion
+        run: |
+          app_version="$(helm show chart "${CHART_DIR}" | awk '/^appVersion:/ {gsub(/"/,"",$2); print $2}')"
+          expected="ghcr.io/mskazemi/kubeintellect:${app_version}"
+          if ! grep -q "image: \"${expected}\"" /tmp/default.yaml; then
+            echo "::error::Rendered image is not ${expected}"
+            grep -n 'image:' /tmp/default.yaml || true
+            exit 1
+          fi
+          echo "Default image renders as ${expected}"
+
+  publish:
+    name: Publish to GHCR
+    needs: lint
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Ensure helm
+        run: |
+          if ! command -v helm >/dev/null; then
+            curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+          fi
+          helm version --short
+
+      # A tag gives the version; a manual run falls back to whatever Chart.yaml
+      # says, so a dispatch can never silently publish an unversioned chart.
+      - name: Resolve chart version
+        id: version
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="$(helm show chart "${CHART_DIR}" | awk '/^version:/ {print $2}')"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Publishing chart version ${version}"
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Package
+        run: |
+          helm package "${CHART_DIR}" \
+            --version "${{ steps.version.outputs.version }}" \
+            --app-version "${{ steps.version.outputs.version }}" \
+            --destination /tmp/chart
+
+      - name: Push
+        run: |
+          helm push "/tmp/chart/kubeintellect-${{ steps.version.outputs.version }}.tgz" "${OCI_REPO}"
+
+      # Prove the published artifact is actually installable, rather than
+      # trusting that the push returned zero.
+      - name: Verify the published chart pulls back
+        run: |
+          helm show chart "${OCI_REPO}/kubeintellect" --version "${{ steps.version.outputs.version }}"
+
+      - name: Summary
+        run: |
+          {
+            echo "### Published Helm chart"
+            echo
+            echo '```bash'
+            echo "helm install kubeintellect ${OCI_REPO}/kubeintellect --version ${{ steps.version.outputs.version }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
