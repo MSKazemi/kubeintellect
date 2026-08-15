@@ -10,7 +10,7 @@
 # ── Image ─────────────────────────────────────────────────────────────────────
 image:
   repository: ghcr.io/mskazemi/kubeintellect
-  tag: dev-latest       # pin to a specific version in production, e.g. v2.1.0
+  tag: ""               # empty = the chart appVersion; pin explicitly in production, e.g. "2.2.0"
   pullPolicy: IfNotPresent
 
 replicaCount: 1         # increase to 2+ for HA (requires external postgres)

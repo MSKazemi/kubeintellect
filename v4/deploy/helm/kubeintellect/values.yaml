@@ -2,7 +2,11 @@ namespace: kubeintellect
 
 image:
   repository: ghcr.io/mskazemi/kubeintellect
-  tag: dev-latest
+  # Empty means "use the chart's appVersion", which is the release this chart
+  # was published for. Set it only to pin a different image than the chart
+  # expects. (It used to default to `dev-latest`, a tag that has never existed
+  # in the registry, so every default install failed to pull.)
+  tag: ""
   pullPolicy: IfNotPresent
 
 replicaCount: 1
@@ -41,7 +45,7 @@ rbac:
 # Non-secret config injected via ConfigMap
 config:
   logLevel: info
-  llmProvider: azure          # azure | openai
+  llmProvider: azure          # azure | openai | qwen | anthropic (anthropic is V4-cortex only)
   azureApiVersion: "2024-02-01"
   # Observability — URLs of Prometheus and Loki in the target cluster.
   # KubeIntellect queries these to answer metric/log questions.

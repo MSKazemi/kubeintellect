@@ -1,0 +1,61 @@
+name: krew
+
+# Opens (or updates) the kubernetes-sigs/krew-index PR for `kubectl kq` from
+# .krew.yaml. The first PR is reviewed by the krew maintainers; afterwards this
+# runs unattended on every release.
+#
+# No secret is needed — krew-release-bot submits the PR from its own hosted
+# service and fork.
+#
+# Ordering matters: .krew.yaml points at release assets built by
+# release-binaries.yml, which runs off the same tag. If this fires before those
+# assets finish uploading, the bot would compute a sha256 for a file that is not
+# there yet, so the guard step below fails loudly instead — re-run this workflow
+# manually once the binaries job is green.
+#
+# Note for contributors: workflows only run when they live in the repository
+# ROOT .github/workflows/.
+
+on:
+  release:
+    types: [released]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to submit (defaults to the latest release)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    name: Submit to krew-index
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Verify the release carries every platform archive
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag="${INPUT_TAG:-${{ github.event.release.tag_name }}}"
+          [ -n "$tag" ] || tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+          echo "Checking assets on ${tag}"
+          assets="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+          echo "$assets"
+          missing=""
+          for f in kq_linux_amd64.tar.gz kq_linux_arm64.tar.gz kq_darwin_amd64.tar.gz kq_darwin_arm64.tar.gz; do
+            echo "$assets" | grep -qx "$f" || missing="${missing} ${f}"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Release ${tag} is missing:${missing}. Wait for 'Release binaries' to finish, then re-run this workflow."
+            exit 1
+          fi
+          echo "All four archives present."
+
+      - uses: rajatjindal/krew-release-bot@c970b8a8f6dbc2f2285a26e3ae160903b87002c3 # v0.0.51
+        with:
+          krew_template_file: .krew.yaml

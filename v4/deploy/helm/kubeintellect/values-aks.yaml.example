@@ -4,7 +4,7 @@
 
 image:
   repository: ghcr.io/mskazemi/kubeintellect
-  tag: dev-latest
+  tag: ""   # empty = the chart appVersion
   pullPolicy: Always
 
 replicaCount: 2                  # AKS can run multiple replicas

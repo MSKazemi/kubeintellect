@@ -1,6 +1,43 @@
 apiVersion: v2
 name: kubeintellect
-description: AI-powered Kubernetes operations assistant — V2
+description: An AI SRE for Kubernetes — investigates with real tools, explains the root cause in plain English, and executes the fix only after you approve it.
 type: application
-version: 2.0.0
-appVersion: "2.0.0"
+
+# `version` (the chart) and `appVersion` (the server image) are kept in lockstep
+# and are both rewritten from the git tag by .github/workflows/helm-publish.yml,
+# so the values checked in here only matter for `helm install` straight from a
+# clone. Bump them by hand only for a chart-only change between releases.
+version: 2.2.0
+appVersion: "2.2.0"
+
+home: https://kubeintellect.com
+icon: https://raw.githubusercontent.com/MSKazemi/kubeintellect/main/v4/docs/assets/brand/ki-icon.svg
+sources:
+  - https://github.com/MSKazemi/kubeintellect
+
+keywords:
+  - kubernetes
+  - ai
+  - sre
+  - aiops
+  - llm
+  - agent
+  - troubleshooting
+  - observability
+
+maintainers:
+  - name: Mohsen Seyedkazemi Ardebili
+    email: mohsen.seyedkazemi@gmail.com
+    url: https://github.com/MSKazemi
+
+annotations:
+  artifacthub.io/license: AGPL-3.0-or-later
+  artifacthub.io/operator: "false"
+  artifacthub.io/prerelease: "false"
+  artifacthub.io/links: |
+    - name: source
+      url: https://github.com/MSKazemi/kubeintellect
+    - name: documentation
+      url: https://mskazemi.github.io/kubeintellect/
+    - name: support
+      url: https://github.com/MSKazemi/kubeintellect/discussions
