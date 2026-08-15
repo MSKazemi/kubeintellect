@@ -1,0 +1,15 @@
+# Artifact Hub repository metadata.
+#
+# Publishing this file alongside the chart in the OCI registry is what earns the
+# "Verified Publisher" label on https://artifacthub.io/packages/helm/kubeintellect/kubeintellect
+# — it proves whoever controls the registry is the same person who registered
+# the repository on Artifact Hub.
+#
+# It is pushed as a separate OCI artifact tagged `artifacthub.io` by
+# .github/workflows/helm-publish.yml; it is NOT part of the chart itself.
+#
+# repositoryID comes from the Artifact Hub control panel and is not a secret.
+repositoryID: 38553280-cd24-4ff0-bc0f-f23ee642faac
+owners:
+  - name: Mohsen Seyedkazemi Ardebili
+    email: mohsen.seyedkazemi@gmail.com
