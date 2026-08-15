@@ -32,7 +32,7 @@ spec:
         runAsGroup: 1001
       containers:
         - name: kubeintellect
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           {{- if .Values.hotReload.enabled }}
           command:

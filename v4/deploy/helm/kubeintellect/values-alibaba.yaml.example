@@ -16,7 +16,7 @@
 # See docs/deploy/alibaba.md for the one-time `docker pull → tag → push` mirror.
 image:
   repository: registry-intl.<region>.aliyuncs.com/<namespace>/kubeintellect  # ← ACR path
-  tag: dev-latest
+  tag: ""   # empty = the chart appVersion
   pullPolicy: Always
 
 # amd64 only — the Dockerfile fetches linux/amd64 kubectl. Use an amd64 ACK node pool.
