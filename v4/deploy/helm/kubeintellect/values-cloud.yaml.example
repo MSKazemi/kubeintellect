@@ -10,7 +10,7 @@
 # ── Image ─────────────────────────────────────────────────────────────────────
 image:
   repository: ghcr.io/mskazemi/kubeintellect
-  tag: dev-latest
+  tag: ""   # empty = the chart appVersion
   pullPolicy: Always     # cloud deployments always pull to pick up new tags
 
 replicaCount: 2          # multiple replicas for HA on managed clusters
