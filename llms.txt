@@ -22,6 +22,7 @@ Key facts:
 
 - [Website](https://kubeintellect.com): project home
 - [Live demo](https://kubeintellect.com/demo): browser-based read-only demo, no install
+- [Hugging Face Space](https://huggingface.co/spaces/mskazemi/kubeintellect): the same read-only demo as a Gradio chat app on Hugging Face
 - [kube-q CLI](https://pypi.org/project/kube-q/): the terminal client that talks to a KubeIntellect instance
 - [PyPI: kubeintellect](https://pypi.org/project/kubeintellect/): server + CLI package
 - [PyPI: kube-q](https://pypi.org/project/kube-q/): thin CLI package
