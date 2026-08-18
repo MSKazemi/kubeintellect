@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import inspect
 import re
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -93,6 +94,54 @@ def _read(doc: str) -> str:
     if doc.startswith(_ROOT_PREFIX):
         return (_ROOT / doc[len(_ROOT_PREFIX):]).read_text(encoding="utf-8")
     return (_DOCS / doc).read_text(encoding="utf-8")
+
+
+def _collect_count(rootdir: Path) -> int | None:
+    """Number of tests pytest *collects* under *rootdir* — collection only, nothing runs.
+
+    Returns ``None`` if collection could not be performed at all (no venv, pytest missing),
+    so a developer without the workspace installed still gets the rest of the checks rather
+    than a hard crash. A collection *error* is different from an absent pytest and is
+    reported by the caller.
+    """
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "pytest", "--collect-only", "-q", "tests/"],
+            cwd=rootdir,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    m = re.search(r"(\d+) tests? collected", proc.stdout)
+    if not m:
+        # pytest prints "N/M tests collected" when deselecting; accept that form too.
+        m = re.search(r"(\d+)/\d+ tests? collected", proc.stdout)
+    return int(m.group(1)) if m else None
+
+
+def _check_test_counts() -> list[str]:
+    """AGENTS.md tells agents how many tests to expect; keep that honest.
+
+    This number drifts silently — every added test makes the doc a little more wrong, and a
+    wrong count is worse than none because an agent uses it to decide whether its run was
+    complete. It was 990 in the doc while the suite was actually 1031.
+    """
+    errors: list[str] = []
+    for label, rootdir, pattern in (
+        ("server suite", _V4, r"Server suite \((\d+) tests\)"),
+        ("kq CLI suite", _V4 / "packages" / "kube-q", r"kq CLI suite \((\d+) tests\)"),
+    ):
+        actual = _collect_count(rootdir)
+        if actual is None:
+            errors.append(
+                f"SKIP {label}: could not collect tests under {rootdir} "
+                "(no venv?) — count not verified"
+            )
+            continue
+        errors += _check_number("root:AGENTS.md", pattern, actual, f"{label} test count")
+    return errors
 
 
 def _check_number(doc: str, pattern: str, expected: int, label: str) -> list[str]:
@@ -176,6 +225,8 @@ def run_checks() -> list[str]:
                 f"code {sorted(providers)}"
             )
 
+    errors += _check_test_counts()
+
     return errors
 
 
@@ -187,7 +238,10 @@ def main() -> int:
             print(f"  {e}")
         print("\nUpdate the docs (or the code) so numbered claims agree.")
         return 1
-    print("Doc claims match the code (playbooks, detectors, providers, v5 flags).")
+    print(
+        "Doc claims match the code "
+        "(playbooks, detectors, providers, v5 flags, test counts)."
+    )
     return 0
 
 
