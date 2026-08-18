@@ -445,13 +445,41 @@ The `kq preference {set,list,forget}` subcommands wrap these endpoints — see
 
 ## `GET /healthz`
 
-Liveness/readiness probe. Available with and without the `/v1` prefix
-(`GET /healthz` and `GET /v1/healthz`). Returns the status and server version; it
-is excluded from request logging.
+**Liveness** probe. Available with and without the `/v1` prefix (`GET /healthz` and
+`GET /v1/healthz`). Returns the status and server version; it is excluded from request logging.
+
+It checks **nothing** — that is deliberate. Liveness answers "is this process wedged, restart
+it?", so a liveness probe that touches Postgres would turn one database blip into a
+cluster-wide restart loop. Use `/readyz` for routing decisions.
 
 ```bash
 curl http://localhost:8000/healthz
 # → {"status":"ok","version":"2.0.2"}
+```
+
+---
+
+## `GET /readyz`
+
+**Readiness** probe — a different question from liveness: *"should this replica receive traffic
+right now?"* Returns `200 {"status":"ready"}` while serving, and **`503 {"status":"draining"}`
+as soon as shutdown begins**, before any connection pool is closed.
+
+That 503 is the point. Kubernetes removes a terminating pod from Endpoints asynchronously, so
+without it a replica keeps advertising readiness while it tears down, and requests routed during
+that window fail. The Helm chart points `readinessProbe` here with `failureThreshold: 1`, and
+sets `terminationGracePeriodSeconds` (default 45) to give the drain somewhere to happen.
+
+`/readyz` reports **local state only and never probes the database.** A readiness probe that
+pings a shared dependency looks more thorough and is more dangerous: when that dependency blips,
+every replica goes unready simultaneously and the Service is left with no endpoints at all —
+turning a degraded system into a total outage. Dependency health belongs in alerting.
+
+```bash
+curl -i http://localhost:8000/readyz
+# → HTTP/1.1 200 OK   {"status":"ready"}
+# during shutdown:
+# → HTTP/1.1 503 Service Unavailable   {"status":"draining"}
 ```
 
 ---

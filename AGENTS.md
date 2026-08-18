@@ -59,7 +59,7 @@ uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/
 # 2. Types — the workspace is at ZERO errors; keep it there.
 uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q
 
-# 3. Server suite (1031 tests)
+# 3. Server suite (1037 tests)
 uv run python -m pytest tests/ -q
 
 # 4. kq CLI suite (312 tests)
@@ -103,7 +103,7 @@ an agent uses it to decide whether its own run was complete.
 
 ### `mypy` is clean — if it reports something, it is from your change
 
-The workspace type-checks with **zero errors across 171 source files**, and `Types (mypy)` is
+The workspace type-checks with **zero errors across 172 source files**, and `Types (mypy)` is
 a CI job. Do not add `# type: ignore` to silence a real error.
 
 Two annotations are load-bearing and mypy *cannot* verify them — see "Safety invariants" #6.

@@ -54,8 +54,17 @@ async def lifespan(app: FastAPI):
             await start_sensorium()
         except Exception as exc:
             logger.warning(f"sensorium failed to start (continuing without): {exc}")
+    # Everything above either succeeded or degraded deliberately — accept traffic.
+    from app.core.readiness import set_ready
+
+    set_ready(True)
     yield
-    logger.info("KubeIntellect V2 shutting down")
+    # Fail readiness FIRST, before tearing anything down: Kubernetes removes the pod from
+    # Endpoints asynchronously, so the drain window is exactly the gap between this line and
+    # the connections closing below. Without it the probe answers 200 until process exit and
+    # in-flight routing keeps landing on a replica that is already closing its pools.
+    set_ready(False)
+    logger.info("KubeIntellect V2 shutting down (readiness now failing — draining)")
     from app.agent.workflow import close_graph
     await close_graph()
     from app.detectors.service import stop_sensorium
