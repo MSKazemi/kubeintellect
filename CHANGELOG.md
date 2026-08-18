@@ -12,6 +12,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Fixed
+- **`gitops.py`'s default command runner could hang a request indefinitely.** `_default_runner`
+  shelled out to `git push` and `gh pr create` with **no timeout**. Both block rather than fail
+  in the common failure modes — `git push` waits on a credential prompt that will never be
+  answered (there is no tty), on a half-open connection, or on a stale `index.lock`; `gh` waits
+  on auth. Unbounded, that hangs the calling request with no upper limit, which is the worst
+  failure shape for an incident-response tool: it fails exactly when someone needs an answer.
+
+  Now bounded at 60s, converting a hang into an ordinary non-zero result that `open_pr`'s
+  existing graceful-degradation paths already handle — a push timeout reports push failure
+  rather than falsely claiming the branch was pushed. **Latent, not live**: the module is a v5
+  P3 slice that nothing currently calls, so no request path was affected; it is fixed now
+  because it would have become live the moment the fix-PR flow is wired up.
+
+  Found by AST-auditing every `subprocess` call site in `app/` for a `timeout` kwarg. The other
+  results are correct as they stand: the ten request-path calls all specify timeouts,
+  `sensorium/k8s_watcher.py` is a deliberately long-lived `kubectl --watch`, and the remaining
+  hits are in the operator-interactive admin CLI where a hang is visible and interruptible.
+
+### Fixed
 - **Readiness and liveness were the same static probe, so rolling updates dropped requests.**
   `/healthz` is deliberately static — a liveness probe that touches a dependency turns one
   database blip into a cluster-wide restart loop — but the Helm chart pointed **both**
