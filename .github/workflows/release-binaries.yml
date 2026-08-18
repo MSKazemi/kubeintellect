@@ -33,8 +33,14 @@ concurrency:
   group: binaries-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Publishing runs ONLY from the canonical public repo. The private superset tracks this
+# same .github/ tree and is pushed to MSKazemi/kubeintellect-private,
+# kubeintellect/kubeintellect-private and GitLab — so without the per-job repository
+# guard below, a tag push there would publish a SECOND, divergent set of artifacts.
+# Today only the Actions billing failure prevents that, which is luck, not design.
 jobs:
   build:
+    if: github.repository == 'MSKazemi/kubeintellect'
     name: ${{ matrix.goos }}-${{ matrix.goarch }}
     strategy:
       fail-fast: false
@@ -106,7 +112,9 @@ jobs:
   release:
     name: Attach to release
     needs: build
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      github.repository == 'MSKazemi/kubeintellect' &&
+      github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
