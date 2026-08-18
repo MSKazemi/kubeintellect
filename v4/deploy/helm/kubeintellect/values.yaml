@@ -11,6 +11,13 @@ image:
 
 replicaCount: 1
 
+# How long a terminating pod may keep running after SIGTERM. On shutdown the server
+# immediately fails `/readyz` (503) and *then* closes its pools, so this is the window in
+# which Kubernetes propagates the Endpoints removal and in-flight requests finish. Too short
+# and a rolling update drops requests; the default is deliberately above the Kubernetes
+# default of 30s because that propagation is asynchronous.
+terminationGracePeriodSeconds: 45
+
 service:
   type: ClusterIP
   port: 8000
