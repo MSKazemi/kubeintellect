@@ -12,6 +12,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Fixed
+- **Readiness and liveness were the same static probe, so rolling updates dropped requests.**
+  `/healthz` is deliberately static — a liveness probe that touches a dependency turns one
+  database blip into a cluster-wide restart loop — but the Helm chart pointed **both**
+  `livenessProbe` and `readinessProbe` at it. A replica therefore kept answering "route traffic
+  to me" right up until process exit. Kubernetes removes a terminating pod from Endpoints
+  asynchronously, so during that window requests were still being routed to a replica that had
+  already begun closing its pools.
+
+  Adds `GET /readyz` (`app/core/readiness.py`): 200 while serving, **503 as soon as shutdown
+  begins** — the lifespan flips it *before* tearing anything down. The chart now points
+  `readinessProbe` at `/readyz` with `failureThreshold: 1`, and sets
+  `terminationGracePeriodSeconds` (default 45) so the drain window has somewhere to happen.
+
+  `/readyz` deliberately **does not probe Postgres**. That would look more thorough and be more
+  dangerous: when the shared database blips, every replica goes unready at once and the Service
+  is left with no endpoints, converting degradation into a total outage. Dependency health
+  belongs in alerting, not in a probe that controls routing. Six tests lock this down, including
+  an explicit assertion that `/readyz` never touches the database, and that liveness stays 200
+  while draining (failing it would have Kubernetes kill the pod mid-drain).
+
+### Fixed
 - **The four ACI read verbs declared an injected run config they could never receive.**
   `app/tools/aci/read_verbs.py` annotated the parameter
   `Annotated[Optional[RunnableConfig], InjectedToolArg]`. `langchain_core` matches the injected

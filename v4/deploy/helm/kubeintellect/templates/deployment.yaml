@@ -17,6 +17,10 @@ spec:
       annotations:
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
     spec:
+      # Give the drain window somewhere to happen: SIGTERM flips /readyz to 503, and the pod
+      # needs to outlive the seconds it takes kube-proxy to observe the Endpoints removal.
+      # Without this the default 30s applies and the process may exit while routes are stale.
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | default 45 }}
       serviceAccountName: {{ .Values.serviceAccount.name }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
@@ -73,14 +77,20 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 3
+          # Readiness is a DIFFERENT question from liveness: "route to me right now?".
+          # /readyz reports local state only — 200 while serving, 503 once draining — so a
+          # rolling update stops receiving traffic before it closes its pools. It deliberately
+          # does not probe Postgres: a dependency-checking readiness probe takes every replica
+          # out of the Service at once when the shared DB blips, turning degradation into an
+          # outage. failureThreshold is 1 because draining should take effect immediately.
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /readyz
               port: 8000
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 10
-            failureThreshold: 3
+            failureThreshold: 1
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- if .Values.hotReload.enabled }}
