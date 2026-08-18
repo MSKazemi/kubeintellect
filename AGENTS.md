@@ -59,7 +59,7 @@ uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/
 # 2. Types — the workspace is at ZERO errors; keep it there.
 uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q
 
-# 3. Server suite (990 tests)
+# 3. Server suite (1031 tests)
 uv run python -m pytest tests/ -q
 
 # 4. kq CLI suite (312 tests)
@@ -149,8 +149,20 @@ A change that violates any of these will be rejected regardless of test results.
    it to `RunnableConfig | None` — which is what a type checker, a linter, or an agent
    "cleaning up implicit Optional" will suggest — stops the run config being injected at all.
    The tool then silently receives `config=None` and loses `user_role` (RBAC) and
-   `hitl_bypass` (the HITL gate). This is verified by
+   `hitl_bypass` (the HITL gate). Behaviourally verified by
    `v4/tests/test_kubectl_tool.py::TestAlwaysConfirm`; see issue #54 for the full analysis.
+
+   **The annotation itself is now gated** by `v4/tests/test_injected_config_invariant.py`,
+   which scans every `config: Annotated[…, InjectedToolArg]` parameter in `app/` and fails if
+   any is not bare `RunnableConfig`, plus two canary tests proving against the installed
+   `langchain_core` that the bare form *is* injected and the widened form is *not*.
+
+   That gate was added after finding the widened form live in `app/tools/aci/read_verbs.py`
+   (all four ACI read verbs). It was harmless there — those verbs never read `user_role`, so
+   no RBAC decision was affected — but it is the exact shape of the failure this invariant
+   exists to prevent, and it survived because a tool that never *uses* `config` passes every
+   behavioural test while silently receiving `None`. A behavioural test cannot catch that;
+   only asserting the annotation can.
 
 ## Testing expectations
 
