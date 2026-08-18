@@ -21,9 +21,25 @@ from app.tools.aci.fix_pr import FixPR
 Runner = Callable[[list[str]], tuple[int, str]]
 
 
+# Both commands this module runs can block forever rather than fail: `git push` waits on a
+# credential prompt that will never be answered (no tty), stalls on a half-open connection, or
+# blocks on a stale index.lock; `gh pr create` waits on auth. Unbounded, that hangs the calling
+# request with no upper bound — the worst failure shape for an incident-response tool. The
+# timeout converts "hang" into an ordinary non-zero result, which `open_pr` already degrades
+# gracefully from.
+_DEFAULT_TIMEOUT_S = 60
+
+
 def _default_runner(argv: list[str]) -> tuple[int, str]:
     import subprocess
-    r = subprocess.run(argv, capture_output=True, text=True)
+    try:
+        r = subprocess.run(
+            argv, capture_output=True, text=True, timeout=_DEFAULT_TIMEOUT_S
+        )
+    except subprocess.TimeoutExpired:
+        # Non-zero + a readable reason: push failure surfaces to the caller, and a `gh` timeout
+        # falls through to the manual-PR pointer rather than losing the pushed branch.
+        return 124, f"timed out after {_DEFAULT_TIMEOUT_S}s: {' '.join(argv[:3])}"
     return r.returncode, (r.stdout + r.stderr).strip()
 
 
