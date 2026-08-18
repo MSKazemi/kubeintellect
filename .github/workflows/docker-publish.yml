@@ -29,8 +29,14 @@ env:
   GHCR_IMAGE: ghcr.io/mskazemi/kubeintellect
   DOCKERHUB_IMAGE: docker.io/kazemi/kubeintellect
 
+# Publishing runs ONLY from the canonical public repo. The private superset tracks this
+# same .github/ tree and is pushed to MSKazemi/kubeintellect-private,
+# kubeintellect/kubeintellect-private and GitLab — so without the per-job repository
+# guard below, a tag push there would publish a SECOND, divergent set of artifacts.
+# Today only the Actions billing failure prevents that, which is luck, not design.
 jobs:
   publish:
+    if: github.repository == 'MSKazemi/kubeintellect'
     name: Build and publish image
     runs-on: ubuntu-latest
     permissions:

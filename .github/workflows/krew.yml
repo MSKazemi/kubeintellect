@@ -29,8 +29,14 @@ on:
 permissions:
   contents: read
 
+# Publishing runs ONLY from the canonical public repo. The private superset tracks this
+# same .github/ tree and is pushed to MSKazemi/kubeintellect-private,
+# kubeintellect/kubeintellect-private and GitLab — so without the per-job repository
+# guard below, a tag push there would publish a SECOND, divergent set of artifacts.
+# Today only the Actions billing failure prevents that, which is luck, not design.
 jobs:
   submit:
+    if: github.repository == 'MSKazemi/kubeintellect'
     name: Submit to krew-index
     runs-on: ubuntu-latest
     steps:
