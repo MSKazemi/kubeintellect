@@ -96,6 +96,11 @@ other, that difference is the bug.
 
 Do not report work as complete without running these and reading the output.
 
+**The test counts above are gated.** `v4/scripts/check_doc_claims.py` collects both suites and
+fails if either number here disagrees, so a PR that adds tests must update this file. That
+number drifted to 990-vs-1031 before the gate existed, and a wrong count is worse than none —
+an agent uses it to decide whether its own run was complete.
+
 ### `mypy` is clean — if it reports something, it is from your change
 
 The workspace type-checks with **zero errors across 171 source files**, and `Types (mypy)` is
