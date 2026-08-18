@@ -11,6 +11,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- **The four ACI read verbs declared an injected run config they could never receive.**
+  `app/tools/aci/read_verbs.py` annotated the parameter
+  `Annotated[Optional[RunnableConfig], InjectedToolArg]`. `langchain_core` matches the injected
+  run config **by identity** (`type_ is RunnableConfig`), so the widened form is not matched and
+  those tools always received `config=None` — the exact failure mode AGENTS.md safety invariant
+  #6 exists to prevent, and the one `ruff`'s `UP045` actively suggests.
+
+  **No RBAC decision was affected**: those verbs are read-only and never read `user_role`, so
+  nothing failed open in practice. It is recorded as a fix rather than a footnote because the
+  parameter advertised itself as carrying `user_role`, so the first RBAC check added there
+  would have silently failed open. Corrected to bare `RunnableConfig` at all four sites, with
+  the reasoning inline at the call site.
+
+### Added
+- **`v4/tests/test_injected_config_invariant.py` — a gate for the annotation invariant.**
+  It scans every `config: Annotated[…, InjectedToolArg]` parameter under `app/` and fails if any
+  is not bare `RunnableConfig`, plus canary tests proving against the installed `langchain_core`
+  that the bare form *is* injected and the widened form is *not* — so the invariant's premise is
+  re-proven on every run rather than assumed.
+
+  This closes a real hole. mypy cannot catch it (both forms type-check; the correct one needs a
+  `# type: ignore`), ruff cannot (the `<0.16` pin exists because `UP045` suggests the broken
+  form), and behavioural tests mostly cannot — a tool that never *reads* `config` passes every
+  test while silently receiving `None`, which is precisely how this survived. Red-green proven:
+  reintroducing the widened form on a single parameter fails the suite with the offending file
+  and line. Server suite 1023 → **1031**.
+
 ### Added
 - **Hugging Face Space** — [`mskazemi/kubeintellect`](https://huggingface.co/spaces/mskazemi/kubeintellect),
   a Gradio chat client over the public read-only demo API (`deploy/huggingface-space/`). It renders
