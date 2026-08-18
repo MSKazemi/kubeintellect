@@ -120,8 +120,10 @@ if [ "$STATUS" -eq 0 ]; then
  Heads-up, so you don't chase pre-existing debt that is NOT your bug:
    • `make lint` fails on a clean checkout — it runs `ruff format --check`,
      which is not a CI gate and would reformat ~108 files.
-   • `ruff` is pinned <0.16 on purpose (v4/pyproject.toml says why); 439
-     findings are waiting on that upgrade, tracked in issue #75. Do not bump
+   • `ruff` is pinned <0.16 on purpose (v4/pyproject.toml says why); ~317
+     findings are waiting on that upgrade (measured with ruff 0.16.3 on
+     2026-08-18; re-measure rather than trusting this number, it drifts with
+     the code), tracked in issue #75. Do not bump
      the pin in a PR that is about something else — and never run a bare
      `ruff check --fix`: the UP045 autofix silently disables RBAC and the
      human-in-the-loop gate. See AGENTS.md safety invariant #6.

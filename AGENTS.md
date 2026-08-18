@@ -118,9 +118,11 @@ Two annotations are load-bearing and mypy *cannot* verify them — see "Safety i
   2026-08-18** (largest families: `BLE001` 140, `UP045` 91, `PLW1510` 25, `UP035` 17; 120 of the
   317 are auto-fixable). Re-measure rather than quoting this number — it drifts with the code.
   Do not bump the pin. The remaining families
-  must land as separate per-rule PRs; #64 tracked this and was closed when `EXE002` cleared,
-  so the rest is currently untracked — open a fresh issue before starting, don't assume it is
-  unclaimed work. Note the consequence of the pin: `ruff` here is blind to `EXE002`/`EXE001`,
+  must land as separate per-rule PRs, **tracked in [#75](https://github.com/MSKazemi/kubeintellect/issues/75)**
+  ("replaces the prematurely-closed #64"). Comment there before starting — do not open a new
+  issue. (This paragraph previously said the work was untracked and told you to file a fresh
+  one; that was wrong and would have produced a duplicate. `scripts/dev-setup.sh` had #75 right
+  all along.) Note the consequence of the pin: `ruff` here is blind to `EXE002`/`EXE001`,
   which is why the separate `make check-modes` gate above exists.
 
   ⚠️ **`UP045` (91 of the 317, and every one of them auto-fixable) is a safety trap, not a
