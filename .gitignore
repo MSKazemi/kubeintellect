@@ -159,3 +159,10 @@ terraform.tfstate.backup
 /parts/
 /stage/
 /prime/
+
+# Maintainer's private inbox/backlog (single entry point for ideas + tasks,
+# driven by the mska-note skill). Never published.
+.note
+.note.*
+.mohsen.note
+.mohsen.note.*
