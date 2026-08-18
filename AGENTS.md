@@ -108,14 +108,19 @@ Two annotations are load-bearing and mypy *cannot* verify them — see "Safety i
 - **`ruff format --check` is not a CI gate** and would reformat ~108 files. `make lint` in
   `v4/` *does* run it, so `make lint` fails on a clean checkout. Use the `ruff check` command
   above to predict CI, not `make lint`.
-- **`ruff` is pinned `<0.16`** on purpose — 0.16's default rules reported 438 findings, now
-  **342** after the `EXE002` family was cleared (#70). Do not bump it. The remaining families
+- **`ruff` is pinned `<0.16`** on purpose — 0.16's default rules reported 438 findings, then
+  342 after the `EXE002` family was cleared (#70), and **317 as measured with ruff 0.16.3 on
+  2026-08-18** (largest families: `BLE001` 140, `UP045` 91, `PLW1510` 25, `UP035` 17; 120 of the
+  317 are auto-fixable). Re-measure rather than quoting this number — it drifts with the code.
+  Do not bump the pin. The remaining families
   must land as separate per-rule PRs; #64 tracked this and was closed when `EXE002` cleared,
   so the rest is currently untracked — open a fresh issue before starting, don't assume it is
   unclaimed work. Note the consequence of the pin: `ruff` here is blind to `EXE002`/`EXE001`,
   which is why the separate `make check-modes` gate above exists.
 
-  ⚠️ **`UP045` (95 of the 342) is a safety trap, not a cleanup.** It rewrites
+  ⚠️ **`UP045` (91 of the 317, and every one of them auto-fixable) is a safety trap, not a
+  cleanup.** That combination is the hazard: a single `ruff check --fix` would apply all 91,
+  including on the tools where it disables the safety gates. It rewrites
   `Optional[X]` → `X | None`, which on an injected `RunnableConfig` parameter is exactly the
   change invariant #6 below forbids: the run config stops being injected, and RBAC and the
   HITL gate silently stop being enforced *while every test still passes*. Never run
