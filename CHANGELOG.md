@@ -12,6 +12,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Fixed
+- **`v4/uv.lock` was stale — it still recorded `kubeintellect 2.2.0` after the 2.3.1 bump.**
+  `uv lock --check` failed against the committed lockfile (rc=1, *"the lockfile needs to be
+  updated"*), so `uv sync --locked` / `--frozen` — what a reproducible release build should use —
+  would have failed for three days. Re-locked, and **CI now runs `uv lock --check`** so it cannot
+  drift silently again.
+
+### Added
+- **The install smoke test now probes `--version`, not just `--help`.** `--help` is not sufficient
+  on its own: argparse exits 0 for `-h` even when a required subcommand is missing, so a broken
+  top-level parser passes a `--help` check. That is not hypothetical — `kubeintellect --version`
+  shipped to PyPI printing a usage error and exiting 2, and this job was green the whole time.
+  The project's own launch pre-flight had already documented the blind spot; CI had not adopted it.
+
+### Fixed
 - **`gitops.py`'s default command runner could hang a request indefinitely.** `_default_runner`
   shelled out to `git push` and `gh pr create` with **no timeout**. Both block rather than fail
   in the common failure modes — `git push` waits on a credential prompt that will never be
