@@ -98,6 +98,17 @@ Responsibilities are split between the repo root and each version directory:
 - **Root — `Makefile` + `deploy/` + `scripts/`** manages the *shared infrastructure* every version runs against: one Kind cluster, one observability stack (Prometheus + Grafana + Loki), and one Langfuse instance with a shared project. Run `make help` at the root to list the infra targets.
 - **Per-version — `v4/Makefile`, etc.** each version directory has its own Makefile for *application* build/deploy and Python development, plus its own `docs/`, `tests/`, and packaging.
 
+Every top-level directory, and what it is for:
+
+| Directory | Purpose |
+|---|---|
+| `v1/` `v2/` `v3/` `v4/` | The four generations — see the table above. `v4/` is the one to run. |
+| `deploy/` | Shared-infrastructure manifests and charts: the Kind cluster, the Prometheus/Grafana/Loki stack, and Langfuse. Driven by the root `Makefile`, not by any single version. |
+| `scripts/` | Repo-wide helper scripts, including the two CI gates that need no virtualenv — `check-file-modes.sh` and `check-syntax-warnings.py`. |
+| `snap/` | `snapcraft.yaml` for the Snap Store package. Built by `.github/workflows/snap.yml`; publishing runs only from the canonical public repo. |
+
+Anything not listed here is not part of the published repository.
+
 ## Shared infrastructure
 
 All versions run against one shared infrastructure stack rather than each standing up its own:
