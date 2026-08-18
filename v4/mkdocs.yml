@@ -101,8 +101,10 @@ plugins:
 
 nav:
   - Home: index.md
+  - Start here: start-here.md
   - Quickstart: quickstart.md
   - How it works: how-it-works.md
+  - Which version do I want?: which-version.md
   - Research: research.md
 
   - Use:
@@ -142,6 +144,7 @@ nav:
     - Security: security.md
     - Data handling: data-handling.md
     - API Reference: api-reference.md
+    - Evaluation: evaluation.md
     - Glossary: glossary.md
     - Changelog: changelog.md
 
