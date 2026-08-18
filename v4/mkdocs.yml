@@ -102,6 +102,7 @@ plugins:
 nav:
   - Home: index.md
   - Quickstart: quickstart.md
+  - How it works: how-it-works.md
   - Research: research.md
 
   - Use:
