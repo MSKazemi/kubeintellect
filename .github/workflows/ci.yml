@@ -251,6 +251,13 @@ jobs:
       - name: Install uv
         run: pip install "uv==${UV_VERSION}"
 
+      # The lockfile drifts silently: it recorded kubeintellect 2.2.0 for three days after
+      # pyproject declared 2.3.1, so `uv sync --locked` — what a reproducible release build
+      # should use — would have failed. Nothing caught it because nothing checked.
+      - name: Lockfile is current
+        working-directory: v4
+        run: uv lock --check
+
       - name: Build workspace distributions
         working-directory: v4
         run: |
@@ -266,10 +273,16 @@ jobs:
           VIRTUAL_ENV=/tmp/smoke uv pip install --find-links dist \
             "$(ls dist/kubeintellect-*.whl)"
 
+      # `--help` is NOT sufficient on its own: argparse exits 0 for `-h` even when a required
+      # subcommand is missing, so a broken top-level parser passes a --help check. That is not
+      # hypothetical — `kubeintellect --version` shipped to PyPI printing a usage error and
+      # exiting 2, and this job was green throughout. Probe a real flag as well.
       - name: Entry points start
         run: |
           /tmp/smoke/bin/kubeintellect --help
           /tmp/smoke/bin/kq --help
+          /tmp/smoke/bin/kubeintellect --version
+          /tmp/smoke/bin/kq --version
 
       - name: Server package imports
         run: /tmp/smoke/bin/python -c "import app; print('kubeintellect server import OK')"
