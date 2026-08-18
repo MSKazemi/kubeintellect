@@ -101,7 +101,12 @@ async def inspect(
     name: str,
     namespace: Optional[str] = None,
     view: str = "summary",
-    config: Annotated[Optional[RunnableConfig], InjectedToolArg] = None,
+    # INVARIANT (AGENTS.md #6): this annotation must stay bare `RunnableConfig`.
+    # langchain_core matches the injected run config by identity (`type_ is
+    # RunnableConfig`), so `Optional[RunnableConfig]` is NOT matched and the tool
+    # silently receives config=None — losing `user_role` (RBAC) and `hitl_bypass`.
+    # Guarded by tests/test_injected_config_invariant.py.
+    config: Annotated[RunnableConfig, InjectedToolArg] = None,  # type: ignore[assignment]
 ) -> str:
     """Inspect one object (normalized, bounded). Read-only."""
     ns = _ns_flag(namespace)
@@ -123,7 +128,12 @@ async def search(
     all_namespaces: bool = False,
     selector: Optional[str] = None,
     limit: int = 100,
-    config: Annotated[Optional[RunnableConfig], InjectedToolArg] = None,
+    # INVARIANT (AGENTS.md #6): this annotation must stay bare `RunnableConfig`.
+    # langchain_core matches the injected run config by identity (`type_ is
+    # RunnableConfig`), so `Optional[RunnableConfig]` is NOT matched and the tool
+    # silently receives config=None — losing `user_role` (RBAC) and `hitl_bypass`.
+    # Guarded by tests/test_injected_config_invariant.py.
+    config: Annotated[RunnableConfig, InjectedToolArg] = None,  # type: ignore[assignment]
 ) -> str:
     """List objects by kind/namespace/selector, names-first. Read-only."""
     kinds_arg = ",".join(kinds)
@@ -143,7 +153,12 @@ async def logs(
     lines: int = 100,
     since: Optional[str] = None,
     previous: bool = False,
-    config: Annotated[Optional[RunnableConfig], InjectedToolArg] = None,
+    # INVARIANT (AGENTS.md #6): this annotation must stay bare `RunnableConfig`.
+    # langchain_core matches the injected run config by identity (`type_ is
+    # RunnableConfig`), so `Optional[RunnableConfig]` is NOT matched and the tool
+    # silently receives config=None — losing `user_role` (RBAC) and `hitl_bypass`.
+    # Guarded by tests/test_injected_config_invariant.py.
+    config: Annotated[RunnableConfig, InjectedToolArg] = None,  # type: ignore[assignment]
 ) -> str:
     """Read pod logs (bounded, dead-pod evidence via previous=True). Read-only."""
     if pod is None and selector is None:
@@ -173,7 +188,12 @@ async def diff_change(
     namespace: Optional[str] = None,
     manifest: Optional[str] = None,
     revision: Optional[int] = None,
-    config: Annotated[Optional[RunnableConfig], InjectedToolArg] = None,
+    # INVARIANT (AGENTS.md #6): this annotation must stay bare `RunnableConfig`.
+    # langchain_core matches the injected run config by identity (`type_ is
+    # RunnableConfig`), so `Optional[RunnableConfig]` is NOT matched and the tool
+    # silently receives config=None — losing `user_role` (RBAC) and `hitl_bypass`.
+    # Guarded by tests/test_injected_config_invariant.py.
+    config: Annotated[RunnableConfig, InjectedToolArg] = None,  # type: ignore[assignment]
 ) -> str:
     """Diff an object against live state or a prior revision. Read-only.
 
