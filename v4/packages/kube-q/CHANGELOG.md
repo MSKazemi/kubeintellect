@@ -4,6 +4,20 @@ All notable changes to kube-q will be documented here.
 
 ## [Unreleased]
 
+### Fixed — `kq -q` now reports failure through its exit status
+- **A one-shot query that failed used to exit 0.** Every failure path — 401
+  authentication, any non-200, invalid JSON from the server, retries exhausted —
+  printed a red message and then exited **successfully**, so a script, CI job or
+  `watch` loop could not tell an answer from an outage. `kq -q` now exits **1**
+  when the server did not answer, and still exits 0 for a real answer or for a
+  mutation correctly paused for human approval (which returns no assistant text).
+- **Test isolation: `KUBE_Q_*` variables no longer leak between tests.**
+  `config._load_dotenv_file` copies `.env` entries straight into `os.environ`, which
+  `monkeypatch` cannot undo, so `test_config.py` left `KUBE_Q_URL`, `KUBE_Q_MODEL`
+  and an invalid `KUBE_Q_TIMEOUT=-10` set for the rest of the session. Nothing
+  downstream read them, so the suite stayed green while the environment was poisoned
+  mid-run. An autouse fixture in `tests/conftest.py` now restores them after every test.
+
 ### Added — Shell completion
 - **`kq completion [bash|zsh|fish]`** prints a shell completion script. Enable with
   `source <(kq completion bash)` (or the zsh/fish equivalent). It completes

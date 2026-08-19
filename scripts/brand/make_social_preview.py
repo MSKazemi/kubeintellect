@@ -99,7 +99,7 @@ def main() -> None:
     prompt_w = int(d.textlength("$ ", font=f_code))
     gradient_text(img, (pad, cmd_y), "$ ", f_code)
     d.text((pad + prompt_w, cmd_y),
-           'kq "why is my api-server pod crashlooping?"', font=f_code, fill=TEXT)
+           'kq -q "why is my api-server pod crashlooping?"', font=f_code, fill=TEXT)
 
     # ── Proof line — what makes it credible, kept short enough to read small ─
     d.text((pad, 512),
