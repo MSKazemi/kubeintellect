@@ -62,7 +62,7 @@ uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube
 # 3. Server suite (1047 tests)
 uv run python -m pytest tests/ -q
 
-# 4. kq CLI suite (312 tests)
+# 4. kq CLI suite (317 tests)
 cd packages/kube-q && uv run python -m pytest tests/ -q
 ```
 
