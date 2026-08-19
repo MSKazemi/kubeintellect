@@ -31,9 +31,9 @@
 KubeIntellect is an open-source, LLM-orchestrated multi-agent framework for **autonomous Kubernetes operations**. Ask a question in plain English — it fans out to specialized agents that query **kubectl**, **Prometheus** (PromQL), and **Loki** (LogQL) live, correlates the evidence, and answers. Any change to the cluster pauses for **explicit human-in-the-loop approval** with role-based access control.
 
 ```bash
-kq "why is my api-server pod crashlooping?"
-kq "show me pods with high restart counts in the default namespace"
-kq "scale the frontend deployment to 5 replicas"   # pauses for your approval
+kq -q "why is my api-server pod crashlooping?"
+kq -q "show me pods with high restart counts in the default namespace"
+kq -q "scale the frontend deployment to 5 replicas"   # pauses for your approval
 ```
 
 > **Safe by default** — read-only queries run immediately; scale, delete, and restart operations require explicit approval before anything executes.
