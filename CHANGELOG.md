@@ -11,6 +11,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Security
+- **`nanoid` bumped 3.3.17 → 3.3.18 in `v4/packages/kube-q/web`** (GHSA high: custom generators
+  can loop indefinitely when size is zero). Transitive via Next.js/postcss in the web PTY relay.
+  This was the **only** open Dependabot alert affecting `v4/` — `npm audit` now reports **0
+  vulnerabilities** for that tree.
+
+  The other 137 open alerts are all in `v1/`–`v3/`, which are frozen by ADR-001/002 so the
+  published paper's results stay reproducible. Per the existing `SECURITY.md` policy ("About
+  dependency alerts in `v1/`–`v3/`"), those are an accepted trade-off: nothing from `v1/`–`v3/`
+  is published to any registry and none of it is deployable. They have been dismissed as
+  *tolerable risk* with that justification, so the security tab now reflects the written policy
+  instead of contradicting it.
+
 ### Fixed
 - **`v4/uv.lock` was stale — it still recorded `kubeintellect 2.2.0` after the 2.3.1 bump.**
   `uv lock --check` failed against the committed lockfile (rc=1, *"the lockfile needs to be
