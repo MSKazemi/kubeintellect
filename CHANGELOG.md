@@ -24,6 +24,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   *tolerable risk* with that justification, so the security tab now reflects the written policy
   instead of contradicting it.
 
+### Added
+- **CI now gates the demo front-end** (`Web (lint + build)`). `v4/packages/kube-q/web` had no
+  gate of any kind: every existing job is scoped to the Python tree, so nothing in CI had ever
+  run `npm ci`, `eslint` or `next build`. The gap was not theoretical — the eslint 9 → 10 bump
+  (#142) reported **all 15 checks green** while `npm run lint` failed outright with
+  `contextOrFilename.getFilename is not a function`, because eslint 10 removed the legacy
+  rule-context API that `eslint-plugin-react` (vendored inside `eslint-config-next@16.3.0`)
+  still calls. The job runs `npm ci` rather than `npm install` so a lockfile that disagrees with
+  the manifest fails instead of being silently re-resolved.
+
 ### Fixed
 - **The published container image could not start.** `docker run` on any released image failed
   immediately with `No module named uvicorn`, and it had been that way since the image was
