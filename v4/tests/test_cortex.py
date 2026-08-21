@@ -27,18 +27,28 @@ def _state(**over):
 
 class TestTriageParsing:
     def test_valid_json(self):
-        parsed = cx._parse_triage_json('{"mode": "chat", "plan": []}')
+        parsed = cx._parse_triage_json_strict('{"mode": "chat", "plan": []}')
+        assert parsed is not None
         assert parsed["mode"] == "chat"
 
     def test_json_embedded_in_prose(self):
-        parsed = cx._parse_triage_json(
+        parsed = cx._parse_triage_json_strict(
             'Sure! {"mode": "investigate", "plan": ["check pods"]} done'
         )
+        assert parsed is not None
         assert parsed["plan"] == ["check pods"]
 
-    def test_garbage_defaults_to_investigate(self):
-        assert cx._parse_triage_json("not json")["mode"] == "investigate"
-        assert cx._parse_triage_json('{"mode": "nonsense"}')["mode"] == "investigate"
+    def test_garbage_is_rejected_for_repair(self):
+        # The repair loop needs "unusable" to be distinguishable from a
+        # deliberate "investigate"; triage() supplies the fallback.
+        assert cx._parse_triage_json_strict("not json") is None
+        assert cx._parse_triage_json_strict('{"mode": "nonsense"}') is None
+
+    def test_non_list_plan_is_rejected(self):
+        # A string plan would otherwise slice into six one-character PlanSteps
+        # via (parsed.get("plan") or [])[:6] in triage().
+        assert cx._parse_triage_json_strict('{"mode": "chat", "plan": "do a thing"}') is None
+        assert cx._parse_triage_json_strict('{"mode": "chat"}') is not None
 
 
 class TestRouting:
@@ -250,6 +260,30 @@ class TestTriageRetry:
 
         assert out["triage_mode"] == "investigate"
         assert fake_llm.ainvoke.await_count == cx._TRIAGE_MAX_PARSE_ATTEMPTS
+
+    async def test_repair_echo_is_capped(self, mocker):
+        mocker.patch.object(cx, "emit")
+        huge = "x" * 50_000
+        sent_prompts = []
+        fake_llm = mocker.AsyncMock()
+
+        async def _ainvoke(prompt, config):
+            sent_prompts.append(prompt)
+            if len(sent_prompts) == 1:
+                return mocker.MagicMock(content=huge)
+            return mocker.MagicMock(content='{"mode": "chat", "plan": []}')
+
+        fake_llm.ainvoke = _ainvoke
+        mocker.patch("app.cortex.models.get_triage_llm", return_value=fake_llm)
+
+        await cx.triage(_state(), {})
+
+        echoed = [
+            m for m in sent_prompts[1]
+            if isinstance(m, AIMessage) and m.content.startswith("x")
+        ]
+        assert echoed, "the malformed reply was not echoed back"
+        assert len(echoed[0].content) == cx._TRIAGE_REPAIR_ECHO_MAX_CHARS
 
     def test_strict_parser_distinguishes_failure_from_valid(self):
         assert cx._parse_triage_json_strict("not json") is None

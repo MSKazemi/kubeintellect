@@ -108,6 +108,7 @@ calls — answer only."""
 # reply does not parse, we feed it back with a corrective hint and retry before
 # falling back to the investigate default.
 _TRIAGE_MAX_PARSE_ATTEMPTS = 3
+_TRIAGE_REPAIR_ECHO_MAX_CHARS = 2_000
 _TRIAGE_REPAIR_HINT = (
     "Your previous response was not valid triage JSON. Reply with ONLY a JSON "
     'object matching the schema: {"mode": "chat" | "investigate", '
@@ -192,7 +193,10 @@ async def _triage_with_repair(
         )
         prompt = [
             *prompt,
-            AIMessage(content=str(reply.content)),
+            # Echo back only enough of the bad reply to make the correction
+            # concrete. Unbounded, a pathological reply would be re-sent on
+            # every remaining attempt and could exhaust the context window.
+            AIMessage(content=str(reply.content)[:_TRIAGE_REPAIR_ECHO_MAX_CHARS]),
             HumanMessage(content=_TRIAGE_REPAIR_HINT),
         ]
     logger.warning(
@@ -530,9 +534,17 @@ _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 def _parse_triage_json_strict(text: str) -> dict | None:
     """Parse a triage reply into a validated plan dict, or None when the
-    reply is not usable triage JSON (no JSON block, malformed JSON, or an
-    unrecognised mode). The repair loop uses this to tell "bad reply" apart
-    from "investigate" as a deliberate answer."""
+    reply is not usable triage JSON (no JSON block, malformed JSON, an
+    unrecognised mode, or a `plan` that is not a list). The repair loop uses
+    this to tell "bad reply" apart from "investigate" as a deliberate answer.
+
+    `plan` is type-checked here rather than at the call site because that is
+    where a bad value does its damage: `triage` does
+    `(parsed.get("plan") or [])[:6]`, so a *string* plan slices into six
+    single characters and emits six one-character PlanSteps. Returning None
+    instead sends it back through the repair loop, which is what the caller
+    wants for every other malformed field.
+    """
     match = _JSON_RE.search(text)
     if not match:
         return None
@@ -542,13 +554,10 @@ def _parse_triage_json_strict(text: str) -> dict | None:
         return None
     if not isinstance(data, dict) or data.get("mode") not in ("chat", "investigate"):
         return None
+    plan = data.get("plan")
+    if plan is not None and not isinstance(plan, list):
+        return None
     return data
-
-
-def _parse_triage_json(text: str) -> dict:
-    """Parse a triage reply, falling back to investigate on failure (kept
-    for callers that want the old lenient behaviour)."""
-    return _parse_triage_json_strict(text) or {"mode": "investigate", "plan": []}
 
 
 def _last_user_text(state) -> str:
