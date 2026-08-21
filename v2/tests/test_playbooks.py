@@ -252,3 +252,30 @@ def test_match_node_not_ready_by_event_message() -> None:
     )
     matched = match_playbooks(HEALTHY_PODS, events)
     assert "NodeNotReady" in matched
+
+def test_playbook_yaml_is_read_as_utf8_regardless_of_locale(monkeypatch) -> None:
+    """Playbook YAML is always read as UTF-8, never the platform default.
+
+    Regression test for #136: on locales whose default text encoding is not
+    UTF-8 (Windows CP936/CP1252, POSIX C locale), a plain read_text() raises
+    UnicodeDecodeError on the em-dashes the playbooks contain, and the
+    per-file handler in _load_all() silently drops the playbook.
+    """
+    from pathlib import Path
+
+    from app.agent.playbooks import loader
+
+    real_read_text = Path.read_text
+    read_without_utf8: list[str] = []
+
+    def spy_read_text(self: Path, *args: object, **kwargs: object) -> str:
+        if kwargs.get("encoding") != "utf-8":
+            read_without_utf8.append(self.name)
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", spy_read_text)
+    loader._load_all()
+    assert read_without_utf8 == [], (
+        f"playbook YAML read without an explicit UTF-8 encoding: {read_without_utf8}"
+    )
+

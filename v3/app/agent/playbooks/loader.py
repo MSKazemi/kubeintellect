@@ -60,7 +60,7 @@ def _compile_trigger(raw: dict) -> Trigger:
 
 
 def _load_one(path: Path) -> Playbook:
-    data = yaml.safe_load(path.read_text())
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError(f"Playbook {path.name} must be a YAML mapping")
     name = data.get("name")
