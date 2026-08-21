@@ -17,7 +17,7 @@ yourself is the single lowest-effort, highest-value contribution to the project.
 
 | Organization / person | Since | Environment | How it's used | Contact |
 |---|---|---|---|---|
-| _(you could be here)_ | | | | |
+| [@ybayraktarb](https://github.com/ybayraktarb) | 2026-08 | k3s / k3d (macOS) | install path verification & evaluation | [@ybayraktarb](https://github.com/ybayraktarb) |
 
 **Columns**
 
