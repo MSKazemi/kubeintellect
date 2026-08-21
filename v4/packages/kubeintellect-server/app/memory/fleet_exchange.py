@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import Deque, Optional
 
 _MAX_PER_TENANT = 500
 
@@ -28,7 +27,7 @@ class FleetEntry:
 
 
 # tenant → ring buffer of entries. Partitioned by tenant so a read can NEVER cross tenants.
-_store: dict[str, Deque[FleetEntry]] = defaultdict(lambda: deque(maxlen=_MAX_PER_TENANT))
+_store: dict[str, deque[FleetEntry]] = defaultdict(lambda: deque(maxlen=_MAX_PER_TENANT))
 
 
 def publish(entry: FleetEntry) -> None:
@@ -36,8 +35,8 @@ def publish(entry: FleetEntry) -> None:
     _store[entry.tenant].append(entry)
 
 
-def read_fleet(tenant: str, *, exclude_cluster: Optional[str] = None,
-               signature: Optional[str] = None) -> list[FleetEntry]:
+def read_fleet(tenant: str, *, exclude_cluster: str | None = None,
+               signature: str | None = None) -> list[FleetEntry]:
     """Read a tenant's fleet knowledge. STRICT isolation: only ``tenant``'s partition is ever
     consulted. Optionally drop the reading cluster's own entries and filter by signature."""
     items = list(_store.get(tenant, ()))

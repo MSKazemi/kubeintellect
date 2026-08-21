@@ -49,7 +49,7 @@ def test_resolve_attachments_missing_file(tmp_path: Path) -> None:
 def test_resolve_attachments_file_too_large(tmp_path: Path) -> None:
     big = tmp_path / "big.txt"
     big.write_bytes(b"x" * (101 * 1024))  # 101 KB > 100 KB limit
-    expanded, attached, errors = _resolve_attachments(f"@{big}")
+    _expanded, attached, errors = _resolve_attachments(f"@{big}")
     assert len(errors) == 1
     assert "too large" in errors[0]
     assert attached == []
@@ -80,7 +80,7 @@ def test_resolve_attachments_multiple_files(tmp_path: Path) -> None:
 def test_resolve_attachments_unknown_extension(tmp_path: Path) -> None:
     f = tmp_path / "notes.xyz"
     f.write_text("some content")
-    expanded, attached, errors = _resolve_attachments(f"@{f}")
+    expanded, _attached, errors = _resolve_attachments(f"@{f}")
     assert errors == []
     # Unknown extension → fence with no language specifier
     assert "```\n" in expanded or "```" in expanded
@@ -88,7 +88,7 @@ def test_resolve_attachments_unknown_extension(tmp_path: Path) -> None:
 
 def test_resolve_attachments_not_a_file(tmp_path: Path) -> None:
     msg = f"@{tmp_path}"  # directory, not a file
-    expanded, attached, errors = _resolve_attachments(msg)
+    _expanded, _attached, errors = _resolve_attachments(msg)
     assert len(errors) == 1
     assert "not a regular file" in errors[0]
 

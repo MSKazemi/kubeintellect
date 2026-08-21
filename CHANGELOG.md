@@ -34,6 +34,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   still calls. The job runs `npm ci` rather than `npm install` so a lockfile that disagrees with
   the manifest fails instead of being silently re-resolved.
 
+### Changed
+- **ruff 0.16 backlog: 362 → 210 findings** (#75), clearing every modernization family —
+  `UP045`/`UP006`/`UP035`/`UP037` (typing syntax), `I001`, `PIE810`, `RUF059`, `RUF012`,
+  `FURB162`, `FURB188`, `RUF015`, `SIM102`/`SIM113`/`SIM114`, `C408`, `F401`, `F841`,
+  `ISC004`, `PLR0124`. Both suites (1047 + 317), mypy and the pinned lint gate stay green.
+
+  **One finding in that set was a trap, and it is now guarded.**
+  `ruff --select UP045 --fix` rewrites the canary inside
+  `tests/test_injected_config_invariant.py` from `Annotated[Optional[RunnableConfig],
+  InjectedToolArg]` to `Annotated[RunnableConfig | None, InjectedToolArg]` — **and the suite
+  still reports 8 passed.** Neither spelling is in langchain_core's match list, so the canary
+  goes on reporting `None` either way; the autofix leaves a green test that no longer exercises
+  the exact form AGENTS.md invariant #6 forbids. That line now carries a suppression and the
+  reasoning, matching the existing one on `app/agent/nodes/coordinator.py`, where the same
+  rewrite would silently stop the run config being injected and take `user_role` and
+  `hitl_bypass` with it.
+
+  Also fixed while in there: `ki_protocol/events.py` caught `(ValidationError, Exception)`,
+  which is exactly `except Exception` because `ValidationError` is a subclass — the tuple only
+  made the intent read narrower than it was. The breadth is deliberate for that decoder, so it
+  is now stated plainly.
+
+  The `ruff<0.16` pin stays for now. The remainder is **141 `BLE001`** (blind-except, mostly
+  deliberate CLI and agent boundary handlers) and **30 `PLW1510`**; both are project-wide policy
+  calls rather than cleanup, and are tracked in #75.
+
 ### Fixed
 - **The published container image could not start.** `docker run` on any released image failed
   immediately with `No module named uvicorn`, and it had been that way since the image was

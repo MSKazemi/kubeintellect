@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import Literal
 
 # One-sided z for α=0.05.
 _Z_95 = 1.6448536269514722
@@ -31,7 +31,7 @@ RollbackClass = Literal["versioned-workload", "declarative-revert", "irreversibl
 class TransitionRule:
     frm: Rung
     to: Rung
-    theta: Optional[float]        # LCB₉₅ threshold; None ⇒ never
+    theta: float | None        # LCB₉₅ threshold; None ⇒ never
     n_min: int
     t_min_days: int
     min_incidents: int
@@ -65,7 +65,7 @@ class PromotionDecision:
     transition: str
     lcb: float
     n: int
-    theta: Optional[float]
+    theta: float | None
     reasons: list[str] = field(default_factory=list)  # which gates failed (empty ⇒ all passed)
 
 

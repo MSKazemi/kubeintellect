@@ -10,7 +10,7 @@ Async over asyncpg; the pool is injected so this composes with the app's existin
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from app.memory.fleet_exchange import FleetEntry
 
@@ -31,8 +31,8 @@ async def publish(pool: Any, entry: FleetEntry) -> None:
 
 
 async def read_fleet(
-    pool: Any, tenant: str, *, exclude_cluster: Optional[str] = None,
-    signature: Optional[str] = None, limit: int = 200,
+    pool: Any, tenant: str, *, exclude_cluster: str | None = None,
+    signature: str | None = None, limit: int = 200,
 ) -> list[FleetEntry]:
     """Read a tenant's fleet knowledge. The ``tenant = $1`` predicate is the isolation boundary —
     no query path returns another tenant's rows."""

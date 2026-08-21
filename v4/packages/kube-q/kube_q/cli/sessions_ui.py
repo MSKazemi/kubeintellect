@@ -147,7 +147,7 @@ def _parse_history_spec(spec: str, total: int) -> tuple[int, int] | None:
     spec = spec.strip()
     if not spec:
         return (1, total)
-    if spec.startswith("#") or spec.startswith("@"):
+    if spec.startswith(("#", "@")):
         try:
             n = int(spec[1:])
         except ValueError:

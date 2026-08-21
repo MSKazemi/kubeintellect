@@ -134,7 +134,7 @@ class TestRiskClassification:
     def test_dry_run_skips_hitl(self):
         """--dry-run commands must not trigger the interrupt."""
         proc = MagicMock(); proc.stdout = "dry-run ok"; proc.stderr = ""
-        with patch("subprocess.run", return_value=proc) as mock_run:
+        with patch("subprocess.run", return_value=proc):
             with patch("app.tools.kubectl_tool.interrupt") as mock_intr:
                 from app.tools.kubectl_tool import run_kubectl
                 run_kubectl.invoke({"command": "kubectl apply -f - --dry-run=client"})

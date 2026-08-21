@@ -8,7 +8,7 @@ whose ``render()`` is the never-silent string the model sees.
 
 from __future__ import annotations
 
-from typing import Annotated, Optional
+from typing import Annotated
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import InjectedToolArg, tool
@@ -38,7 +38,7 @@ def _exec(command: str) -> str:
     return run_kubectl.invoke({"command": command})
 
 
-def _ns_flag(namespace: Optional[str], all_namespaces: bool = False) -> str:
+def _ns_flag(namespace: str | None, all_namespaces: bool = False) -> str:
     if all_namespaces:
         return " --all-namespaces"
     return f" -n {namespace}" if namespace else ""
@@ -99,7 +99,7 @@ def _health_from(body: str) -> Health:
 async def inspect(
     kind: str,
     name: str,
-    namespace: Optional[str] = None,
+    namespace: str | None = None,
     view: str = "summary",
     # INVARIANT (AGENTS.md #6): this annotation must stay bare `RunnableConfig`.
     # langchain_core matches the injected run config by identity (`type_ is
@@ -124,9 +124,9 @@ async def inspect(
 @tool(args_schema=SearchInput)
 async def search(
     kinds: list[str],
-    namespace: Optional[str] = None,
+    namespace: str | None = None,
     all_namespaces: bool = False,
-    selector: Optional[str] = None,
+    selector: str | None = None,
     limit: int = 100,
     # INVARIANT (AGENTS.md #6): this annotation must stay bare `RunnableConfig`.
     # langchain_core matches the injected run config by identity (`type_ is
@@ -147,11 +147,11 @@ async def search(
 @tool(args_schema=LogsInput)
 async def logs(
     namespace: str,
-    pod: Optional[str] = None,
-    selector: Optional[str] = None,
-    container: Optional[str] = None,
+    pod: str | None = None,
+    selector: str | None = None,
+    container: str | None = None,
     lines: int = 100,
-    since: Optional[str] = None,
+    since: str | None = None,
     previous: bool = False,
     # INVARIANT (AGENTS.md #6): this annotation must stay bare `RunnableConfig`.
     # langchain_core matches the injected run config by identity (`type_ is
@@ -185,9 +185,9 @@ async def diff_change(
     against: str,
     kind: str,
     name: str,
-    namespace: Optional[str] = None,
-    manifest: Optional[str] = None,
-    revision: Optional[int] = None,
+    namespace: str | None = None,
+    manifest: str | None = None,
+    revision: int | None = None,
     # INVARIANT (AGENTS.md #6): this annotation must stay bare `RunnableConfig`.
     # langchain_core matches the injected run config by identity (`type_ is
     # RunnableConfig`), so `Optional[RunnableConfig]` is NOT matched and the tool

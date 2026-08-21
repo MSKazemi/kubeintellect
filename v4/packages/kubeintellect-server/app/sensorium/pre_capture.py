@@ -13,7 +13,7 @@ pluggable side effect (like prospective memory / watchdog dispatch).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 # pre-capture actions (what to arm before the predicted death)
 LOG_VERBOSITY = "raise_log_verbosity"
@@ -32,8 +32,8 @@ class PreCapturePlan:
 
 
 def plan_pre_capture(
-    finding: Any, *, eta_threshold_min: float = 15.0, actions: Optional[list[str]] = None,
-) -> Optional[PreCapturePlan]:
+    finding: Any, *, eta_threshold_min: float = 15.0, actions: list[str] | None = None,
+) -> PreCapturePlan | None:
     """Plan pre-capture for an imminent predicted finding, else None (targeted spend).
 
     Only fires for a ``severity=="predicted"`` finding whose ETA is within ``eta_threshold_min`` —

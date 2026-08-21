@@ -100,8 +100,16 @@ def test_widened_annotation_silently_loses_the_config() -> None:
     """
     seen: dict[str, object] = {}
 
+    # The spelling here is load-bearing and must stay `Optional[RunnableConfig]`.
+    # `ruff --select UP045 --fix` rewrites it to `RunnableConfig | None`, and this
+    # test still passes — because neither spelling is in langchain_core's match
+    # list, so the canary goes on reporting `None` either way. The autofix would
+    # therefore leave a green suite that no longer exercises the exact form
+    # AGENTS.md invariant #6 forbids. Same reason the suppression exists on
+    # app/agent/nodes/coordinator.py. (Spelling a directive out in prose makes
+    # ruff parse it as a real one, so it is described rather than written here.)
     @tool
-    def probe(q: str, config: Annotated[Optional[RunnableConfig], InjectedToolArg] = None) -> str:
+    def probe(q: str, config: Annotated[Optional[RunnableConfig], InjectedToolArg] = None) -> str:  # noqa: UP045
         """Canary tool using the forbidden widened annotation."""
         seen["config"] = config
         return "ok"

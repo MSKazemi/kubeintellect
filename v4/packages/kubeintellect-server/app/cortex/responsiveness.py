@@ -18,8 +18,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Awaitable, Callable, Optional
 
 from app.streaming.emitter import Event, StatusEvent
 from app.streaming.emitter import emit as _default_emit
@@ -40,7 +40,7 @@ async def heartbeat(
     message: str,
     *,
     interval: float = 10.0,
-    emit_fn: Optional[EmitFn] = None,
+    emit_fn: EmitFn | None = None,
 ):
     """Emit a progress StatusEvent every ``interval`` s until the wrapped block exits.
 
@@ -81,11 +81,11 @@ class PhaseBudget:
     clock: Clock = time.monotonic
 
     _start: float = 0.0
-    _first_signal_at: Optional[float] = None
+    _first_signal_at: float | None = None
 
     @classmethod
     def since(cls, start: float, *, first_signal_s: float = 30.0, full_s: float = 120.0,
-              clock: Clock = time.monotonic) -> "PhaseBudget":
+              clock: Clock = time.monotonic) -> PhaseBudget:
         """Build a budget already started at a known monotonic ``start`` (e.g. from graph state)."""
         b = cls(first_signal_s=first_signal_s, full_s=full_s, clock=clock)
         b._start = start

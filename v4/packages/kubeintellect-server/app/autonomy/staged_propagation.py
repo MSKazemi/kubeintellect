@@ -11,7 +11,6 @@ Pure/deterministic (clock injected) — fully unit-testable.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -28,7 +27,7 @@ def next_stage(
     *,
     stage_size: int = 1,
     window_seconds: float = 300.0,
-    last_stage_epoch: Optional[float] = None,
+    last_stage_epoch: float | None = None,
     now_epoch: float = 0.0,
 ) -> StageDecision:
     """Decide the next propagation stage.

@@ -66,7 +66,7 @@ def _canonical() -> Canonical:
     flag_count = sum(
         1
         for name in Settings.model_fields
-        if name.startswith("KI_V5_") or name.startswith("CORTEX_V5_")
+        if name.startswith(("KI_V5_", "CORTEX_V5_"))
     )
 
     return Canonical(

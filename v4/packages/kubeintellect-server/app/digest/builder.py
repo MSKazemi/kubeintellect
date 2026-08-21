@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from app.utils.logger import get_logger
 
@@ -80,9 +80,7 @@ async def build_digest(hours: float = 24.0) -> dict:
                 "rollback_id": payload.get("rollback_id", ""),
                 "command": payload.get("command", ""),
             })
-        elif episode.startswith("auto-"):
-            sessions.add(episode)
-        elif not episode.startswith("findings:"):
+        elif episode.startswith("auto-") or not episode.startswith("findings:"):
             sessions.add(episode)
 
     digest["user_sessions"] = len({s for s in sessions if not s.startswith("auto-")})

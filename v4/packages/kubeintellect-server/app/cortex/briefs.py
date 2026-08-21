@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -55,7 +55,7 @@ class EscalationBrief:
     fell_back: bool = False
 
 
-def _parse_json_object(text: str) -> Optional[dict[str, Any]]:
+def _parse_json_object(text: str) -> dict[str, Any] | None:
     if not isinstance(text, str):
         return None
     match = re.search(r"\{.*\}", text, re.DOTALL)
@@ -91,7 +91,7 @@ def _fallback(level: str) -> EscalationBrief:
 
 async def build_brief(
     root_cause: str, evidence: str, *, responder_level: str = "intermediate",
-    llm: Optional[BaseChatModel] = None,
+    llm: BaseChatModel | None = None,
 ) -> EscalationBrief:
     """Build a skill-calibrated escalation-avoidance brief. Fails safe to a conservative brief."""
     level = _normalize_level(responder_level)

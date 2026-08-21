@@ -11,8 +11,9 @@ injectable orchestrator (fetchers + writer) so the whole thing is unit-testable 
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any
 
 from app.utils.logger import get_logger
 
@@ -99,9 +100,9 @@ async def regenerate_file_plane(
     cluster_id: str,
     out_dir: str | Path,
     *,
-    fetch_episodes: Optional[EpisodeFetcher] = None,
-    fetch_themes: Optional[ThemesFetcher] = None,
-    writer: Optional[Writer] = None,
+    fetch_episodes: EpisodeFetcher | None = None,
+    fetch_themes: ThemesFetcher | None = None,
+    writer: Writer | None = None,
     max_bytes: int = DEFAULT_MAX_BYTES,
 ) -> dict[str, int]:
     """Regenerate CLUSTER.md + MEMORY.md for ``cluster_id`` into ``out_dir``. Returns byte counts.

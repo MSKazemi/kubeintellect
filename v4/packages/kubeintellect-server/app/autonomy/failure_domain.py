@@ -12,7 +12,6 @@ Pure/deterministic — fully unit-testable.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -53,8 +52,8 @@ def gate_disruption(
     zone_total: int,
     currently_unavailable: int,
     max_unavailable_frac: float = 0.34,
-    now_epoch: Optional[float] = None,
-    maintenance_windows: Optional[list[tuple[float, float]]] = None,
+    now_epoch: float | None = None,
+    maintenance_windows: list[tuple[float, float]] | None = None,
 ) -> DomainDecision:
     """Compose the failure-domain + change-schedule checks. First denial wins (schedule → domain)."""
     if now_epoch is not None and maintenance_windows and not in_maintenance_window(now_epoch, maintenance_windows):
