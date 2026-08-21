@@ -62,7 +62,7 @@ activity blocks under each answer to see the tool calls the agent actually made.
 
 ```bash
 pip install kube-q
-kq "why is my api-server pod crashlooping?"
+kq -q "why is my api-server pod crashlooping?"
 ```
 
 Full local stack (Docker is the only prerequisite) and self-hosting instructions are in the

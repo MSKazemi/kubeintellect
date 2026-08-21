@@ -180,21 +180,34 @@ def run_single_query(
     auth_scheme: str = "bearer",
     auto_approve: bool = False,
     agent_name: str = "kube-q",
-) -> None:
+) -> bool:
+    """Run one non-interactive query.
+
+    Returns ``True`` when the server actually answered (or paused for HITL
+    approval), ``False`` when it did not. Both transports signal every failure
+    path — 401, non-200, invalid JSON, retries exhausted — by returning empty
+    text, so an empty answer is the uniform "this did not work" signal. The
+    caller turns that into a non-zero exit status: ``kq -q`` is used in scripts
+    and CI, where a failure that exits 0 is indistinguishable from an answer.
+    """
     conversation_id = str(uuid.uuid4())
     if user_id is None:
         user_id = _load_or_create_user_id()
     messages = [{"role": "user", "content": query}]
 
     if stream:
-        stream_query(url, messages, conversation_id, user_id,
-                     api_key=api_key, ca_cert=ca_cert, timeout=timeout, model=model,
-                     chat_path=chat_path, auth_scheme=auth_scheme, auto_approve=auto_approve,
-                     agent_name=agent_name)
+        text, hitl_pending, _action_id, _usage = stream_query(
+            url, messages, conversation_id, user_id,
+            api_key=api_key, ca_cert=ca_cert, timeout=timeout, model=model,
+            chat_path=chat_path, auth_scheme=auth_scheme, auto_approve=auto_approve,
+            agent_name=agent_name)
     else:
-        non_stream_query(url, messages, conversation_id, user_id,
-                         api_key=api_key, ca_cert=ca_cert, timeout=timeout, model=model,
-                         chat_path=chat_path, auth_scheme=auth_scheme, agent_name=agent_name)
+        text, hitl_pending, _action_id, _usage = non_stream_query(
+            url, messages, conversation_id, user_id,
+            api_key=api_key, ca_cert=ca_cert, timeout=timeout, model=model,
+            chat_path=chat_path, auth_scheme=auth_scheme, agent_name=agent_name)
+
+    return bool(text) or hitl_pending
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -530,13 +543,15 @@ def main() -> None:
     skip_health = args.skip_health_check or backend.health_path is None
 
     if args.query:
-        run_single_query(
+        answered = run_single_query(
             backend.url, args.query, stream,
             user_id=user_id, api_key=backend.api_key, ca_cert=args.ca_cert,
             timeout=cfg.timeout, model=backend.model,
             chat_path=backend.chat_path, auth_scheme=backend.auth_scheme,
             auto_approve=args.auto_approve, agent_name=args.agent_name,
         )
+        if not answered:
+            sys.exit(1)
     else:
         run_repl(ReplConfig(
             url=backend.url,

@@ -37,7 +37,7 @@ body:
       label: What happened?
       description: What did you do, what did you expect, and what actually happened?
       placeholder: |
-        1. I ran `kq "..."`
+        1. I ran `kq -q "..."`
         2. Expected: ...
         3. Actual: ...
     validations:

@@ -20,7 +20,7 @@ body:
     attributes:
       label: Proposed solution
       description: What would you like KubeIntellect to do? A CLI example / query is great.
-      placeholder: 'e.g. `kq "..."` should ...'
+      placeholder: 'e.g. `kq -q "..."` should ...'
     validations:
       required: true
   - type: textarea

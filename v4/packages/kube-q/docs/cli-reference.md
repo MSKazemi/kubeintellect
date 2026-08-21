@@ -147,3 +147,31 @@ export KUBE_Q_URL=https://kube-q.example.com
 export KUBE_Q_API_KEY=my-key
 kq
 ```
+
+---
+
+## Exit codes
+
+`kq` is usable from scripts and CI, so every outcome is reported through the exit
+status as well as on screen.
+
+| Code | Meaning |
+|---|---|
+| `0` | Success — the server answered, or a mutation was correctly paused for human approval |
+| `1` | The query did not get an answer: authentication failed, the server returned a non-200, the response was not valid JSON, or all retries were exhausted |
+| `2` | Bad invocation — an unknown command, an invalid flag, or an invalid configuration value |
+| `3` | `kq replay` only: the flight-recorder hash chain is broken |
+
+```bash
+# a one-shot query in a script
+if ! kq -q "any pods crashlooping in prod?"; then
+  echo "kube-q could not answer — check the server and your API key" >&2
+  exit 1
+fi
+```
+
+!!! note "A one-shot query is `kq -q`"
+    `kq "why is my pod crashlooping?"` does **not** ask a question — the first
+    positional argument is read as a subcommand name, so it exits `2` with
+    *"Unknown command"*. Use `kq -q "…"` (or `--query`) for a single question, or
+    `kq` with no arguments for the interactive REPL.
