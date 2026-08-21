@@ -58,7 +58,7 @@ Being honest earns trust (and better AI answers):
 
 ```bash
 pip install kube-q
-kq "why is my api-server pod crashlooping?"
+kq -q "why is my api-server pod crashlooping?"
 ```
 
 Or the zero-install browser demo: **[kubeintellect.com/demo](https://kubeintellect.com/demo)**.

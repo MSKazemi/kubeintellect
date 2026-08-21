@@ -25,6 +25,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   instead of contradicting it.
 
 ### Fixed
+- **The documented one-shot query form had never worked, and a failed one exited 0** (#151,
+  reported by [@ybayraktarb](https://github.com/ybayraktarb) while verifying the install path on
+  k3s/k3d for #100). `kq "question"` reads the first positional as a *subcommand*, so it printed
+  `Unknown command` and exited 2 — in 14 places including the root `README.md` that serves as the
+  GitHub landing page, the social-preview generator, the issue templates and the v2/v3 READMEs.
+  All corrected to `kq -q "..."`; the one remaining occurrence, in
+  `v4/packages/kube-q/docs/cli-reference.md`, is deliberate — it documents that the bare form
+  fails.
+
+  The same pass fixed the exit code behind it: authentication failures, non-200s, invalid JSON and
+  exhausted retries all printed a red message and **exited 0**, so a script or CI job could not
+  tell an answer from an outage. `run_single_query` now returns success as a bool and `main()`
+  exits 1. A mutation paused for HITL approval returns no text and is still a success.
+
+- **`ADOPTERS.md` has its first entry** — k3s/k3d on macOS, contributed by
+  [@ybayraktarb](https://github.com/ybayraktarb) (#151). The table was honestly empty rather than
+  padded; it is now honestly not.
+
+### Fixed
 - **Every playbook silently failed to load on a non-UTF-8 locale** (#136, #138 — reported and
   fixed by [@uuzzrm](https://github.com/uuzzrm)). The playbook loader read its YAML with a bare
   `path.read_text()`, which decodes using the *platform default* encoding. On Windows

@@ -67,6 +67,16 @@
         "code",
         "test"
       ]
+    },
+    {
+      "login": "ybayraktarb",
+      "name": "Yusuf Berat Bayraktar",
+      "avatar_url": "https://avatars.githubusercontent.com/u/86627367?v=4",
+      "profile": "https://github.com/ybayraktarb",
+      "contributions": [
+        "platform",
+        "doc"
+      ]
     }
   ]
 }

@@ -15,9 +15,9 @@
 Ask KubeIntellect a question in plain English — it queries kubectl, Prometheus, and Loki live, then answers. Destructive operations pause for your explicit approval before anything runs.
 
 ```bash
-kq "why is my api-server pod crashlooping?"
-kq "show me pods with high restart counts in the default namespace"
-kq "scale the frontend deployment to 5 replicas"   # pauses for your approval
+kq -q "why is my api-server pod crashlooping?"
+kq -q "show me pods with high restart counts in the default namespace"
+kq -q "scale the frontend deployment to 5 replicas"   # pauses for your approval
 ```
 
 > **Safe by default** — read-only queries run immediately; scale, delete, and restart operations require explicit human-in-the-loop approval.
@@ -173,7 +173,7 @@ That's it. No manual server start, no copy-pasting API keys.
 
 ```bash
 pip install kube-q
-kq "why is my pod crashlooping?"
+kq -q "why is my pod crashlooping?"
 ```
 
 [![PyPI](https://img.shields.io/pypi/v/kube-q.svg)](https://pypi.org/project/kube-q/)

@@ -164,7 +164,7 @@ That's it. No manual server start, no copy-pasting API keys.
 
 ```bash
 pip install kube-q
-kq "why is my pod crashlooping?"
+kq -q "why is my pod crashlooping?"
 ```
 
 [![PyPI](https://img.shields.io/pypi/v/kube-q.svg)](https://pypi.org/project/kube-q/)
