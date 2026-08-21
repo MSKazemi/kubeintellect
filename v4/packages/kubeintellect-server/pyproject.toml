@@ -22,7 +22,7 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.52.1",
     "pydantic>=2.10",
-    "pydantic-settings>=2.6",
+    "pydantic-settings>=2.15.0",
     "python-dotenv>=1.0",
     # LLM + Agent
     "langchain>=1.0",

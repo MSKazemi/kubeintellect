@@ -30,7 +30,7 @@ dev = [
     "scipy>=1.13",
     "matplotlib>=3.9",
     "seaborn>=0.13",
-    "numpy>=2.0",
+    "numpy>=2.5.2",
 ]
 
 [tool.uv.sources]
