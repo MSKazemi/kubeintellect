@@ -87,7 +87,7 @@ def _event_timestamp(obj: dict) -> float | None:
         return None
     try:
         from datetime import datetime
-        return datetime.fromisoformat(str(raw).replace("Z", "+00:00")).timestamp()
+        return datetime.fromisoformat(str(raw)).timestamp()
     except ValueError:
         return None
 

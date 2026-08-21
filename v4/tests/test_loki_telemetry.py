@@ -242,12 +242,12 @@ class TestParseLogLine:
         assert fields["session_id"] == "s1"
 
     def test_plain_error_line(self):
-        level, msg, fields = _parse_log_line("ERROR something went wrong")
+        level, _msg, fields = _parse_log_line("ERROR something went wrong")
         assert level == "ERROR"
         assert fields == {}
 
     def test_plain_info_line(self):
-        level, msg, fields = _parse_log_line("coordinator: routing_decision route=direct")
+        level, _msg, _fields = _parse_log_line("coordinator: routing_decision route=direct")
         assert level == "INFO"
 
     def test_json_uses_levelname_fallback(self):

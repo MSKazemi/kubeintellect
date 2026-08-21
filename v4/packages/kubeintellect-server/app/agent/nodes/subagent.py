@@ -108,8 +108,7 @@ async def run_subagent(payload: SubagentInput) -> AgentFinding:
         clean = raw_content.strip()
         if clean.startswith("```"):
             clean = clean.split("```")[1]
-            if clean.startswith("json"):
-                clean = clean[4:]
+            clean = clean.removeprefix("json")
         finding = AgentFinding.model_validate(json.loads(clean.strip()))
     except Exception as exc:
         logger.warning(f"subagent [{domain}]: failed to parse finding JSON — {exc}")

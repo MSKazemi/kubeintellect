@@ -403,7 +403,7 @@ async def stream_events(
 # ── Typed-event translation ───────────────────────────────────────────────────
 
 
-def _translate_raw_event(session_id: str, raw: dict) -> "ToolCallEvent | ToolResultEvent | TokenEvent | HitlRequestEvent | None":
+def _translate_raw_event(session_id: str, raw: dict) -> ToolCallEvent | ToolResultEvent | TokenEvent | HitlRequestEvent | None:
     """
     Convert a LangGraph astream_events v2 dict to a typed emitter Event.
 

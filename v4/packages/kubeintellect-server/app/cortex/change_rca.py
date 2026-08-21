@@ -13,8 +13,8 @@ The ranking/rendering here is pure and fully tested against injected changes.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
 
 from app.utils.logger import get_logger
 
@@ -31,10 +31,10 @@ class ChangeRecord:
 
 
 # Pluggable ledger source (P1 registers the real one). Signature: (cluster_id, namespace|None).
-ChangeSource = Callable[[str, Optional[str]], list[ChangeRecord]]
+ChangeSource = Callable[[str, str | None], list[ChangeRecord]]
 
 
-def _empty_source(cluster_id: str, namespace: Optional[str] = None) -> list[ChangeRecord]:
+def _empty_source(cluster_id: str, namespace: str | None = None) -> list[ChangeRecord]:
     return []
 
 
@@ -47,7 +47,7 @@ def set_change_source(fn: ChangeSource) -> None:
     _change_source = fn
 
 
-def recent_changes(cluster_id: str, namespace: Optional[str] = None) -> list[ChangeRecord]:
+def recent_changes(cluster_id: str, namespace: str | None = None) -> list[ChangeRecord]:
     """Read recent changes from the registered source. Never raises (fails to no changes)."""
     try:
         return list(_change_source(cluster_id, namespace))
@@ -62,7 +62,7 @@ def rank_by_recency(changes: list[ChangeRecord]) -> list[ChangeRecord]:
 
 
 def render_change_prior(
-    changes: list[ChangeRecord], *, max_items: int = 5, now: Optional[float] = None,
+    changes: list[ChangeRecord], *, max_items: int = 5, now: float | None = None,
 ) -> str:
     """Recency-ranked 'consider these changes first' prompt block. '' when there are no changes."""
     ranked = rank_by_recency(changes)[:max_items]

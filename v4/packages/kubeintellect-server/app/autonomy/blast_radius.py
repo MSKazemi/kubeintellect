@@ -11,7 +11,6 @@ Pure composition over the individual gates (each already tested) — determinist
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from app.autonomy.budget import BudgetDecision
 from app.autonomy.failure_domain import DomainDecision
@@ -29,7 +28,7 @@ def compose(
     *,
     budget: BudgetDecision,
     stage: StageDecision,
-    domain: Optional[DomainDecision] = None,
+    domain: DomainDecision | None = None,
 ) -> BlastRadiusVerdict:
     """Compose the blast-radius controls. Order: budget → domain → propagation.
 

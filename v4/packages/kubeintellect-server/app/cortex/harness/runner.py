@@ -20,7 +20,8 @@ Stability contract (this is the "most stable" bar the whole feature is default-o
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Awaitable, Callable, Optional
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -90,8 +91,8 @@ async def run_subagent(
     config: RunnableConfig,
     *,
     snapshot: str = "",
-    llm: Optional[BaseChatModel] = None,
-    max_rounds: Optional[int] = None,
+    llm: BaseChatModel | None = None,
+    max_rounds: int | None = None,
 ) -> SubagentResult:
     """Run one isolated read-only investigator to a bounded, structured summary.
 
@@ -165,7 +166,7 @@ async def run_fanout(
     state: CortexState,
     config: RunnableConfig,
     *,
-    runner: Optional[SubagentRunner] = None,
+    runner: SubagentRunner | None = None,
 ) -> dict:
     """Dispatch the parallel read-only investigation fan-out for one gather round.
 

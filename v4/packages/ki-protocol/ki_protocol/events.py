@@ -162,7 +162,6 @@ def parse_event(raw: dict[str, Any]) -> Event | None:
 
     Returns None for unknown/malformed events.
     """
-    from pydantic import ValidationError
 
     # Normalise legacy ki_event format: type is at top level, data fields also
     # at top level (no nested "data" key).
@@ -173,5 +172,10 @@ def parse_event(raw: dict[str, Any]) -> Event | None:
 
     try:
         return _event_adapter.validate_python(raw)
-    except (ValidationError, Exception):
+    # `except (ValidationError, Exception)` was the same as `except Exception`:
+    # ValidationError is a subclass, so listing it changed nothing and only made
+    # the intent read as narrower than it is. The breadth is deliberate — this
+    # decoder's contract is "return None for anything I cannot decode" — so it is
+    # stated plainly rather than dressed up.
+    except Exception:  # noqa: BLE001
         return None

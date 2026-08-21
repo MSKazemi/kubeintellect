@@ -183,7 +183,7 @@ class TestConsolidation:
         mocker.patch.object(service, "_pool", pool)
         created = await consolidation._propose_detector_candidates()
         assert created == 1
-        insert = [c for c in pool.calls if c[0] == "execute"][0]
+        insert = next(c for c in pool.calls if c[0] == "execute")
         assert "INSERT INTO detectors" in insert[1]
         assert "learned:playbook=CrashLoopBackOff" in str(insert[2])
 

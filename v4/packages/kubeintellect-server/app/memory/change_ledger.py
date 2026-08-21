@@ -14,12 +14,11 @@ only needs *recent* changes, and a restart losing them degrades gracefully (empt
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from typing import Deque, Optional
 
 from app.cortex.change_rca import ChangeRecord, _empty_source, set_change_source
 
 _MAX_PER_CLUSTER = 200
-_ledger: dict[str, Deque[ChangeRecord]] = defaultdict(lambda: deque(maxlen=_MAX_PER_CLUSTER))
+_ledger: dict[str, deque[ChangeRecord]] = defaultdict(lambda: deque(maxlen=_MAX_PER_CLUSTER))
 _installed = False
 
 # kubectl mutating verb → change kind.
@@ -33,7 +32,7 @@ _VERB_KIND = {
 _SET_SUBS = {"image", "env", "resources", "serviceaccount", "selector"}
 
 
-def parse_kubectl_change(cmd: str, ts_epoch: float, namespace: str = "") -> Optional[ChangeRecord]:
+def parse_kubectl_change(cmd: str, ts_epoch: float, namespace: str = "") -> ChangeRecord | None:
     """Parse a mutating kubectl command into a ChangeRecord, or None if not a recognized change."""
     toks = cmd.strip().split()
     if toks and toks[0] == "kubectl":
@@ -60,7 +59,7 @@ def record_change(cluster_id: str, record: ChangeRecord) -> None:
     _ledger[cluster_id].append(record)
 
 
-def recent(cluster_id: str, namespace: Optional[str] = None) -> list[ChangeRecord]:
+def recent(cluster_id: str, namespace: str | None = None) -> list[ChangeRecord]:
     """The change-source reader registered with change_rca (most-recent-first is handled there)."""
     items = list(_ledger.get(cluster_id, ()))
     if namespace:

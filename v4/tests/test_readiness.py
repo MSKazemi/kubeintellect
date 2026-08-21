@@ -19,11 +19,10 @@ simultaneously when that database blips, converting degradation into a total out
 from __future__ import annotations
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 from app.api.v1.endpoints.health import router as health_router
 from app.core import readiness
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture
@@ -67,7 +66,7 @@ class TestReadyz:
     def test_readyz_does_not_touch_the_database(self, client, monkeypatch):
         """Deliberate non-dependency: if this ever starts probing Postgres, a DB blip empties
         the Service of endpoints everywhere at once."""
-        import app.db.audit as audit
+        from app.db import audit
 
         def _boom(*_a, **_kw):  # pragma: no cover - must never be called
             raise AssertionError("/readyz consulted the database")

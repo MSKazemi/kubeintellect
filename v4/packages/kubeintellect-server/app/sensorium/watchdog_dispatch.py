@@ -12,7 +12,8 @@ injectable so the wiring is unit-testable without an LLM.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Awaitable, Callable, Optional
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from langchain_core.messages import HumanMessage
 
@@ -44,7 +45,7 @@ def _watchdog_state(task: WatchdogTask) -> dict:
     }
 
 
-async def investigate(task: WatchdogTask, *, runner: Optional[Runner] = None) -> Any:
+async def investigate(task: WatchdogTask, *, runner: Runner | None = None) -> Any:
     """Run one watchdog's bounded read-only investigation. Never raises out."""
     active: Runner
     if runner is None:

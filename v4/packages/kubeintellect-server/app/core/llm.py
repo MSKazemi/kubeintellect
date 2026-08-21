@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import os
 from functools import lru_cache
-from typing import Any, List, Type
+from typing import Any
 
 from langchain_core.language_models import BaseChatModel
 from pydantic import SecretStr
@@ -20,10 +20,10 @@ def _secret(value: str | None) -> SecretStr | None:
 
 # Resolved once at import time so the ImportError warning fires only on startup,
 # not on every request.  None = not yet resolved, False = unavailable.
-_LangfuseCallbackHandler: Type[Any] | None | bool = None
+_LangfuseCallbackHandler: type[Any] | None | bool = None
 
 
-def _resolve_langfuse() -> Type[Any] | None:
+def _resolve_langfuse() -> type[Any] | None:
     global _LangfuseCallbackHandler
     if _LangfuseCallbackHandler is not None:
         return None if _LangfuseCallbackHandler is False else _LangfuseCallbackHandler  # type: ignore[return-value]
@@ -37,7 +37,7 @@ def _resolve_langfuse() -> Type[Any] | None:
         return None
 
 
-def get_langfuse_callbacks() -> List[Any]:
+def get_langfuse_callbacks() -> list[Any]:
     """Return [CallbackHandler()] if Langfuse tracing is enabled, else [].
 
     Langfuse v4 reads LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY / LANGFUSE_HOST from
