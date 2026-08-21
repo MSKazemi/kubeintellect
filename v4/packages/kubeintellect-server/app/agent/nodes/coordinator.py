@@ -950,7 +950,7 @@ def _wait_for_rollout(namespace: str, max_wait_s: int = 30, poll_interval_s: flo
     while time.monotonic() < deadline:
         pods_out = _run_kubectl_snapshot(["get", "pods", "-n", namespace, "--no-headers"])
         in_transition = False
-        for line in pods_out.splitlines():
+        for line in pods_out.text.splitlines():
             cols = line.split()
             if len(cols) < 3:
                 continue
@@ -991,13 +991,20 @@ def _verify_resolution(namespace: str | None, pre_state: dict | None = None) -> 
             _wait_for_rollout(namespace)
 
         ns_arg = ["-n", namespace] if namespace else ["--all-namespaces"]
-        pods_out = _run_kubectl_snapshot(["get", "pods", *ns_arg])
-        events_out = _run_kubectl_snapshot([
+        pods = _run_kubectl_snapshot(["get", "pods", *ns_arg])
+        events = _run_kubectl_snapshot([
             "get", "events", *ns_arg,
             "--sort-by=.lastTimestamp",
             "--field-selector=type=Warning",
         ])
-        has_issues, has_warnings, _ = _scan_snapshot(pods_out, events_out)
+        has_issues, has_warnings, _ = _scan_snapshot(
+            pods.text,
+            events.text,
+            pods_truncated=pods.truncated,
+            pods_unavailable=pods.unavailable,
+            events_truncated=events.truncated,
+            events_unavailable=events.unavailable,
+        )
 
         if not has_issues:
             # Pods are healthy — even if old warning events linger, the fix

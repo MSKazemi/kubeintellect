@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 import os
 import subprocess
 import time
@@ -15,6 +16,45 @@ logger = get_logger(__name__)
 
 _SNAPSHOT_MAX_CHARS = 8_000
 
+# Notes appended to the snapshot when a listing was cut short or never
+# arrived. Mirrors the truncation marker in tools/kubectl_tool.py: the LLM
+# must be told the list it is looking at is incomplete, never left to infer
+# an all-clear from partial data.
+_SNAPSHOT_TRUNCATED_NOTE = (
+    "[snapshot truncated: output exceeded 8 000 chars and was cut short — "
+    "this listing is incomplete and may hide unhealthy pods or warning "
+    "events. Narrow the scope with -n <namespace> or -l <label>.]"
+)
+_SNAPSHOT_UNAVAILABLE_NOTE = (
+    "[snapshot unavailable: kubectl could not fetch this listing — "
+    "treat the cluster state as unknown, not healthy.]"
+)
+
+
+@dataclass(frozen=True)
+class SnapshotOutput:
+    """One capped kubectl snapshot listing, plus flags that say whether an
+    all-clear derived from it can be trusted.
+
+    ``truncated``   — the output hit the 8 000-char cap, so rows beyond the
+        cut are unknown.
+    ``unavailable`` — kubectl could not be run at all (missing binary,
+        timeout, bad kubeconfig), so nothing was fetched.
+    """
+
+    text: str
+    truncated: bool = False
+    unavailable: bool = False
+
+    def with_note(self) -> str:
+        """The capped text with a visible note appended when it is incomplete."""
+        if self.unavailable:
+            return f"{self.text}\n\n{_SNAPSHOT_UNAVAILABLE_NOTE}"
+        if self.truncated:
+            return f"{self.text}\n\n{_SNAPSHOT_TRUNCATED_NOTE}"
+        return self.text
+
+
 # Pod phases that count as "healthy" — anything else flips snapshot_has_issues.
 # (Note: STATUS column from `kubectl get pods` mixes phases and reasons —
 #  e.g. "CrashLoopBackOff", "ImagePullBackOff". We treat any value not in this
@@ -22,14 +62,27 @@ _SNAPSHOT_MAX_CHARS = 8_000
 _HEALTHY_POD_STATUSES = frozenset({"Running", "Completed", "Succeeded"})
 
 
-def _scan_snapshot(pods_out: str, events_out: str) -> tuple[bool, bool, int]:
+def _scan_snapshot(
+    pods_out: str,
+    events_out: str,
+    *,
+    pods_truncated: bool = False,
+    pods_unavailable: bool = False,
+    events_truncated: bool = False,
+    events_unavailable: bool = False,
+) -> tuple[bool, bool, int]:
     """Return (has_issues, has_warnings, pod_count) by scanning kubectl output.
 
     Cheap line-based parse — no extra subprocess calls. The pod table format is:
         NAMESPACE   NAME   READY   STATUS   RESTARTS   AGE
     We index the STATUS column by header position to be robust to column widths.
+
+    The ``*_truncated`` / ``*_unavailable`` flags are conservative guards: a
+    listing that was cut short (or never fetched) must not be reported as
+    clean, because an unhealthy pod or warning event may sit beyond the cap.
+    Callers derive them from SnapshotOutput.
     """
-    has_issues = False
+    has_issues = pods_truncated or pods_unavailable
     pod_count = 0
 
     lines = pods_out.splitlines()
@@ -53,11 +106,19 @@ def _scan_snapshot(pods_out: str, events_out: str) -> tuple[bool, bool, int]:
         if status not in _HEALTHY_POD_STATUSES:
             has_issues = True
 
-    has_warnings = bool(events_out.strip()) and "No resources found" not in events_out
+    has_warnings = events_truncated or events_unavailable
+    if events_out.strip() and "No resources found" not in events_out:
+        has_warnings = True
     return has_issues, has_warnings, pod_count
 
 
-def _run_kubectl_snapshot(args: list[str]) -> str:
+def _run_kubectl_snapshot(args: list[str]) -> SnapshotOutput:
+    """Run a kubectl snapshot query, capping output at _SNAPSHOT_MAX_CHARS.
+
+    Returns a SnapshotOutput carrying the capped text plus ``truncated`` /
+    ``unavailable`` flags so callers never mistake a partial or failed
+    listing for an all-clear signal.
+    """
     kubeconfig = os.path.expanduser(settings.KUBECONFIG_PATH)
     env = {**os.environ, "KUBECONFIG": kubeconfig}
     try:
@@ -70,10 +131,13 @@ def _run_kubectl_snapshot(args: list[str]) -> str:
             shell=False,
         )
         out = proc.stdout or proc.stderr or ""
-        return out[:_SNAPSHOT_MAX_CHARS]
+        return SnapshotOutput(
+            text=out[:_SNAPSHOT_MAX_CHARS],
+            truncated=len(out) > _SNAPSHOT_MAX_CHARS,
+        )
     except Exception as exc:
         logger.warning(f"context_fetcher: kubectl {' '.join(args[:2])} failed: {exc}")
-        return f"(unavailable: {exc})"
+        return SnapshotOutput(text=f"(unavailable: {exc})", unavailable=True)
 
 
 async def context_fetcher(state: AgentState) -> dict:
@@ -85,7 +149,7 @@ async def context_fetcher(state: AgentState) -> dict:
         session_id=session_id,
     ))
 
-    pods_out, events_out = await asyncio.gather(
+    pods, events = await asyncio.gather(
         asyncio.to_thread(_run_kubectl_snapshot, ["get", "pods", "--all-namespaces"]),
         asyncio.to_thread(_run_kubectl_snapshot, [
             "get", "events", "--all-namespaces",
@@ -95,25 +159,35 @@ async def context_fetcher(state: AgentState) -> dict:
     )
 
     parts = ["## Cluster Snapshot"]
-    parts.append(f"### Live Pod State\n```\n{pods_out.strip()}\n```")
+    pod_block = pods.with_note().strip() or "(no pods found)"
+    parts.append(f"### Live Pod State\n```\n{pod_block}\n```")
 
-    no_events = not events_out.strip() or "No resources found" in events_out
-    if no_events:
+    no_events = not events.text.strip() or "No resources found" in events.text
+    if events.unavailable:
+        parts.append(f"### Warning Events\n{events.with_note().strip()}")
+    elif no_events:
         parts.append("### Warning Events\n(none — cluster appears healthy)")
     else:
-        parts.append(f"### Warning Events (most recent)\n```\n{events_out.strip()}\n```")
+        parts.append(f"### Warning Events (most recent)\n```\n{events.with_note().strip()}\n```")
 
     cluster_snapshot = "\n\n".join(parts)
 
     # ── Snapshot health scan ──────────────────────────────────────────────────
-    has_issues, has_warnings, pod_count = _scan_snapshot(pods_out, events_out)
+    has_issues, has_warnings, pod_count = _scan_snapshot(
+        pods.text,
+        events.text,
+        pods_truncated=pods.truncated,
+        pods_unavailable=pods.unavailable,
+        events_truncated=events.truncated,
+        events_unavailable=events.unavailable,
+    )
 
     # ── Playbook trigger matching ─────────────────────────────────────────────
     matched_playbooks: list[str] = []
     if settings.PLAYBOOKS_ENABLED:
         try:
             from app.agent.playbooks import match_playbooks
-            matched_playbooks = match_playbooks(pods_out, events_out)
+            matched_playbooks = match_playbooks(pods.text, events.text)
         except Exception as exc:
             logger.warning(f"context_fetcher: playbook matching failed: {exc}")
 
@@ -133,6 +207,8 @@ async def context_fetcher(state: AgentState) -> dict:
             "snapshot_pod_count": pod_count,
             "snapshot_has_issues": has_issues,
             "snapshot_has_warnings": has_warnings,
+            "snapshot_truncated": pods.truncated or events.truncated,
+            "snapshot_unavailable": pods.unavailable or events.unavailable,
             "matched_playbooks": matched_playbooks,
             "cluster_id": cluster_id,
         },
