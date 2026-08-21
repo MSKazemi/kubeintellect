@@ -286,3 +286,39 @@ jobs:
 
       - name: Server package imports
         run: /tmp/smoke/bin/python -c "import app; print('kubeintellect server import OK')"
+
+  web:
+    name: Web (lint + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v4/packages/kube-q/web
+    # The demo front-end had NO gate of any kind until now, and the gap was not
+    # theoretical: PR #142 (eslint 9 -> 10) reported all 15 checks green while
+    # `npm run lint` died with `contextOrFilename.getFilename is not a function`
+    # — eslint 10 dropped the legacy rule-context API that eslint-plugin-react,
+    # vendored inside eslint-config-next, still calls. Every Python gate passed
+    # because not one of them looks at this directory.
+    #
+    # `npm ci` (not `npm install`) is the point of the install step: it fails
+    # when package.json and package-lock.json disagree, which is exactly what a
+    # hand-merged or stale lockfile looks like. npm resolved that eslint bump by
+    # OVERRIDING a peer dependency it could not satisfy and warning rather than
+    # failing, so the install succeeding is not on its own evidence of anything.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: v4/packages/kube-q/web/package-lock.json
+
+      - name: Install (lockfile must match the manifest)
+        run: npm ci --no-audit --no-fund
+
+      - name: eslint
+        run: npm run lint
+
+      - name: next build
+        run: npm run build
