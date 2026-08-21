@@ -24,7 +24,7 @@ prospective failure must never break a request or stall the consolidation loop.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Any
 
 from app.autonomy.ladder import at_least, level_for_namespace

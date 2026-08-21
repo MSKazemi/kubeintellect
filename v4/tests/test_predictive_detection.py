@@ -43,18 +43,18 @@ class TestProjectEta:
 
     def test_flat_series_does_not_project(self):
         samples = [(i * 60, 0.5) for i in range(11)]
-        eta, r2 = project_eta(samples, threshold=1.0, direction="rising", min_r2=0.6)
+        eta, _r2 = project_eta(samples, threshold=1.0, direction="rising", min_r2=0.6)
         assert eta is None
 
     def test_noisy_below_min_r2_does_not_project(self):
         samples = [(0, 0.5), (60, 0.9), (120, 0.4), (180, 0.95), (240, 0.45)]
-        eta, r2 = project_eta(samples, threshold=1.0, direction="rising", min_r2=0.6)
+        eta, _r2 = project_eta(samples, threshold=1.0, direction="rising", min_r2=0.6)
         assert eta is None
 
     def test_falling_series_toward_floor(self):
         # disk free falling: 1.0 → 0.4 over 600s ; to reach 0.1 floor
         samples = [(i * 60, 1.0 - 0.001 * i * 60) for i in range(11)]
-        eta, r2 = project_eta(samples, threshold=0.1, direction="falling", min_r2=0.6)
+        eta, _r2 = project_eta(samples, threshold=0.1, direction="falling", min_r2=0.6)
         assert eta is not None and eta > 0
 
     def test_rising_away_from_threshold_does_not_fire(self):

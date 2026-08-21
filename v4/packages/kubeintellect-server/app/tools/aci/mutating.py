@@ -13,7 +13,6 @@ Actual execution, server-side `--dry-run`, and Kyverno/VAP admission are separat
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from app.autonomy.budget import BudgetDecision, gate_write
 
@@ -127,9 +126,9 @@ def validate_mutation(command: str, *, _runner=None) -> DryRunResult:
 
 
 def plan_mutation(
-    command: str, *, earned_rung: str = "L2", budget: Optional[BudgetDecision] = None,
+    command: str, *, earned_rung: str = "L2", budget: BudgetDecision | None = None,
     _runner=None,
-) -> tuple[MutationProposal, Optional[DryRunResult]]:
+) -> tuple[MutationProposal, DryRunResult | None]:
     """The full chokepoint: authorize (budget+rung+reversibility) → server-side dry-run.
 
     Only runs the dry-run when the write is authorized (not denied) — a denied write is never even

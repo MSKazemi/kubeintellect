@@ -12,8 +12,8 @@ without git, gh, or a network.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
 
 from app.tools.aci.fix_pr import FixPR
 
@@ -52,7 +52,7 @@ class PRResult:
 
 def open_pr(
     fix: FixPR, *, repo_dir: str, branch: str, base: str = "main", remote: str = "origin",
-    runner: Optional[Runner] = None,
+    runner: Runner | None = None,
 ) -> PRResult:
     """Push ``branch`` and open a PR for ``fix``. Fails safe (a no-op fix opens nothing)."""
     if fix.is_noop:

@@ -66,7 +66,7 @@ def test_window_no_truncation_returns_none_cursor():
 
 def test_window_char_cap_drops_whole_lines():
     body = "\n".join("x" * 50 for _ in range(10))  # 10 lines, ~509 chars
-    trimmed, total, shown, cursor = window(body, max_lines=100, max_chars=120)
+    trimmed, _total, shown, cursor = window(body, max_lines=100, max_chars=120)
     assert len(trimmed) <= 120
     assert shown < 10
     assert cursor == shown  # more remains
@@ -74,7 +74,7 @@ def test_window_char_cap_drops_whole_lines():
 
 def test_window_single_overlong_line_hardcut_at_offset_zero():
     body = "A" * 500  # one line longer than the cap
-    trimmed, total, shown, cursor = window(body, max_lines=100, max_chars=100)
+    trimmed, _total, shown, cursor = window(body, max_lines=100, max_chars=100)
     assert trimmed == "A" * 100
     assert shown == 1 and cursor is None
 
@@ -83,7 +83,7 @@ def test_window_single_overlong_line_hardcuts_the_offset_line_not_the_head():
     # Regression: paginating into an over-long line must return THAT line's head,
     # not the document head. Line 0 is short; line 1 exceeds the cap.
     body = "short\n" + "B" * 500
-    trimmed, total, shown, cursor = window(body, max_lines=1, max_chars=100, offset=1)
+    trimmed, _total, shown, cursor = window(body, max_lines=1, max_chars=100, offset=1)
     assert trimmed == "B" * 100          # the offset line, not "short…"
     assert "short" not in trimmed
     assert shown == 1 and cursor is None

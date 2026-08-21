@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -61,7 +61,7 @@ class RcaReview:
     errored: bool = False  # the reviewer failed and we failed open
 
 
-def _parse_json_object(text: str) -> Optional[dict[str, Any]]:
+def _parse_json_object(text: str) -> dict[str, Any] | None:
     """Extract the first JSON object from an LLM reply; None if unparseable."""
     if not isinstance(text, str):
         return None
@@ -82,7 +82,7 @@ def _clean_list(value: Any) -> list[str]:
 
 
 async def evaluate_goal(
-    objective: str, evidence: str, *, llm: Optional[BaseChatModel] = None,
+    objective: str, evidence: str, *, llm: BaseChatModel | None = None,
 ) -> GoalVerdict:
     """Stop-gate: is ``evidence`` sufficient for ``objective``? Fails open to sufficient=True
     (never trap the loop into gathering forever on a reviewer error)."""
@@ -105,7 +105,7 @@ async def evaluate_goal(
 
 
 async def review_rca(
-    claim: str, evidence: str, *, llm: Optional[BaseChatModel] = None,
+    claim: str, evidence: str, *, llm: BaseChatModel | None = None,
 ) -> RcaReview:
     """Adversarial fresh-context review of a claim against evidence. Fails OPEN to supported=True
     with ``errored=True`` so a broken reviewer never contradicts a sound answer."""
@@ -138,8 +138,8 @@ def render_review_note(review: RcaReview) -> str:
     worth surfacing (supported, or the reviewer failed open)."""
     if review.errored or (review.supported and not review.unsupported):
         return ""
-    lines = ["", "---", "**⚠ Verification:** the adversarial reviewer flagged claims the gathered "
-             "evidence does not fully support:"]
+    lines = ["", "---", ("**⚠ Verification:** the adversarial reviewer flagged claims the gathered "
+             "evidence does not fully support:")]
     lines.extend(f"- {item}" for item in review.unsupported)
     if review.confidence:
         lines.append(f"\n_Reviewer confidence in the RCA: {review.confidence:.0%}._")

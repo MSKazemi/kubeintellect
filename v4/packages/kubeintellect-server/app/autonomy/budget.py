@@ -20,7 +20,6 @@ A3 decision behind ``KI_V5_BLAST_RADIUS_BUDGET``; off ⇒ the ladder is unchange
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from app.core.config import settings
 
@@ -48,7 +47,7 @@ def kill_switch_engaged() -> bool:
     return bool(_runtime_kill or settings.KI_V5_KILL_SWITCH)
 
 
-def check_spend(current: float, projected: float, cap: Optional[float]) -> BudgetDecision:
+def check_spend(current: float, projected: float, cap: float | None) -> BudgetDecision:
     """Deny-before-breach: block if the projected spend would push the scope over ``cap``.
 
     A non-positive/None cap means unlimited. Deterministic; ``current``/``projected`` are supplied
@@ -71,9 +70,9 @@ def gate_write(
     governance_ok: bool = True,
     current_spend: float = 0.0,
     projected_spend: float = 0.0,
-    spend_cap: Optional[float] = None,
-    now_epoch: Optional[float] = None,
-    freeze_windows: Optional[list[tuple[float, float]]] = None,
+    spend_cap: float | None = None,
+    now_epoch: float | None = None,
+    freeze_windows: list[tuple[float, float]] | None = None,
 ) -> BudgetDecision:
     """Full composable write gate. Fail-closed: any brake or unreachable governance ⇒ deny.
 

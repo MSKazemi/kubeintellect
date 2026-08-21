@@ -12,8 +12,8 @@ exactly as prospective memory defers its dispatch.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
 
 from app.cortex.change_rca import ChangeRecord
 from app.utils.logger import get_logger
@@ -40,7 +40,7 @@ def _dedup_key(change: ChangeRecord) -> str:
 
 def plan_watchdogs(
     changes: list[ChangeRecord], *, now_epoch: float, ttl_seconds: int = 300,
-    max_active: int = 5, since_epoch: float = 0.0, seen: Optional[set[str]] = None,
+    max_active: int = 5, since_epoch: float = 0.0, seen: set[str] | None = None,
 ) -> list[WatchdogTask]:
     """Arm a watchdog per recent, not-yet-watched change (most recent first), bounded by max_active.
 

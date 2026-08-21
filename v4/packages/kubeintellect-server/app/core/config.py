@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -30,8 +29,8 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = Field(default="azure")
 
     # Azure OpenAI
-    AZURE_OPENAI_API_KEY: Optional[str] = None
-    AZURE_OPENAI_ENDPOINT: Optional[str] = None
+    AZURE_OPENAI_API_KEY: str | None = None
+    AZURE_OPENAI_ENDPOINT: str | None = None
     AZURE_OPENAI_API_VERSION: str = "2024-10-01-preview"  # enables automatic prefix caching
     AZURE_COORDINATOR_DEPLOYMENT: str = "gpt-4o"
     AZURE_SUBAGENT_DEPLOYMENT: str = "gpt-4o-mini"
@@ -39,20 +38,20 @@ class Settings(BaseSettings):
     # OpenAI direct (also used for any OpenAI-compatible endpoint, e.g. Alibaba
     # DashScope / Qwen: set OPENAI_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
     # with LLM_PROVIDER=openai and OPENAI_*_MODEL=qwen-max / qwen-plus).
-    OPENAI_API_KEY: Optional[str] = None
-    OPENAI_BASE_URL: Optional[str] = None  # override for OpenAI-compatible providers (Qwen/DashScope, LiteLLM, etc.)
+    OPENAI_API_KEY: str | None = None
+    OPENAI_BASE_URL: str | None = None  # override for OpenAI-compatible providers (Qwen/DashScope, LiteLLM, etc.)
     OPENAI_COORDINATOR_MODEL: str = "gpt-4o"
     OPENAI_SUBAGENT_MODEL: str = "gpt-4o-mini"
     # Alibaba DashScope / Qwen key aliases. The OpenAI-compatible client reads the
     # key from OPENAI_API_KEY, but when LLM_PROVIDER=qwen you can name it honestly:
     # DASHSCOPE_API_KEY (Alibaba's own convention) or QWEN_API_KEY populate it.
-    DASHSCOPE_API_KEY: Optional[str] = None
-    QWEN_API_KEY: Optional[str] = None
+    DASHSCOPE_API_KEY: str | None = None
+    QWEN_API_KEY: str | None = None
 
     # ── PostgreSQL ────────────────────────────────────────────────────────────
     # When DATABASE_URL is set (e.g. external managed DB), it takes precedence
     # over the individual POSTGRES_* vars below.
-    DATABASE_URL: Optional[str] = None
+    DATABASE_URL: str | None = None
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: str = "5432"
     POSTGRES_DB: str = "kubeintellect"
@@ -62,7 +61,7 @@ class Settings(BaseSettings):
     POSTGRES_POOL_MAX_CONN: int = Field(default=10, gt=0)
 
     @property
-    def POSTGRES_DSN(self) -> Optional[str]:
+    def POSTGRES_DSN(self) -> str | None:
         if self.USE_SQLITE:
             return None
         if self.DATABASE_URL:
@@ -121,8 +120,8 @@ class Settings(BaseSettings):
     LOKI_URL: str = ""
 
     LANGFUSE_ENABLED: bool = False
-    LANGFUSE_PUBLIC_KEY: Optional[str] = None
-    LANGFUSE_SECRET_KEY: Optional[str] = None
+    LANGFUSE_PUBLIC_KEY: str | None = None
+    LANGFUSE_SECRET_KEY: str | None = None
     # Set by each deployment method: localhost:3001 (compose), in-cluster DNS (Helm).
     # Empty default keeps Langfuse disabled until a host is explicitly configured.
     LANGFUSE_HOST: str = ""
@@ -446,7 +445,7 @@ class Settings(BaseSettings):
     KI_V5_SANDBOX_WRITER_SA: str = "ki-writer"
 
     # Anthropic provider (optional; LLM_PROVIDER=anthropic, needs langchain-anthropic)
-    ANTHROPIC_API_KEY: Optional[str] = None
+    ANTHROPIC_API_KEY: str | None = None
     ANTHROPIC_LARGE_MODEL: str = "claude-sonnet-4-6"
     ANTHROPIC_SMALL_MODEL: str = "claude-haiku-4-5-20251001"
 
@@ -479,7 +478,7 @@ class Settings(BaseSettings):
     # Secret used to sign and verify HMAC demo keys (AUTH_BACKEND=hmac).
     # Rotate to invalidate all outstanding demo keys instantly.
     # Generate: openssl rand -hex 32
-    DEMO_KEY_HMAC_SECRET: Optional[str] = None
+    DEMO_KEY_HMAC_SECRET: str | None = None
 
     # Default TTL for demo keys minted via POST /v1/auth/demo-keys.
     DEMO_KEY_DEFAULT_TTL_HOURS: int = Field(default=24 * 7)   # 7 days
@@ -568,7 +567,7 @@ class Settings(BaseSettings):
         return self
 
 
-def _load_settings() -> "Settings":
+def _load_settings() -> Settings:
     """Load Settings, converting Pydantic validation errors into readable messages."""
     import sys as _sys
     try:

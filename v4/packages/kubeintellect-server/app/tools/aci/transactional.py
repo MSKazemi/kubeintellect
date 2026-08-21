@@ -12,8 +12,8 @@ path — reachable only for chokepoint-authorized, reversible classes).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
 
 from app.tools.aci.postcondition import PostconditionResult
 
@@ -44,7 +44,7 @@ def _default_apply(command: str) -> str:
 @dataclass(frozen=True)
 class ExecutionResult:
     status: str
-    postcondition: Optional[PostconditionResult] = None
+    postcondition: PostconditionResult | None = None
     apply_output: str = ""
     rollback_output: str = ""
 
@@ -53,8 +53,8 @@ def execute_transactional(
     command: str,
     postcondition: PostconditionFn,
     *,
-    rollback_command: Optional[str] = None,
-    apply_fn: Optional[ApplyFn] = None,
+    rollback_command: str | None = None,
+    apply_fn: ApplyFn | None = None,
 ) -> ExecutionResult:
     """Apply ``command``, verify the ``postcondition`` oracle, roll back on failure.
 

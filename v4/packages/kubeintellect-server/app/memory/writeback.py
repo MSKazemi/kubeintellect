@@ -14,8 +14,9 @@ write-back *mechanism* here is complete and takes whatever signals it is given.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any
 
 from app.utils.logger import get_logger
 
@@ -49,7 +50,7 @@ def signals_from_investigation(cluster_id: str, playbooks: list[str]) -> list[Ed
 
 
 async def apply_writeback(
-    cluster_id: str, signals: list[EdgeSignal], *, reconcile: Optional[ReconcileFn] = None,
+    cluster_id: str, signals: list[EdgeSignal], *, reconcile: ReconcileFn | None = None,
 ) -> dict[str, int]:
     """Reconcile each edge signal. Returns a tally of reconcile decisions. Never raises out."""
     tally: dict[str, int] = {}

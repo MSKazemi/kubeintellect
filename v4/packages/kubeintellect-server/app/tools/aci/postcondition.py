@@ -12,7 +12,6 @@ cluster read goes through the run_kubectl seam and is injectable for tests.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -23,7 +22,7 @@ class PostconditionResult:
     detail: str = ""
 
 
-def parse_ready_column(get_output: str, name: str) -> Optional[tuple[int, int]]:
+def parse_ready_column(get_output: str, name: str) -> tuple[int, int] | None:
     """Parse (ready, desired) from a `kubectl get deployment` table row for ``name``.
 
     The READY column is "ready/desired" (e.g. "3/3"). Returns None if the row/column is absent.
