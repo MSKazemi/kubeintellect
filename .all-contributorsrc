@@ -64,7 +64,8 @@
       "contributions": [
         "doc",
         "security",
-        "code"
+        "code",
+        "test"
       ]
     }
   ]
