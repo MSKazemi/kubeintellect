@@ -197,3 +197,63 @@ class TestRoundBudgetBoundary:
         assert closers and closers[0].tool_call_id == "dangle-1"
         returned_tool_msgs = [m for m in out["messages"] if isinstance(m, ToolMessage)]
         assert returned_tool_msgs and returned_tool_msgs[0].tool_call_id == "dangle-1"
+
+class TestTriageRetry:
+    """Issue #22: a bounded retry/repair when the triage reply is not valid JSON."""
+
+    async def test_retries_once_when_first_reply_is_malformed(self, mocker):
+        mocker.patch.object(cx, "emit")
+        fake_llm = mocker.AsyncMock()
+        fake_llm.ainvoke = mocker.AsyncMock(side_effect=[
+            mocker.MagicMock(content="oops { mode: chat } not json"),
+            mocker.MagicMock(content='{"mode": "chat", "plan": []}'),
+        ])
+        mocker.patch("app.cortex.models.get_triage_llm", return_value=fake_llm)
+
+        out = await cx.triage(_state(), {})
+
+        assert out["triage_mode"] == "chat"
+        assert fake_llm.ainvoke.await_count == 2
+
+    async def test_repair_hint_passed_on_retry(self, mocker):
+        mocker.patch.object(cx, "emit")
+        sent_prompts = []
+        fake_llm = mocker.AsyncMock()
+
+        async def _ainvoke(prompt, config):
+            sent_prompts.append(prompt)
+            if len(sent_prompts) == 1:
+                return mocker.MagicMock(content="garbage {")
+            return mocker.MagicMock(content='{"mode": "chat", "plan": []}')
+
+        fake_llm.ainvoke = _ainvoke
+        mocker.patch("app.cortex.models.get_triage_llm", return_value=fake_llm)
+
+        await cx.triage(_state(), {})
+
+        assert len(sent_prompts) == 2
+        retry_prompt = sent_prompts[1]
+        assert any(
+            "not valid triage JSON" in m.content
+            for m in retry_prompt
+            if isinstance(m, HumanMessage)
+        )
+
+    async def test_falls_back_to_investigate_after_max_attempts(self, mocker):
+        mocker.patch.object(cx, "emit")
+        fake_llm = mocker.AsyncMock()
+        fake_llm.ainvoke = mocker.AsyncMock(
+            return_value=mocker.MagicMock(content="still not json"))
+        mocker.patch("app.cortex.models.get_triage_llm", return_value=fake_llm)
+
+        out = await cx.triage(_state(), {})
+
+        assert out["triage_mode"] == "investigate"
+        assert fake_llm.ainvoke.await_count == cx._TRIAGE_MAX_PARSE_ATTEMPTS
+
+    def test_strict_parser_distinguishes_failure_from_valid(self):
+        assert cx._parse_triage_json_strict("not json") is None
+        assert cx._parse_triage_json_strict('{"mode": "nonsense"}') is None
+        assert cx._parse_triage_json_strict(
+            '{"mode": "chat", "plan": []}')["mode"] == "chat"
+
