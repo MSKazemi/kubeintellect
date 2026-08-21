@@ -194,7 +194,19 @@ uv run python -m pytest tests/ -q                              # server (~990 te
 cd packages/kube-q && uv run python -m pytest tests/ -q        # kq CLI (~312 tests)
 ```
 
-CI runs those two test suites **twice** — on Python 3.12 and on Python 3.13. 3.13 is not
+If you are fixing a bug in a frozen arm, run that arm's own suite too — it resolves from its
+own lockfile, not the v4 workspace, so it needs its own sync:
+
+```bash
+cd v2 && uv sync && uv run python -m pytest tests/ -q   # ~259 tests, 5 skipped
+cd v3 && uv sync && uv run python -m pytest tests/ -q   # ~154 tests
+```
+
+The five skips in v2 are expected. Those modules test `evaluation/`, the offline scoring
+harness behind the campaign numbers in the papers; it is not part of this repository, so they
+skip with a reason rather than failing. Nothing you can change in `v2/` will unskip them.
+
+CI runs the two v4 test suites **twice** — on Python 3.12 and on Python 3.13. 3.13 is not
 optional coverage: `v4/Dockerfile`'s runtime stage is `python:3.13-slim`, so it is the
 interpreter the shipped container executes. If your change passes on one and fails on the
 other, that difference is the bug.

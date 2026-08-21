@@ -1,7 +1,23 @@
 """Tests for `evaluation.follow_up.agent_self_gated`."""
 from __future__ import annotations
 
-from evaluation.follow_up import DEFAULT_FOLLOW_UP, agent_self_gated
+import pytest
+
+# `evaluation/` is the offline scoring harness that produced the campaign numbers
+# in the papers. It is deliberately not part of this repository (dropped in
+# cb3dd1c) — the artifacts it carries are published on request, not shipped — so
+# on any clone the imports below cannot resolve. Because they run at module
+# scope, that was not one broken module: pytest aborted collection for the WHOLE
+# v2 suite, so the other 13 modules never ran either, on a clone *or* here (the
+# harness sits at the repo root, and `make test` runs from `v2/`). Skip this
+# module when the harness is absent so the rest of the suite is runnable and CI
+# can guard it. See #155.
+pytest.importorskip(
+    "evaluation",
+    reason="needs the out-of-tree `evaluation/` scoring harness",
+)
+
+from evaluation.follow_up import DEFAULT_FOLLOW_UP, agent_self_gated  # noqa: E402
 
 
 def test_default_text() -> None:

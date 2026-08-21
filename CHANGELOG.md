@@ -25,6 +25,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   instead of contradicting it.
 
 ### Added
+- **CI now runs the frozen arms' test suites** — `Tests (v2 · frozen)` and `Tests (v3 · frozen)`
+  (#155). The frozen generations are not developed any more, but shared fixes still land in them
+  (the UTF-8 playbook-loader fix did, in both), and nothing in CI had ever run their regression
+  tests. Each arm resolves from its own lockfile rather than the v4 workspace.
+
+  Fixing the gate exposed that **v2's suite could not run at all** — for anyone, including on a
+  maintainer's own machine. Five test modules import `evaluation/`, the offline scoring harness
+  that produced the campaign numbers; it is deliberately not part of this repository, so on any
+  clone those imports fail. Four of them fail at *module scope*, which does not break four
+  modules — it aborts collection for the **whole suite**, so the other thirteen never ran either.
+  Guarding the five with `pytest.importorskip` takes v2 from `4 errors during collection`,
+  **0 tests run**, to **259 passed, 5 skipped**. The guard is conditional, not a deletion: where
+  the harness is present, all five modules still run.
+
 - **CI now gates the demo front-end** (`Web (lint + build)`). `v4/packages/kube-q/web` had no
   gate of any kind: every existing job is scoped to the Python tree, so nothing in CI had ever
   run `npm ci`, `eslint` or `next build`. The gap was not theoretical — the eslint 9 → 10 bump
