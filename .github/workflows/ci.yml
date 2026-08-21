@@ -322,3 +322,57 @@ jobs:
 
       - name: next build
         run: npm run build
+  image:
+    name: Container image (build + serve)
+    runs-on: ubuntu-latest
+    # The image was built and published on every release without ever being
+    # started. It could not start: the builder stage produced a 3.12 venv, the
+    # runtime stage shipped a 3.13 interpreter, and a venv's site-packages path
+    # is version-stamped — so sys.path carried no site-packages at all and
+    # `docker run <image>` died on "No module named uvicorn". Every gate was
+    # green throughout, because a `docker build` that succeeds proves only that
+    # the layers assembled.
+    #
+    # The Dockerfile now asserts the venv matches the interpreter at build time,
+    # which protects the publish workflow too. This job adds the part an
+    # assertion cannot cover: that the thing actually serves a request.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Build image
+        run: docker build -t kubeintellect:ci v4
+
+      - name: Start Postgres
+        run: |
+          docker network create kinet
+          docker run -d --name kipg --network kinet \
+            -e POSTGRES_DB=kubeintellect \
+            -e POSTGRES_USER=kubeintellect \
+            -e POSTGRES_PASSWORD=password \
+            postgres:16-alpine
+          for _ in $(seq 1 30); do
+            docker exec kipg pg_isready -U kubeintellect >/dev/null 2>&1 && exit 0
+            sleep 1
+          done
+          echo "Postgres did not become ready" >&2; exit 1
+
+      # Credentials are deliberately bogus. Startup must not require a reachable
+      # model endpoint — only that configuration is present and the app boots.
+      - name: Run the image and probe /healthz
+        run: |
+          docker run -d --name kiapp --network kinet -p 8000:8000 \
+            -e AZURE_OPENAI_ENDPOINT=https://example.invalid \
+            -e AZURE_OPENAI_API_KEY=dummy \
+            -e OPENAI_API_KEY=dummy \
+            -e POSTGRES_HOST=kipg \
+            kubeintellect:ci
+          for _ in $(seq 1 45); do
+            if [ "$(curl -s -o /tmp/hz.json -w '%{http_code}' http://127.0.0.1:8000/healthz)" = "200" ]; then
+              echo "healthz: $(cat /tmp/hz.json)"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::the container never served /healthz"
+          docker logs kiapp 2>&1 | tail -40
+          exit 1

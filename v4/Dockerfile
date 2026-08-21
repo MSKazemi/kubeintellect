@@ -16,7 +16,14 @@
 #   https://dl.k8s.io/release/stable.txt
 
 # ── Stage 1: Python dependency builder ────────────────────────────────────────
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
+# This tag's Python minor version MUST match the runtime stage's below. The venv
+# produced here is copied wholesale into the runtime image, and a venv's
+# site-packages path is version-stamped (lib/python3.X/site-packages) while
+# bin/python is only a symlink to /usr/local/bin/python -- which resolves to
+# whatever interpreter the RUNTIME image ships. Build on 3.12, run on 3.13, and
+# the interpreter looks in lib/python3.13/site-packages, finds nothing, and every
+# dependency silently vanishes. The assertion in the runtime stage enforces this.
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
 
 WORKDIR /build
 
@@ -110,6 +117,39 @@ ENV PATH="/app/.venv/bin:$PATH" \
     HOME="/home/app" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
+
+# Fail the BUILD rather than the container. This is not hypothetical: the image
+# shipped with a 3.12 builder and a 3.13 runtime, so sys.path contained no
+# site-packages at all and `docker run <image>` died on "No module named
+# uvicorn". It built clean and published clean every time, because nothing in
+# CI or in the publish workflow ever started it.
+#
+# uvicorn is what CMD invokes. pydantic_core is a compiled extension, so it also
+# catches an ABI mismatch that a pure-Python import would sail straight past.
+RUN /app/.venv/bin/python <<'PYCHECK'
+import pathlib
+import sys
+
+tag = f"python{sys.version_info.major}.{sys.version_info.minor}"
+lib = pathlib.Path("/app/.venv/lib")
+if not (lib / tag / "site-packages").is_dir():
+    have = sorted(p.name for p in lib.iterdir())
+    sys.exit(
+        f"venv/runtime Python mismatch: interpreter is {tag}, but the copied "
+        f"venv provides {have}. Align the builder stage's uv:pythonX.Y tag "
+        f"with the runtime FROM."
+    )
+
+import fastapi  # noqa: F401
+import pydantic_core
+import pydantic_settings  # noqa: F401
+import uvicorn  # noqa: F401
+
+print(
+    f"runtime OK: Python {sys.version.split()[0]}, "
+    f"pydantic_core {pydantic_core.__version__}"
+)
+PYCHECK
 
 USER app
 

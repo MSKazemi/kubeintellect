@@ -35,6 +35,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   the manifest fails instead of being silently re-resolved.
 
 ### Fixed
+- **The published container image could not start.** `docker run` on any released image failed
+  immediately with `No module named uvicorn`, and it had been that way since the image was
+  introduced. The builder stage resolved dependencies on `uv:python3.12-bookworm-slim` while the
+  runtime stage ran `python:3.13-slim`. The venv is copied wholesale between them, but a venv's
+  packages live at the version-stamped `lib/python3.X/site-packages` and its `bin/python` is only
+  a symlink to `/usr/local/bin/python` — which resolves to the *runtime* interpreter. So Python
+  3.13 looked for `lib/python3.13/site-packages`, found only `lib/python3.12`, and started with
+  **no site-packages on `sys.path` at all**.
+
+  Nothing caught it because nothing ever ran the image. `docker-publish.yml` builds, pushes and
+  writes a summary; a `docker build` that succeeds proves only that the layers assembled. This is
+  the same shape as the `kubeintellect --version` regression that shipped to PyPI under a green
+  install-smoke job.
+
+  The builder is now `uv:python3.13-bookworm-slim`, matching the runtime. Two guards were added
+  so it cannot recur silently: the Dockerfile asserts at build time that the copied venv matches
+  the running interpreter and that `uvicorn`, `fastapi`, `pydantic_core` and `pydantic_settings`
+  import (this travels with the Dockerfile, so the publish path is covered too), and a new CI job
+  `Container image (build + serve)` starts the image against Postgres and requires a 200 from
+  `/healthz`.
+
+  Verified end to end: the fixed image returns
+  `{"status":"ok","arm":"v4",...}` and logs `Application startup complete`, where the previous
+  image fails to load its own entry point.
+
 - **The documented one-shot query form had never worked, and a failed one exited 0** (#151,
   reported by [@ybayraktarb](https://github.com/ybayraktarb) while verifying the install path on
   k3s/k3d for #100). `kq "question"` reads the first positional as a *subcommand*, so it printed
