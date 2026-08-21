@@ -120,9 +120,23 @@ jobs:
         include:
           - suite: server
             workdir: v4
+            syncdir: v4
             path: tests/
           - suite: kube-q CLI
             workdir: v4/packages/kube-q
+            syncdir: v4
+            path: tests/
+          # The frozen arms (ADR-001/002). They are not developed any more,
+          # but shared fixes still land in them — the UTF-8 loader fix did —
+          # and until now nothing ran their regression tests. Each resolves
+          # from its own lockfile, not the v4 workspace. See #155.
+          - suite: v2 · frozen
+            workdir: v2
+            syncdir: v2
+            path: tests/
+          - suite: v3 · frozen
+            workdir: v3
+            syncdir: v3
             path: tests/
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -134,10 +148,11 @@ jobs:
       - name: Install uv
         run: pip install "uv==${UV_VERSION}"
 
-      # Both suites resolve from the v4 workspace root; the two `tests` packages
-      # collide under a single pytest invocation, so they run as separate jobs.
+      # The two v4 suites resolve from the v4 workspace root; their `tests`
+      # packages collide under a single pytest invocation, so every suite
+      # runs as its own job with its own resolution root.
       - name: Sync dependencies
-        working-directory: v4
+        working-directory: ${{ matrix.syncdir }}
         run: uv sync
 
       - name: Run pytest
