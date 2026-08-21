@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from app.core.config import settings
 from app.db import flight_recorder
@@ -46,7 +46,7 @@ def _base(
     episode_id: str,
     seq: int,
     operation: str,
-    parent_span_id: Optional[str],
+    parent_span_id: str | None,
     attributes: dict[str, Any],
 ) -> dict[str, Any]:
     return {
@@ -60,7 +60,7 @@ def _base(
 
 def chat_span_payload(
     episode_id: str, seq: int, *, system: str, model: str,
-    input_tokens: int, output_tokens: int, parent_span_id: Optional[str] = None,
+    input_tokens: int, output_tokens: int, parent_span_id: str | None = None,
 ) -> dict[str, Any]:
     """A GenAI ``chat`` span; its ``gen_ai.usage.*`` is the single spend source."""
     return _base(episode_id, seq, OP_CHAT, parent_span_id, {
@@ -73,7 +73,7 @@ def chat_span_payload(
 
 def tool_span_payload(
     episode_id: str, seq: int, *, tool_name: str, ok: bool,
-    parent_span_id: Optional[str] = None, mcp: bool = False,
+    parent_span_id: str | None = None, mcp: bool = False,
 ) -> dict[str, Any]:
     return _base(episode_id, seq, OP_MCP if mcp else OP_TOOL, parent_span_id, {
         "gen_ai.tool.name": tool_name,
@@ -84,7 +84,7 @@ def tool_span_payload(
 def mutation_span_payload(
     episode_id: str, seq: int, *, action: str,
     hypothesis_span_ids: list[str], evidence_span_ids: list[str],
-    parent_span_id: Optional[str] = None,
+    parent_span_id: str | None = None,
 ) -> dict[str, Any]:
     """A cluster-mutating span. Provenance is enforced at build time: it MUST link
     ≥1 hypothesis and ≥1 evidence span, else ``ki.provenance_incomplete=true`` +

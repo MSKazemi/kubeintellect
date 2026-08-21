@@ -515,9 +515,8 @@ def run_kubectl(
     # Safety Sandwich (V4 ADR-003): arm a rollback point before any mutation —
     # the pre-state YAML of the targets lands in the flight recorder, so every
     # destructive action is undoable from the audit trail.
-    if verb in _HIGH_RISK or verb in _MEDIUM_RISK:
-        if not has_dry_run:
-            _capture_rollback_point(verb, args, stdin, config, env)
+    if (verb in _HIGH_RISK or verb in _MEDIUM_RISK) and not has_dry_run:
+        _capture_rollback_point(verb, args, stdin, config, env)
 
     logger.debug(f"run_kubectl: {cmd}")
 

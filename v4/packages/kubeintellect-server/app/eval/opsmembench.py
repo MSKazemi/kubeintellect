@@ -18,7 +18,6 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import asdict, dataclass, field
-from typing import Optional
 
 from app.db.flight_recorder import compute_hash
 
@@ -111,7 +110,7 @@ def build_grade(
     scorecard: ScoreCard,
     harness: HarnessSpec,
     snapshot_layers: dict[str, str],
-    notes: Optional[list[str]] = None,
+    notes: list[str] | None = None,
 ) -> GradeArtifact:
     art = GradeArtifact(
         scorecard=scorecard,

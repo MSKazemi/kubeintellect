@@ -10,8 +10,6 @@ the downstream fix-PR is a no-op (nothing is proposed) rather than a corrupted m
 
 from __future__ import annotations
 
-from typing import Optional
-
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -39,7 +37,7 @@ def _strip_fences(text: str) -> str:
 
 
 async def propose_fix(
-    manifest: str, violation: str, *, llm: Optional[BaseChatModel] = None,
+    manifest: str, violation: str, *, llm: BaseChatModel | None = None,
 ) -> str:
     """Propose a corrected manifest for ``violation``. Returns the ORIGINAL on any failure."""
     try:

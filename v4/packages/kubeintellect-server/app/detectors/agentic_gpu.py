@@ -10,7 +10,6 @@ cluster; wiring them to the live sensorium watch stream is the follow-up (same a
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -30,7 +29,7 @@ class AgentSignal:
 
 def detect_agent_runaway(
     sig: AgentSignal, *, rate_cap: float = 60.0, cost_cap: float = 1.0,
-) -> Optional[DetectorHit]:
+) -> DetectorHit | None:
     """Flag an agent that is looping / burning spend / probing its sandbox."""
     if sig.sandbox_escape_attempts > 0:
         return DetectorHit("sandbox-escape", "critical",
@@ -53,7 +52,7 @@ class GpuSignal:
     gpu_oom: int = 0                 # GPU out-of-memory events
 
 
-def detect_gpu_unhealthy(sig: GpuSignal) -> Optional[DetectorHit]:
+def detect_gpu_unhealthy(sig: GpuSignal) -> DetectorHit | None:
     """Flag GPU/device-plane trouble that starves agentic/inference workloads."""
     if sig.ecc_errors > 0:
         return DetectorHit("gpu-unhealthy", "critical",

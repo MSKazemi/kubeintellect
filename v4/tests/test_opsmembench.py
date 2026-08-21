@@ -14,8 +14,8 @@ from app.eval.opsmembench import (
 
 
 def _harness(**kw):
-    base = dict(model="m", max_gather_rounds=8, tool_surface="aci-v0",
-                memory_flags=("MEMORY_HYBRID_RETRIEVAL",), replay_fidelity="full", seed=1)
+    base = {"model": "m", "max_gather_rounds": 8, "tool_surface": "aci-v0",
+                "memory_flags": ("MEMORY_HYBRID_RETRIEVAL",), "replay_fidelity": "full", "seed": 1}
     base.update(kw)
     return HarnessSpec(**base)
 

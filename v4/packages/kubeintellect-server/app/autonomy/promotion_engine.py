@@ -14,8 +14,8 @@ against the P0 replay fixtures.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Optional
 
 from app.autonomy.promotion_stats import (
     Event,
@@ -66,7 +66,7 @@ def decide(
     current_rung: str,
     now_days: float,
     *,
-    events: Optional[list[Event]] = None,
+    events: list[Event] | None = None,
     sev_attributed: bool = False,
     m4_at_l4: bool = False,
     class_drift: bool = False,

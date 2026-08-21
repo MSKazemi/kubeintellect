@@ -92,7 +92,7 @@ def test_known_subcommand_dispatches_and_returns_exit_code(monkeypatch):
 
     # get_runner imports the module and reads .run at call time, so patching the
     # module attribute is enough.
-    import kube_q.cli.findings_cmd as findings_cmd
+    from kube_q.cli import findings_cmd
 
     monkeypatch.setattr(findings_cmd, "run", fake_run)
     monkeypatch.setattr("sys.argv", ["kq", "findings", "--limit", "5"])

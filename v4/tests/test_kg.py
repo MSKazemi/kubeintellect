@@ -100,7 +100,7 @@ class TestOpenEdge:
     async def test_inserts_when_no_open_edge(self, pool):
         await kg.open_edge("c1", "src-1", "runs_on", "dst-1", {"w": 1}, source_id="ep-9")
         assert len(_edge_inserts(pool)) == 1
-        _, sql, args = _edge_inserts(pool)[0]
+        _, _sql, args = _edge_inserts(pool)[0]
         assert args[:4] == ("c1", "src-1", "runs_on", "dst-1")
         assert json.loads(args[4]) == {"w": 1}
         # P2: trailing valid_from param; None when bitemporal off ⇒ SQL COALESCE → now()

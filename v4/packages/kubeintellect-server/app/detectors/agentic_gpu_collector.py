@@ -9,7 +9,7 @@ Prometheus; the default reads the live PromQL endpoint.
 
 from __future__ import annotations
 
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from app.detectors.agentic_gpu import (
     AgentSignal,
@@ -44,7 +44,7 @@ def _default_scalar(promql: str) -> float:
 
 
 def collect_and_detect(
-    *, scalar: Optional[ScalarFn] = None, rate_cap: float = 60.0, cost_cap: float = 1.0,
+    *, scalar: ScalarFn | None = None, rate_cap: float = 60.0, cost_cap: float = 1.0,
 ) -> list[DetectorHit]:
     """Query the metrics, run the agentic + GPU predicates, return the hits (empty when healthy)."""
     s = scalar or _default_scalar

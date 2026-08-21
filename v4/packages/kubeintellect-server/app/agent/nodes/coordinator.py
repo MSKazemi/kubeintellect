@@ -625,9 +625,9 @@ def _playbooks_block(state: AgentState) -> str:
     except Exception:
         return ""
 
-    sections: list[str] = ["\n## Recognized Failure Patterns\n"
+    sections: list[str] = [("\n## Recognized Failure Patterns\n"
                            "The snapshot matches these known patterns. Follow their\n"
-                           "investigation steps before improvising.\n"]
+                           "investigation steps before improvising.\n")]
     for name in matched:
         pb = get_playbook(name)
         if pb is None:
@@ -956,7 +956,7 @@ def _wait_for_rollout(namespace: str, max_wait_s: int = 30, poll_interval_s: flo
                 continue
             status = cols[2]
             # `Init:0/1` etc — match the prefix.
-            if status in _TRANSITIONAL_STATUSES or status.startswith("Init:") or status.startswith("PodInitializing"):
+            if status in _TRANSITIONAL_STATUSES or status.startswith(("Init:", "PodInitializing")):
                 in_transition = True
                 break
         if not in_transition:
@@ -997,7 +997,7 @@ def _verify_resolution(namespace: str | None, pre_state: dict | None = None) -> 
             "--sort-by=.lastTimestamp",
             "--field-selector=type=Warning",
         ])
-        has_issues, has_warnings, _ = _scan_snapshot(pods_out, events_out)
+        has_issues, _has_warnings, _ = _scan_snapshot(pods_out, events_out)
 
         if not has_issues:
             # Pods are healthy — even if old warning events linger, the fix
@@ -1171,8 +1171,7 @@ Synthesize these into a single root-cause analysis. Respond with ONLY a JSON obj
     raw = response.text.strip()
     if raw.startswith("```"):
         raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
+        raw = raw.removeprefix("json")
 
     try:
         rca = RCAResult.model_validate(json.loads(raw.strip()))

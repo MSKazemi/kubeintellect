@@ -9,7 +9,6 @@ import json
 import time
 
 from app.detectors import authoring, review
-from app.detectors import engine as engine_mod
 from app.detectors.engine import DetectorEngine, load_db_detectors
 from app.detectors.models import parse_detect_block
 from app.memory import service

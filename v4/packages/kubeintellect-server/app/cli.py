@@ -116,7 +116,7 @@ def _validate_config(cfg: dict) -> list[_Issue]:
 
     # DATABASE_URL format ───────────────────────────────────────────────────────
     db_url = cfg.get("DATABASE_URL", "").strip()
-    if db_url and not (db_url.startswith("postgresql://") or db_url.startswith("postgres://")):
+    if db_url and not (db_url.startswith(("postgresql://", "postgres://"))):
         issues.append(_Issue(
             "DATABASE_URL", "error",
             "DATABASE_URL does not look like a valid PostgreSQL DSN.",
@@ -132,7 +132,7 @@ def _validate_config(cfg: dict) -> list[_Issue]:
         ("LANGFUSE_HOST",  "http://langfuse-web.monitoring.svc.cluster.local:3000"),
     ):
         url = cfg.get(key, "").strip()
-        if url and not (url.startswith("http://") or url.startswith("https://")):
+        if url and not (url.startswith(("http://", "https://"))):
             issues.append(_Issue(
                 key, "warn",
                 f"{key} is set but does not look like a valid URL: {url!r}",
@@ -1507,7 +1507,7 @@ def cmd_set(args: argparse.Namespace) -> None:
         new_line = f"{key}={value}\n"
         replaced = False
         for i, line in enumerate(lines):
-            if line.startswith(f"{key}=") or line.startswith(f"{key} ="):
+            if line.startswith((f"{key}=", f"{key} =")):
                 lines[i] = new_line
                 replaced = True
                 break

@@ -269,7 +269,7 @@ def test_non_stream_query_http_error() -> None:
     respx.post(f"{BASE}/v1/chat/completions").mock(
         return_value=httpx.Response(500, text="Internal Server Error")
     )
-    text, hitl, action_id, _usage = non_stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+    text, hitl, _action_id, _usage = non_stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
     assert text == ""
     assert hitl is False
 
@@ -279,7 +279,7 @@ def test_non_stream_query_invalid_json() -> None:
     respx.post(f"{BASE}/v1/chat/completions").mock(
         return_value=httpx.Response(200, content=b"not-json")
     )
-    text, hitl, _, _usage = non_stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+    text, _hitl, _, _usage = non_stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
     assert text == ""
 
 
@@ -288,7 +288,7 @@ def test_non_stream_query_missing_keys() -> None:
     respx.post(f"{BASE}/v1/chat/completions").mock(
         return_value=httpx.Response(200, json={"choices": []})  # empty choices
     )
-    text, hitl, _, _usage = non_stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+    text, _hitl, _, _usage = non_stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
     assert text == ""
 
 
@@ -310,7 +310,7 @@ def test_non_stream_query_hitl_emoji_fallback() -> None:
     respx.post(f"{BASE}/v1/chat/completions").mock(
         return_value=httpx.Response(200, json=_ok_body("needs approval 🛑"))
     )
-    text, hitl, _, _usage = non_stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+    _text, hitl, _, _usage = non_stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
     assert hitl is True
 
 
@@ -324,7 +324,7 @@ def test_non_stream_query_retry_then_succeed() -> None:
         ]
     )
     with patch("kube_q.transport.time.sleep"):  # don't actually sleep
-        text, hitl, _, _usage = non_stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+        text, _hitl, _, _usage = non_stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
     assert text == "ok on retry"
 
 
@@ -335,7 +335,7 @@ def test_non_stream_query_all_retries_fail() -> None:
         side_effect=httpx.ConnectError("refused")
     )
     with patch("kube_q.transport.time.sleep"):
-        text, hitl, _, _usage = non_stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+        text, _hitl, _, _usage = non_stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
     assert text == ""
 
 
@@ -410,7 +410,7 @@ def test_stream_query_returns_usage_dict_when_present() -> None:
                                     headers={"Content-Type": "text/event-stream"})
     )
     with patch("kube_q.transport.Live"):
-        text, hitl, action_id, returned_usage = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+        _text, _hitl, _action_id, returned_usage = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
     assert returned_usage is not None
     assert returned_usage["prompt_tokens"] == 120
     assert returned_usage["completion_tokens"] == 340
@@ -424,7 +424,7 @@ def test_stream_query_returns_none_usage_when_absent() -> None:
                                     headers={"Content-Type": "text/event-stream"})
     )
     with patch("kube_q.transport.Live"):
-        text, hitl, action_id, returned_usage = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+        _text, _hitl, _action_id, returned_usage = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
     assert returned_usage is None
 
 
@@ -443,7 +443,7 @@ def test_non_stream_query_returns_usage_dict_when_present() -> None:
     respx.post(f"{BASE}/v1/chat/completions").mock(
         return_value=httpx.Response(200, json=body)
     )
-    text, hitl, action_id, returned_usage = non_stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+    _text, _hitl, _action_id, returned_usage = non_stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
     assert returned_usage is not None
     assert returned_usage["prompt_tokens"] == 50
     assert returned_usage["total_tokens"] == 150
@@ -455,7 +455,7 @@ def test_non_stream_query_returns_none_usage_when_absent() -> None:
     respx.post(f"{BASE}/v1/chat/completions").mock(
         return_value=httpx.Response(200, json=body)
     )
-    text, hitl, action_id, returned_usage = non_stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+    _text, _hitl, _action_id, returned_usage = non_stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
     assert returned_usage is None
 
 
@@ -465,7 +465,7 @@ def test_stream_query_error_returns_none_usage() -> None:
         return_value=httpx.Response(500, text="error")
     )
     with patch("kube_q.transport.Live"):
-        text, hitl, action_id, returned_usage = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+        text, _hitl, _action_id, returned_usage = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
     assert text == ""
     assert returned_usage is None
 
@@ -475,7 +475,7 @@ def test_non_stream_query_error_returns_none_usage() -> None:
     respx.post(f"{BASE}/v1/chat/completions").mock(
         return_value=httpx.Response(500, text="error")
     )
-    text, hitl, action_id, returned_usage = non_stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+    text, _hitl, _action_id, returned_usage = non_stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
     assert text == ""
     assert returned_usage is None
 
@@ -495,7 +495,7 @@ def test_stream_query_usage_in_same_event_as_choices() -> None:
                                     headers={"Content-Type": "text/event-stream"})
     )
     with patch("kube_q.transport.Live"):
-        text, hitl, action_id, returned_usage = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+        _text, _hitl, _action_id, returned_usage = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
     assert returned_usage is not None
     assert returned_usage["total_tokens"] == 30
 
@@ -520,7 +520,7 @@ def test_stream_query_ki_status_events_do_not_add_to_text() -> None:
                                     headers={"Content-Type": "text/event-stream"})
     )
     with patch("kube_q.transport.Live"):
-        text, hitl, action_id, _ = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+        text, _hitl, _action_id, _ = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
     assert text == "result"
 
 
@@ -536,7 +536,7 @@ def test_stream_query_ki_tool_call_events_do_not_add_to_text() -> None:
                                     headers={"Content-Type": "text/event-stream"})
     )
     with patch("kube_q.transport.Live"):
-        text, hitl, action_id, _ = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+        text, _hitl, _action_id, _ = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
     assert text == "done"
 
 
@@ -552,7 +552,7 @@ def test_stream_query_ki_error_events_do_not_add_to_text() -> None:
                                     headers={"Content-Type": "text/event-stream"})
     )
     with patch("kube_q.transport.Live"):
-        text, hitl, action_id, _ = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+        text, _hitl, _action_id, _ = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
     assert text == "partial"
 
 
@@ -569,7 +569,7 @@ def test_stream_query_ki_usage_type_captured() -> None:
                                     headers={"Content-Type": "text/event-stream"})
     )
     with patch("kube_q.transport.Live"):
-        text, hitl, action_id, usage = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+        text, _hitl, _action_id, usage = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
     assert text == "ok"
     assert usage is not None
     assert usage["prompt_tokens"] == 80
@@ -589,7 +589,7 @@ def test_stream_query_ki_usage_nested_key_captured() -> None:
                                     headers={"Content-Type": "text/event-stream"})
     )
     with patch("kube_q.transport.Live"):
-        text, hitl, action_id, usage = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+        _text, _hitl, _action_id, usage = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
     assert usage is not None
     assert usage["prompt_tokens"] == 50
 
@@ -609,7 +609,7 @@ def test_stream_query_mixed_ki_and_openai_events() -> None:
                                     headers={"Content-Type": "text/event-stream"})
     )
     with patch("kube_q.transport.Live"):
-        text, hitl, action_id, _ = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+        text, hitl, _action_id, _ = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
     assert text == "All pods healthy"
     assert hitl is False
 

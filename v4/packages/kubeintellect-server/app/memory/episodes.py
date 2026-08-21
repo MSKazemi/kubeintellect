@@ -12,7 +12,7 @@ catches, logs, and returns a safe empty value.
 from __future__ import annotations
 
 import json
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Any
 
 from app.core.config import settings
