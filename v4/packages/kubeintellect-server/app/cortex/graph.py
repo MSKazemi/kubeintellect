@@ -104,12 +104,20 @@ diagnosed), what was done or recommended, and concrete next steps. Be precise
 and cite the actual object names/namespaces/exit codes you observed. No tool
 calls — answer only."""
 
+# Triage repair loop (#22): the triage tier answers in strict JSON; when the
+# reply does not parse, we feed it back with a corrective hint and retry before
+# falling back to the investigate default.
+_TRIAGE_MAX_PARSE_ATTEMPTS = 3
+_TRIAGE_REPAIR_HINT = (
+    "Your previous response was not valid triage JSON. Reply with ONLY a JSON "
+    'object matching the schema: {"mode": "chat" | "investigate", '
+    '"plan": ["step 1", ...]}. No prose, no markdown fences.'
+)
+
 
 # ── Nodes ─────────────────────────────────────────────────────────────────────
 
 async def triage(state: CortexState, config: RunnableConfig) -> dict:
-    from app.cortex.models import get_triage_llm
-
     session_id = state["session_id"]
     await emit(session_id, StatusEvent(
         phase="analyzing", message="Triaging request…", session_id=session_id,
@@ -128,12 +136,7 @@ async def triage(state: CortexState, config: RunnableConfig) -> dict:
         SystemMessage(content=_TRIAGE_SYSTEM + "\n\n" + "\n\n".join(p for p in context_parts if p)),
         HumanMessage(content=user_text),
     ]
-    try:
-        reply = await get_triage_llm().ainvoke(prompt, config)
-        parsed = _parse_triage_json(str(reply.content))
-    except Exception as exc:
-        logger.warning(f"cortex.triage failed ({exc}) — defaulting to investigate")
-        parsed = {"mode": "investigate", "plan": []}
+    parsed = await _triage_with_repair(prompt, config)
 
     mode = parsed.get("mode", "investigate")
     steps = [
@@ -156,6 +159,46 @@ async def triage(state: CortexState, config: RunnableConfig) -> dict:
         "turn_start_index": len(state.get("messages", [])),
         "turn_start_monotonic": time.monotonic(),
     }
+
+
+async def _triage_with_repair(
+    prompt: list[BaseMessage], config: RunnableConfig
+) -> dict:
+    """Invoke the triage tier with a bounded repair loop (#22).
+
+    The triage tier answers in strict JSON. When the reply does not parse,
+    feed it back with a corrective hint and retry — up to
+    _TRIAGE_MAX_PARSE_ATTEMPTS total calls — before falling back to the
+    investigate default, so one malformed reply no longer silently discards
+    the request.
+    """
+    from app.cortex.models import get_triage_llm
+
+    for attempt in range(1, _TRIAGE_MAX_PARSE_ATTEMPTS + 1):
+        try:
+            reply = await get_triage_llm().ainvoke(prompt, config)
+        except Exception as exc:
+            logger.warning(
+                f"cortex.triage attempt {attempt} failed ({exc}) — defaulting to investigate"
+            )
+            return {"mode": "investigate", "plan": []}
+        parsed = _parse_triage_json_strict(str(reply.content))
+        if parsed is not None:
+            return parsed
+        if attempt == _TRIAGE_MAX_PARSE_ATTEMPTS:
+            break
+        logger.warning(
+            f"cortex.triage attempt {attempt} returned unparseable JSON — retrying with a repair hint"
+        )
+        prompt = [
+            *prompt,
+            AIMessage(content=str(reply.content)),
+            HumanMessage(content=_TRIAGE_REPAIR_HINT),
+        ]
+    logger.warning(
+        f"cortex.triage exhausted {_TRIAGE_MAX_PARSE_ATTEMPTS} attempts — defaulting to investigate"
+    )
+    return {"mode": "investigate", "plan": []}
 
 
 async def gather_once(state: CortexState, config: RunnableConfig) -> dict:
@@ -485,17 +528,27 @@ def build_cortex_graph() -> StateGraph:
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
-def _parse_triage_json(text: str) -> dict:
+def _parse_triage_json_strict(text: str) -> dict | None:
+    """Parse a triage reply into a validated plan dict, or None when the
+    reply is not usable triage JSON (no JSON block, malformed JSON, or an
+    unrecognised mode). The repair loop uses this to tell "bad reply" apart
+    from "investigate" as a deliberate answer."""
     match = _JSON_RE.search(text)
     if not match:
-        return {"mode": "investigate", "plan": []}
+        return None
     try:
         data = json.loads(match.group(0))
     except json.JSONDecodeError:
-        return {"mode": "investigate", "plan": []}
+        return None
     if not isinstance(data, dict) or data.get("mode") not in ("chat", "investigate"):
-        return {"mode": "investigate", "plan": []}
+        return None
     return data
+
+
+def _parse_triage_json(text: str) -> dict:
+    """Parse a triage reply, falling back to investigate on failure (kept
+    for callers that want the old lenient behaviour)."""
+    return _parse_triage_json_strict(text) or {"mode": "investigate", "plan": []}
 
 
 def _last_user_text(state) -> str:
