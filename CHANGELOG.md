@@ -25,6 +25,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   instead of contradicting it.
 
 ### Fixed
+- **Every playbook silently failed to load on a non-UTF-8 locale** (#136, #138 — reported and
+  fixed by [@uuzzrm](https://github.com/uuzzrm)). The playbook loader read its YAML with a bare
+  `path.read_text()`, which decodes using the *platform default* encoding. On Windows
+  (CP1252/CP936) or under the POSIX `C` locale the em-dashes the playbooks contain raise
+  `UnicodeDecodeError` — and `_load_all()`'s per-file `except` swallowed it, so the server came
+  up with **zero** playbooks and nothing in the logs that looked like a failure. Now read
+  explicitly as UTF-8 in the v2, v3 and v4 loaders, each with a regression test that fails if the
+  encoding argument is ever dropped again.
+
+  ⚠️ CI runs the **v4 and kube-q suites only**, so the v2/v3 regression tests are not guarded by
+  CI. They were run by hand for this merge (v2 25 passed, v3 12 passed).
+
+- **A malformed triage reply silently discarded the user's request** (#22, #133 — contributed by
+  [@uuzzrm](https://github.com/uuzzrm)). The triage tier answers in strict JSON, and a reply that
+  did not parse was converted straight into `{"mode": "investigate", "plan": []}`. A user who
+  asked a *chat* question got a full cluster investigation instead, and nothing recorded that the
+  model's answer had been thrown away. The reply now goes back to the model with a corrective
+  hint, up to **3 attempts** total, before falling back to the investigate default.
+
+  Follow-up in the same seam: `_parse_triage_json_strict` now also rejects a `plan` that is not a
+  list. `triage()` does `(parsed.get("plan") or [])[:6]`, so a *string* plan sliced into six
+  single characters and emitted six one-character PlanSteps — pre-existing, and now sent back
+  through the repair loop instead. The echoed malformed reply is capped at 2 000 chars so a
+  pathological reply cannot be re-sent on every remaining attempt and exhaust the context window.
+
+### Fixed
 - **`v4/uv.lock` was stale — it still recorded `kubeintellect 2.2.0` after the 2.3.1 bump.**
   `uv lock --check` failed against the committed lockfile (rc=1, *"the lockfile needs to be
   updated"*), so `uv sync --locked` / `--frozen` — what a reproducible release build should use —
