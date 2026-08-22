@@ -90,6 +90,12 @@ jobs:
       - name: Check text-mode calls name an encoding
         run: ./scripts/check-text-encoding.py
 
+      # Rides in this job on purpose. Branch protection matches required checks
+      # BY NAME, so a new job name would be missing from the required list and
+      # every open PR would sit unmergeable until the settings caught up. See #167.
+      - name: Check the contributor rosters agree
+        run: ./scripts/check-contributor-roster.py
+
   types:
     name: Types (mypy)
     runs-on: ubuntu-latest

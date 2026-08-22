@@ -52,8 +52,8 @@ make setup          # or: ./scripts/dev-setup.sh
 ```
 
 That installs [`uv`](https://docs.astral.sh/uv/) if missing, installs the whole `v4`
-workspace, and then runs **the exact six gates CI runs** (ruff, mypy, both test suites, file
-modes, syntax warnings) so you know your environment is correct before you change anything. It
+workspace, and then runs **the exact eight gates CI runs** (ruff, mypy, both test suites, file
+modes, syntax warnings, text encoding, contributor roster) so you know your environment is correct before you change anything. It
 takes about a minute and prints what to do next.
 
 **Zero-install alternative:** open the repo in a
