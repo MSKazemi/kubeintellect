@@ -87,6 +87,9 @@ jobs:
       - name: Check for syntax warnings
         run: ./scripts/check-syntax-warnings.py
 
+      - name: Check text-mode calls name an encoding
+        run: ./scripts/check-text-encoding.py
+
   types:
     name: Types (mypy)
     runs-on: ubuntu-latest

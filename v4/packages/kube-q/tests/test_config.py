@@ -120,7 +120,7 @@ def test_normalize_key_rejects_unknown() -> None:
 
 def test_cmd_set_writes_to_env_file(_isolated_env_file: Path) -> None:
     assert config_cmd.run(["set", "url=http://example:9000"]) == 0
-    assert "KUBE_Q_URL=http://example:9000" in _isolated_env_file.read_text()
+    assert "KUBE_Q_URL=http://example:9000" in _isolated_env_file.read_text(encoding="utf-8")
 
 
 def test_cmd_set_refuses_invalid_value(_isolated_env_file: Path) -> None:
@@ -135,38 +135,38 @@ def test_cmd_set_refuses_unknown_key(_isolated_env_file: Path) -> None:
 
 
 def test_cmd_set_replaces_existing_value(_isolated_env_file: Path) -> None:
-    _isolated_env_file.write_text("KUBE_Q_URL=http://old:1\nKUBE_Q_MODEL=x\n")
+    _isolated_env_file.write_text("KUBE_Q_URL=http://old:1\nKUBE_Q_MODEL=x\n", encoding="utf-8")
     config_cmd.run(["set", "url=http://new:2"])
-    lines = _isolated_env_file.read_text().splitlines()
+    lines = _isolated_env_file.read_text(encoding="utf-8").splitlines()
     assert "KUBE_Q_URL=http://new:2" in lines
     assert "KUBE_Q_URL=http://old:1" not in lines
     assert "KUBE_Q_MODEL=x" in lines
 
 
 def test_cmd_reset_removes_key(_isolated_env_file: Path) -> None:
-    _isolated_env_file.write_text("KUBE_Q_URL=http://x:1\nKUBE_Q_MODEL=y\n")
+    _isolated_env_file.write_text("KUBE_Q_URL=http://x:1\nKUBE_Q_MODEL=y\n", encoding="utf-8")
     config_cmd.run(["reset", "url"])
-    text = _isolated_env_file.read_text()
+    text = _isolated_env_file.read_text(encoding="utf-8")
     assert "KUBE_Q_URL" not in text
     assert "KUBE_Q_MODEL=y" in text
 
 
 def test_cmd_reset_no_key_deletes_file(_isolated_env_file: Path) -> None:
-    _isolated_env_file.write_text("KUBE_Q_URL=http://x:1\n")
+    _isolated_env_file.write_text("KUBE_Q_URL=http://x:1\n", encoding="utf-8")
     config_cmd.run(["reset"])
     assert not _isolated_env_file.exists()
 
 
 def test_cmd_reset_missing_key_is_noop(_isolated_env_file: Path) -> None:
-    _isolated_env_file.write_text("KUBE_Q_URL=http://x:1\n")
+    _isolated_env_file.write_text("KUBE_Q_URL=http://x:1\n", encoding="utf-8")
     rc = config_cmd.run(["reset", "model"])
     assert rc == 0
     # URL still present
-    assert "KUBE_Q_URL=http://x:1" in _isolated_env_file.read_text()
+    assert "KUBE_Q_URL=http://x:1" in _isolated_env_file.read_text(encoding="utf-8")
 
 
 def test_cmd_show_runs(_isolated_env_file: Path) -> None:
-    _isolated_env_file.write_text("KUBE_Q_URL=http://example:8080\n")
+    _isolated_env_file.write_text("KUBE_Q_URL=http://example:8080\n", encoding="utf-8")
     assert config_cmd.run(["show"]) == 0
 
 
