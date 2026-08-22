@@ -11,6 +11,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **A gate now keeps the two contributor rosters in sync** (#167).
+  `.all-contributorsrc` and the **Contributors** table in `README.md` are both hand-maintained,
+  nothing compared them, and they had drifted: 5 people on one side, 8 on the other, and one
+  contributor on neither. `scripts/check-contributor-roster.py` fails naming exactly which
+  handles are missing from which surface, plus a person listed twice or spelled two ways.
+
+  It refuses to pass on an **empty** read. A comparison that quietly stops seeing rows — a
+  renamed heading, a changed row format — would otherwise compare two empty sets and report
+  green forever, which is how this repo has lost a guard before.
+
+  `make check-roster`, and a step inside the existing **Syntax warnings** CI job. It joins that
+  job rather than adding one of its own on purpose: branch protection matches required checks by
+  name, so a new job name is a check `main` does not require, and every open PR would sit
+  unmergeable until the settings caught up.
+
+  Two related gaps closed while wiring it: `scripts/dev-setup.sh` never ran the encoding gate
+  added in #161, and `make check-encoding` was missing from `.PHONY` and from `make help`.
+  Contributor setup now runs eight gates, not six, and `AGENTS.md`, `CONTRIBUTING.md` and
+  `TRIAGE.md` say so.
+
 ### Changed
 - **The contributor roster now names everyone who has contributed.** `.all-contributorsrc`
   listed 5 people while the README credited 8, and one contributor —
