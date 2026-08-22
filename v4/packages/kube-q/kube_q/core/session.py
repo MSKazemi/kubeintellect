@@ -87,17 +87,17 @@ _USER_ID_FILE = str(CONFIG_DIR / "user-id")
 def load_or_create_user_id(explicit: str | None = None) -> str:
     """Return user_id: explicit arg > persisted ~/.kube-q/user-id > generate+save new."""
     if explicit:
-        with open(_USER_ID_FILE, "w") as f:
+        with open(_USER_ID_FILE, "w", encoding="utf-8") as f:
             f.write(explicit)
         os.chmod(_USER_ID_FILE, 0o600)
         return explicit
     if os.path.exists(_USER_ID_FILE):
-        with open(_USER_ID_FILE) as f:
+        with open(_USER_ID_FILE, encoding="utf-8") as f:
             uid = f.read().strip()
         if uid:
             return uid
     uid = f"cli-user-{str(uuid.uuid4())[:8]}"
-    with open(_USER_ID_FILE, "w") as f:
+    with open(_USER_ID_FILE, "w", encoding="utf-8") as f:
         f.write(uid)
     os.chmod(_USER_ID_FILE, 0o600)
     return uid

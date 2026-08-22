@@ -62,6 +62,9 @@ fix-modes: ## Fix file-mode violations in place (stages the mode changes)
 check-syntax: ## Check the syntax CI gate — no SyntaxWarning on the newest supported interpreter
 	@./scripts/check-syntax-warnings.py
 
+check-encoding: ## Check the encoding CI gate — every text-mode read/write names its encoding
+	@./scripts/check-text-encoding.py
+
 kind-cluster-create: ## Create the shared Kind cluster (2-node, hot-reload mounts) — run once
 	KIND_CLUSTER_NAME=$(KIND_CLUSTER_NAME) bash scripts/kind/create-kind-cluster.sh
 
