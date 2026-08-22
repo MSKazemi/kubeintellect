@@ -77,6 +77,45 @@
         "platform",
         "doc"
       ]
+    },
+    {
+      "login": "floze-the-genius",
+      "name": "Floze",
+      "avatar_url": "https://avatars.githubusercontent.com/u/88098863?v=4",
+      "profile": "https://github.com/floze-the-genius",
+      "contributions": [
+        "code",
+        "test"
+      ]
+    },
+    {
+      "login": "Priyanshu608",
+      "name": "Priyanshu608",
+      "avatar_url": "https://avatars.githubusercontent.com/u/124508769?v=4",
+      "profile": "https://github.com/Priyanshu608",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "Chris7717",
+      "name": "Chris",
+      "avatar_url": "https://avatars.githubusercontent.com/u/219080035?v=4",
+      "profile": "https://github.com/Chris7717",
+      "contributions": [
+        "code",
+        "bug"
+      ]
+    },
+    {
+      "login": "AshSgDe29071999",
+      "name": "AshSgDe29071999",
+      "avatar_url": "https://avatars.githubusercontent.com/u/192003854?v=4",
+      "profile": "https://github.com/AshSgDe29071999",
+      "contributions": [
+        "ideas",
+        "test"
+      ]
     }
   ]
 }
