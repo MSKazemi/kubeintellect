@@ -110,3 +110,115 @@ def test_main_exit_codes(tmp_path: Path, capsys):
 
     # The failure has to name the file, or a red CI run is a scavenger hunt.
     assert "nope.py" in capsys.readouterr().out
+
+
+def test_non_text_module_opens_are_not_flagged(tmp_path: Path):
+    """`webbrowser.open(url)` takes no encoding — the printed fix would be a TypeError.
+
+    Matching on the call's name alone flags every `.open()` in the language. The
+    remediation this gate prints has to be correct for everything it flags, or a
+    red run teaches a contributor to break their own code.
+    """
+    other = tmp_path / "other_opens.py"
+    other.write_text(
+        "import webbrowser, os, zipfile, tarfile\n"
+        'webbrowser.open("https://example.com")\n'
+        'os.open("a", 0)\n'
+        'zipfile.ZipFile("z.zip").open("member")\n'
+        'tarfile.open("a.tar")\n',
+        encoding="utf-8",
+    )
+
+    checker = _load_checker()
+    assert checker.check_paths([str(other)]) == (1, [])
+
+
+def test_compression_opens_flagged_only_in_explicit_text_mode(tmp_path: Path):
+    """gzip/bz2/lzma default to BINARY, unlike the builtin — but "rt" is the real bug."""
+    comp = tmp_path / "compressed.py"
+    comp.write_text(
+        "import gzip, bz2, lzma\n"
+        'gzip.open("a.gz")\n'          # binary default — nothing to name
+        'bz2.open("b.bz2", "rb")\n'    # explicit binary
+        'lzma.open("c.xz", "rt")\n',   # text mode, no encoding — the bug
+        encoding="utf-8",
+    )
+
+    checker = _load_checker()
+    checked, failures = checker.check_paths([str(comp)])
+    assert checked == 1
+    assert [lineno for _path, lineno, _name in failures] == [4]
+
+
+def test_positionally_passed_encoding_is_accepted(tmp_path: Path):
+    """It satisfies the rule; demanding the keyword too is a duplicate-argument TypeError."""
+    positional = tmp_path / "positional.py"
+    positional.write_text(
+        "from pathlib import Path\n"
+        'Path("a").read_text("utf-8")\n'
+        'Path("b").write_text("x", "utf-8")\n'
+        'Path("c").open("r", -1, "utf-8")\n'
+        'open("d", "r", -1, "utf-8")\n',
+        encoding="utf-8",
+    )
+
+    checker = _load_checker()
+    assert checker.check_paths([str(positional)]) == (1, [])
+
+
+def test_positional_index_is_not_off_by_one(tmp_path: Path):
+    """The red half of the case above: one argument short is still an offender.
+
+    `Path.open` and the builtin `open` put `encoding` at different positions
+    because the builtin also takes `file`. Getting that wrong would wave through
+    every two-argument call in the tree.
+    """
+    short = tmp_path / "short.py"
+    short.write_text(
+        "from pathlib import Path\n"
+        'Path("a").open("r", -1)\n'   # buffering, not encoding
+        'open("b", "r", -1)\n',       # buffering, not encoding
+        encoding="utf-8",
+    )
+
+    checker = _load_checker()
+    checked, failures = checker.check_paths([str(short)])
+    assert checked == 1
+    assert [lineno for _path, lineno, _name in failures] == [2, 3]
+
+
+def test_undecodable_source_is_reported_not_skipped(tmp_path: Path):
+    """A file the gate cannot read is a file the gate is not guarding.
+
+    Silently skipping it is how a guard stops guarding while CI stays green —
+    the failure mode that let the UP045 autofix rewrite a canary unnoticed.
+    """
+    latin1 = tmp_path / "latin1.py"
+    latin1.write_bytes(
+        b"# -*- coding: latin-1 -*-\n"
+        b'CAFE = "caf\xe9"\n'
+        b'open("a")\n'
+    )
+
+    checker = _load_checker()
+    checked, failures = checker.check_paths([str(latin1)])
+    assert checked == 1
+    assert [name for _path, _lineno, name in failures] == ["source is not valid UTF-8"]
+    assert checker.main([str(latin1)]) == 1
+
+
+def test_path_constructed_inline_is_still_in_scope(tmp_path: Path):
+    """Resolving the receiver must not wave through the calls that matter."""
+    inline = tmp_path / "inline.py"
+    inline.write_text(
+        "import pathlib\n"
+        "from pathlib import Path\n"
+        'Path("a").open("w")\n'
+        'pathlib.Path("b").open("w")\n',
+        encoding="utf-8",
+    )
+
+    checker = _load_checker()
+    checked, failures = checker.check_paths([str(inline)])
+    assert checked == 1
+    assert [lineno for _path, lineno, _name in failures] == [3, 4]

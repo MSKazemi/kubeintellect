@@ -11,6 +11,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- **Every text-mode read and write now names its encoding, and a gate keeps it that way**
+  (#156, #161) — thanks to [@shaurya703](https://github.com/shaurya703). A bare
+  `read_text()` / `write_text()` / `open()` decodes with the *platform default*, which is
+  CP1252 or CP936 on Windows and ASCII under the POSIX `C` locale. That is the bug #136 hit
+  in the playbook loader, where a non-UTF-8 locale made the loader silently **drop** a
+  playbook containing em-dashes; #138 fixed that one call site and left the class alive at
+  62 more, several of them read-modify-write cycles on the user's own `.env` and config
+  files — where a decode failure does not crash, it writes mangled content back.
+
+  All 62 are fixed, across the whole CI-linted scope rather than only the three files #156
+  enumerates: a gate that exempts tests and probes is a gate with a carve-out, and those are
+  the places this class survives in. The frozen `v1/`–`v3/` are untouched (ADR-001/002).
+
+  `scripts/check-text-encoding.py` holds the class, with `make check-encoding` and a step in
+  the existing `Syntax warnings` CI job. Like `check-syntax-warnings.py` it is stdlib-only
+  and deliberately **independent of ruff and of the `<0.16` pin**, so the blind spot that pin
+  creates cannot reach it. Ruff's `PLW1514` covers the same rule and would replace it once
+  the pin lifts and the linted scope widens.
+
+  The gate is precise about what it does *not* flag, because a red run whose printed fix
+  breaks your code is worse than no gate: `webbrowser.open(url)`, `zipfile.ZipFile(z).open(m)`
+  and the compression modules' binary default are left alone, an encoding passed positionally
+  is accepted, and an explicit `gzip.open(p, "rt")` is still caught. A source file it cannot
+  decode is **reported**, never silently skipped.
+
 ### Security
 - **`nanoid` bumped 3.3.17 → 3.3.18 in `v4/packages/kube-q/web`** (GHSA high: custom generators
   can loop indefinitely when size is zero). Transitive via Next.js/postcss in the web PTY relay.

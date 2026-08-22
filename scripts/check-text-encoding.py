@@ -28,6 +28,16 @@
 #   * binary mode — `open(p, "rb")`, `mode="wb"`. There is no encoding there.
 #   * a call already passing `encoding=`, whatever the value.
 #   * a call passing `**kwargs`, where the encoding may be supplied at runtime.
+#   * an encoding passed POSITIONALLY — `p.read_text("utf-8")`.
+#   * `open` on a module that has no text encoding to name — `webbrowser.open(url)`,
+#     `zipfile.ZipFile(z).open(m)` — and the compression modules' binary default,
+#     `gzip.open(p)`. An explicit `gzip.open(p, "rt")` IS still flagged.
+#
+# It DOES flag a source file that is not valid UTF-8, rather than skipping it: a
+# file the gate cannot read is a file the gate is not guarding.
+#
+# NOT COVERED, and tracked separately: `subprocess.run(..., text=True)` decodes
+# with the locale encoding too. Same bug class, different call shape.
 #
 # SCOPE
 #
@@ -49,6 +59,27 @@ import sys
 
 FROZEN_PREFIXES = ("v1/", "v2/", "v3/")
 TEXT_IO_NAMES = ("read_text", "write_text", "open")
+
+# `<module>.open(...)` calls that are not text-file opens at all. Their signatures
+# have no text `encoding` parameter, so the remediation this gate prints would
+# raise TypeError if a contributor followed it — the one thing a gate must never
+# do. Matched on the receiver name, which is how these modules are always called.
+NON_TEXT_OPEN_OWNERS = frozenset({"webbrowser", "os", "zipfile", "tarfile", "shelve", "dbm"})
+
+# These do take an encoding, but their open() defaults to BINARY, unlike the
+# builtin. Flagging a call that names no mode would therefore be a false positive;
+# an explicit text mode ("rt"/"wt") is the real thing and is still flagged.
+BINARY_DEFAULT_OPEN_OWNERS = frozenset({"gzip", "bz2", "lzma"})
+
+# Where `encoding` sits when passed POSITIONALLY. Passing it that way satisfies the
+# rule just as well, and telling the author to add the keyword would be a
+# duplicate-argument TypeError:
+#     Path.read_text(encoding, errors, newline)            -> 0
+#     Path.write_text(data, encoding, errors, newline)     -> 1
+#     Path.open(mode, buffering, encoding, ...)            -> 2
+#     open(file, mode, buffering, encoding, ...)           -> 3   (builtin, bare name)
+_POSITIONAL_ENCODING_INDEX = {"read_text": 0, "write_text": 1, "open": 2}
+_BUILTIN_OPEN_ENCODING_INDEX = 3
 
 
 def repo_root() -> str:
@@ -94,6 +125,49 @@ def _is_binary_mode(call: ast.Call) -> bool:
     return False
 
 
+def _receiver_name(call: ast.Call) -> str | None:
+    """The module a method call is ultimately made on, when it is a plain name.
+
+    One level of construction is resolved, so `zipfile.ZipFile(z).open(m)` reports
+    `zipfile`: that handle is binary and takes no encoding either. `Path(p).open()`
+    resolves to nothing and stays in scope, which is the point.
+    """
+    func = call.func
+    if not isinstance(func, ast.Attribute):
+        return None
+    receiver = func.value
+    if isinstance(receiver, ast.Name):
+        return receiver.id
+    if isinstance(receiver, ast.Call) and isinstance(receiver.func, ast.Attribute):
+        inner = receiver.func.value
+        if isinstance(inner, ast.Name):
+            return inner.id
+    return None
+
+
+def _mode_literal(call: ast.Call) -> str | None:
+    """The `open()` mode string, positional or keyword; None if absent or dynamic."""
+    if 1 < len(call.args):
+        mode = call.args[1]
+        if isinstance(mode, ast.Constant) and isinstance(mode.value, str):
+            return mode.value
+    for keyword in call.keywords:
+        if keyword.arg == "mode":
+            mode = keyword.value
+            if isinstance(mode, ast.Constant) and isinstance(mode.value, str):
+                return mode.value
+    return None
+
+
+def _passes_encoding_positionally(call: ast.Call, name: str) -> bool:
+    """True when `encoding` was supplied without the keyword."""
+    if name == "open" and isinstance(call.func, ast.Name):
+        index = _BUILTIN_OPEN_ENCODING_INDEX
+    else:
+        index = _POSITIONAL_ENCODING_INDEX[name]
+    return index < len(call.args)
+
+
 def _called_name(call: ast.Call) -> str | None:
     func = call.func
     if isinstance(func, ast.Attribute):
@@ -119,8 +193,17 @@ def offenders(source: str, path: str) -> list[tuple[str, int, str]]:
         # duplicating an argument the caller already forwards.
         if any(keyword.arg is None for keyword in node.keywords):
             continue
-        if "open" == name and _is_binary_mode(node):
+        if _passes_encoding_positionally(node, name):
             continue
+        if "open" == name:
+            owner = _receiver_name(node)
+            if owner in NON_TEXT_OPEN_OWNERS:
+                continue
+            mode = _mode_literal(node)
+            if owner in BINARY_DEFAULT_OPEN_OWNERS and (mode is None or "b" in mode):
+                continue
+            if _is_binary_mode(node):
+                continue
         found.append((path, node.lineno, name))
     return found
 
@@ -138,9 +221,17 @@ def check_paths(paths: list[str], root: str = "") -> tuple[int, list[tuple[str, 
         try:
             with open(full, "rb") as handle:
                 source = handle.read().decode("utf-8")
-        except (OSError, UnicodeDecodeError):
+        except OSError:
             # A tracked path that is not readable here (submodule, deleted in
             # the working tree) is not this gate's business.
+            continue
+        except UnicodeDecodeError:
+            # Not decodable as UTF-8 at all — a PEP 263 `# -*- coding: latin-1 -*-`
+            # source, say. Skipping it silently is how a gate stops guarding
+            # without anyone noticing (see the UP045 autofix incident), and the
+            # file is itself an instance of the class this gate exists to catch.
+            checked += 1
+            failures.append((path, 0, "source is not valid UTF-8"))
             continue
         checked += 1
         try:
@@ -163,7 +254,10 @@ def main(argv: list[str]) -> int:
     if failures:
         print(f"{len(failures)} text-mode call(s) without an explicit encoding:\n")
         for path, lineno, name in failures:
-            print(f"  {path}:{lineno}  {name}() — add encoding=\"utf-8\"")
+            if lineno:
+                print(f"  {path}:{lineno}  {name}() — add encoding=\"utf-8\"")
+            else:
+                print(f"  {path}  {name} — re-save the file as UTF-8")
         print(
             "\nThe platform default is not UTF-8 on Windows or under the C locale, so any"
             "\nnon-ASCII byte raises UnicodeDecodeError there and nowhere else. See #136/#156."
