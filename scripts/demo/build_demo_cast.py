@@ -157,7 +157,7 @@ def build() -> None:
 def main() -> None:
     out = sys.argv[1] if len(sys.argv) > 1 else "kubeintellect-demo.cast"
     build()
-    with open(out, "w") as fh:
+    with open(out, "w", encoding="utf-8") as fh:
         fh.write(json.dumps({
             "version": 2, "width": COLS, "height": ROWS,
             "timestamp": 1785000000, "idle_time_limit": 2.0,
