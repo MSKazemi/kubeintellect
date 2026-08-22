@@ -542,7 +542,7 @@ def _setup_observability() -> None:
     grafana_url = f"http://{node_ip}:30080"
 
     _CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    existing = _CONFIG_FILE.read_text() if _CONFIG_FILE.exists() else ""
+    existing = _CONFIG_FILE.read_text(encoding="utf-8") if _CONFIG_FILE.exists() else ""
     additions = ""
     if prom_ok and "PROMETHEUS_URL=" not in existing:
         additions += f"PROMETHEUS_URL={prom_url}\n"
@@ -551,7 +551,7 @@ def _setup_observability() -> None:
     if prom_ok and "GRAFANA_URL=" not in existing:
         additions += f"GRAFANA_URL={grafana_url}\n"
     if additions:
-        with _CONFIG_FILE.open("a") as f:
+        with _CONFIG_FILE.open("a", encoding="utf-8") as f:
             f.write(additions)
 
     if prom_ok:
@@ -610,11 +610,11 @@ def _setup_kind_with_samples() -> None:
 
     # Update kubeconfig path in our config
     kube_path = str(Path.home() / ".kube" / "config")
-    existing_text = _CONFIG_FILE.read_text() if _CONFIG_FILE.exists() else ""
+    existing_text = _CONFIG_FILE.read_text(encoding="utf-8") if _CONFIG_FILE.exists() else ""
     lines = [l for l in existing_text.splitlines(keepends=True)
              if not l.startswith("KUBECONFIG_PATH=")]
     lines.append(f"KUBECONFIG_PATH={kube_path}\n")
-    _CONFIG_FILE.write_text("".join(lines))
+    _CONFIG_FILE.write_text("".join(lines), encoding="utf-8")
 
     # Deploy sample workloads
     print("  Deploying sample workloads (nginx × 2, httpbin × 1) in namespace 'demo' ...")
@@ -664,7 +664,7 @@ EnvironmentFile={_CONFIG_FILE}
 
 [Install]
 WantedBy=default.target
-""")
+""", encoding="utf-8")
     subprocess.run(["systemctl", "--user", "daemon-reload"], check=False, capture_output=True)
     subprocess.run(["systemctl", "--user", "enable", "--now", _SERVICE_NAME],
                    check=False, capture_output=True)
@@ -726,7 +726,7 @@ def _start_server_and_open_kq() -> None:
     _ensure_database()
     log_file = _CONFIG_DIR / "server.log"
     print(f"\n  Starting server in background (logs → {log_file}) ...")
-    with log_file.open("a") as lf:
+    with log_file.open("a", encoding="utf-8") as lf:
         subprocess.Popen(
             [sys.executable, "-m", "uvicorn", "app.main:app",
              "--host", "0.0.0.0", "--port", "8000", "--log-level", "warning"],
@@ -996,17 +996,17 @@ def cmd_init(_args: argparse.Namespace) -> None:
 {_line("LANGFUSE_PUBLIC_KEY", "pk-lf-...")}
 {_line("LANGFUSE_SECRET_KEY", "sk-lf-...")}
 """
-    _CONFIG_FILE.write_text(env_content)
+    _CONFIG_FILE.write_text(env_content, encoding="utf-8")
 
     # Configure kube-q with the user key + local URL ───────────────────────────
     _kube_q_dir = Path.home() / ".kube-q"
     _kube_q_env = _kube_q_dir / ".env"
     _kube_q_dir.mkdir(parents=True, exist_ok=True)
-    _kube_q_existing = _kube_q_env.read_text() if _kube_q_env.exists() else ""
+    _kube_q_existing = _kube_q_env.read_text(encoding="utf-8") if _kube_q_env.exists() else ""
     _kube_q_lines = list(_kube_q_existing.splitlines(keepends=True))
     _kube_q_lines = [l for l in _kube_q_lines if not l.startswith(("KUBE_Q_URL=", "KUBE_Q_API_KEY="))]
     _kube_q_lines += ["KUBE_Q_URL=http://localhost:8000\n", f"KUBE_Q_API_KEY={user_key}\n"]
-    _kube_q_env.write_text("".join(_kube_q_lines))
+    _kube_q_env.write_text("".join(_kube_q_lines), encoding="utf-8")
 
     _level_label = {"admin": _err("admin  (full access)"),
                     "operator": _warn("operator  (no deletes/drains)"),
@@ -1135,9 +1135,9 @@ def _start_postgres_container() -> None:
         "postgres:16",
     ], check=True)
     _CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    existing = _CONFIG_FILE.read_text() if _CONFIG_FILE.exists() else ""
+    existing = _CONFIG_FILE.read_text(encoding="utf-8") if _CONFIG_FILE.exists() else ""
     if "POSTGRES_PASSWORD=" not in existing:
-        with _CONFIG_FILE.open("a") as f:
+        with _CONFIG_FILE.open("a", encoding="utf-8") as f:
             f.write(f"POSTGRES_PASSWORD={pg_pass}\n")
     print("  Waiting for postgres to be ready...")
     import time
@@ -1191,9 +1191,9 @@ def _ensure_database() -> None:
 
     os.environ["USE_SQLITE"] = "true"
     _CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    existing = _CONFIG_FILE.read_text() if _CONFIG_FILE.exists() else ""
+    existing = _CONFIG_FILE.read_text(encoding="utf-8") if _CONFIG_FILE.exists() else ""
     if "USE_SQLITE=" not in existing:
-        with _CONFIG_FILE.open("a") as f:
+        with _CONFIG_FILE.open("a", encoding="utf-8") as f:
             f.write("USE_SQLITE=true\n")
     if interactive:
         print(_ok("  ✓  SQLite mode enabled.") + " Data stored at ~/.kubeintellect/kubeintellect.db\n")
@@ -1305,14 +1305,14 @@ def cmd_db_init(_args: argparse.Namespace) -> None:
 
     try:
         import importlib.resources as pkg_resources
-        sql_text = pkg_resources.files("app.db").joinpath("schema.sql").read_text()
+        sql_text = pkg_resources.files("app.db").joinpath("schema.sql").read_text(encoding="utf-8")
     except Exception:
         schema_path = Path(__file__).parent / "db" / "schema.sql"
         if not schema_path.exists():
             print(_err("  schema.sql not found."), file=sys.stderr)
             print("  Reinstall KubeIntellect: pip install --upgrade kubeintellect", file=sys.stderr)
             sys.exit(1)
-        sql_text = schema_path.read_text()
+        sql_text = schema_path.read_text(encoding="utf-8")
 
     dsn = _build_dsn()
     print(f"  Connecting to: {_redact_dsn(dsn)}")
@@ -1490,7 +1490,7 @@ def cmd_status(_args: argparse.Namespace) -> None:
 def cmd_set(args: argparse.Namespace) -> None:
     """Set one or more config values in ~/.kubeintellect/.env."""
     _CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    existing = _CONFIG_FILE.read_text() if _CONFIG_FILE.exists() else ""
+    existing = _CONFIG_FILE.read_text(encoding="utf-8") if _CONFIG_FILE.exists() else ""
     lines = list(existing.splitlines(keepends=True))
 
     changed: list[str] = []
@@ -1515,7 +1515,7 @@ def cmd_set(args: argparse.Namespace) -> None:
             lines.append(new_line)
         changed.append(f"  {_ok('✓')}  {key} = {_mask(key, value)}")
 
-    _CONFIG_FILE.write_text("".join(lines))
+    _CONFIG_FILE.write_text("".join(lines), encoding="utf-8")
     for msg in changed:
         print(msg)
 
@@ -1586,7 +1586,7 @@ def _configure_cluster_dns() -> None:
     conf_dir  = Path("/etc/systemd/resolved.conf.d")
     conf_file = conf_dir / "kind-dns.conf"
 
-    if conf_file.exists() and dns_ip in conf_file.read_text():
+    if conf_file.exists() and dns_ip in conf_file.read_text(encoding="utf-8"):
         print(f"  {_ok('✓')}  Cluster DNS already configured ({dns_ip}).")
         return
 
@@ -1595,7 +1595,7 @@ def _configure_cluster_dns() -> None:
     try:
         subprocess.run(["sudo", "mkdir", "-p", str(conf_dir)], check=True)
         tmp = Path("/tmp/kind-dns.conf")
-        tmp.write_text(conf_content)
+        tmp.write_text(conf_content, encoding="utf-8")
         subprocess.run(["sudo", "cp", str(tmp), str(conf_file)], check=True)
         subprocess.run(["sudo", "systemctl", "restart", "systemd-resolved"], check=True)
         print(f"  {_ok('✓')}  Cluster DNS configured — svc.cluster.local now resolves from this host.")
@@ -1653,10 +1653,10 @@ def cmd_kind_setup(args: argparse.Namespace) -> None:
             print(f"  {_ok('✓')}  nginx ingress installed.")
 
     _CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    existing_config = _CONFIG_FILE.read_text() if _CONFIG_FILE.exists() else ""
+    existing_config = _CONFIG_FILE.read_text(encoding="utf-8") if _CONFIG_FILE.exists() else ""
     kube_path = str(Path.home() / ".kube" / "config")
     if "KUBECONFIG_PATH=" not in existing_config:
-        with _CONFIG_FILE.open("a") as f:
+        with _CONFIG_FILE.open("a", encoding="utf-8") as f:
             f.write(f"KUBECONFIG_PATH={kube_path}\n")
         print(f"  {_ok('✓')}  Updated {_CONFIG_FILE}: KUBECONFIG_PATH={kube_path}")
 
@@ -1688,7 +1688,7 @@ def _http_ok(url: str, timeout: float = 3.0) -> bool:
 
 def _load_dotenv_dict(path: Path, target: dict) -> None:
     """Load .env into a dict (does not touch os.environ)."""
-    for line in path.read_text().splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
@@ -1703,7 +1703,7 @@ def _load_dotenv_dict(path: Path, target: dict) -> None:
 
 def _load_dotenv(path: Path) -> None:
     """Minimal .env loader — sets env vars that are not already set."""
-    for line in path.read_text().splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
