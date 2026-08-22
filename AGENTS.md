@@ -50,7 +50,7 @@ uv sync          # creates .venv and installs the whole workspace
 
 ## Gate commands — these are exactly what CI runs
 
-From the repo root, `make setup` runs all six gates in order. Individually, from `v4/`:
+From the repo root, `make setup` runs all eight gates in order. Individually, from `v4/`:
 
 ```bash
 # 1. Lint — `ruff check` only. NOT `ruff format`.
@@ -59,14 +59,17 @@ uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/
 # 2. Types — the workspace is at ZERO errors; keep it there.
 uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q
 
-# 3. Server suite (1059 tests)
+# 3. Server suite (1068 tests)
 uv run python -m pytest tests/ -q
 
 # 4. kq CLI suite (317 tests)
 cd packages/kube-q && uv run python -m pytest tests/ -q
 ```
 
-Plus two repo-root gates, which need no virtualenv:
+Plus four repo-root gates, which need no virtualenv. Gates 7 and 8 run inside the CI job
+named **Syntax warnings** rather than jobs of their own — branch protection matches required
+checks by name, so a new job name is a check `main` does not require and every open PR would
+sit unmergeable until the settings caught up:
 
 ```bash
 # 5. File modes — a tracked file is executable if and only if it has a shebang.
@@ -75,6 +78,12 @@ make fix-modes            # corrects any violation in place
 
 # 6. Syntax — every tracked .py outside v1-v3 compiles with no SyntaxWarning.
 make check-syntax         # or: ./scripts/check-syntax-warnings.py
+
+# 7. Encoding — every text-mode read/write names an encoding (#136/#156).
+make check-encoding       # or: ./scripts/check-text-encoding.py
+
+# 8. Roster — .all-contributorsrc and the README table name the same people (#167).
+make check-roster         # or: ./scripts/check-contributor-roster.py
 ```
 
 If you create a file, do not mark it executable unless it is a script with a shebang. This

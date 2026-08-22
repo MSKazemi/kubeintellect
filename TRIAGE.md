@@ -117,7 +117,7 @@ welcome rather than rude — it is a backlog, not a rejection.
 
   | Check | Runs locally? |
   |---|---|
-  | `Lint (ruff)` · `Types (mypy)` · `Tests (server)` · `Tests (kube-q CLI)` · `File modes` · `Syntax warnings` | ✅ `make setup` runs all six |
+  | `Lint (ruff)` · `Types (mypy)` · `Tests (server)` · `Tests (kube-q CLI)` · `File modes` · `Syntax warnings` | ✅ `make setup` runs all six (plus the encoding + roster gates that ride inside `Syntax warnings`) |
   | `Install smoke test` · `Tests (server · py3.13)` · `Tests (kube-q CLI · py3.13)` | ❌ CI only |
 
   So a green `make setup` covers six of the nine. If your PR is red on one of the
