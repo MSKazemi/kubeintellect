@@ -11,6 +11,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+- **The contributor roster now names everyone who has contributed.** `.all-contributorsrc`
+  listed 5 people while the README credited 8, and one contributor —
+  [@Chris7717](https://github.com/Chris7717), who wrote the `HPANotScaling` playbook (#114)
+  and filed the `.env.example` report (#115) — appeared on neither. Four entries added:
+  [@floze-the-genius](https://github.com/floze-the-genius) (#109),
+  [@Priyanshu608](https://github.com/Priyanshu608) (#108),
+  [@Chris7717](https://github.com/Chris7717) (#114, #115) and
+  [@AshSgDe29071999](https://github.com/AshSgDe29071999) (#107).
+
+  #107 did not merge — it collided with an already-claimed issue — and it is listed anyway.
+  The roster records the contribution that arrived, not whether it happened to land: running
+  that branch as a control is the only reason we know the `pytest_configure` hook in #109 is
+  load-bearing rather than incidental.
+
+  The two surfaces are now in sync at 9 people. Nothing keeps them that way yet — see #167.
+
+
 ### Security
 - **`nanoid` bumped 3.3.17 → 3.3.18 in `v4/packages/kube-q/web`** (GHSA high: custom generators
   can loop indefinitely when size is zero). Transitive via Next.js/postcss in the web PTY relay.
