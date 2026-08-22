@@ -34,7 +34,7 @@ class PyModel:
 
 def extract_py_models(path: Path) -> dict[str, PyModel]:
     """Return every Pydantic BaseModel class found in path."""
-    tree = ast.parse(path.read_text())
+    tree = ast.parse(path.read_text(encoding="utf-8"))
     models: dict[str, PyModel] = {}
 
     for node in ast.walk(tree):
@@ -66,7 +66,7 @@ class TsInterface:
 
 def extract_ts_interfaces(path: Path) -> dict[str, TsInterface]:
     """Crude but sufficient TS interface parser (regex-based)."""
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     interfaces: dict[str, TsInterface] = {}
 
     # Match: export interface Foo { ... }
