@@ -96,10 +96,10 @@ def _update_env_url(new_url: str) -> None:
     """Write/replace KUBE_Q_URL in ~/.kube-q/.env (creates file if absent)."""
     env_path = Path.home() / ".kube-q" / ".env"
     env_path.parent.mkdir(parents=True, exist_ok=True)
-    lines = env_path.read_text().splitlines() if env_path.exists() else []
+    lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
     lines = [ln for ln in lines if not ln.startswith("KUBE_Q_URL=")]
     lines.append(f"KUBE_Q_URL={new_url}")
-    env_path.write_text("\n".join(lines) + "\n")
+    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 # ── Conversation persistence ──────────────────────────────────────────────────
@@ -118,7 +118,7 @@ def _save_conversation(
     for msg in messages:
         role = f"**{user_name}**" if msg["role"] == "user" else f"**{agent_name}**"
         lines.append(f"\n{role}:\n\n{msg['content']}\n\n---")
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
     console.print(f"[dim]Conversation saved to[/dim] {path}")
 
