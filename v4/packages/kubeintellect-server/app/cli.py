@@ -436,7 +436,7 @@ def _get_kind_node_ip() -> str:
         result = subprocess.run(
             ["kubectl", "get", "nodes", "-o",
              "jsonpath={.items[0].status.addresses[?(@.type==\"InternalIP\")].address}"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, encoding="utf-8", timeout=10,
         )
         return result.stdout.strip()
     except Exception:
@@ -648,6 +648,7 @@ def _service_installed() -> bool:
 def _install_service() -> None:
     kubeintellect_bin = subprocess.run(
         ["which", "kubeintellect"], capture_output=True, text=True,
+        encoding="utf-8",
     ).stdout.strip() or str(Path(sys.executable).parent / "kubeintellect")
 
     _SERVICE_DIR.mkdir(parents=True, exist_ok=True)
@@ -1523,6 +1524,7 @@ def cmd_set(args: argparse.Namespace) -> None:
     svc_active = subprocess.run(
         ["systemctl", "--user", "is-active", _SERVICE_NAME],
         capture_output=True, text=True,
+        encoding="utf-8",
     ).stdout.strip() == "active"
     if svc_active:
         subprocess.run(["systemctl", "--user", "restart", _SERVICE_NAME],
@@ -1610,7 +1612,7 @@ def _get_kube_dns_ip() -> str:
         result = subprocess.run(
             ["kubectl", "get", "svc", "kube-dns", "-n", "kube-system",
              "-o", "jsonpath={.spec.clusterIP}"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, encoding="utf-8", timeout=5,
         )
         return result.stdout.strip() if result.returncode == 0 else ""
     except Exception:
@@ -1625,7 +1627,7 @@ def cmd_kind_setup(args: argparse.Namespace) -> None:
     _ensure_tool("kubectl", _install_kubectl)
     _ensure_tool("helm",    _install_helm)
 
-    result = subprocess.run(["kind", "get", "clusters"], capture_output=True, text=True)
+    result = subprocess.run(["kind", "get", "clusters"], capture_output=True, text=True, encoding="utf-8")
     existing = result.stdout.strip().splitlines()
     if cluster_name in existing:
         print(f"  {_ok('✓')}  Kind cluster '{cluster_name}' already exists — skipping creation.")
@@ -1634,6 +1636,7 @@ def cmd_kind_setup(args: argparse.Namespace) -> None:
         result = subprocess.run(
             ["kind", "create", "cluster", "--name", cluster_name],
             check=False, text=True,
+            encoding="utf-8",
         )
         if result.returncode != 0:
             print(_err("  Error: failed to create Kind cluster."), file=sys.stderr)
@@ -1646,7 +1649,7 @@ def cmd_kind_setup(args: argparse.Namespace) -> None:
             "https://raw.githubusercontent.com/kubernetes/ingress-nginx"
             "/main/deploy/static/provider/kind/deploy.yaml"
         )
-        result = subprocess.run(["kubectl", "apply", "-f", ingress_url], check=False, text=True)
+        result = subprocess.run(["kubectl", "apply", "-f", ingress_url], check=False, text=True, encoding="utf-8")
         if result.returncode != 0:
             print(_warn("  Warning: nginx ingress install failed — install it manually later."), file=sys.stderr)
         else:
@@ -1746,7 +1749,7 @@ def _get_kube_context(kube_path: str) -> str:
     try:
         result = subprocess.run(
             ["kubectl", "--kubeconfig", kube_path, "config", "current-context"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, encoding="utf-8", timeout=5,
         )
         return result.stdout.strip() if result.returncode == 0 else ""
     except Exception:

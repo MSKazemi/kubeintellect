@@ -62,6 +62,7 @@ def repo_root() -> str:
         capture_output=True,
         check=True,
         text=True,
+        encoding="utf-8",
     ).stdout.strip()
 
 
@@ -82,6 +83,7 @@ def tracked_python_files(root: str | None = None) -> list[str]:
         capture_output=True,
         check=True,
         text=True,
+        encoding="utf-8",
         cwd=root,
     ).stdout
     paths = [p for p in out.split("\0") if p]

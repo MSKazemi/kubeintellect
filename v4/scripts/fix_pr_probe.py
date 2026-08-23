@@ -33,7 +33,7 @@ def check(name: str, cond: bool, detail: str = "") -> None:
 
 
 def _git(repo: Path, *args: str) -> str:
-    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, encoding="utf-8", errors="replace")
     return (r.stdout + r.stderr).strip()
 
 

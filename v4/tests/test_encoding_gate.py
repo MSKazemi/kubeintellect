@@ -222,3 +222,88 @@ def test_path_constructed_inline_is_still_in_scope(tmp_path: Path):
     checked, failures = checker.check_paths([str(inline)])
     assert checked == 1
     assert [lineno for _path, lineno, _name in failures] == [3, 4]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# #168 — the subprocess half of the same bug class.
+# `subprocess.run(..., text=True)` decodes the child's pipes with the platform
+# default just as `read_text()` decodes a file with it.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_bare_subprocess_text_mode_is_caught(tmp_path: Path):
+    checker = _load_checker()
+    src = tmp_path / "child.py"
+    src.write_text(
+        "import subprocess\n"
+        "subprocess.run(['kubectl', 'logs', 'p'], capture_output=True, text=True)\n"
+        "subprocess.check_output(['git', 'log'], text=True)\n"
+        "subprocess.Popen(['helm', 'list'], universal_newlines=True)\n",
+        encoding="utf-8",
+    )
+    checked, failures = checker.check_paths([str(src)])
+    assert checked == 1
+    assert [f[1] for f in failures] == [2, 3, 4], failures
+    # The remediation must name the call that was flagged, not a file-IO fix.
+    assert all("text mode" in f[2] for f in failures), failures
+
+
+def test_subprocess_without_text_mode_is_not_flagged(tmp_path: Path):
+    """Byte pipes decode nothing, so there is no encoding to name."""
+    checker = _load_checker()
+    src = tmp_path / "bytes.py"
+    src.write_text(
+        "import subprocess\n"
+        "subprocess.run(['kubectl', 'get', 'po'], capture_output=True)\n"
+        "subprocess.run(['kubectl', 'get', 'po'], capture_output=True, text=False)\n"
+        "subprocess.run(['kubectl', 'get', 'po'], universal_newlines=False)\n",
+        encoding="utf-8",
+    )
+    checked, failures = checker.check_paths([str(src)])
+    assert checked == 1
+    assert failures == []
+
+
+def test_subprocess_with_encoding_or_forwarded_kwargs_passes(tmp_path: Path):
+    checker = _load_checker()
+    src = tmp_path / "ok.py"
+    src.write_text(
+        "import subprocess\n"
+        "subprocess.run(['git', 'status'], text=True, encoding='utf-8')\n"
+        "subprocess.run(['kubectl', 'logs', 'p'], text=True, encoding='utf-8',"
+        " errors='replace')\n"
+        "def wrap(**kw):\n"
+        "    return subprocess.run(['git', 'status'], text=True, **kw)\n",
+        encoding="utf-8",
+    )
+    checked, failures = checker.check_paths([str(src)])
+    assert checked == 1
+    assert failures == []
+
+
+def test_dynamic_text_mode_is_flagged(tmp_path: Path):
+    """`text=flag` may be True at runtime; naming an encoding costs nothing either way."""
+    checker = _load_checker()
+    src = tmp_path / "dyn.py"
+    src.write_text(
+        "import subprocess\n"
+        "def go(flag):\n"
+        "    return subprocess.run(['git', 'log'], capture_output=True, text=flag)\n",
+        encoding="utf-8",
+    )
+    _, failures = checker.check_paths([str(src)])
+    assert [f[1] for f in failures] == [3], failures
+
+
+def test_unrelated_run_without_a_text_keyword_is_not_flagged(tmp_path: Path):
+    """The name alone must not be enough — `.run()` is far too common a method name."""
+    checker = _load_checker()
+    src = tmp_path / "unrelated.py"
+    src.write_text(
+        "def go(runner, task):\n"
+        "    runner.run(task, verbose=True)\n"
+        "    return task.call(retries=3)\n",
+        encoding="utf-8",
+    )
+    _, failures = checker.check_paths([str(src)])
+    assert failures == []

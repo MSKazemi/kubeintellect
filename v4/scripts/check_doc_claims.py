@@ -110,6 +110,7 @@ def _collect_count(rootdir: Path) -> int | None:
             cwd=rootdir,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=300,
         )
     except (OSError, subprocess.TimeoutExpired):

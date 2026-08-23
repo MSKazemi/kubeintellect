@@ -64,6 +64,7 @@ def repo_root() -> str:
         ["git", "rev-parse", "--show-toplevel"],  # noqa: S607
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=True,
     ).stdout.strip()
 
