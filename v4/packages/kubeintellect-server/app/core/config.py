@@ -12,6 +12,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _HOME_ENV = Path.home() / ".kubeintellect" / ".env"
 
 
+# Resource types no deployment can unblock. `KUBECTL_BLOCKED_RESOURCES` replaces the blocklist
+# rather than extending it, so an operator adding one entry drops every other — and these four
+# are credential material: Secrets carry the cluster's passwords and this app's own API keys,
+# ServiceAccount objects carry token references. Everything else on the blocklist is a policy
+# choice an operator may legitimately reverse; these are not.
+ALWAYS_BLOCKED_RESOURCES = frozenset({"secret", "secrets", "serviceaccount", "serviceaccounts"})
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         # Later files in the tuple have higher priority.
@@ -27,6 +35,17 @@ class Settings(BaseSettings):
 
     # ── LLM provider ─────────────────────────────────────────────────────────
     LLM_PROVIDER: str = Field(default="azure")
+
+    # Sampling temperature for every model call. 0.0 remains the default because determinism
+    # is what an operator wants, but it is now configurable because it cannot always be honoured:
+    # gpt-5-mini, gpt-5.5 and gpt-5.6-sol reject `temperature=0.0` outright with HTTP 400
+    # ("Only the default (1) value is supported"), while gpt-4o and gpt-5.4 accept it. Before
+    # this setting existed the value was hardcoded, so those three models could not be used at
+    # all — and the failure was close to invisible: the request 400s, the agent still streams a
+    # reply to the user, and the run completes and is graded while reporting zero tokens and
+    # zero cost. Any experiment comparing models must set ONE temperature that every model in
+    # the comparison accepts, or the model axis is confounded with the sampling temperature.
+    LLM_TEMPERATURE: float = 0.0
 
     # Azure OpenAI
     AZURE_OPENAI_API_KEY: str | None = None
@@ -79,6 +98,10 @@ class Settings(BaseSettings):
 
     # ── Kubernetes ────────────────────────────────────────────────────────────
     KUBECONFIG_PATH: str = "~/.kube/config"
+    # Explicit cluster identity. Set this whenever more than one cluster shares a database:
+    # in-cluster deployments have no kubeconfig context to derive a name from, so identity
+    # falls back to the "unknown" sentinel and every such cluster shares one memory scope.
+    CLUSTER_ID: str = ""
     KUBECTL_TIMEOUT_SECONDS: int = 30
     KUBECTL_DESTRUCTIVE_TIMEOUT_SECONDS: int = 300
 
@@ -92,22 +115,63 @@ class Settings(BaseSettings):
 
     # Resource types the kubectl tool will never access, regardless of user role.
     # In Helm deployments set via config.blockedResources in values.yaml.
+    # NOTE: this REPLACES the list. The credential types in ALWAYS_BLOCKED_RESOURCES are
+    # re-added unconditionally by the property below and cannot be configured away.
     KUBECTL_BLOCKED_RESOURCES: str = Field(
         default="secret,secrets,serviceaccount,serviceaccounts"
     )
 
     @property
     def kubectl_blocked_namespaces(self) -> frozenset[str]:
+        """The protected-namespace set, **case-folded**.
+
+        Eight comparison sites across `kubectl_tool`, `helm_tool` and `namespace_guard` read
+        `<value>.lower() in blocked` — the normalisation was applied to one side only. This
+        set kept whatever case the operator typed, so a single capital letter in
+        `KUBECTL_BLOCKED_NAMESPACES` disabled the protection with no error anywhere. Measured
+        2026-08-20 with `KUBECTL_BLOCKED_NAMESPACES="Kube-System"`: `kubectl get pods -A`
+        returned two `kube-system` rows that should have been filtered,
+        `kubectl delete deployment coredns -n kube-system` was **allowed** where it is
+        normally a `[Protected]` refusal, and the Loki/Prometheus query guard passed a
+        `{namespace="kube-system"}` selector straight through.
+
+        Kubernetes namespace names are RFC 1123 labels and therefore always lowercase, so
+        case-folding here can only ever *add* protection; it cannot unblock anything. Entries
+        that still cannot match a legal namespace (a glob, a slash, a stray character) are
+        reported by `app.core.config_audit` rather than silently ignored.
+        """
         return frozenset(
-            ns.strip()
+            ns.strip().lower()
             for ns in self.KUBECTL_BLOCKED_NAMESPACES.split(",")
             if ns.strip()
         )
 
     @property
     def kubectl_blocked_resources(self) -> frozenset[str]:
-        return frozenset(
-            r.strip()
+        """Operator-tunable, with a floor that configuration cannot lower.
+
+        `KUBECTL_BLOCKED_RESOURCES` replaces the list, it does not extend it — and the Helm
+        values file invited exactly that ("Override to add …"). An operator adding `configmap`
+        to the blocklist therefore *removed* `secret`, silently unblocking every Secret in the
+        cluster including KubeIntellect's own namespace, which holds the LLM and admin API
+        keys. Measured 2026-08-19: all four probes went from BLOCKED to ALLOWED.
+
+        Credential material is the one part that was never meant to be tunable — the guard's
+        own message promises Secrets are "shielded from inspection to protect cluster
+        credentials". This makes that promise true. Namespaces deliberately have no floor:
+        deciding the agent may investigate `monitoring` is a legitimate operator choice,
+        whereas letting it read Secrets is not.
+
+        Case is folded here for the same reason it is folded for namespaces: the guard tests
+        `_resource_spellings(token) & blocked`, and that helper lower-cases the *token* only.
+        Measured 2026-08-20 with `KUBECTL_BLOCKED_RESOURCES="ConfigMap"` — the spelling
+        Kubernetes itself uses for `kind:` — `kubectl get configmap`, `get ConfigMap`,
+        `get configmaps` and `get cm` were **all allowed**: the operator's entry matched nothing
+        at all. The credential floor was unaffected, so this under-blocks what an operator added
+        rather than unblocking Secrets.
+        """
+        return ALWAYS_BLOCKED_RESOURCES | frozenset(
+            r.strip().lower()
             for r in self.KUBECTL_BLOCKED_RESOURCES.split(",")
             if r.strip()
         )
@@ -166,6 +230,26 @@ class Settings(BaseSettings):
     REFLEXION_PATTERN_COOLDOWN_HOURS: int = 1
     REFLEXION_PATTERN_DECAY_DAYS: int = 30
 
+    # ── Agent loop budgets (safety, not tuning) ───────────────────────────────
+    # LangGraph 1.x defaults `recursion_limit` to 10007 (~3,300 ReAct steps), so
+    # an agent that fails to terminate keeps *acting* until it exhausts that. The
+    # read-only RCA subagents were already bounded (50, see agent/nodes/subagent.py);
+    # the coordinator — which holds the write-capable toolset — was not, and neither
+    # was the outer graph. These make both bounds explicit.
+    #
+    # Deliberately generous: they are a runaway backstop set well above any observed
+    # real usage, NOT a tuned budget. Tightening them needs usage evidence. Exhaustion
+    # halts and escalates to the operator with partial findings; it never truncates
+    # silently. Set to a smaller value to test the escalation path.
+    #
+    # Outer graph: a turn costs 3 steps + 2 per coordinator↔investigation cycle,
+    # so 120 allows ~58 cycles.
+    AGENT_GRAPH_RECURSION_LIMIT: int = Field(default=120, gt=0)
+    # Coordinator's inner ReAct loop: ~3 recursion units per step (LLM + tool call +
+    # tool response), so 150 allows ~50 tool calls in one coordinator turn — triple
+    # the read-only subagent's 50/~16, because the coordinator also orchestrates.
+    AGENT_COORDINATOR_RECURSION_LIMIT: int = Field(default=150, gt=0)
+
     # ── Flight recorder (V4 ADR-005) ──────────────────────────────────────────
     # Append-only, hash-chained decision_log of every non-token event, keyed by
     # episode (== session in V2 instrumentation). Fire-and-forget: an outage
@@ -177,6 +261,24 @@ class Settings(BaseSettings):
     # engine (zero-token known-failure detection). Degrades gracefully when
     # kubectl/RBAC is unavailable.
     SENSORIUM_ENABLED: bool = True
+    # Bounded buffer between the kubectl watch streams and the detector engine. Past this depth
+    # the OLDEST observation is dropped and a shed counter increments, so an overloaded sensorium
+    # reports lossy detection instead of growing until the container is OOMKilled. See
+    # app/sensorium/k8s_watcher.py and design/enterprise-readiness.md (A5).
+    SENSORIUM_QUEUE_MAXSIZE: int = 10000
+
+    # ── Leader election (multi-replica safety) ────────────────────────────────
+    # Every background worker here is a singleton by ASSUMPTION, enforced only by the chart's
+    # `replicaCount: 1`. Two replicas do not share perception work, they duplicate it: two watch
+    # streams, two engines firing the same finding, two watchtowers acting on it. See
+    # app/core/leader.py. With this on, exactly one replica runs them and the rest serve the API
+    # as warm standbys — which is what makes replicaCount > 1 (and therefore HA) safe at all.
+    #
+    # Default ON: it is a no-op for the single-replica deployments that exist today (an
+    # uncontended lock is acquired instantly at startup) and it is the only thing standing between
+    # a scaled Deployment and duplicated autonomous action against a live cluster.
+    LEADER_ELECTION_ENABLED: bool = True
+    LEADER_ELECTION_POLL_SECONDS: float = 10.0
 
     # ── Predictive / anticipatory detection (V4 ADR-010) ──────────────────────
     # Deterministic trend predicates: project a range-PromQL metric toward its
@@ -479,6 +581,22 @@ class Settings(BaseSettings):
     # Rotate to invalidate all outstanding demo keys instantly.
     # Generate: openssl rand -hex 32
     DEMO_KEY_HMAC_SECRET: str | None = None
+
+    # ── Production auth hardening ─────────────────────────────────────────────
+    # With no keys configured the server treats EVERY unauthenticated caller as `admin` (see
+    # app/api/v1/auth.py). That default is right for a first-run `kubeintellect serve` and
+    # catastrophic in a data centre: full HITL-gated write access to the cluster, granted
+    # silently, with nothing in the product looking wrong.
+    #
+    # REQUIRE_AUTH converts that silent grant into a loud startup failure. Off by default so the
+    # local quickstart is unchanged; the chart turns it on for any deployment that sets keys.
+    REQUIRE_AUTH: bool = False
+
+    # ── Self-observability ────────────────────────────────────────────────────
+    # Prometheus metrics about THIS process at /metrics: request rate, latency histogram, error
+    # ratio. The instrumentator dependency was declared but never mounted, so the component that
+    # watches every other workload was the one nobody could graph.
+    METRICS_ENABLED: bool = True
 
     # Default TTL for demo keys minted via POST /v1/auth/demo-keys.
     DEMO_KEY_DEFAULT_TTL_HOURS: int = Field(default=24 * 7)   # 7 days

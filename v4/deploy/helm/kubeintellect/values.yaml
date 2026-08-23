@@ -11,11 +11,23 @@ image:
 
 replicaCount: 1
 
-# How long a terminating pod may keep running after SIGTERM. On shutdown the server
-# immediately fails `/readyz` (503) and *then* closes its pools, so this is the window in
-# which Kubernetes propagates the Endpoints removal and in-flight requests finish. Too short
-# and a rolling update drops requests; the default is deliberately above the Kubernetes
-# default of 30s because that propagation is asynchronous.
+# How long the pod sleeps in its preStop hook before Kubernetes sends SIGTERM. This — not
+# the readiness probe — is what drains a rolling update. Removing a pod from Endpoints is
+# asynchronous: kube-proxy on every node has to observe it, and until it does, traffic keeps
+# arriving on the old route. The sleep holds the listening socket open across that gap.
+#
+# It cannot be done with readiness instead: uvicorn closes the socket the moment SIGTERM
+# arrives and only then runs the app's shutdown hook, so a probe mid-drain gets
+# ECONNREFUSED rather than a 503 and the late request is dropped, not served. Verified by
+# sending a real SIGTERM and probing (2026-08-19), not inferred.
+#
+# Set to 0 to disable the hook (single-replica dev, or a runtime with no /bin/sleep).
+drainSeconds: 5
+
+# Total shutdown budget: preStop sleep + in-flight requests + closing pools. Kubernetes
+# SIGKILLs at this deadline, and the preStop sleep is spent inside it — so this must stay
+# comfortably above `drainSeconds`, or the grace period expires mid-drain and the abrupt
+# kill reintroduces exactly the dropped requests the hook exists to prevent.
 terminationGracePeriodSeconds: 45
 
 service:
@@ -38,6 +50,64 @@ resources:
     cpu: "1"
     memory: 1Gi
 
+# ── Container hardening ───────────────────────────────────────────────────────
+# The pod-level securityContext further up only sets the UID. These are the controls that stop a
+# code-execution bug in a transitive dependency from becoming node compromise.
+#
+# readOnlyRootFilesystem defaults to FALSE and is opt-in: turning it on mounts emptyDirs at /tmp
+# and the kubectl cache (see deployment.yaml). Verify it in staging before production — a missed
+# write path fails on the first kubectl call and reads like an RBAC error.
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+# ── Availability ──────────────────────────────────────────────────────────────
+# Only rendered when replicaCount > 1. A PDB over a single replica makes that pod unevictable and
+# `kubectl drain` hangs forever — an availability feature that becomes an operational deadlock.
+# Multi-replica requires LEADER_ELECTION_ENABLED (the default), or the extra replicas duplicate
+# perception instead of sharing it. See app/core/leader.py.
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+  # minAvailable: 1        # set this OR maxUnavailable, not both
+
+# ── Network ───────────────────────────────────────────────────────────────────
+# Default-deny egress with an explicit allowlist. Off by default: a NetworkPolicy on a cluster
+# whose CNI does not enforce them (or with the wrong CIDRs) silently breaks the agent, and the
+# quickstart must not depend on the cluster's network plugin.
+networkPolicy:
+  enabled: false
+  ingressFrom:
+    - namespaceSelector: {}
+  apiServerCIDR: "0.0.0.0/0"        # narrow to the API server endpoint in production
+  monitoringNamespace: monitoring
+  databaseTo:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: kubeintellect-postgres
+  # A hosted LLM API has no stable IP range, so this cannot be pinned in general. Excluding
+  # RFC1918 still blocks lateral movement inside the cluster, which is the part that matters
+  # most here. Point it at your egress proxy to close outbound too.
+  llmEgressCIDR: "0.0.0.0/0"
+  llmEgressExcept:
+    - "10.0.0.0/8"
+    - "172.16.0.0/12"
+    - "192.168.0.0/16"
+
+# ── Metrics scraping ──────────────────────────────────────────────────────────
+# Requires the Prometheus Operator CRDs; installing the ServiceMonitor without them fails the
+# release outright, so this stays off unless the cluster runs the operator.
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  scrapeTimeout: 10s
+  additionalLabels: {}
+
 serviceAccount:
   name: kubeintellect-sa
 
@@ -52,6 +122,10 @@ rbac:
 # Non-secret config injected via ConfigMap
 config:
   logLevel: info
+  # Names this cluster in memory, findings and learned patterns. Leave empty for a single
+  # cluster; set it (e.g. "prod-eks-eu") whenever several clusters write to one database —
+  # an in-cluster pod cannot derive a name on its own. See docs/configuration.md.
+  clusterId: ""
   llmProvider: azure          # azure | openai | qwen | anthropic (anthropic is V4-cortex only)
   azureApiVersion: "2024-02-01"
   # Observability — URLs of Prometheus and Loki in the target cluster.
@@ -76,8 +150,30 @@ config:
   predictiveDetectionEnabled: false
   nlDetectorAuthoringEnabled: false
   postmortemLlmNarrative: false
+  # Arbitrary extra environment keys, merged verbatim into the ConfigMap.
+  #
+  # The named settings above cover the supported product surface. This is the escape hatch for
+  # the additive, default-off experimental flags (`MEMORY_*`, `KI_V5_*`, ADR-019) that exist in
+  # the image but have no dedicated value: without it an experiment arm cannot be deployed by
+  # Helm at all, only by editing the ConfigMap out of band — which `helm upgrade` then reverts.
+  #
+  # Keys are emitted as-is and quoted; booleans must be given as strings ("true"/"false"), which
+  # `--set-string` does for you. Anything set here is part of what distinguishes one build's
+  # BEHAVIOUR from another's, so it is reported by /healthz and belongs in a run's provenance.
+  #
+  #   helm upgrade ... --set-string config.extraEnv.MEMORY_KG_PPR=true
+  extraEnv: {}
   # Namespaces the agent kubectl tool will never read or modify.
-  # Override to add tenant-specific or environment-specific namespaces.
+  #
+  # ⚠️ Overriding this REPLACES the list — Helm does not merge lists. To add a namespace you
+  # must repeat every entry you still want blocked, or you will silently unblock the rest.
+  # There is deliberately no enforced floor here: deciding the agent may investigate
+  # `monitoring` is a legitimate operator choice.
+  #
+  # List each namespace in full. Case and surrounding whitespace do not matter, but there is
+  # NO glob support here (unlike autonomy.a3Allowlist): `kube-*` matches nothing and protects
+  # nothing. Entries that cannot match are logged at startup as `guard_config_unenforceable`
+  # and listed under `unenforceable_guard_config` in `GET /v1/v5/status` / `kq v5-status`.
   blockedNamespaces:
     - kubeintellect
     - monitoring
@@ -87,6 +183,16 @@ config:
     - ingress-nginx
     - cert-manager
   # Kubernetes resource types the agent will never access.
+  #
+  # Case and singular/plural do not matter (`ConfigMap`, `configmap` and `configmaps` are the
+  # same entry). kubectl SHORT NAMES are not derived — blocking `configmaps` does not block
+  # `cm`, so list the short name too if you want it covered.
+  #
+  # ⚠️ This also REPLACES rather than extends — but unlike namespaces, the four credential
+  # types below are re-added unconditionally by the server (`ALWAYS_BLOCKED_RESOURCES` in
+  # app/core/config.py) and cannot be configured away. Before that floor existed, adding
+  # `configmap` here removed `secret`, silently exposing every Secret in the cluster
+  # including this release's own API keys.
   blockedResources:
     - secret
     - secrets

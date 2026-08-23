@@ -32,9 +32,15 @@ os.environ.setdefault("OPENAI_API_KEY", "sk-test-dummy")
 
 # Force auth off by default so tests without the auth_settings fixture get
 # role="admin" without needing a Bearer token.
+# `auth_enabled` is true if ANY of the four key lists or the demo-key HMAC secret is set,
+# so all five must be cleared. Clearing three of them left a local .env's superadmin key (or
+# HMAC secret) switching auth back on while this comment claimed otherwise — harmless until
+# 2026-08-20, when the routes started actually enforcing it, and then 9 tests failed with 401.
 os.environ["KUBEINTELLECT_ADMIN_KEYS"] = ""
 os.environ["KUBEINTELLECT_OPERATOR_KEYS"] = ""
 os.environ["KUBEINTELLECT_READONLY_KEYS"] = ""
+os.environ["KUBEINTELLECT_SUPERADMIN_KEYS"] = ""
+os.environ["DEMO_KEY_HMAC_SECRET"] = ""
 
 # ── Stub langgraph postgres checkpointer ─────────────────────────────────────
 # AsyncPostgresSaver.from_conn_string is called inside init_graph() at startup.

@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.middleware import RequestLoggingMiddleware
-from app.api.v1.router import api_router
+from app.api.v1.router import api_router, public_router
 from app.core.config import settings
 from app.utils.logger import logger, setup_logging
 
@@ -29,6 +29,24 @@ async def lifespan(app: FastAPI):
     get_coordinator_llm()
     get_subagent_llm()
     logger.info(f"LLM provider: {settings.LLM_PROVIDER}")
+    # A guard entry that cannot match protects nothing, and every parser here discards
+    # silently. Logged loudly at startup and surfaced on GET /v1/v5/status; never fatal —
+    # an operator's typo must not take the agent offline, only become impossible to miss.
+    from app.core.config_audit import log_guard_config_problems
+
+    log_guard_config_problems()
+    # Fail fast, before the port opens. An operator who set REQUIRE_AUTH asked for exactly one
+    # thing: that this server never serve an unauthenticated request. Discovering the
+    # misconfiguration from a 401 in production is discovering it too late.
+    if settings.REQUIRE_AUTH and not settings.auth_enabled:
+        logger.error(
+            "Startup failed: REQUIRE_AUTH=true but no API keys are configured.\n\n"
+            "  Without keys every unauthenticated caller is treated as `admin` — full "
+            "HITL-gated write access to the cluster.\n"
+            "  Fix: set KUBEINTELLECT_ADMIN_KEYS / _OPERATOR_KEYS / _READONLY_KEYS "
+            "(or DEMO_KEY_HMAC_SECRET), or unset REQUIRE_AUTH for local development."
+        )
+        sys.exit(1)
     from app.agent.workflow import init_graph
     try:
         await init_graph()
@@ -48,27 +66,65 @@ async def lifespan(app: FastAPI):
     await init_recorder()
     from app.memory.service import init_memory
     await init_memory()
-    if settings.SENSORIUM_ENABLED:
+    # Singleton workers run on exactly ONE replica. Without this gate, scaling the Deployment
+    # duplicates perception rather than sharing it — two watch streams, two engines firing the
+    # same finding, two watchtowers acting on it against a live cluster. See app/core/leader.py.
+    async def _start_singleton_workers() -> None:
+        if not settings.SENSORIUM_ENABLED:
+            return
         from app.detectors.service import start_sensorium
         try:
             await start_sensorium()
         except Exception as exc:
             logger.warning(f"sensorium failed to start (continuing without): {exc}")
+
+    async def _stop_singleton_workers() -> None:
+        from app.detectors.service import stop_sensorium
+        try:
+            await stop_sensorium()
+        except Exception as exc:
+            logger.warning(f"sensorium failed to stop cleanly: {exc}")
+
+    from app.core import leader as _leader
+
+    dsn = settings.POSTGRES_DSN
+    if settings.LEADER_ELECTION_ENABLED and dsn:
+        election = _leader.LeaderElection(
+            dsn,
+            scope=settings.CLUSTER_ID or "",
+            poll_seconds=settings.LEADER_ELECTION_POLL_SECONDS,
+            on_acquire=_start_singleton_workers,
+            on_lose=_stop_singleton_workers,
+        )
+        app.state.leader_election = election
+        await election.start()
+    else:
+        # SQLite or election disabled: there is exactly one process by construction, so it leads.
+        # Recorded explicitly rather than left implicit — /healthz must never imply an election
+        # happened when none did.
+        app.state.leader_election = None
+        await _start_singleton_workers()
     # Everything above either succeeded or degraded deliberately — accept traffic.
     from app.core.readiness import set_ready
 
     set_ready(True)
     yield
-    # Fail readiness FIRST, before tearing anything down: Kubernetes removes the pod from
-    # Endpoints asynchronously, so the drain window is exactly the gap between this line and
-    # the connections closing below. Without it the probe answers 200 until process exit and
-    # in-flight routing keeps landing on a replica that is already closing its pools.
+    # Record that this process is no longer willing to serve. Note what this does NOT do:
+    # uvicorn has already closed the listening socket by the time it runs us, so no probe can
+    # observe the 503 and this cannot drain a rolling update. The chart's preStop sleep
+    # (`drainSeconds`) is the mechanism that does. See app/core/readiness.py.
     set_ready(False)
     logger.info("KubeIntellect V2 shutting down (readiness now failing — draining)")
     from app.agent.workflow import close_graph
     await close_graph()
+    # Workers FIRST, lock second. Releasing the lock first would let a standby acquire it and
+    # start its own watch stream while this pod's is still running — briefly producing exactly
+    # the duplicate perception the election exists to prevent.
     from app.detectors.service import stop_sensorium
     await stop_sensorium()
+    _election = getattr(app.state, "leader_election", None)
+    if _election is not None:
+        await _election.stop()
     from app.memory.service import close_memory
     await close_memory()
     from app.db.flight_recorder import close_recorder
@@ -170,7 +226,28 @@ app.add_middleware(
 )
 app.add_middleware(RequestLoggingMiddleware)
 
+# ── Self-metrics ──────────────────────────────────────────────────────────────────────────────
+# `prometheus-fastapi-instrumentator` has been a declared dependency for some time and nothing
+# ever mounted it: there was no /metrics endpoint, and app/api/middleware.py already excluded
+# /metrics from request logging as though one existed. The control plane that watches everyone
+# else's workloads was the one workload nobody could see — no request rate, no latency
+# histogram, no error ratio, so an operator could not answer "is KubeIntellect itself healthy?"
+# with anything better than a liveness probe that checks nothing by design.
+#
+# Unauthenticated on purpose: Prometheus scrapes it, and a scrape target that needs a bearer
+# token is a target that silently stops being scraped when the token rotates. It exposes request
+# counts and latencies only -- no cluster data, no prompts, no credentials. Restrict it with the
+# NetworkPolicy, which is the layer that can actually express "only the monitoring namespace".
+if settings.METRICS_ENABLED:
+    from prometheus_fastapi_instrumentator import Instrumentator
+
+    Instrumentator(
+        should_group_status_codes=False,      # 401 vs 403 vs 500 are different operational facts
+        excluded_handlers=["/metrics", "/healthz", "/readyz"],
+    ).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+
 from app.api.v1.endpoints.health import router as health_router
 
 app.include_router(health_router)          # /healthz — probe path (no version prefix)
+app.include_router(public_router, prefix=settings.API_V1_STR)  # /v1/healthz, /v1/readyz
 app.include_router(api_router, prefix=settings.API_V1_STR)

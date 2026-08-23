@@ -8,6 +8,14 @@
 
 New detectors enter SHADOW mode: they observe and accrue precision but never act
 until you promote them.
+
+Exit codes:
+  0  the operation succeeded (for `new`: the detector was staged in shadow)
+  1  the request failed
+  2  usage error
+  3  `new` only: the description was REJECTED — nothing was staged. The server answers
+     200 with staged=false and the compile errors, so the exit code is the only
+     machine-readable signal that no detector was created.
 """
 from __future__ import annotations
 
@@ -44,7 +52,8 @@ def run(argv: list[str]) -> int:
                 r = client.post(base, headers=headers, json={"description": description})
                 r.raise_for_status()
                 data = r.json()
-                if data.get("staged"):
+                staged = bool(data.get("staged"))
+                if staged:
                     console.print(
                         f"[green]Staged shadow detector[/green] [cyan]{data['name']}[/cyan]"
                     )
@@ -53,7 +62,12 @@ def run(argv: list[str]) -> int:
                     for err in data.get("errors", []):
                         console.print(f"  [red]·[/red] {err}")
                 console.print_json(json.dumps(data.get("compiled", {})))
-                return 0
+                # A rejected description is a 200 from the server (it compiled *something*, it just
+                # would not stage it), so the exit code is the only machine-readable signal that no
+                # detector was created. Returning 0 here told `kq detector new … && …` that a
+                # detector exists when none does — and the whole point of NL authoring is that the
+                # author cannot read the compiled predicate to check.
+                return 0 if staged else 3
 
             if sub == "list":
                 status = rest[1] if len(rest) == 2 and rest[0] == "--status" else None

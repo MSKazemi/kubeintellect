@@ -107,6 +107,16 @@ async def set_preference(
         return False
 
 
+class PreferenceStoreUnavailable(RuntimeError):
+    """Preferences could not be read — distinct from the user having none.
+
+    Both used to return `[]`, so `kq preference list` printed "No preferences remembered" during a
+    database outage. Preferences shape how the agent behaves, so an operator reading that has every
+    reason to re-enter them or conclude the feature is broken. Same treatment as
+    `detectors.review.DetectorStoreUnavailable` (pass 45).
+    """
+
+
 async def recall_preferences(user_id: str, k: int = 8) -> list[dict[str, Any]]:
     """Active preferences for this user — explicit first, then confident/recent.
 
@@ -137,7 +147,7 @@ async def recall_preferences(user_id: str, k: int = 8) -> list[dict[str, Any]]:
         return [dict(r) for r in rows]
     except Exception as exc:
         logger.warning(f"preferences: recall failed: {exc}")
-        return []
+        raise PreferenceStoreUnavailable(f"preference store query failed: {exc}") from exc
 
 
 def render_preferences_block(prefs: list[dict]) -> str:

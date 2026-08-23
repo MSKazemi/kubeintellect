@@ -23,10 +23,11 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from app.core.config import settings
 from app.db import flight_recorder
 from app.detectors.models import DetectBlock, Finding, TrendPredicate
 from app.sensorium.observations import Observation
-from app.tools.prometheus_tool import query_prometheus_range_raw
+from app.tools.prometheus_tool import query_prometheus_series
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -64,6 +65,11 @@ class DetectorEngine:
     _shadow_states: dict[tuple[str, str, str], _KeyState] = field(default_factory=dict)
     _predicted_fired: dict[tuple[str, str, str], float] = field(default_factory=dict)
     _tick_task: asyncio.Task | None = None
+    # Predictive-detection visibility (ADR-010). None ⇒ the last trend sweep reached Prometheus.
+    # Set ⇒ it did not, and every "no prediction" since then is an absence of evidence, not
+    # evidence of absence. Surfaced by GET /v1/findings as `predictive: blind`.
+    trend_blind_since: float | None = None
+    last_trend_error: str | None = None
 
     # ── Stream input ──────────────────────────────────────────────────────────
 
@@ -221,20 +227,38 @@ class DetectorEngine:
         """Project each trend predicate's metric and fire `predicted` findings.
 
         Zero-token: the only work is a range PromQL fetch + a least-squares slope.
-        Fail-open: a Prometheus outage or malformed series yields no findings,
-        never an exception. Predicted findings are capped at A1 in the watchtower.
+        Fail-open: a Prometheus outage or malformed series yields no findings, never an
+        exception. Predicted findings are capped at A1 in the watchtower.
+
+        Fail-open, but **not fail-silent**. A layer whose entire job is to warn before a failure
+        is worthless if it stops warning without saying so, and that is what happened: the
+        outage arrived as the discarded half of a tuple, so `trend_blind_since` /
+        `last_trend_error` now hold it and `GET /v1/findings` reports `predictive: blind`.
         """
         now = now if now is not None else time.time()
         fired: list[Finding] = []
         for det in self.detectors:
             for tp in det.trend_predicates:
                 try:
-                    series = await asyncio.to_thread(
-                        query_prometheus_range_raw, tp.metric, tp.window_minutes
+                    series, query_error = await asyncio.to_thread(
+                        query_prometheus_series, tp.metric, tp.window_minutes
                     )
                 except Exception as exc:
-                    logger.warning(f"trend_query_error playbook={det.playbook}: {exc}")
+                    query_error, series = str(exc), []
+                if query_error is not None:
+                    # Not "nothing is trending" — "nobody asked". `_query_raw` never raises, so
+                    # the exception handler above could not see a Prometheus outage at all: the
+                    # error came back as the discarded half of a tuple, the loop saw `[]`, and
+                    # the predictive layer went silent with no finding and no log line.
+                    self.trend_blind_since = self.trend_blind_since or now
+                    self.last_trend_error = query_error
+                    logger.warning(
+                        f"trend_query_unavailable playbook={det.playbook} "
+                        f"metric={tp.metric[:80]!r}: {query_error}"
+                    )
                     continue
+                self.trend_blind_since = None
+                self.last_trend_error = None
                 for s in series or []:
                     finding = self._project_series(det, tp, s, now)
                     if finding is not None:
@@ -377,11 +401,34 @@ def _series_target(series: dict, object_label: str | None) -> tuple[str, str]:
     return namespace, name
 
 
+# A Kubernetes event `message` is arbitrary cluster text: mount failures name Secrets, image
+# pulls name registries and auth errors, probe failures quote URLs and payloads. Every other
+# field a finding carries is an enum or an object name; this one is not.
+_WITHHELD_MESSAGE = "<withheld: protected namespace>"
+
+
 def _summarise(obs: Observation) -> str:
+    """One line of evidence for a finding.
+
+    **The sensorium watches cluster-wide and the blocklist does not reach it** — by design: it
+    runs `kubectl get pods -A --watch` as a raw subprocess, not through `run_kubectl`, and it has
+    to, or the watchtower could not tell a quiet cluster from an unwatched one (pass 80). But
+    until 2026-08-20 the *free text* came with it: a finding in `kube-system`, `monitoring` or
+    `kubeintellect` carried up to 140 characters of raw event message, and `GET /v1/findings`
+    returns it to every caller without consulting a role at all — while the RBAC table in
+    `docs/security.md` said infrastructure-namespace reads were **Blocked** for admin, operator
+    and readonly alike.
+
+    The signal is kept, because an operator does need to know coredns is crash-looping and
+    dropping the finding would blind the digest. The arbitrary text is not: `reason` is a
+    Kubernetes-defined enum and survives, the message does not.
+    """
     if obs.kind == "pod_status":
         return f"pod status={obs.fields.get('status', '')}"
     if obs.kind == "event":
         reason = obs.fields.get("reason", "")
+        if obs.namespace.strip().lower() in settings.kubectl_blocked_namespaces:
+            return f"event reason={reason} message={_WITHHELD_MESSAGE}"
         message = obs.fields.get("message", "")[:140]
         return f"event reason={reason} message={message}"
     if obs.kind == "node_status":
@@ -406,9 +453,12 @@ def _is_detect_block(predicate: object) -> bool:
 
     (Consolidation 'learned' rows store {derived_from_playbooks, pattern} — those
     are not detect blocks and are skipped.)
+
+    ``promql`` is not in the list: nothing evaluates it, so a row carrying only
+    PromQL compiles to a detector that can never fire. See ``parse_detect_block``.
     """
     return isinstance(predicate, dict) and any(
-        k in predicate for k in ("watch_predicates", "promql", "trend_predicates")
+        k in predicate for k in ("watch_predicates", "trend_predicates")
     )
 
 

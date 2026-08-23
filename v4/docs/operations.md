@@ -81,9 +81,15 @@ Standard PostgreSQL tooling — nothing KubeIntellect-specific:
 # Backup
 pg_dump "$DATABASE_URL" > kubeintellect-$(date +%F).sql
 
-# Restore
-psql "$DATABASE_URL" < kubeintellect-2026-01-01.sql
+# Restore — keep both flags; see the warning below
+psql -v ON_ERROR_STOP=1 --single-transaction "$DATABASE_URL" -f kubeintellect-2026-01-01.sql
 ```
+
+!!! warning "A restore without `ON_ERROR_STOP=1` can report success and restore nothing"
+    psql's default is to print an error, continue to the next statement, and **exit 0**. A restore
+    is exactly where that matters: you are running it during an incident, and a half-restored
+    database that reported success is discovered later, by its consequences.
+    `--single-transaction` makes the restore atomic — you get all of it or none of it.
 
 In SQLite mode, the entire database is a single file — copy
 `~/.kubeintellect/kubeintellect.db` while the server is stopped.
@@ -212,6 +218,26 @@ helm upgrade --install kubeintellect deploy/helm/kubeintellect \
 The schema uses additive migrations; back up the database before a major upgrade
 (above). Watch the rollout with `kubectl rollout status deploy/kubeintellect -n
 kubeintellect` — or ask KubeIntellect itself.
+
+### Confirming the migration actually applied
+
+The `job-db-init` Job is the schema's only enforcement point, so check it rather than assuming:
+
+```bash
+kubectl get job -n kubeintellect -l app.kubernetes.io/name=kubeintellect
+kubectl logs -n kubeintellect job/kubeintellect-db-init
+```
+
+The Job runs `psql` with `ON_ERROR_STOP=1 --single-transaction`, so it is **all-or-nothing**: it
+either applies the whole schema and completes, or applies none of it and is marked `Failed`. A
+`Failed` Job means the schema is unchanged and safe to retry once the cause is fixed — most often
+that the database role lacks `CREATE` on `public`, which is common on managed instances.
+
+!!! note "Before 2026-08-20 this Job could not fail"
+    It ran `psql -f` without those flags. psql's default is to report an error, continue, and exit
+    0 — so a migration that applied nothing still produced a `Succeeded` Job and a `deployed`
+    release. If you are upgrading from an older chart, confirm the schema is current by re-running
+    the upgrade: the Job is idempotent, and now it tells you the truth.
 
 ---
 

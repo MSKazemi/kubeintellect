@@ -26,6 +26,17 @@ async def _get_conn() -> asyncpg.Connection:
     return await asyncpg.connect(settings.POSTGRES_DSN)
 
 
+class MemoryStoreUnavailable(RuntimeError):
+    """The pinned V4 memory context could not be loaded — not the same as having none.
+
+    `load_memory_context` returned `""` for both, and `""` is exactly what a brand-new user with no
+    preferences, no failure hints, no session notes and no past RCA produces. So a Postgres outage
+    reached the coordinator as a clean slate: no preferences to honour, no prior RCA to build on,
+    and nothing anywhere saying the lookup had failed. Sibling of `episodes.MemoryUnavailable`
+    (pass 46) — this is the other half of the same SystemMessage.
+    """
+
+
 async def load_memory_context(user_id: str, session_id: str) -> str:
     """Return a pinned context string ≤500 tokens for the coordinator SystemMessage."""
     if settings.USE_SQLITE:
@@ -44,7 +55,7 @@ async def load_memory_context(user_id: str, session_id: str) -> str:
             await conn.close()
     except Exception as exc:
         logger.warning(f"memory_store: could not load context — {exc}")
-        return ""
+        raise MemoryStoreUnavailable(f"pinned memory context unavailable: {exc}") from exc
 
     combined = "\n\n".join(p for p in parts if p.strip())
     if len(combined) > _MAX_CONTEXT_CHARS:

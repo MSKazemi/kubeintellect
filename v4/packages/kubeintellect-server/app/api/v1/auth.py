@@ -68,9 +68,38 @@ def mint_demo_key(email: str, ttl_seconds: int) -> tuple[str, int]:
     return f"ki-ro-{payload}.{sig}", exp
 
 
+def _matches(token: str, keys: set[str]) -> bool:
+    """Constant-time membership test.
+
+    `token in keys` is a hash lookup, and `==` on the way to it compares byte-by-byte with an
+    early exit, so response time varies with how many leading bytes of a valid key the attacker
+    guessed. That is a practical oracle for recovering a key one byte at a time over enough
+    samples. `hmac.compare_digest` takes the same time regardless of where the mismatch is.
+
+    The loop itself still short-circuits — that leaks only WHICH ROLE matched, never key content,
+    and the role is about to be returned to the caller anyway.
+    """
+    return any(hmac.compare_digest(token, k) for k in keys)
+
+
 def get_user_role(request: Request) -> str:
-    """Return "admin", "operator", or "readonly" for the request, or raise HTTP 401."""
+    """Return "superadmin", "admin", "operator", or "readonly", or raise HTTP 401."""
     if not settings.auth_enabled:
+        # FAIL-OPEN, and deliberately so for local development: a first-run `kubeintellect serve`
+        # with no keys configured must work. The danger is that the same default in a data centre
+        # silently grants every unauthenticated caller `admin` — full HITL-gated write access to
+        # the cluster — and nothing in the product would look wrong. REQUIRE_AUTH is the switch an
+        # enterprise deployment sets so that configuration becomes a startup failure instead of a
+        # silent privilege grant. Checked here too, not only at startup: config can be reloaded,
+        # and a gate that exists in exactly one place is a gate with a single point of failure.
+        if settings.REQUIRE_AUTH:
+            raise HTTPException(
+                status_code=401,
+                detail=(
+                    "REQUIRE_AUTH is set but no API keys are configured — refusing to treat an "
+                    "unauthenticated caller as admin."
+                ),
+            )
         return "admin"
 
     auth = request.headers.get("Authorization", "")
@@ -82,15 +111,15 @@ def get_user_role(request: Request) -> str:
 
     token = auth.removeprefix("Bearer ").strip()
 
-    if token in settings.superadmin_keys:
+    if _matches(token, settings.superadmin_keys):
         return "superadmin"
-    if token in settings.admin_keys:
+    if _matches(token, settings.admin_keys):
         return "admin"
-    if token in settings.operator_keys:
+    if _matches(token, settings.operator_keys):
         return "operator"
 
     # Readonly: static list first, then HMAC (when AUTH_BACKEND=hmac)
-    if token in settings.readonly_keys:
+    if _matches(token, settings.readonly_keys):
         return "readonly"
     if settings.AUTH_BACKEND == "hmac" and _verify_hmac_demo_key(token):
         return "readonly"

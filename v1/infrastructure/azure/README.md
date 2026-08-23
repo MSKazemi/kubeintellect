@@ -377,8 +377,7 @@ Options:
 ## 👤 **Author & Support**
 
 **Created by**: [Mohsen Seyedkazemi Ardebili](https://github.com/MSKazemi)  
-**Email**: [mohsen.seyedkazemi@unibo.it](mailto:mohsen.seyedkazemi@unibo.it)  
-**Institution**: University of Bologna
+**Email**: [mohsen.seyedkazemi@gmail.com](mailto:mohsen.seyedkazemi@gmail.com)
 
 ### **Contributing**
 1. Fork the repository

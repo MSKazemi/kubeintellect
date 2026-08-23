@@ -102,6 +102,7 @@ class AgentState(TypedDict):
     snapshot_has_issues: bool       # any pod NOT in Running/Completed/Succeeded
     snapshot_has_warnings: bool     # any Warning event in the snapshot
     snapshot_pod_count: int         # total pods seen in snapshot
+    snapshot_read_failed: bool      # the kubectl read failed — the flags above mean nothing
     snapshot_built_at: float        # unix timestamp when context_fetcher ran
 
     # ── Investigation plan ────────────────────────────────────────────────────

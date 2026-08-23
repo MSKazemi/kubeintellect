@@ -318,8 +318,9 @@ image/resources`, `drain`) **always** require confirmation, even in auto-approve
     run without asking. Use it only in test environments. See
     [CLI Reference → `kq --auto-approve`](cli-reference.md#kq-auto-approve).
 
-To approve every write for the rest of a session, say `approve all` / `auto-approve`
-in the REPL. Full rules:
+To approve every write **for the rest of the current turn**, say `approve all` /
+`auto-approve` in the REPL — the next question starts gated again. For a whole session, start
+`kq --auto-approve` (test environments only). Full rules:
 [Capabilities → Safe changes](capabilities.md#safe-changes-human-in-the-loop) and
 [Autonomous Operations](autonomy.md), which govern how far the agent may go *without*
 you when it opens its own investigations.
@@ -422,7 +423,7 @@ Usage:
   kq replay <episode_id>          # episode_id == session_id (see /id in the REPL)
 ```
 
-`--help` is local, but `kq replay` itself calls the server: it fetches `GET /v1/episodes/{id}/replay` and re-renders the recorded events, then prints a chain-integrity verdict. **It exits `3` when the chain is broken**, which is what makes it usable as an audit step in a script or in CI rather than something a human has to eyeball.
+`--help` is local, but `kq replay` itself calls the server: it fetches `GET /v1/episodes/{id}/replay` and re-renders the recorded events, then prints a chain-integrity verdict. **It exits `3` when the chain is broken** and **`5` when the chain is intact but the recorder lost events**, which is what makes it usable as an audit step in a script or in CI rather than something a human has to eyeball. The two are different answers: `3` says the record may have been altered, `5` says it is genuine but not the whole sequence.
 
 See [CLI Reference → `kq replay`](cli-reference.md#kq-replay-session-id) and [Flight Recorder & Replay](flight-recorder.md) for how the chain is built.
 
@@ -477,14 +478,16 @@ has no events for the episode, this command exports nothing and says so, rather
 than emitting a plausible-looking empty report.
 
 Exit codes:
-  0  exported, audit chain intact
+  0  exported, audit chain intact and the episode is complete
   1  fetch or write failed
   2  usage error
   3  exported, but the audit chain is BROKEN (matches `kq replay`)
   4  no recorded events for that episode — nothing exported
+  5  exported, chain intact, but the episode is INCOMPLETE — the recorder lost events
+     and recorded the loss (`recorder_gap`). Matches `kq replay`.
 ```
 
-`--help` is local; the export itself pulls the postmortem from the server. The exit codes are the contract worth knowing: `3` means the document was written but its audit chain is **broken**, and `4` means the recorder held no events for that episode, so nothing was written at all — deliberately, instead of emitting an empty report that looks like a clean bill of health.
+`--help` is local; the export itself pulls the postmortem from the server. The exit codes are the contract worth knowing: `3` means the document was written but its audit chain is **broken**; `4` means the recorder held no events for that episode, so nothing was written at all — deliberately, instead of emitting an empty report that looks like a clean bill of health; and `5` means the document is genuine but has holes in it, because the recorder lost events and said so.
 
 See [CLI Reference → `kq export`](cli-reference.md#kq-export-session-id).
 

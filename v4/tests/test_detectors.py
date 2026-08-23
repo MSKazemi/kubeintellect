@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import time
 
+import pytest
+
 from app.detectors.engine import DetectorEngine, load_detectors
 from app.detectors.models import parse_detect_block
 from app.sensorium.k8s_watcher import _JsonStream
@@ -440,16 +442,107 @@ class TestFindingsEndpoint:
         assert response.json()["sensorium"] == "disabled"
 
     async def test_findings_active(self, mocker):
+        """`active` now requires a connected watch stream, not merely an engine object.
+
+        This test constructed an engine and asserted "active" — which was true under the old
+        meaning (an engine exists) and is not under the corrected one (something is being
+        watched). It registers a connected stream so it still tests what it was written to
+        test: that fired findings reach the endpoint. `test_findings_engine_without_a_stream_
+        is_not_active` below covers the case this assertion used to hide.
+        """
         from app.main import app
+        from app.sensorium import k8s_watcher
         from httpx import ASGITransport, AsyncClient
 
         mocker.patch("app.detectors.engine.flight_recorder.record")
         engine = _engine({**CRASHLOOP, "debounce_seconds": 0})
         engine.process(_obs(status="CrashLoopBackOff"))
         mocker.patch("app.api.v1.endpoints.findings.get_engine", return_value=engine)
+        health = k8s_watcher.StreamHealth("get pods -A")
+        health.connected = True
+        mocker.patch.dict(k8s_watcher._streams, {"get pods -A": health}, clear=True)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
             response = await client.get("/v1/findings")
         body = response.json()
         assert body["sensorium"] == "active"
         assert len(body["findings"]) == 1
         assert body["findings"][0]["playbook"] == "TestPB"
+
+    async def test_findings_engine_without_a_stream_is_not_active(self, mocker):
+        """The defect the assertion above used to conceal."""
+        from app.main import app
+        from app.sensorium import k8s_watcher
+        from httpx import ASGITransport, AsyncClient
+
+        mocker.patch("app.detectors.engine.flight_recorder.record")
+        engine = _engine({**CRASHLOOP, "debounce_seconds": 0})
+        mocker.patch("app.api.v1.endpoints.findings.get_engine", return_value=engine)
+        mocker.patch.dict(k8s_watcher._streams, {}, clear=True)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+            response = await client.get("/v1/findings")
+        assert response.json()["sensorium"] != "active"
+
+
+class TestDetectorInventoryNeverFakesAnEmptyAnswer:
+    """"No detectors" and "I could not read the detector store" must not look identical.
+
+    `review.list_detectors` returned `[]` for a missing pool AND for a failed query, so
+    `GET /v1/detectors` answered `200 {"detectors": []}` either way and `kq detector list` printed
+    "No detectors." — telling an operator their cluster has no coverage when the truth was that the
+    question was never answered. The only trace was a server-side log warning.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_missing_pool_raises_rather_than_answering_empty(self, monkeypatch):
+        from app.memory import service
+        from app.detectors import review
+
+        monkeypatch.setattr(service, "_pool", None, raising=False)
+        with pytest.raises(review.DetectorStoreUnavailable):
+            await review.list_detectors()
+
+    @pytest.mark.asyncio
+    async def test_a_failed_query_raises_rather_than_answering_empty(self, monkeypatch):
+        from app.memory import service
+        from app.detectors import review
+
+        class _Boom:
+            async def fetch(self, *a, **k):
+                raise RuntimeError("connection reset")
+
+        monkeypatch.setattr(service, "_pool", _Boom(), raising=False)
+        with pytest.raises(review.DetectorStoreUnavailable):
+            await review.list_detectors()
+
+    @pytest.mark.asyncio
+    async def test_a_readable_but_empty_store_is_still_an_empty_list(self, monkeypatch):
+        """The fix must not turn a legitimate "you have none" into an error."""
+        from app.memory import service
+        from app.detectors import review
+
+        class _Empty:
+            async def fetch(self, *a, **k):
+                return []
+
+        monkeypatch.setattr(service, "_pool", _Empty(), raising=False)
+        assert await review.list_detectors() == []
+
+    @pytest.mark.asyncio
+    async def test_the_endpoint_answers_503_not_an_empty_200(self, monkeypatch):
+        from httpx import ASGITransport, AsyncClient
+
+        from app.core.config import settings
+        from app.detectors import review
+        from app.main import app
+
+        monkeypatch.setattr(settings, "NL_DETECTOR_AUTHORING_ENABLED", True, raising=False)
+
+        async def _boom(*a, **k):
+            raise review.DetectorStoreUnavailable("no memory pool")
+
+        monkeypatch.setattr(review, "list_detectors", _boom)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.get("/v1/detectors")
+        assert r.status_code == 503
+        assert "detectors" not in r.json()

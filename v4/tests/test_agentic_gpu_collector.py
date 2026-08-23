@@ -39,10 +39,12 @@ class TestCollect:
         kinds = {h.kind for h in hits}
         assert "agent-runaway" in kinds and "gpu-unschedulable" in kinds
 
-    def test_scalar_exception_safe(self):
-        def boom(q):
-            raise RuntimeError("prom down")
-        # collector itself doesn't catch a raising injected scalar, but the DEFAULT scalar does;
-        # verify the default path swallows errors → 0 → no hit.
+    def test_unreadable_metrics_are_none_not_zero(self):
+        """CHANGED 2026-08-20 (pass 79). This asserted `_default_scalar("anything") == 0.0` and
+        called it "swallows errors → 0 → no hit" — which is the defect, written down as a
+        feature: with Prometheus unreachable every signal read 0.0, including
+        `sandbox_escape_attempts`, and `collect_and_detect()` returned `[]`, i.e. "healthy".
+        The seam now answers None for "I could not ask"; 0.0 means the query was answered.
+        """
         from app.detectors.agentic_gpu_collector import _default_scalar
-        assert _default_scalar("anything") == 0.0
+        assert _default_scalar("anything") is None

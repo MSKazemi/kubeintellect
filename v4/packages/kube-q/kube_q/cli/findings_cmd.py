@@ -48,15 +48,51 @@ def run(argv: list[str]) -> int:
         console.print(f"[red]Findings fetch failed:[/red] {exc}")
         return 1
 
-    if data.get("sensorium") != "active":
+    state = data.get("sensorium")
+    if state == "disabled":
         console.print("[yellow]Sensorium is disabled on this server.[/yellow]")
         return 0
+    if state != "active":
+        # No watch stream is connected, so an empty list is "not watching", not
+        # "nothing wrong". Never print the reassuring green line here.
+        console.print(
+            f"[red]Sensorium is not watching[/red] (state: {state}) — "
+            "an empty result here does NOT mean the cluster is healthy."
+        )
+        for st in data.get("streams", []):
+            mark = "stopped" if st.get("stopped") else "reconnecting"
+            console.print(
+                f"  [yellow]•[/yellow] {st.get('name', '?')}: {mark}"
+                f" — {st.get('last_error') or 'no reason recorded'}"
+            )
+        if not data.get("streams"):
+            console.print("  [yellow]•[/yellow] no watch streams have started yet")
+
+    # `predictive` is an independent claim from `sensorium`: the watch stream can be
+    # connected while Prometheus is unreachable, in which case no anticipatory
+    # (ADR-010) detector *could* have fired. Blind is not clear.
+    predictive = data.get("predictive")
+    if predictive == "blind":
+        console.print(
+            "[red]Predictive detection is blind[/red] — Prometheus could not be queried, "
+            "so no predicted finding could have fired."
+        )
+        console.print(
+            f"  [yellow]•[/yellow] {data.get('predictive_error') or 'no reason recorded'}"
+        )
 
     findings = data.get("findings", [])
     if not findings:
-        console.print(
-            f"[green]No findings[/green] · {data.get('detectors', '?')} detectors watching"
-        )
+        if state == "active" and predictive != "blind":
+            console.print(
+                f"[green]No findings[/green] · {data.get('detectors', '?')} detectors watching"
+            )
+        elif state == "active":
+            # Watching, but half-blind — say what is and is not covered.
+            console.print(
+                f"[yellow]No findings[/yellow] · {data.get('detectors', '?')} detectors watching, "
+                "but predictive detection is blind — this is not an all-clear."
+            )
         return 0
 
     table = Table(title=f"Findings ({len(findings)})")

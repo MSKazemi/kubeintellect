@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 
 from app.agent.state import AgentState
-from app.db.memory_store import load_memory_context
+from app.db.memory_store import MemoryStoreUnavailable, load_memory_context
 from app.streaming.emitter import StatusEvent, emit
 from app.utils.logger import get_logger
 
@@ -37,8 +37,23 @@ async def _hierarchy_context(state: AgentState) -> str:
             query_text = content
             break
 
-    recalled = await episodes.recall_episodes(query_text, cluster_id, k=3)
     parts = []
+    memory_degraded = False
+    try:
+        recalled = await episodes.recall_episodes(query_text, cluster_id, k=3)
+    except episodes.MemoryUnavailable as exc:
+        # Do NOT fail the turn: an investigation with no memory is still worth far more than no
+        # investigation. But do not let the model read the absence as evidence either — silently
+        # omitting the block is what made a Postgres outage look like "this cluster has no history".
+        logger.warning(f"memory_recall_unavailable cluster={cluster_id}: {exc}")
+        recalled = []
+        memory_degraded = True
+        parts.append(
+            "## Memory unavailable\n"
+            "Recall of past episodes for this cluster FAILED — this is not the same as there being "
+            "none. Do not state or assume that this issue has no precedent; say that prior history "
+            "could not be checked."
+        )
     block = episodes.render_recall_block(recalled)
     if block:
         parts.append(block)
@@ -60,7 +75,8 @@ async def _hierarchy_context(state: AgentState) -> str:
     elapsed_ms = (time.perf_counter() - started) * 1000
     logger.info(
         f"memory_hierarchy_injected ms={elapsed_ms:.1f} "
-        f"episodes={len(recalled)} themes={len(themes)}"
+        f"episodes={len(recalled)} themes={len(themes)} "
+        f"degraded={memory_degraded}"
     )
     return "\n\n".join(parts)
 
@@ -78,7 +94,18 @@ async def memory_loader(state: AgentState) -> dict:
 
     logger.debug(f"memory_loader: loading context for user={user_id} session={session_id}")
 
-    context = await load_memory_context(user_id=user_id, session_id=session_id)
+    try:
+        context = await load_memory_context(user_id=user_id, session_id=session_id)
+    except MemoryStoreUnavailable as exc:
+        # Same contract as the hierarchy block: degrade the turn, never fail it — but never let the
+        # model read the empty context as "this user has no preferences and no prior incidents".
+        logger.warning(f"memory_store_unavailable session={session_id}: {exc}")
+        context = (
+            "## Memory unavailable\n"
+            "Stored operator preferences, failure hints and past RCA could NOT be loaded — this is "
+            "not the same as there being none. Do not assume the user has no preferences or that "
+            "this issue has no precedent; say that stored history could not be checked."
+        )
     hierarchy = await _hierarchy_context(state)
     if hierarchy:
         context = f"{context}\n\n{hierarchy}" if context else hierarchy

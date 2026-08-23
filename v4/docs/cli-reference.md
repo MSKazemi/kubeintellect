@@ -241,7 +241,8 @@ KUBE_Q_URL=http://localhost:8000 KUBE_Q_API_KEY=<your-key> kq
 
 Inside the REPL, approve a pending write operation by typing `yes` (or
 `/approve`); reject it with `no` (or `/deny`). To approve every write for the
-session, say `approve all` / `auto-approve`. See
+rest of the current **turn**, say `approve all` / `auto-approve` — it does not carry over to
+your next question; use `kq --auto-approve` for a whole session. See
 [Agent Behaviors → HITL](agent-behaviors.md#always-confirm-gate-overrides-auto_approve)
 for what always requires confirmation.
 
@@ -295,9 +296,21 @@ kq replay demo-1          # session ID == the value shown by /id in the REPL
 
 | Exit code | Meaning |
 |---|---|
-| `0` | Replay rendered; chain intact. |
+| `0` | Replay rendered; chain **verified intact** and the episode is complete. |
 | `1` | No recorded episode with that ID, or the request failed. |
 | `3` | Replay rendered, but the hash chain is **broken** — records may have been tampered with. |
+| `4` | Replay rendered, but the chain was **not verified**: the server's integrity verdict never arrived. The records shown are unverified. |
+| `5` | Chain intact, but the episode is **incomplete** — the recorder lost events and recorded the loss (`recorder_gap`). |
+
+`4` exists because unverified is not the same as intact. If the verdict frame is missing or
+unparseable, the command says so and fails closed rather than returning `0` — so a script that
+gates on `kq replay ... && promote` cannot mistake a missing check for a passed one.
+
+`5` exists because *intact* is not the same as *complete*. A hash chain proves no stored
+record was altered; it cannot prove a record that was never stored is missing. The recorder is
+fire-and-forget, so it writes its own losses into the chain
+([flight recorder](flight-recorder.md#tamper-evidence)) and this command surfaces them with
+the count and the cause rather than printing a clean ✓.
 
 ### `kq findings [--limit N]`
 
@@ -306,6 +319,24 @@ List recent detector firings from the server
 without any LLM calls by the detector engine watching the cluster. Prints a
 table of fired-at time, playbook, namespace, object, and evidence; if the
 sensorium is disabled server-side, says so and exits `0`.
+
+**It prints the green `No findings` line only when the sensorium is actually
+watching.** If no watch stream is connected — disabled, starting, reconnecting
+after an RBAC denial, or stopped because kubectl is missing on the server — it
+says *"Sensorium is not watching … an empty result here does NOT mean the
+cluster is healthy"* and lists each stream with the reason it is down. The
+command still exits `0`; branch on `sensorium` in
+[`GET /v1/findings`](api-reference.md#get-v1findings) if a script needs to
+react.
+
+**The same holds one instrument over.** Anticipatory detection (ADR-010) sees through
+Prometheus, not through the watch stream, so the two can disagree: the sensorium can be
+`active` while Prometheus is unreachable, in which case no *predicted* finding could have
+fired. When the server reports `predictive: blind`, the command prints *"Predictive
+detection is blind — Prometheus could not be queried"* with the reason, and downgrades the
+summary line to *"N detectors watching, but predictive detection is blind — this is not an
+all-clear"*. `predictive: off` (the default — `PREDICTIVE_DETECTION_ENABLED` is `false`) is
+a configuration, not an outage, and stays quiet.
 
 ```bash
 kq findings               # last 100 findings
@@ -323,6 +354,17 @@ spend cap. Zero LLM calls. With all v5 flags off it reports the v4 baseline.
 kq v5-status
 ```
 
+If you set a flag that **no code reads**, it will not appear under `active_flags` — it is listed
+in a red `set_but_unwired_flags` row instead, with `these settings have no effect`. That row is
+absent when there is nothing to warn about. See
+[v5 experimental flags](v5-experimental-flags.md) for which flags are in that state and why.
+
+A second red row, `unenforceable_guard_config`, does the same for the **guard** settings: a
+`KUBECTL_BLOCKED_NAMESPACES` entry that is not a legal namespace name, or an autonomy override
+the parser drops. Those settings are the outermost blast-radius control, and every parser for
+them discards silently — so an entry that can never match leaves you believing a namespace is
+protected when nothing enforces it.
+
 ### `kq digest [--hours N]`
 
 Render the server's digest of the last N hours as markdown
@@ -335,9 +377,24 @@ kq digest                 # last 24 hours
 kq digest --hours 8
 ```
 
+**It says *"Quiet watch"* only when the sources were readable and something was
+actually watching.** Otherwise it leads with `Digest INCOMPLETE … This is NOT a
+quiet watch:` and a block naming every source that could not answer — a disabled
+recorder, SQLite mode, a failed query, a disconnected watch stream, or blind
+predictive detection. It shares that last judgement with
+[`kq findings`](#kq-findings-limit-n), so the two commands cannot disagree about
+whether the same window was covered. Exit stays `0`; branch on `degraded` in the
+JSON form.
+
 | Flag | Default | Meaning |
 |---|---|---|
 | `--hours N` | `24` | Look-back window in hours (the server caps it at `168`). |
+
+If a source could not be read — recorder disabled, SQLite mode, watchtower off,
+or a failed query — the output leads with **⚠️ This digest is incomplete — do not
+read it as an all-clear** and names each reason, instead of reporting a quiet
+watch. The command still exits `0`; branch on `degraded` in
+[`GET /v1/digest`](api-reference.md#get-v1digest) JSON if a script needs to react.
 
 ### `kq postmortem <session-id>`
 
@@ -378,11 +435,12 @@ command reports that instead of emitting an empty-but-plausible report.
 
 | Exit code | Meaning |
 |---|---|
-| `0` | Exported; audit chain intact. |
+| `0` | Exported; audit chain intact and the episode complete. |
 | `1` | Fetch or write failed. |
 | `2` | Usage error. |
 | `3` | Exported, but the **audit chain is broken** — treat the export as untrusted (same convention as `kq replay`). |
 | `4` | No recorded events for that session — nothing exported. |
+| `5` | Exported and unaltered, but **incomplete** — the recorder lost events (same convention as `kq replay`). |
 
 ### `kq detector …` — teach a new failure in plain English
 
@@ -406,6 +464,18 @@ kq detector reject <name>                                          # stop it fir
 | `shadow <name>` | Show a shadow detector's firings (review before promoting). |
 | `promote <name>` | Promote shadow → active (requires operator/admin). |
 | `reject <name>` | Demote a detector so it stops firing. |
+
+| Exit code | Meaning |
+|---|---|
+| `0` | The operation succeeded — for `new`, the detector was staged in shadow. |
+| `1` | The request failed. |
+| `2` | Usage error. |
+| `3` | `new` only: the description was **rejected** and nothing was staged. |
+
+`3` matters when scripting. A description the compiler refuses comes back as a normal `200`
+response carrying `staged: false` and the errors — not an HTTP failure — so the exit code is the
+only machine-readable sign that no detector was created. `kq detector new … && kq detector list`
+would otherwise carry on as though one existed.
 
 ### `kq preference …` — view and manage learned operator preferences
 

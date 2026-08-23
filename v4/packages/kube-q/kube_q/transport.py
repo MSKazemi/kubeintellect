@@ -113,6 +113,12 @@ def _stream_once(
                 return "", False, None, None
 
             first_token = True
+            # Only a *fatal* error invalidates the turn. Error events are also emitted when a
+            # single tool fails and the agent recovers and answers anyway — those stay answers
+            # (see test_stream_query_ki_error_events_do_not_add_to_text). The fatal one ends the
+            # stream, and its reason arrives as `content`, so it would otherwise read as a
+            # perfectly good answer.
+            saw_fatal_error = False
             for event in iter_sse(resp):
                 _logger.debug("sse event: %s", event)
 
@@ -143,6 +149,7 @@ def _stream_once(
                             live.update(_compose())
                     elif kind == "error":
                         on_error(ki)
+                        saw_fatal_error = saw_fatal_error or bool(ki.get("fatal"))
                     elif kind == "usage":
                         last_usage = ki
                         _logger.debug("usage captured from ki_event: %s", ki)
@@ -161,7 +168,7 @@ def _stream_once(
                 choice = choices[0]
                 content = choice.get("delta", {}).get("content", "")
                 finish = choice.get("finish_reason")
-                if content:
+                if content and not saw_fatal_error:
                     if first_token:
                         live.transient = False
                         first_token = False
@@ -199,7 +206,10 @@ def _stream_once(
             f"[bold cyan]{agent_name}[/bold cyan]  [dim]({elapsed:.1f}s{token_str})[/dim]"
         )
         console.print()
-    return full_text, hitl_pending, action_id, last_usage
+    # Empty text is this transport's uniform "this did not work" signal — the caller turns
+    # it into a non-zero exit. An errored stream has to join that convention, or a crash
+    # mid-answer exits 0 and a script cannot tell it from a real answer.
+    return ("" if saw_fatal_error else full_text), hitl_pending, action_id, last_usage
 
 
 # ── Public query functions ─────────────────────────────────────────────────────

@@ -192,7 +192,9 @@ def check_health(
             return False, f"DNS resolution failed for '{host}' — check the hostname or /etc/hosts"
         return False, f"Connection refused — nothing is listening at {url}"
     except httpx.TimeoutException:
-        return False, f"Connection timed out — {url} did not respond within 5 s"
+        # Report the timeout actually in force; it is configurable (KUBE_Q_HEALTH_TIMEOUT), and
+        # this message used to say "5 s" whatever the caller passed.
+        return False, f"Connection timed out — {url} did not respond within {timeout:g} s"
     except Exception as e:
         return False, f"Unexpected error: {e}"
 
@@ -219,7 +221,10 @@ def fetch_namespaces(
         with make_client(ca_cert, timeout=timeout) as client:
             r = client.get(f"{url}/v1/namespaces", headers=req_headers)
         if r.status_code == 200:
-            return r.json().get("namespaces", [])
+            names = r.json().get("namespaces")
+            # Only a real list is an answer. A 200 whose body we cannot read is "unknown", not
+            # "zero" — the caller treats an empty list as proof a namespace does not exist.
+            return names if isinstance(names, list) else None
         return None
     except Exception:
         return None

@@ -28,7 +28,8 @@ Output ONLY a JSON object with any of these keys (omit those you don't need):
     status_regex (Pod/Node, matched against the STATUS column),
     reason_regex, message_regex (Event; Warning events only),
     involved_kind (optional)}
-- "promql": list of instant PromQL strings (firing = non-empty result)
+- "promql": OPTIONAL context only — these queries are recorded but NOT evaluated,
+  so a detector whose only predicate is promql can never fire. Never rely on it.
 - "trend_predicates": list of {metric (range PromQL), threshold (number),
     window_minutes, projection_horizon_minutes, fire_if_eta_within_minutes,
     direction: "rising"|"falling", min_r2} — for forecasting a slow-burn failure
@@ -87,7 +88,8 @@ def validate_detect_block(raw: dict, name: str = "nl") -> tuple[DetectBlock | No
     except (re.error, ValueError, TypeError) as exc:
         return None, [f"invalid predicate: {exc}"]
     if block is None:
-        return None, ["no valid predicates (need watch_predicates, promql, or trend_predicates)"]
+        return None, ["no valid predicates (need watch_predicates or trend_predicates; "
+                      "promql is recorded but never evaluated, so it cannot fire)"]
     return block, []
 
 

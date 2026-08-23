@@ -28,43 +28,75 @@ _Q_ALLOC_FAIL = "sum(increase(dra_allocation_failures_total[5m]))"
 _Q_ECC = "sum(increase(nvidia_gpu_ecc_errors_total[5m]))"
 _Q_GPU_OOM = "sum(increase(nvidia_gpu_oom_events_total[5m]))"
 
-ScalarFn = Callable[[str], float]
+# None ⇒ the query could not be answered (unreachable / unconfigured / error). 0.0 ⇒ it was
+# answered and the metric is genuinely absent or zero.
+ScalarFn = Callable[[str], float | None]
+
+UNAVAILABLE = "metrics-unavailable"
 
 
-def _default_scalar(promql: str) -> float:
-    """Read a single scalar from the live PromQL endpoint; 0.0 if absent/unreachable."""
+def _default_scalar(promql: str) -> float | None:
+    """One scalar from the live PromQL endpoint. None if the query could not be answered."""
     try:
-        from app.tools.prometheus_tool import query_prometheus_range_raw
-        results = query_prometheus_range_raw(promql, 0)
+        from app.tools.prometheus_tool import query_prometheus_series
+        results, error = query_prometheus_series(promql, 0)
+        if error is not None:
+            return None
         if results and results[0].get("value"):
             return float(results[0]["value"][1])
     except Exception:
-        pass
+        return None
     return 0.0
 
 
 def collect_and_detect(
     *, scalar: ScalarFn | None = None, rate_cap: float = 60.0, cost_cap: float = 1.0,
 ) -> list[DetectorHit]:
-    """Query the metrics, run the agentic + GPU predicates, return the hits (empty when healthy)."""
+    """Query the metrics, run the agentic + GPU predicates, return the hits.
+
+    Empty means healthy **and** readable. If any signal could not be read, the first hit is
+    `metrics-unavailable` — the operator is told the detectors are blind rather than shown an
+    empty list that looks exactly like a clean bill of health.
+    """
     s = scalar or _default_scalar
     hits: list[DetectorHit] = []
+    unreadable: list[str] = []
+
+    def read(promql: str) -> float:
+        """The signal, or 0.0 with the query recorded as unreadable — never a silent zero."""
+        value = s(promql)
+        if value is None:
+            unreadable.append(promql)
+            return 0.0
+        return value
 
     agent = AgentSignal(
-        tool_call_rate_per_min=s(_Q_TOOL_RATE),
-        cost_usd_per_min=s(_Q_COST_RATE),
-        sandbox_escape_attempts=int(s(_Q_ESCAPE)),
+        tool_call_rate_per_min=read(_Q_TOOL_RATE),
+        cost_usd_per_min=read(_Q_COST_RATE),
+        sandbox_escape_attempts=int(read(_Q_ESCAPE)),
     )
+    gpu = GpuSignal(
+        resourceclaim_pending=int(read(_Q_RC_PENDING)),
+        alloc_failures=int(read(_Q_ALLOC_FAIL)),
+        ecc_errors=int(read(_Q_ECC)),
+        gpu_oom=int(read(_Q_GPU_OOM)),
+    )
+
+    if unreadable:
+        # Emitted first, because everything after it was decided on signals that may not exist.
+        hits.append(DetectorHit(
+            kind=UNAVAILABLE,
+            severity="warning",
+            detail=(
+                f"{len(unreadable)} of 7 agent/GPU signals could not be read — these detectors "
+                "are blind, not clear. Unread: " + ", ".join(q[:60] for q in unreadable[:3])
+                + (" …" if len(unreadable) > 3 else "")
+            ),
+        ))
+
     h = detect_agent_runaway(agent, rate_cap=rate_cap, cost_cap=cost_cap)
     if h is not None:
         hits.append(h)
-
-    gpu = GpuSignal(
-        resourceclaim_pending=int(s(_Q_RC_PENDING)),
-        alloc_failures=int(s(_Q_ALLOC_FAIL)),
-        ecc_errors=int(s(_Q_ECC)),
-        gpu_oom=int(s(_Q_GPU_OOM)),
-    )
     h2 = detect_gpu_unhealthy(gpu)
     if h2 is not None:
         hits.append(h2)

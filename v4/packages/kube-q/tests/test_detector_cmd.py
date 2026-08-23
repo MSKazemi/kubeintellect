@@ -58,3 +58,33 @@ def test_detector_list(monkeypatch, capsys):
 def test_detector_usage():
     assert detector_cmd.run([]) == 2
     assert detector_cmd.run(["--help"]) == 0
+
+
+@respx.mock
+def test_a_rejected_description_does_not_exit_zero(monkeypatch, capsys):
+    """`kq detector new` on a description the compiler refuses must not report success.
+
+    The server answers 200 with `staged: false` plus the compile errors — it is a valid response,
+    not an HTTP failure — so `raise_for_status()` passes and the exit code is the only
+    machine-readable signal that no detector was created. It used to be 0, which told
+    `kq detector new … && kq detector promote …` that something existed to promote.
+    """
+    monkeypatch.setenv("KUBE_Q_URL", "http://test-server")
+    respx.post("http://test-server/v1/detectors").mock(
+        return_value=Response(200, json={"staged": False, "compiled": {},
+                                         "errors": ["unknown field 'foo'", "no predicate"]})
+    )
+    assert detector_cmd.run(["new", "pods stuck terminating"]) == 3
+    out = capsys.readouterr().out
+    assert "Not staged" in out and "no predicate" in out
+
+
+@respx.mock
+def test_a_staged_detector_still_exits_zero(monkeypatch, capsys):
+    monkeypatch.setenv("KUBE_Q_URL", "http://test-server")
+    respx.post("http://test-server/v1/detectors").mock(
+        return_value=Response(200, json={"staged": True, "name": "stuck-terminating",
+                                         "compiled": {"detect": {}}})
+    )
+    assert detector_cmd.run(["new", "pods stuck terminating"]) == 0
+    assert "Staged shadow detector" in capsys.readouterr().out

@@ -105,7 +105,8 @@ class TestEvaluateTrends:
     def test_fires_predicted_finding(self, monkeypatch):
         block = parse_detect_block("OOMKilled", OOM_TREND)
         eng = DetectorEngine(detectors=(block,), cluster_id="test")
-        monkeypatch.setattr(engine_mod, "query_prometheus_range_raw", lambda *a, **k: [_rising_series()])
+        monkeypatch.setattr(engine_mod, "query_prometheus_series",
+                            lambda *a, **k: ([_rising_series()], None))
 
         fired = asyncio.run(eng.evaluate_trends(now=1000.0))
         assert len(fired) == 1
@@ -117,7 +118,8 @@ class TestEvaluateTrends:
     def test_dedup_no_refire_within_ttl(self, monkeypatch):
         block = parse_detect_block("OOMKilled", OOM_TREND)
         eng = DetectorEngine(detectors=(block,), cluster_id="test")
-        monkeypatch.setattr(engine_mod, "query_prometheus_range_raw", lambda *a, **k: [_rising_series()])
+        monkeypatch.setattr(engine_mod, "query_prometheus_series",
+                            lambda *a, **k: ([_rising_series()], None))
 
         first = asyncio.run(eng.evaluate_trends(now=1000.0))
         second = asyncio.run(eng.evaluate_trends(now=1060.0))  # 60s later, still predicting
@@ -129,7 +131,7 @@ class TestEvaluateTrends:
         eng = DetectorEngine(detectors=(block,), cluster_id="test")
         flat = {"metric": {"namespace": "default", "pod": "stable"},
                 "values": [[i * 60, "0.5"] for i in range(11)]}
-        monkeypatch.setattr(engine_mod, "query_prometheus_range_raw", lambda *a, **k: [flat])
+        monkeypatch.setattr(engine_mod, "query_prometheus_series", lambda *a, **k: ([flat], None))
         assert asyncio.run(eng.evaluate_trends(now=1000.0)) == []
 
     def test_prometheus_error_is_fail_open(self, monkeypatch):
@@ -139,5 +141,8 @@ class TestEvaluateTrends:
         def _boom(*a, **k):
             raise RuntimeError("prometheus down")
 
-        monkeypatch.setattr(engine_mod, "query_prometheus_range_raw", _boom)
+        monkeypatch.setattr(engine_mod, "query_prometheus_series", _boom)
         assert asyncio.run(eng.evaluate_trends(now=1000.0)) == []  # no raise
+        # …and fail-open is not fail-silent: the engine records that it could not see.
+        assert eng.trend_blind_since == 1000.0
+        assert "prometheus down" in (eng.last_trend_error or "")

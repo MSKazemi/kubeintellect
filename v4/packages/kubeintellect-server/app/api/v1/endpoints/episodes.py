@@ -40,7 +40,14 @@ async def replay_episode(episode_id: str):
             payload = row["payload"]
             if isinstance(payload, str):
                 payload = json.loads(payload)
-            yield f"data: {json.dumps(payload, default=str)}\n\n"
+            if not isinstance(payload, dict):   # never happens; a raise here would truncate
+                payload = {"value": payload}    # the stream mid-episode, so do not risk it
+            # The row's `kind` is authoritative, and is what the client renders in the
+            # `type` column. Most payloads happen to repeat it (every wire event does, and
+            # `finding`/`rollback_point`/`recorder_gap` set it by hand) — but a `ki_otel_span`
+            # payload never had one, so those rows replayed as type `?`. The kind is in the
+            # row; there is no reason to make the client depend on the payload echoing it.
+            yield f"data: {json.dumps({**payload, 'type': row['kind']}, default=str)}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(

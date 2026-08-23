@@ -15,6 +15,7 @@ from datetime import datetime
 from app.core.config import settings
 from app.db import flight_recorder
 from app.utils.logger import get_logger
+from ki_protocol.record import summarise_record
 
 logger = get_logger(__name__)
 
@@ -42,36 +43,12 @@ def _ts_of(row: dict) -> float:
 
 
 def _summarize(kind: str, p: dict) -> str:
-    if kind == "finding":
-        sev = p.get("severity", "warning")
-        eta = p.get("eta_minutes")
-        tag = f" (predicted ~{eta:.0f}m)" if sev == "predicted" and eta is not None else ""
-        return (
-            f"detector {p.get('playbook', '?')} fired on "
-            f"{p.get('namespace', '')}/{p.get('object', '')}{tag}"
-        )
-    if kind == "tool_call":
-        return f"tool {p.get('tool', '?')}: {str(p.get('command', '')).strip()[:100]}"
-    if kind == "tool_result":
-        return f"result: {str(p.get('summary') or p.get('output', '')).strip()[:100]}"
-    if kind == "rollback_point":
-        return f"rollback point {p.get('rollback_id', '')} before: {str(p.get('command', ''))[:80]}"
-    if kind == "hitl_request":
-        return f"approval requested: {str(p.get('command') or p.get('message', ''))[:80]}"
-    if kind in ("answer", "final"):
-        text = str(p.get("text") or p.get("answer") or p.get("final_text", "")).strip()
-        return text[:200] if text else "investigation concluded"
-    if kind == "error":
-        return f"error: {str(p.get('error', '')).strip()[:160]}"
-    if kind == "status":
-        return str(p.get("message") or p.get("status") or "status update")[:120]
-    if kind in ("plan", "plan_transition"):
-        steps = p.get("steps")
-        if isinstance(steps, list) and steps:
-            done = sum(1 for s in steps if isinstance(s, dict) and s.get("status") == "done")
-            return f"plan — {len(steps)} step(s), {done} done"
-        return f"plan: {str(p.get('summary') or p.get('step', ''))[:100]}"
-    return kind
+    """One line for one decision_log row.
+
+    The implementation lives in `ki_protocol.record` because `kq replay` reads the same
+    rows and used to summarise them from its own seven-field list — see that module.
+    """
+    return summarise_record(kind, p)
 
 
 async def build_postmortem(episode_id: str) -> dict:
@@ -89,6 +66,10 @@ async def build_postmortem(episode_id: str) -> dict:
         "root_cause": None,
         "follow_ups": [],
         "narrative": None,
+        # A verified chain says nothing was altered. It does not say nothing is missing —
+        # the recorder is fire-and-forget and records its own losses as GAP_KIND rows.
+        "events_lost": 0,
+        "gaps": [],
     }
     rows = await flight_recorder.fetch_episode(episode_id)
     if not rows:
@@ -102,6 +83,10 @@ async def build_postmortem(episode_id: str) -> dict:
         seq = row["seq"]
         summary = _summarize(kind, p)
         pm["timeline"].append({"seq": seq, "at": _ts_of(row), "kind": kind, "summary": summary})
+        if kind == flight_recorder.GAP_KIND:
+            lost = int(p.get("dropped") or 0)
+            pm["events_lost"] += lost
+            pm["gaps"].append({"seq": seq, "dropped": lost, "reason": p.get("reason", "")})
         if kind == "finding":
             pm["what_fired"].append({
                 "seq": seq, "playbook": p.get("playbook", "?"),
@@ -195,6 +180,15 @@ def render_markdown(pm: dict) -> str:
         lines.append("> ✅ Audit chain verified intact — every event below is tamper-evident.")
     else:
         lines.append("> ⚠️ **AUDIT CHAIN BROKEN** — the recorded events may have been altered.")
+    if pm.get("events_lost"):
+        # Intact and complete are different claims. Say the second one out loud, next to the
+        # first, or the ✅ above reads as "this is the whole story" when it is not.
+        reasons = ", ".join(sorted({g["reason"] for g in pm["gaps"] if g.get("reason")}))
+        lines.append(
+            f"> ⚠️ **RECORD INCOMPLETE** — {pm['events_lost']} event(s) were never written "
+            f"({reasons or 'cause not recorded'}). Absence of an event below is not evidence "
+            "it did not happen."
+        )
     lines += ["", pm.get("summary", ""), ""]
 
     if not pm["timeline"]:

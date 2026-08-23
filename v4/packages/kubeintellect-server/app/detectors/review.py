@@ -12,12 +12,27 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+class DetectorStoreUnavailable(RuntimeError):
+    """The detector store could not be read — as distinct from holding no detectors.
+
+    These are different answers to "which detectors do I have?" and collapsing them is how an
+    operator concludes their cluster has no coverage when in fact the question was never answered.
+    `list_detectors` used to return `[]` for both a missing pool and a failed query, and the caller
+    had no way to tell; the server logged a warning nobody reading the CLI would ever see.
+    """
+
+
 async def list_detectors(status: str | None = None, cluster_id: str = "global") -> list[dict]:
+    """Detectors for a cluster.
+
+    Raises `DetectorStoreUnavailable` when the store cannot be read. An empty list means exactly
+    one thing: the store was read and holds nothing.
+    """
     from app.memory import service
 
     pool = service._pool
     if pool is None:
-        return []
+        raise DetectorStoreUnavailable("no memory pool — the detector store is not configured")
     try:
         if status:
             rows = await pool.fetch(
@@ -35,7 +50,7 @@ async def list_detectors(status: str | None = None, cluster_id: str = "global") 
             )
     except Exception as exc:
         logger.warning(f"detector_review: list failed: {exc}")
-        return []
+        raise DetectorStoreUnavailable(f"detector store query failed: {exc}") from exc
     out = []
     for r in rows:
         d = dict(r)

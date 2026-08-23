@@ -28,7 +28,7 @@ START → memory_loader → context_fetcher → coordinator
 | Node | What it does |
 |---|---|
 | `memory_loader` | Loads pinned context from Postgres (user prefs, failure hints, recent RCA, session notes). SQLite mode skips this silently. |
-| `context_fetcher` | Runs `kubectl get pods --all-namespaces` + `get events --field-selector=type=Warning` in parallel. Sets `snapshot_has_issues`, `snapshot_has_warnings`, `snapshot_pod_count`, `snapshot_built_at`, `cluster_id`, and matches playbooks against the snapshot. |
+| `context_fetcher` | Runs `kubectl get pods --all-namespaces` + `get events --field-selector=type=Warning` in parallel. Sets `snapshot_has_issues`, `snapshot_has_warnings`, `snapshot_pod_count`, `snapshot_built_at`, `snapshot_read_failed`, `cluster_id`, and matches playbooks against the snapshot. Checks each command's exit code: a failed read sets `snapshot_read_failed` and is never parsed as cluster data. |
 | `coordinator` | LLM with the four tools (`run_kubectl`, `run_helm`, `query_prometheus`, `query_loki`). Decides: direct answer, `TARGETED`, or `RCA_REQUIRED`. On synthesis turns, merges subagent findings into one `RCAResult`. |
 | `targeted_investigator` | Runs three parallel `kubectl` reads (`describe pod`, `get events`, `get deployments`) for a single failing resource and appends them to the snapshot, then routes back to the coordinator for the final answer. |
 | `subagent_executor` (× 4) | Domain specialist subagents — pod, metrics, logs, events. Each is a ReAct loop over the same tools, capped at 3–5 tool calls, returning a typed `AgentFinding`. |
@@ -92,6 +92,17 @@ coordinator is encouraged to answer from the snapshot without an extra
 **Why a soft bias, not a hard gate?** Pod state changes fast in Kubernetes; a
 hard gate could return stale answers. The soft bias only fires for clean
 snapshots and list-shaped questions, with explicit always-fetch escape hatches.
+
+**When the snapshot could not be taken.** Each `kubectl` read is checked by exit
+code. If either fails — expired credentials, an unreachable API server, missing
+RBAC — the snapshot is marked unavailable, the sufficiency block asserts **no**
+pod count and **no** health flags, and the coordinator is told to always fetch
+and to surface the error rather than report an empty or healthy cluster. The
+error text is still shown to the reader; what stops is *counting* it. Before
+2026-08-20 the exit code was ignored and kubectl's stderr was parsed as a pod
+table, so a failed read became `0 pods, issues=false, warnings=false` — with the
+bias then encouraging the model to answer "how many pods" and "is the cluster
+healthy" straight from it.
 
 **Modes:** `off` (no bias — pre-C2 behavior), `lenient` (default — bias only
 when truly applicable), `strict` (aggressive bias — opt in for trusted
@@ -336,6 +347,14 @@ Defined in `app/tools/kubectl_tool.py` (`_ALWAYS_CONFIRM_DELETE_TARGETS`,
 `delete pod`, `apply`, `patch`, `scale` continue to auto-approve under
 `auto_approve=true`.
 
+The gate reads the target through `_operand_after_verb()`, the same parse
+`_extract_verb` and `_extract_resource_type` use, so **where the flags sit does
+not change what the gate sees**: `kubectl delete -n prod namespace shop`,
+`kubectl -n prod delete namespace shop` and `kubectl delete --force namespace
+shop` all confirm. Until 2026-08-20 it read a fixed `args[2]`, so any flag
+between the verb and its target silently turned the gate off — a flag is not a
+decision about blast radius.
+
 The role layer runs *before* the always-confirm gate, so existing role
 permissions still apply: `readonly` keys can't reach the gate at all,
 `operator` keys are still blocked on high-risk verbs (`delete`, `drain`,
@@ -423,6 +442,16 @@ triggers:
 - `detect: null` marks a playbook as **LLM-only** (no machine signal exists,
   or the signal is owned by another playbook).
 
+!!! warning "`promql:` is recorded, not evaluated"
+    Only `watch_predicates` and `trend_predicates` run. `promql:` is parsed,
+    stored and exported, but **no code path evaluates it** — a detector whose
+    only predicate is PromQL can never fire, and is now rejected at parse time
+    rather than loading as a valid detector that silently does nothing. The 21
+    `promql:` queries in the shipped playbooks all sit alongside real
+    `watch_predicates`, so every shipped detector still fires; what those queries
+    do *not* provide is any additional detection. Treat them as documentation of
+    the metric signal until evaluation is built.
+
 !!! warning "`kind:` is the observation channel, not the Kubernetes object"
     `kind:` selects which normalised stream the predicate reads — it is one of
     exactly **`Pod`**, **`Event`**, **`Node`**, and nothing else. Writing the
@@ -496,8 +525,15 @@ curl "$KUBE_Q_URL/v1/findings?limit=100"
 ```
 
 `GET /v1/findings` returns `{"sensorium": "active", "detectors": N,
-"findings": [...]}` — each finding carries its playbook, namespace, object,
-one-line evidence, and timestamps. What happens *after* a finding fires is
+"predictive": "active", "predictive_detectors": M, "predictive_error": null,
+"streams": [...], "findings": [...]}` — each finding carries its playbook,
+namespace, object, one-line evidence, and timestamps. `sensorium` is `active`
+only while a watch stream is connected; in any other state an empty `findings`
+list means *nothing was watched*, not *nothing happened*. `predictive` is the
+independent claim for the anticipatory detectors, which read Prometheus rather
+than the watch stream: `blind` means the last trend sweep could not query it, so
+no prediction *could* have fired (see
+[the endpoint reference](api-reference.md#get-v1findings)). What happens *after* a finding fires is
 governed by the [autonomy ladder](autonomy.md).
 
 ### Cortex V4 (opt-in)

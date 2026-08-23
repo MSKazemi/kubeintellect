@@ -57,8 +57,8 @@ meets resolution parity on the evaluation suite.
 
 ```
 Browser / CLI (kq)
-      │  HTTP POST /v1/chat/completions
-      │  SSE GET  /v1/chat/stream/{session_id}
+      │  HTTP POST /v1/chat/completions   → the POST itself streams (text/event-stream)
+      │  SSE  GET  /v1/events/replay/{session_id}   → replay a recorded session
       ▼
 FastAPI app  (packages/kubeintellect-server/app/main.py)
       │
@@ -211,6 +211,7 @@ All tools live in `app/tools/`. Registered in `app/tools/registry.py` as `ALL_TO
 
 - Read-only Helm inspection: `list`, `get`, `status`, `history`, `env`, `version`, `show`, `search`.
 - Write verbs (`install`, `upgrade`, `rollback`, `uninstall`, `repo`, …) are blocked — KubeIntellect never mutates releases through Helm.
+- Every `helm get` has protected kinds stripped from its output — `manifest`, `all` and `hooks` all render the release's own `kind: Secret` objects with their base64 `data:` intact.
 - Output is capped at 6,000 characters.
 
 ### `query_prometheus`
@@ -289,7 +290,7 @@ Three key production events are logged at `INFO` level and carry a `session_id` 
 
 | Logger event | Key fields | Source |
 |---|---|---|
-| `context_fetcher: snapshot_complete` | `session_id`, `cluster_id`, `snapshot_has_issues`, `snapshot_has_warnings`, `snapshot_pod_count`, `matched_playbooks` | `context_fetcher.py` |
+| `context_fetcher: snapshot_complete` | `session_id`, `cluster_id`, `snapshot_has_issues`, `snapshot_has_warnings`, `snapshot_pod_count`, `snapshot_read_failed`, `matched_playbooks` | `context_fetcher.py` |
 | `coordinator: routing_decision` | `session_id`, `routing_decision` (`direct`\|`TARGETED`\|`RCA`), `elapsed_ms` | `coordinator.py` |
 | `run_kubectl: hitl_classification` | `session_id`, `hitl_verb`, `hitl_risk_level`, `hitl_cmd` | `kubectl_tool.py` |
 
@@ -326,7 +327,7 @@ Four-tier role model, enforced at API layer:
 | Role | Capabilities | HITL |
 |---|---|---|
 | `superadmin` | All operations, bypass namespace block | Write ops still gated |
-| `admin` | High + medium risk ops, infra namespace writes blocked | Required for medium/high risk |
+| `admin` | High + medium risk ops; **all** infra-namespace access blocked, reads included | Required for medium/high risk |
 | `operator` | Medium risk only (create, apply, scale, exec…) | Required for medium risk |
 | `readonly` | Read-only verbs only | N/A (writes rejected before LLM) |
 
@@ -481,11 +482,11 @@ packages/
 │   ├── middleware.py             — auth, logging
 │   └── v1/endpoints/
 │       ├── chat_completions.py   — POST /v1/chat/completions
-│       ├── stream.py             — GET /v1/chat/stream/{session_id}
+│       ├── events.py              — GET /v1/events/replay/{session_id} (SSE replay)
 │       ├── health.py             — GET /healthz
 │       ├── postmortem.py         — GET /v1/episodes/{id}/postmortem (ADR-011)
 │       ├── detectors.py          — POST/GET /v1/detectors + promote/demote (ADR-012)
-│       └── memory.py             — CRUD for pinned context
+│       └── preferences.py         — GET/PUT /v1/preferences, DELETE /v1/preferences/{key}
 ├── core/
 │   ├── config.py                 — Settings (pydantic-settings, ~/.kubeintellect/.env)
 │   └── llm.py                    — LLM factory (Azure/OpenAI), Langfuse callbacks
@@ -494,7 +495,8 @@ packages/
 ├── tools/
 │   ├── kubectl_tool.py           — run_kubectl with RBAC + HITL
 │   ├── kubectl_errors.py         — error-pattern → one-line hint mapper (15 patterns)
-│   ├── prometheus_tool.py        — query_prometheus + query_prometheus_range_raw (trend feed)
+│   ├── prometheus_tool.py        — query_prometheus + query_prometheus_series (trend feed:
+│   │                                (series, error) — never decide health from the series alone)
 │   ├── loki_tool.py              — query_loki
 │   └── registry.py               — ALL_TOOLS list
 ├── detectors/                    — zero-token detection engine
@@ -505,12 +507,15 @@ packages/
 │   └── service.py               — sensorium wiring (reactive + trend + db-detector loops)
 ├── digest/
 │   ├── builder.py               — morning digest view over the recorder
+│   │                                (+ detectors/perception.py: was anything watching?)
 │   └── postmortem.py            — grounded incident postmortem (ADR-011)
 ├── utils/
 │   └── redact.py                 — secret/PII scrubber for stored outcomes
-├── cluster_id.py                 — stable cluster fingerprint (kube-apiserver + namespace count hash)
+├── cluster_id.py                 — stable cluster fingerprint (CLUSTER_ID, else context+apiserver hash, else kube-system UID)
+├── memory/                       — L1 episodes, L2 temporal KG, consolidation,
+│                                    preferences.py (the pinned-context store)
 └── db/
     ├── audit.py                  — audit log (writes to Postgres)
-    ├── memory_store.py           — rca_outcomes / failure_patterns reads + writes (reflexion)
-    └── memory.py                 — pinned context CRUD
+    ├── flight_recorder.py        — hash-chained decision_log, replay, rollback points
+    └── memory_store.py           — rca_outcomes / failure_patterns reads + writes (reflexion)
 ```

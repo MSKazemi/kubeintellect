@@ -99,6 +99,16 @@ data: {"object":"chat.completion.chunk","model":"kubeintellect","ki_event":{"typ
 | `tool_call` | `tool`, `message` | The agent is about to run a tool/command. |
 | `tool_result` | `tool`, `output` | Result of a tool call (first ~500 chars). |
 | `plan` | `steps` | The visible investigation plan (a list of steps). |
+| `error` | `message`, `fatal` | Something failed. `fatal: true` means **the turn ended here**; without it the agent recovered and the answer that follows is still valid. |
+
+> **Detecting a failed turn.** A crashed stream terminates with the *same* frames a successful
+> one does — a `finish_reason: "stop"` chunk, then `[DONE]` — and the reason arrives as ordinary
+> `content` (`[Error: …]`) so that clients ignoring this side channel still show something. That
+> text is not a signal: it is indistinguishable from an answer to anything that is not reading
+> English. **Check for a `ki_event` of type `error` with `fatal: true`, and discard any partial
+> answer when you see one** — the agent may have streamed half a diagnosis before it died, and a
+> truncated diagnosis presented as a complete one is worse than no answer. `kq` does this and
+> exits non-zero; it previously exited `0`.
 
 **4. Approval request (HITL)** — when the agent wants to run a write operation,
 it emits a normal content chunk **plus** approval fields on the `choices` entry:
@@ -119,7 +129,8 @@ it emits a normal content chunk **plus** approval fields on the `choices` entry:
 The stream **pauses** here. To continue, send a **new request with the same
 `X-Session-ID`** whose user message is an approval (`yes`, `approve`, `/approve`,
 `proceed`) or denial (`no`, `deny`, `/deny`, `cancel`). Saying `approve all` /
-`auto-approve` approves writes for the rest of the session. See
+`auto-approve` approves writes for the rest of **that turn**; it is not persisted, so the next
+request is gated again unless it sets `"auto_approve": true`. See
 [Agent Behaviors → HITL](agent-behaviors.md#always-confirm-gate-overrides-auto_approve).
 
 **5. Completion (always last):**
@@ -199,6 +210,12 @@ data: [DONE]
 | `records` | Number of recorded events that follow. |
 | `chain_valid` | `true` if the hash chain verifies end-to-end; `false` means stored records may have been tampered with. |
 
+`chain_valid: true` means **nothing stored was altered**. It does not mean the
+episode is complete: the recorder is fire-and-forget, so an outage loses events
+that were never stored. Losses appear in the stream as `recorder_gap` payloads
+carrying `dropped` and `reason` — see
+[flight recorder](flight-recorder.md#tamper-evidence).
+
 Returns `404` when no episode with that ID has been recorded.
 
 ```bash
@@ -232,6 +249,13 @@ Response:
 {
   "sensorium": "active",
   "detectors": 20,
+  "predictive": "active",
+  "predictive_detectors": 3,
+  "predictive_error": null,
+  "streams": [
+    {"name": "get pods -A", "connected": true, "stopped": false,
+     "consecutive_failures": 0, "last_error": null}
+  ],
   "findings": [
     {
       "type": "finding",
@@ -249,8 +273,48 @@ Response:
 }
 ```
 
-When the detector engine is disabled server-side, the response is
-`{"sensorium": "disabled", "findings": []}` (the `detectors` count is omitted).
+`sensorium` reports **perception, not object lifetime** — it is `active` only
+while at least one `kubectl --watch` stream is connected:
+
+| Value | Meaning |
+|---|---|
+| `active` | at least one watch stream is connected — an empty `findings` list means the cluster is quiet |
+| `disabled` | the detector engine is off (`SENSORIUM_ENABLED=false`); the `detectors` count is omitted |
+| `starting` | no watch stream has started yet |
+| `reconnecting` | every stream is down and retrying (backoff caps at 60s) |
+| `stopped` | every stream gave up permanently and will not reconnect — e.g. kubectl is missing on the server |
+
+`streams` carries one entry per watch stream with `connected`, `stopped`,
+`consecutive_failures` and `last_error` (kubectl's own stderr, e.g. an RBAC
+denial).
+
+`predictive` is the same claim for the **anticipatory** detectors
+([ADR-010 trend predicates](autonomy.md)), which see through Prometheus rather than through a
+watch stream. The two are independent: a connected watch stream says nothing about whether
+Prometheus is answering.
+
+| Value | Meaning |
+|---|---|
+| `active` | the last trend sweep reached Prometheus — nothing is projected to fail |
+| `blind` | Prometheus could not be queried; `predictive_error` carries the reason, and no prediction *could* have fired |
+| `off` | `PREDICTIVE_DETECTION_ENABLED=false`, or no loaded detector has a `trend_predicates` block |
+
+`predictive_detectors` counts the detectors that carry trend predicates.
+
+!!! danger "An empty `findings` list is only an all-clear when `sensorium` is `active`"
+    In every other state nothing is being watched, so no finding *could* have
+    fired. Before 2026-08-20 the field reported `active` whenever a detector
+    engine object existed — measured with kubectl absent, both watch tasks had
+    permanently exited and the endpoint still answered
+    `{"sensorium": "active", "detectors": 20, "findings": []}`, which `kq findings`
+    renders as *"No findings · 20 detectors watching"*. Nothing was watching.
+
+!!! danger "…and only when `predictive` is not `blind`"
+    The same trap one layer over. A Prometheus outage used to produce no predicted findings **and
+    no signal at all**: the query error came back as the discarded half of a tuple, so the engine
+    saw an empty series, and the documented `trend_query_error` log line was in an `except` block
+    that a Prometheus outage can never reach — `_query_raw` returns its errors, it does not raise.
+    A layer whose entire job is to warn *before* a failure had stopped warning, silently.
 
 ---
 
@@ -273,6 +337,8 @@ Response:
   "version": "2.1.0",
   "cortex_v5_enabled": false,
   "active_flags": [],
+  "set_but_unwired_flags": [],
+  "unenforceable_guard_config": [],
   "kill_switch_engaged": false,
   "change_freeze": false,
   "spend_cap_usd": 0.0
@@ -283,10 +349,12 @@ Response:
 |---|---|
 | `arm` | Architecture generation (`KI_VERSION`). |
 | `version` | Package SemVer — distinguishes v4 / v4.1 / v4.2. |
+| `set_but_unwired_flags` | Flags you turned **on** that no code reads — they change nothing. Normally `[]`. A name here means the setting had no effect, so do not treat it as confirmation that a slice is live; see [v5 experimental flags](v5-experimental-flags.md). |
+| `unenforceable_guard_config` | Guard settings you configured that **cannot match anything** — a `KUBECTL_BLOCKED_NAMESPACES` entry that is not a legal namespace name (a glob, a slash), or an `AUTONOMY_NAMESPACE_LEVELS` / `AUTONOMY_A3_ALLOWLIST` entry the parser drops. Normally `[]`. A name here means the protection you configured is **not in force**; see [security](security.md#how-the-kubectl-blocklist-works). |
 | `cortex_v5_enabled` | The master v5 switch. |
 | `active_flags` | The `KI_V5_*` experimental toggles currently on (empty ⇒ v4 baseline). |
-| `kill_switch_engaged` | `true` ⇒ all autonomous writes are denied (fail-closed). |
-| `change_freeze` | `true` ⇒ deny-by-default change window. |
+| `kill_switch_engaged` | `true` ⇒ all autonomous writes are denied (fail-closed). Binds regardless of `KI_V5_BLAST_RADIUS_BUDGET` — see [stopping the agent](autonomy.md#stopping-the-agent-break-glass). |
+| `change_freeze` | `true` ⇒ deny-by-default change window. Also independent of `KI_V5_BLAST_RADIUS_BUDGET`. |
 | `spend_cap_usd` | Per-scope spend ceiling (`0` = unlimited). |
 
 ---
@@ -295,7 +363,10 @@ Response:
 
 A digest of cluster activity over the last N hours, built from the flight
 recorder: detector findings, autonomous investigations, user sessions, and
-rollback points.
+rollback points. Each entry in `rollback_points` carries `restorable` — `false` means the
+captured YAML was redacted or truncated and must not be applied, and a missing field means the
+capture predates the check. See
+[Flight Recorder → Restorable vs recorded](flight-recorder.md#restorable-vs-recorded).
 
 | Query param | Default | Meaning |
 |---|---|---|
@@ -311,10 +382,39 @@ With `format=json`, the structured digest:
   "findings": [],
   "auto_investigations": [],
   "user_sessions": 3,
-  "rollback_points": [],
+  "rollback_points": [{"at": 1765499000.0, "rollback_id": "rb-1a2b3c4d5e6f",
+                       "command": "kubectl scale deployment/web --replicas=0 -n prod",
+                       "restorable": true, "capture_notes": []}],
+  "degraded": false,
+  "degraded_reasons": [],
   "summary": "…"
 }
 ```
+
+`degraded` is `true` when a source could not answer — the flight recorder is
+disabled, the server is in SQLite mode (no `decision_log` table), the watchtower
+is off, the pool is unavailable, or a query failed. `degraded_reasons` names each
+one. **An empty digest with `degraded: true` means "nothing was recorded", not
+"nothing happened"** — do not treat it as an all-clear. The sections that were
+readable are still populated.
+
+Those are all statements about the **record**. A flawless, empty record is also what a
+window with nothing *watching* produces, so `degraded_reasons` covers the **perception**
+sources too — no `kubectl` watch stream connected, or `predictive: blind` — read from the
+same classifier [`GET /v1/findings`](#get-v1findings) uses, so the two endpoints cannot
+disagree about whether the same window was covered.
+
+!!! danger "A `Quiet watch` summary is a claim about perception, not just about the log"
+    Before 2026-08-20 the digest validated only its recording sources. Measured with a
+    healthy recorder, a readable `decision_log` and **nothing watching**, `/v1/findings`
+    answered `{"sensorium": "starting", "findings": []}` and `kq findings` refused to call
+    it clear — while `kq digest` over the same window said *"Quiet watch: no findings in
+    the last 24h."* One absence, two surfaces, opposite answers.
+
+    Note what `degraded_reasons` still cannot say: stream health is the state **now**, not
+    a history of the window, and none is kept. A stream that died an hour ago and has since
+    reconnected reads as `active`, so the listed gaps are a lower bound on the blindness in
+    the window.
 
 With `format=markdown`, the rendered text wrapped in one field:
 
@@ -336,8 +436,10 @@ endpoint with `format=markdown`.
 
 A grounded incident postmortem for one episode, reconstructed from the
 hash-chained flight recorder (ADR-011). The deterministic timeline cites every
-event's sequence number (`[#seq]`); an `chain_valid` field reports whether the
-audit chain verified intact. Requires `POSTMORTEM_ENABLED` (default on).
+event's sequence number (`[#seq]`); a `chain_valid` field reports whether the
+audit chain verified intact, and `events_lost` / `gaps` report whether the
+recorder lost any events for this episode — intact and complete are different
+claims. Requires `POSTMORTEM_ENABLED` (default on).
 
 | Query param | Default | Meaning |
 |---|---|---|
@@ -350,9 +452,16 @@ audit chain verified intact. Requires `POSTMORTEM_ENABLED` (default on).
   "timeline": [{"seq": 0, "at": 1765500000.0, "kind": "finding", "summary": "…"}],
   "what_fired": [], "investigated": [], "tried": [], "worked": [],
   "root_cause": "…", "follow_ups": [], "narrative": null,
+  "events_lost": 0,
+  "gaps": [],
   "summary": "… audit chain intact."
 }
 ```
+
+`events_lost` is the total number of events the recorder could not write for
+this episode, and `gaps` lists each one as `{"seq", "dropped", "reason"}`. When
+`events_lost` is non-zero the markdown render carries a **RECORD INCOMPLETE**
+banner beside the chain verdict, and `kq export` exits `5`.
 
 The [`kq postmortem`](cli-reference.md#kq-postmortem-session-id) subcommand wraps
 this with `format=markdown`. An optional LLM narrative (`POSTMORTEM_LLM_NARRATIVE`)
@@ -375,6 +484,8 @@ candidate that observes but never reaches the watchtower until promoted. Gated b
 | `POST /v1/detectors/{name}/demote` | Demote/reject — stop it firing. |
 | `GET /v1/detectors/{name}/shadow-findings` | A shadow detector's firings (review before promoting). |
 
+`GET /v1/preferences` and `GET /v1/detectors` answer **503** when their store cannot be read (not configured, or the query failed) rather than an empty `200`. An empty `detectors` list therefore means exactly one thing: the store was read and holds nothing — never that the question could not be answered.
+
 ```json
 {"staged": true, "status": "shadow", "name": "nl:OOMKilled",
  "compiled": {"watch_predicates": [{"kind": "Pod", "status_regex": "^OOMKilled$"}]},
@@ -389,12 +500,28 @@ subcommands wrap these.
 ## `GET /v1/namespaces`
 
 List the namespaces the server can see (runs `kubectl get namespaces`). Handy for
-populating a namespace picker.
+populating a namespace picker. Protected namespaces
+([`KUBECTL_BLOCKED_NAMESPACES`](security.md)) are removed from the list.
 
 ```bash
 curl http://localhost:8000/v1/namespaces -H "Authorization: Bearer $KUBE_Q_API_KEY"
 # → {"namespaces": ["default","demo","demo-rca","prod", …]}
 ```
+
+**`503` when the cluster cannot be listed** — an unreachable API server, expired credentials, an
+RBAC denial, a missing `kubectl`, or a timeout. The `detail` carries the first line of kubectl's
+own error:
+
+```json
+{"detail": "Cannot list namespaces: The connection to the server localhost:8080 was refused"}
+```
+
+This matters for anything consuming the endpoint: a `200` with an empty list means the cluster
+genuinely has no namespaces you may see, and nothing else. Until 2026-08-20 the return code was
+not checked, so every one of those failures was reported as `200 {"namespaces": []}` — and `kq`
+believed it, answering *"Namespace 'prod' not found in the cluster"* to an operator whose
+credentials had just expired. **Treat an empty list as data and a `503` as unknown; do not
+collapse them.**
 
 ---
 
@@ -454,7 +581,14 @@ cluster-wide restart loop. Use `/readyz` for routing decisions.
 
 ```bash
 curl http://localhost:8000/healthz
-# → {"status":"ok","version":"2.0.2"}
+# → {"status":"ok","arm":"v4","version":"2.0.2","experimental_flags":[],"set_but_unwired_flags":[]}
+```
+
+`experimental_flags` lists the default-off toggles actually in force. `set_but_unwired_flags`
+lists toggles you set that **no code reads** — it is normally empty, and a non-empty value means
+that setting did nothing (see [v5 experimental flags](v5-experimental-flags.md)).
+
+```bash
 ```
 
 ---
@@ -462,13 +596,20 @@ curl http://localhost:8000/healthz
 ## `GET /readyz`
 
 **Readiness** probe — a different question from liveness: *"should this replica receive traffic
-right now?"* Returns `200 {"status":"ready"}` while serving, and **`503 {"status":"draining"}`
-as soon as shutdown begins**, before any connection pool is closed.
+right now?"* Returns `200 {"status":"ready"}` while serving, and `503 {"status":"draining"}`
+once shutdown has begun.
 
-That 503 is the point. Kubernetes removes a terminating pod from Endpoints asynchronously, so
-without it a replica keeps advertising readiness while it tears down, and requests routed during
-that window fail. The Helm chart points `readinessProbe` here with `failureThreshold: 1`, and
-sets `terminationGracePeriodSeconds` (default 45) to give the drain somewhere to happen.
+> **Do not build a drain on that 503 — you cannot observe it.** This page used to claim the
+> 503 was what stopped traffic during a rolling update. Probing a real server through a real
+> `SIGTERM` disproved it: uvicorn closes its listening socket first and runs the application's
+> shutdown hook last, so from outside the transition is `200` → connection refused. What
+> drains a rolling update is the chart's **`preStop` sleep** (`drainSeconds`, default 5),
+> which Kubernetes runs *before* `SIGTERM` and which keeps the socket open while the
+> Endpoints removal propagates. Readiness governs a *running* pod; a terminating one leaves
+> the EndpointSlice by deletion, whatever its probe says.
+
+If you raise `drainSeconds`, raise `terminationGracePeriodSeconds` (default 45) with it — the
+sleep is spent inside that budget, and a `SIGKILL` at the deadline lands mid-drain.
 
 `/readyz` reports **local state only and never probes the database.** A readiness probe that
 pings a shared dependency looks more thorough and is more dangerous: when that dependency blips,

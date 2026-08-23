@@ -658,3 +658,99 @@ def test_render_error_event_fallback_to_str() -> None:
         _render_error_event({"code": 500})  # no "message" key
     mock_console.print.assert_called_once()
     assert "500" in mock_console.print.call_args[0][0]
+
+
+# ── a crashed stream must not read as an answer ───────────────────────────────
+#
+# The server's `except` branch in `_stream()` ends the stream with exactly the frames a
+# successful answer ends with — `finish_reason: "stop"` then `[DONE]` — and puts the reason in
+# `content` as `[Error: …]`. Prose is not a signal: `run_single_query` scores any non-empty text
+# as an answer, so `kq -q` exited 0 on a mid-turn server crash and a CI job could not tell it
+# from a real result (measured 2026-08-19, pass 49). The `ki_event` error frame is the
+# machine-readable half, and these tests pin both directions of it.
+
+
+@respx.mock
+def test_an_errored_stream_is_not_reported_as_an_answer() -> None:
+    events = [
+        {"ki_event": {"type": "error", "fatal": True,
+                      "message": "connection to Postgres lost"}, "choices": []},
+        {"choices": [{"delta": {"content": "\n\n[Error: connection to Postgres lost]"},
+                      "finish_reason": "stop"}]},
+    ]
+    respx.post(f"{BASE}/v1/chat/completions").mock(
+        return_value=httpx.Response(200, content=_sse_body(*events),
+                                    headers={"Content-Type": "text/event-stream"})
+    )
+    with patch("kube_q.transport.Live"):
+        text, hitl, _action_id, _usage = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+    assert text == "", (
+        "A stream that reported an error returned non-empty text, so run_single_query() scores "
+        "it as a successful answer and `kq -q` exits 0. Empty text is this transport's uniform "
+        "failure signal — see the 401 and non-200 paths."
+    )
+    assert hitl is False
+
+
+@respx.mock
+def test_the_error_reason_is_not_printed_twice() -> None:
+    """`on_error` renders the message; the content chunk carrying it must not also land in the
+    answer body, or the user sees the same failure rendered two different ways."""
+    printed: list[str] = []
+    events = [
+        {"ki_event": {"type": "error", "fatal": True, "message": "boom"}, "choices": []},
+        {"choices": [{"delta": {"content": "[Error: boom]"}, "finish_reason": "stop"}]},
+    ]
+    respx.post(f"{BASE}/v1/chat/completions").mock(
+        return_value=httpx.Response(200, content=_sse_body(*events),
+                                    headers={"Content-Type": "text/event-stream"})
+    )
+    # `render_error_event` is bound as a default argument, so it cannot be patched on the
+    # transport module — but it resolves `console` at call time, which can be.
+    fake = type("C", (), {"print": lambda _self, *a, **k: printed.append(" ".join(map(str, a)))})()
+    with patch("kube_q.transport.Live"), patch("kube_q.cli.renderer.console", fake):
+        text, _hitl, _action_id, _usage = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+    assert sum("boom" in line for line in printed) == 1, (
+        f"the failure reason should be rendered exactly once, got: {printed}"
+    )
+    assert "boom" not in text
+
+
+@respx.mock
+def test_a_healthy_stream_still_counts_as_an_answer() -> None:
+    """The guard above must not swallow ordinary answers — no error event, no suppression."""
+    events = [{"choices": [{"delta": {"content": "3 pods are pending"}, "finish_reason": "stop"}]}]
+    respx.post(f"{BASE}/v1/chat/completions").mock(
+        return_value=httpx.Response(200, content=_sse_body(*events),
+                                    headers={"Content-Type": "text/event-stream"})
+    )
+    with patch("kube_q.transport.Live"):
+        text, _hitl, _action_id, _usage = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+    assert text == "3 pods are pending"
+
+
+@respx.mock
+def test_a_partial_answer_cut_short_by_a_crash_is_not_an_answer() -> None:
+    """The case that separates the two guards.
+
+    Suppressing content *after* the error is not enough: here the agent streams half an answer
+    and the stream then dies, so `full_text` is already non-empty and plausible. Only discarding
+    it at the return makes `kq -q` exit non-zero. A truncated answer presented as a complete one
+    is the worst version of this bug — the operator acts on half a diagnosis.
+    """
+    events = [
+        {"choices": [{"delta": {"content": "The pod is failing because "}}]},
+        {"ki_event": {"type": "error", "fatal": True, "message": "Postgres lost"}, "choices": []},
+        {"choices": [{"delta": {"content": "\n\n[Error: Postgres lost]"},
+                      "finish_reason": "stop"}]},
+    ]
+    respx.post(f"{BASE}/v1/chat/completions").mock(
+        return_value=httpx.Response(200, content=_sse_body(*events),
+                                    headers={"Content-Type": "text/event-stream"})
+    )
+    with patch("kube_q.transport.Live"):
+        text, _hitl, _action_id, _usage = stream_query(BASE, _MESSAGES, _SESSION_ID, _USER)
+    assert text == "", (
+        "A half-finished answer survived a fatal stream error, so `kq -q` exits 0 and the "
+        "caller treats a truncated diagnosis as a complete one."
+    )

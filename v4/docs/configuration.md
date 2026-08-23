@@ -192,13 +192,81 @@ KubeIntellect uses `kubectl` to interact with your cluster. `kubectl` must be in
 | Variable | Default | Description |
 |---|---|---|
 | `KUBECONFIG_PATH` | `~/.kube/config` | Path to kubeconfig file |
+| `CLUSTER_ID` | *(derived)* | Explicit cluster identity — see below |
 | `KUBECTL_TIMEOUT_SECONDS` | `30` | Timeout for read operations |
 | `KUBECTL_DESTRUCTIVE_TIMEOUT_SECONDS` | `300` | Timeout for write operations |
 | `KUBECTL_BLOCKED_NAMESPACES` | see below | Namespaces the agent will never touch |
 | `KUBECTL_BLOCKED_RESOURCES` | `secret,secrets,...` | Resource types always blocked |
 
+> **A namespace entry that cannot match protects nothing, and used to do so in silence.**
+> Case is folded — `Kube-System` and `kube-system` are the same entry — because Kubernetes
+> namespace names are always lowercase, so folding can only add protection. What folding cannot
+> repair is reported: a glob (`kube-*`, which `AUTONOMY_A3_ALLOWLIST` supports and this setting
+> does **not**), a slash, or anything else that is not an RFC 1123 label is logged at startup as
+> `guard_config_unenforceable` and listed under `unenforceable_guard_config` in
+> [`GET /v1/v5/status`](api-reference.md#get-v1v5status) and `kq v5-status`. The server still
+> starts — a typo must not take the agent offline, only become impossible to miss.
+>
+> The same reporting covers `AUTONOMY_NAMESPACE_LEVELS`, where a dropped entry fails **open**
+> (the namespace keeps the permissive default the override existed to tighten), and
+> `AUTONOMY_A3_ALLOWLIST`, where a dropped entry fails closed.
+>
+> **`AUTONOMY_NAMESPACE_LEVELS` does not take globs, and its neighbour does.** The lookup is an
+> exact match on the lowercased namespace name, so `prod-*=A0` is stored, matched by nothing, and
+> leaves every `prod-` namespace on the permissive default — while `AUTONOMY_A3_ALLOWLIST` in the
+> next row *does* honour `prod-*`, which is exactly what makes the mistake easy to make. Write one
+> entry per namespace: `prod-web=A0,prod-api=A0`. Until 2026-08-20 that entry was reported as
+> fine; it is now reported like any other unenforceable guard setting, with a message that says
+> where globs do work.
+
+> **Resource entries are matched by spelling, and only the spellings that can be derived.**
+> Case is folded (`ConfigMap` = `configmap`) and singular/plural are treated as one resource
+> (`configmap` also blocks `configmaps`, `ingress` also blocks `ingresses`) — measured
+> 2026-08-20, neither held: `KUBECTL_BLOCKED_RESOURCES="ConfigMap"`, the spelling Kubernetes
+> itself uses for `kind:`, blocked **nothing**. What is *not* derived is kubectl's **short
+> names**: they come from API discovery and cannot be computed from a string, so blocking
+> `configmaps` does **not** block `kubectl get cm`. List the short name explicitly if you want
+> it covered. An entry that is not a resource type kubectl would accept at all (a glob, a
+> slash) is reported like any other unenforceable guard setting.
+
+> Both variables **replace** their list rather than extending it — adding one entry drops the
+> rest. For namespaces that is intentional (letting the agent investigate `monitoring` is a
+> legitimate choice), so repeat every entry you still want blocked. For resources, the four
+> credential types `secret`, `secrets`, `serviceaccount`, `serviceaccounts` are re-added
+> unconditionally and **cannot be configured away**.
+
 **Laptop/pip mode**: uses your local `~/.kube/config` — no in-cluster setup needed.
 **In-cluster (Helm) mode**: uses the mounted ServiceAccount — `KUBECONFIG_PATH` is ignored.
+
+### Cluster identity {#cluster-identity}
+
+Memory, learned failure patterns, episodes and findings are all scoped by a cluster id, so a fix
+learned on a Kind dev cluster is not offered for the same symptom on production EKS. The id is
+derived automatically, in this order:
+
+1. `CLUSTER_ID`, if you set it — always wins.
+2. The current kubeconfig context name, plus a short hash of the API-server URL.
+3. A hash of the API-server URL alone.
+4. The `kube-system` namespace UID, the conventional cluster identifier.
+5. Otherwise the literal `unknown`.
+
+**Set `CLUSTER_ID` whenever more than one cluster writes to the same database.** Steps 2 and 3
+read a kubeconfig *file*, which an in-cluster deployment does not have — it authenticates with the
+pod's ServiceAccount — and step 4 needs cluster-scoped read on namespaces, which the chart's
+default namespaced Role (`rbac.clusterAdmin: false`) does not grant. In that configuration
+identity falls through to `unknown`, and `unknown` is **not** an inert placeholder: recall matches
+`cluster_id IN (<current>, 'unknown')`, so every cluster sharing the database reads every other
+cluster's `unknown` rows. One cluster per database is unaffected; two are not.
+
+With Helm, set it once in your values:
+
+```yaml
+config:
+  clusterId: prod-eks-eu-west-1
+```
+
+The server logs a warning naming both the fallback and its consequence when identity cannot be
+resolved. `kubectl logs deploy/kubeintellect | grep cluster_id` shows it.
 
 Default blocked namespaces (safety fence):
 ```
@@ -330,6 +398,33 @@ investigates. Each is feature-flagged so you can disable without redeploying.
 | `INVESTIGATION_PLAN_ENABLED` | `true` | `true` \| `false` | Coordinator emits an `INVESTIGATION_PLAN:` block for queries needing 3+ tool calls; surfaced via SSE `PlanEvent`. |
 | `PLAYBOOKS_ENABLED` | `true` | `true` \| `false` | When a snapshot matches a known failure pattern (CrashLoopBackOff, OOMKilled, ImagePullBackOff, …), inject the matching playbook(s) from `app/agent/playbooks/*.yaml` into the coordinator's system prompt. |
 
+### Agent loop budgets
+
+Two runaway backstops on the agent's own loops. They are a **safety** control, not a
+performance knob: an agent that fails to terminate keeps *acting*, and the coordinator is the
+loop that holds the write-capable toolset.
+
+LangGraph 1.x defaults `recursion_limit` to **10007** (~3,300 ReAct steps), which is not a
+bound in any practical sense. KubeIntellect sets both limits explicitly instead. The defaults
+are deliberately generous — set well above any observed real usage — so they only ever fire on
+a genuine runaway.
+
+**Exhausting either budget halts and escalates to you, with everything found so far.** It never
+truncates silently and never fails the request with a bare error.
+
+| Variable | Default | Values | Description |
+|---|---|---|---|
+| `AGENT_GRAPH_RECURSION_LIMIT` | `120` | integer > 0 | Whole-turn budget for the outer graph. A turn costs 3 steps plus 2 per coordinator↔investigation cycle, so `120` allows ~58 cycles. Exhaustion returns the partial turn plus an explanation. |
+| `AGENT_COORDINATOR_RECURSION_LIMIT` | `150` | integer > 0 | Tool-call budget for the coordinator's inner ReAct loop. ~3 recursion units per step (LLM call + tool call + tool response), so `150` allows ~50 tool calls in one coordinator turn. Exhaustion ends the turn with an explanation. |
+
+The read-only RCA subagents carry their own fixed limit of `50` (~16 tool calls), set in
+`app/agent/nodes/subagent.py`.
+
+Lower either value to see the escalation path in a test environment. Raise
+`AGENT_COORDINATOR_RECURSION_LIMIT` if you have investigations that legitimately need more
+than ~50 tool calls — but prefer narrowing the question first, since a loop that long usually
+means the agent is retrying a failing tool.
+
 > **v5 experimental flags.** The additive, default-off v5 slices are gated by ~60
 > `KI_V5_*` / `CORTEX_V5_ENABLED` variables, documented separately in
 > [v5-experimental-flags.md](v5-experimental-flags.md). With all of them unset the
@@ -396,7 +491,7 @@ and the Anthropic model provider.
 
 | Variable | Default | Description |
 |---|---|---|
-| `PREDICTIVE_DETECTION_ENABLED` | `false` | Anticipatory detection: trend predicates project a range-PromQL metric toward its threshold (least-squares slope, zero tokens) and fire a `predicted` finding *before* the failure manifests. Predicted findings are capped at autonomy `A1` (never auto-fix). Fail-open. |
+| `PREDICTIVE_DETECTION_ENABLED` | `false` | Anticipatory detection: trend predicates project a range-PromQL metric toward its threshold (least-squares slope, zero tokens) and fire a `predicted` finding *before* the failure manifests. Predicted findings are capped at autonomy `A1` (never auto-fix). Fail-open — but **not silently**: if Prometheus cannot be queried, `GET /v1/findings` reports `predictive: blind` with the reason and `kq findings` withholds its all-clear line. |
 | `PREDICTIVE_TREND_INTERVAL_SECONDS` | `60` | How often the trend-projection loop runs (range queries are expensive — separate from the 1s reactive tick). |
 
 ### Incident postmortems (ADR-011)
@@ -420,7 +515,7 @@ and the Anthropic model provider.
 | `WATCHTOWER_ENABLED` | `true` | Autonomous follow-up on detector findings, bounded by the autonomy ladder below. |
 | `WATCHTOWER_ROLE` | `operator` | Role the watchtower acts with (same role model as [API keys](#authentication-rbac)). |
 | `AUTONOMY_LEVEL` | `A1` | Default autonomy level: `A0` observe, `A1` investigate + report, `A2` propose, `A3` auto-fix (allowlist only). |
-| `AUTONOMY_NAMESPACE_LEVELS` | `""` | Per-namespace overrides, e.g. `prod=A0,dev=A2`. Protected namespaces are always pinned to `A0` for autonomous action. |
+| `AUTONOMY_NAMESPACE_LEVELS` | `""` | Per-namespace overrides, e.g. `prod=A0,dev=A2`. **Exact match, no globs** — unlike the row below; an unmatchable entry is reported, not silently ignored. Protected namespaces are always pinned to `A0` for autonomous action. |
 | `AUTONOMY_A3_ALLOWLIST` | `""` | Patterns eligible for `A3` auto-fix, as `<playbook>/<namespace-glob>` entries, e.g. `CrashLoopBackOff/dev-*`. |
 
 ### Anthropic provider

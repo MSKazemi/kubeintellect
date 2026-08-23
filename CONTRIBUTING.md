@@ -107,10 +107,12 @@ weeks" means.
 
 ## Your first PR, start to finish
 
-A complete worked example, using a real open issue —
-[#12: fix `ruff` F541 in `fix_pr_probe.py`](https://github.com/MSKazemi/kubeintellect/issues/12).
-It is one line of code, which is the point: the goal here is to get the *process*
-working once, on something that cannot go wrong.
+Pick anything from the
+[**good first issue**](https://github.com/MSKazemi/kubeintellect/labels/good%20first%20issue)
+label — the loop below is identical for all of them. This walkthrough uses the one that
+never runs out: [**#13 — add a failure playbook**](https://github.com/MSKazemi/kubeintellect/issues/13).
+A playbook is a single YAML file. No Python, no cluster, no LLM key, and the library is
+*meant* to keep growing, so this issue stays open by design.
 
 **1. Claim it.** Comment "I'd like to take this" on the issue. No permission needed.
 
@@ -119,7 +121,7 @@ working once, on something that cannot go wrong.
 ```bash
 gh repo fork MSKazemi/kubeintellect --clone   # or fork in the UI, then git clone
 cd kubeintellect
-git checkout -b fix/f541-fix-pr-probe
+git checkout -b feat/playbook-dns-resolution
 ```
 
 **3. Set up just enough to run the gates.** You do **not** need a Kubernetes
@@ -131,40 +133,52 @@ cd v4
 uv sync            # ~1 min; installs the three workspace packages
 ```
 
-**4. Reproduce the problem before fixing it.** This habit is worth more than the fix.
+**4. Write the playbook.** One file in
+`packages/kubeintellect-server/app/agent/playbooks/`, named after the failure. The
+schema — and the rule for when to use `detect: null` — is in
+[docs/agent-behaviors.md](v4/docs/agent-behaviors.md#playbook-library). Copy the
+closest existing playbook and edit it; that is the fastest correct start.
+
+**5. Prove it loads**, before anything else. A playbook that fails to parse is silently
+skipped, so check the loader actually picked it up:
 
 ```bash
-uv run ruff check scripts/fix_pr_probe.py     # shows the F541
+uv run python -c "from app.agent.playbooks.loader import list_playbooks; print(len(list(list_playbooks())))"
 ```
 
-**5. Make the change**, then prove it:
+**6. Run the gates** (the section below has the exact commands). For a playbook, the
+suite plus `ruff check` is enough.
+
+**7. Update the numbers — the one step that surprises people.** The playbook count is
+stated in **eight** sentences across five docs, and a gate fails the PR if any of them
+disagrees with the code. You do not have to find them by hand:
 
 ```bash
-uv run ruff check scripts/fix_pr_probe.py     # now clean
+make docs-fix      # rewrites every drifted count, then re-checks
 ```
 
-**6. Run the same gates CI will run** (the section below has the exact commands).
-For a one-line lint fix, `ruff check` plus the suite for the package you touched is
-enough; run both suites if you're unsure.
+Commit the doc changes it makes along with your playbook. If you skip this, CI fails
+with `Doc-claims drift detected` and a list of the exact files — that is this step,
+not a problem with your playbook.
 
-**7. Commit and push.** There is nothing to sign off — no `-s`, no trailer, and no check
+**8. Commit and push.** There is nothing to sign off — no `-s`, no trailer, and no check
 looking for one.
 
 ```bash
-git commit -m "fix(server): drop f-prefix from placeholder-free string (F541)"
-git push -u origin fix/f541-fix-pr-probe
+git commit -m "feat(playbooks): add in-cluster DNS resolution failure playbook"
+git push -u origin feat/playbook-dns-resolution
 ```
 
-**8. Open the PR.**
+**9. Open the PR.**
 
 ```bash
-gh pr create --fill --body "Closes #12"
+gh pr create --fill --body "Closes #13"
 ```
 
 Fill in the template, say *why* in one or two sentences, and mention if you used AI
 assistance (see below — it is welcome, just disclosed).
 
-**9. Expect a reply, not silence.** Every PR gets a first response, even if the
+**10. Expect a reply, not silence.** Every PR gets a first response, even if the
 answer is "not this way". If CI fails on something unrelated to your change, say so
 in the PR — pre-existing `ruff format` debt is not your bug.
 
@@ -190,8 +204,8 @@ uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube
 
 # 3. Tests — two suites, run separately: the two `tests` packages collide
 #    under a single pytest invocation.
-uv run python -m pytest tests/ -q                              # server (~990 tests)
-cd packages/kube-q && uv run python -m pytest tests/ -q        # kq CLI (~312 tests)
+uv run python -m pytest tests/ -q                              # server (~1,050 tests)
+cd packages/kube-q && uv run python -m pytest tests/ -q        # kq CLI (~317 tests)
 ```
 
 CI runs those two test suites **twice** — on Python 3.12 and on Python 3.13. 3.13 is not

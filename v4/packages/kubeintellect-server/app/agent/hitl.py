@@ -17,14 +17,24 @@ _AUTO_APPROVE_PHRASES = {
 }
 
 
+def _normalise(message: str) -> str:
+    """Lowercase, trim, and drop surrounding quotes and trailing sentence punctuation.
+
+    Without this, `"No."` is not the string `no` and so matched nothing. Since the resume
+    decision defaulted to approval, a full stop turned a refusal into an execution.
+    """
+    return message.strip().strip("\"'").strip().rstrip(".!").strip().lower()
+
+
 def is_approval(message: str) -> bool:
-    return message.strip().lower() in _APPROVAL_PHRASES
+    """True only for an explicit, recognised approval. This is the load-bearing direction."""
+    return _normalise(message) in _APPROVAL_PHRASES
 
 
 def is_denial(message: str) -> bool:
-    return message.strip().lower() in _DENIAL_PHRASES
+    return _normalise(message) in _DENIAL_PHRASES
 
 
 def is_auto_approve_request(message: str) -> bool:
     """Return True if the user wants to enable session-wide HITL bypass."""
-    return message.strip().lower() in _AUTO_APPROVE_PHRASES
+    return _normalise(message) in _AUTO_APPROVE_PHRASES

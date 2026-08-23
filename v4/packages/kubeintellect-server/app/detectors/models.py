@@ -6,6 +6,10 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 @dataclass(frozen=True)
 class WatchPredicate:
@@ -86,7 +90,8 @@ class Finding:
     id: str = field(default_factory=lambda: f"fnd-{uuid.uuid4().hex[:12]}")
     first_seen: float = field(default_factory=time.time)
     fired_at: float = field(default_factory=time.time)
-    source: str = "watch"         # watch | promql | trend
+    source: str = "watch"         # watch | trend  ("promql" is reserved but
+                                  # unreachable — promql is not evaluated)
     severity: str = "warning"     # warning (realized) | predicted (anticipatory)
     eta_minutes: float | None = None   # for predicted findings: projected time-to-failure
 
@@ -147,7 +152,27 @@ def parse_detect_block(playbook_name: str, raw: dict | None) -> DetectBlock | No
             )
         )
 
-    if not predicates and not promql and not trends:
+    # ⚠️ ``promql`` is DECLARATIVE ONLY — nothing evaluates it.
+    #
+    # `DetectorEngine.process()` matches `watch_predicates`; the periodic tick
+    # evaluates `trend_predicates`. No code path has ever read `DetectBlock.promql`
+    # (verified 2026-08-20 across the whole server package). It is parsed, stored,
+    # exported to consolidation, advertised to the NL-authoring model as a valid
+    # predicate type — and never run. So it must not, on its own, make a block
+    # valid: a promql-only detector would load, count toward the detector total,
+    # pass the schema check, and then never fire. That is the same trap the
+    # `kind:` warning in docs/agent-behaviors.md documents.
+    #
+    # The 21 `promql:` queries in the shipped playbooks all sit alongside real
+    # `watch_predicates`, so nothing that fires today stops firing; what is not
+    # true is the extra coverage those queries appear to claim.
+    if not predicates and not trends:
+        if promql:
+            logger.warning(
+                "detector %r declares only promql predicates, which are not evaluated — "
+                "it can never fire. Add watch_predicates or trend_predicates.",
+                playbook_name,
+            )
         return None
     return DetectBlock(
         playbook=playbook_name,
