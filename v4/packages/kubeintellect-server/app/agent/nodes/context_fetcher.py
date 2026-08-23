@@ -65,6 +65,7 @@ def _run_kubectl_snapshot(args: list[str]) -> str:
             ["kubectl"] + args,
             capture_output=True,
             text=True,
+            encoding="utf-8", errors="replace",
             timeout=settings.KUBECTL_TIMEOUT_SECONDS,
             env=env,
             shell=False,

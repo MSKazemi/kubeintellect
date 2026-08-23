@@ -330,7 +330,7 @@ def _capture_rollback_point(verb: str, args: list, stdin: str | None, config, en
         for target in targets[:5]:
             try:
                 pre = subprocess.run(
-                    target, capture_output=True, text=True, timeout=5, env=env, shell=False
+                    target, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5, env=env, shell=False
                 )
                 if pre.returncode == 0 and pre.stdout:
                     states.append(redact_secrets(pre.stdout, max_chars=4000))
@@ -531,6 +531,7 @@ def run_kubectl(
             input=stdin,
             capture_output=True,
             text=True,
+            encoding="utf-8", errors="replace",
             timeout=timeout,
             env=env,
             shell=False,

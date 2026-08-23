@@ -32,7 +32,7 @@ def toks(s: str) -> int:
 def _raw(cmd: str) -> str:
     """TRUE unbounded kubectl output — what a naive 'dump stdout' tool costs."""
     env = {**os.environ, "KUBECONFIG": os.path.expanduser(os.environ["KUBECONFIG_PATH"])}
-    p = subprocess.run(shlex.split(cmd), capture_output=True, text=True, env=env, timeout=30)
+    p = subprocess.run(shlex.split(cmd), capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, timeout=30)
     return p.stdout or p.stderr or "(no output)"
 
 

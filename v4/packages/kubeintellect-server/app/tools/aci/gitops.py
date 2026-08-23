@@ -34,7 +34,7 @@ def _default_runner(argv: list[str]) -> tuple[int, str]:
     import subprocess
     try:
         r = subprocess.run(
-            argv, capture_output=True, text=True, timeout=_DEFAULT_TIMEOUT_S
+            argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=_DEFAULT_TIMEOUT_S
         )
     except subprocess.TimeoutExpired:
         # Non-zero + a readable reason: push failure surfaces to the caller, and a `gh` timeout

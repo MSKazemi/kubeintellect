@@ -36,8 +36,27 @@
 # It DOES flag a source file that is not valid UTF-8, rather than skipping it: a
 # file the gate cannot read is a file the gate is not guarding.
 #
-# NOT COVERED, and tracked separately: `subprocess.run(..., text=True)` decodes
-# with the locale encoding too. Same bug class, different call shape.
+# It ALSO flags the subprocess shape (#168): `subprocess.run(..., text=True)`
+# decodes the child's stdout/stderr with the platform default in exactly the same
+# way. The children here are `kubectl`, `helm` and `git`, whose output carries
+# whatever a user named a resource and whatever a container wrote to its logs, so
+# a single non-ASCII byte is enough.
+#
+# The gate requires `encoding=`. It deliberately does NOT require `errors=`: that
+# is a per-call judgement, not a rule a checker can make. The convention this repo
+# settled on in #168 is
+#
+#   errors="replace"  where the bytes are free-form CONTENT a human or the model
+#                     reads — `kubectl logs/describe/get -o yaml`, `helm get`,
+#                     event messages, `git`/`gh` output shown to a caller. Losing
+#                     a whole diagnosis to one bad glyph is the worse failure, and
+#                     U+FFFD is a visible marker where a swallowed exception is not.
+#   strict (default)  where the bytes are an IDENTIFIER, a PATH, or a tool's own
+#                     structured output — namespace and context names, cluster IDs,
+#                     `git ls-files`, `which`, `systemctl is-active`. A replacement
+#                     character there corrupts a key rather than blemishing prose,
+#                     and every one of those values is ASCII by specification, so
+#                     strict can only fire on something genuinely wrong.
 #
 # SCOPE
 #
@@ -59,6 +78,15 @@ import sys
 
 FROZEN_PREFIXES = ("v1/", "v2/", "v3/")
 TEXT_IO_NAMES = ("read_text", "write_text", "open")
+
+# The subprocess entry points that decode the child's pipes when `text=True` (or
+# its older spelling `universal_newlines=True`) is set. Matched on the called name
+# rather than on a `subprocess.` receiver, so `from subprocess import run` is
+# covered too. The pairing is what makes that precise: a `text=`/`universal_newlines=`
+# keyword on a call named `run`/`Popen`/`check_output`/`call`/`check_call` is a
+# subprocess call in practice — those keyword names exist nowhere else in this tree.
+SUBPROCESS_NAMES = ("run", "Popen", "check_output", "call", "check_call")
+_TEXT_MODE_KEYWORDS = ("text", "universal_newlines")
 
 # `<module>.open(...)` calls that are not text-file opens at all. Their signatures
 # have no text `encoding` parameter, so the remediation this gate prints would
@@ -88,6 +116,7 @@ def repo_root() -> str:
         capture_output=True,
         check=True,
         text=True,
+        encoding="utf-8",
     ).stdout.strip()
 
 
@@ -104,6 +133,7 @@ def tracked_python_files(root: str | None = None) -> list[str]:
         capture_output=True,
         check=True,
         text=True,
+        encoding="utf-8",
         cwd=root,
     ).stdout
     paths = [p for p in out.split("\0") if p]
@@ -177,6 +207,25 @@ def _called_name(call: ast.Call) -> str | None:
     return None
 
 
+def _subprocess_decodes_without_encoding(call: ast.Call) -> bool:
+    """True for a subprocess call that decodes its pipes with the platform default.
+
+    A `text=`/`universal_newlines=` value that is not a literal is still flagged: it
+    may be True at runtime, and naming an encoding costs nothing either way. `**kwargs`
+    is skipped for the same reason as the file shapes — the encoding may be forwarded.
+    """
+    text_mode = [k for k in call.keywords if k.arg in _TEXT_MODE_KEYWORDS]
+    if not text_mode:
+        return False  # no text mode: the pipes are bytes and there is nothing to name
+    if any(
+        isinstance(k.value, ast.Constant) and k.value.value is not True for k in text_mode
+    ):
+        return False  # explicitly text=False / universal_newlines=False
+    if any(k.arg == "encoding" for k in call.keywords):
+        return False
+    return not any(k.arg is None for k in call.keywords)
+
+
 def offenders(source: str, path: str) -> list[tuple[str, int, str]]:
     """Every text-mode call in `source` that does not name an encoding."""
     found: list[tuple[str, int, str]] = []
@@ -185,6 +234,10 @@ def offenders(source: str, path: str) -> list[tuple[str, int, str]]:
         if not isinstance(node, ast.Call):
             continue
         name = _called_name(node)
+        if name in SUBPROCESS_NAMES:
+            if _subprocess_decodes_without_encoding(node):
+                found.append((path, node.lineno, f"{name} (text mode)"))
+            continue
         if name not in TEXT_IO_NAMES:
             continue
         if any(keyword.arg == "encoding" for keyword in node.keywords):
@@ -254,18 +307,26 @@ def main(argv: list[str]) -> int:
     if failures:
         print(f"{len(failures)} text-mode call(s) without an explicit encoding:\n")
         for path, lineno, name in failures:
-            if lineno:
+            if lineno and name.endswith(" (text mode)"):
+                print(
+                    f"  {path}:{lineno}  {name.removesuffix(' (text mode)')}() — "
+                    'add encoding="utf-8" (and errors="replace" if it reads cluster output)'
+                )
+            elif lineno:
                 print(f"  {path}:{lineno}  {name}() — add encoding=\"utf-8\"")
             else:
                 print(f"  {path}  {name} — re-save the file as UTF-8")
         print(
             "\nThe platform default is not UTF-8 on Windows or under the C locale, so any"
-            "\nnon-ASCII byte raises UnicodeDecodeError there and nowhere else. See #136/#156."
+            "\nnon-ASCII byte raises UnicodeDecodeError there and nowhere else. See #136/#156/#168."
             '\nBinary mode ("rb"/"wb") is not flagged and needs no encoding.'
         )
         return 1
 
-    print(f"encoding OK — {checked} tracked Python files outside v1-v3 name an encoding on every text-mode call")
+    print(
+        f"encoding OK — {checked} tracked Python files outside v1-v3 name an encoding on "
+        "every text-mode read, write and subprocess call"
+    )
     return 0
 
 

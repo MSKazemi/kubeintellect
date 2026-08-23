@@ -11,6 +11,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- **`subprocess.run(..., text=True)` decoded with the locale encoding too** (#168) — the half of
+  the #136/#156 class that #161 left standing. The children here are `kubectl`, `helm` and `git`,
+  whose output carries whatever a user named a resource and whatever a container wrote to its
+  logs, so on Windows or under the POSIX `C` locale a single non-ASCII byte was enough.
+
+  25 call sites named an encoding. The failure was not uniform, which is why the fix is not
+  either: `run_kubectl` catches only `FileNotFoundError`/`TimeoutExpired`, so the decode error
+  escaped into the agent loop; `GET /namespaces` had no handler at all and would have returned
+  a 500; and three sites — the rollback-point snapshot, `cluster_id`, the context fetcher's pod
+  and event snapshot — sit inside a broad `except Exception`, where the same byte silently meant
+  *the safety feature did not run*.
+
+  `errors="replace"` was applied to the 9 sites that read free-form **content** a human or the
+  model reads, and withheld from the 16 that read an **identifier, a path, or a tool's own
+  structured output**. The line is content-vs-identifier rather than cluster-vs-not: a `U+FFFD`
+  in `kubectl logs` blemishes prose that was already truncated and redacted before anyone saw
+  it, while the same character in a namespace name, a cluster ID or a `git ls-files` path
+  corrupts a key — and every one of those values is ASCII by specification, so strict decoding
+  there can only fire on something genuinely wrong.
+
+  `scripts/check-text-encoding.py` was extended to the shape rather than given a sibling, since
+  its header already named this as the tracked-separately half; it now documents the `errors=`
+  convention as well. Detection matches the pairing of a `text=`/`universal_newlines=` keyword
+  with a call named `run`/`Popen`/`check_output`/`call`/`check_call` — the name alone would flag
+  every `runner.run(...)` in the tree, and requiring a `subprocess.` receiver would miss
+  `from subprocess import run`. It rides in the existing **Syntax warnings** job, so no required
+  check changes name.
+
+  Eleven tests: five red/green cases on the gate, and a new
+  `v4/tests/test_child_output_that_is_not_utf8.py` that spawns a real child emitting a raw
+  `0x80` and asserts both directions — replace survives with a visible marker, strict raises —
+  then AST-pins `errors=` onto the four cluster-output readers by name, so dropping it from
+  `run_kubectl` again cannot pass green.
+
 ### Added
 - **A gate now keeps the two contributor rosters in sync** (#167).
   `.all-contributorsrc` and the **Contributors** table in `README.md` are both hand-maintained,

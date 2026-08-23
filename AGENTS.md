@@ -59,7 +59,7 @@ uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/
 # 2. Types — the workspace is at ZERO errors; keep it there.
 uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q
 
-# 3. Server suite (1068 tests)
+# 3. Server suite (1079 tests)
 uv run python -m pytest tests/ -q
 
 # 4. kq CLI suite (317 tests)
@@ -79,7 +79,8 @@ make fix-modes            # corrects any violation in place
 # 6. Syntax — every tracked .py outside v1-v3 compiles with no SyntaxWarning.
 make check-syntax         # or: ./scripts/check-syntax-warnings.py
 
-# 7. Encoding — every text-mode read/write names an encoding (#136/#156).
+# 7. Encoding — every text-mode read, write and subprocess call names an
+#    encoding (#136/#156/#161, and the subprocess half #168).
 make check-encoding       # or: ./scripts/check-text-encoding.py
 
 # 8. Roster — .all-contributorsrc and the README table name the same people (#167).
