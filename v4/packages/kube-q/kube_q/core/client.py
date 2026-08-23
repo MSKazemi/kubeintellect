@@ -4,7 +4,7 @@ client.py — KubeQClient and AsyncKubeQClient: SDK entry points for kube_q.
 Usage (sync)::
 
     from kube_q.core.client import KubeQClient
-    from kube_q.core.events import TokenEvent, FinalEvent
+    from kube_q.core.events import TokenEvent, FinalEvent, HitlRequestEvent
 
     client = KubeQClient(url="http://localhost:8000", api_key="...")
 
@@ -16,6 +16,9 @@ Usage (sync)::
     for event in client.stream("list all pods"):
         match event:
             case TokenEvent(data=d): print(d.content, end="", flush=True)
+            # The agent has stopped for a human. `d.approval_id` is what resumes it: send the
+            # approval as the next message on the same session id.
+            case HitlRequestEvent(data=d): print(f"\nAPPROVAL NEEDED ({d.risk}): {d.action}")
             case FinalEvent():       break
 
 Usage (async)::
@@ -42,6 +45,7 @@ import httpx
 from kube_q.core.events import Event, parse_event
 from kube_q.core.transport import (
     QUERY_RETRY_DELAYS,
+    SseStats,
     build_headers,
     build_payload,
     check_health,
@@ -195,11 +199,12 @@ class KubeQClient:
                         headers=headers,
                     ) as resp:
                         resp.raise_for_status()
-                        for raw in iter_sse(resp):
-                            event = _parse_sse_chunk(raw)
-                            if event is not None:
+                        stats = SseStats()
+                        for raw in iter_sse(resp, stats):
+                            for event in _parse_sse_events(raw):
                                 yielded_any = True
                                 yield event
+                        _warn_if_lossy(stats)
                     return  # clean end of stream
                 except httpx.TransportError as exc:
                     if yielded_any:
@@ -364,11 +369,12 @@ class AsyncKubeQClient:
                         headers=headers,
                     ) as resp:
                         resp.raise_for_status()
-                        async for raw in _aiter_sse(resp):
-                            event = _parse_sse_chunk(raw)
-                            if event is not None:
+                        stats = SseStats()
+                        async for raw in _aiter_sse(resp, stats):
+                            for event in _parse_sse_events(raw):
                                 yielded_any = True
                                 yield event
+                        _warn_if_lossy(stats)
                     return  # clean end of stream
                 except httpx.TransportError as exc:
                     if yielded_any:
@@ -381,30 +387,80 @@ class AsyncKubeQClient:
 
 # ── Shared SSE helpers ────────────────────────────────────────────────────────
 
-def _parse_sse_chunk(raw: dict) -> Event | None:
-    """Convert one raw SSE dict (from iter_sse) into a typed Event or None."""
+def _parse_sse_events(raw: dict) -> list[Event]:
+    """Convert one raw SSE dict (from iter_sse) into zero or more typed Events.
+
+    A list rather than a single event because the approval gate arrives on a chunk that also
+    carries the human-readable message: the caller needs the prose *and* the machine-readable
+    signal, and dropping either one loses something real.
+    """
     # ki_event side-channel wrapper
     ki = raw.get("ki_event")
     if ki:
-        return parse_event(ki)
+        parsed = parse_event(ki)
+        return [parsed] if parsed is not None else []
 
-    # Standard OpenAI streaming chunk → token event
+    events: list[Event] = []
     choices = raw.get("choices", [])
     if choices:
-        delta = choices[0].get("delta", {})
-        content_chunk = delta.get("content")
+        choice = choices[0]
+        # Standard OpenAI streaming chunk → token event
+        content_chunk = choice.get("delta", {}).get("content")
         if content_chunk:
-            return parse_event({"type": "token", "data": {"content": content_chunk}})
+            token = parse_event({"type": "token", "data": {"content": content_chunk}})
+            if token is not None:
+                events.append(token)
+        # Approval gate. The server merges these fields onto the choice rather than sending a
+        # `ki_event`, so a parser that inspects only `ki_event` and `delta.content` can never
+        # produce the HitlRequestEvent this package exports -- the caller is left regexing
+        # markdown to notice that the agent is waiting for a human.
+        if choice.get("hitl_required"):
+            gate = parse_event({
+                "type": "hitl_request",
+                "data": {
+                    "action": choice.get("human_summary", "") or "",
+                    "risk": choice.get("risk_level", "") or "",
+                    "approval_id": choice.get("action_id", "") or "",
+                },
+            })
+            if gate is not None:
+                events.append(gate)
+    elif "usage" in raw:
+        # Usage at end of stream → usage event
+        usage = parse_event({"type": "usage", "data": raw["usage"]})
+        if usage is not None:
+            events.append(usage)
 
-    # Usage at end of stream → usage event
-    if "usage" in raw and not choices:
-        return parse_event({"type": "usage", "data": raw["usage"]})
-
-    return None
+    return events
 
 
-async def _aiter_sse(response: httpx.Response) -> AsyncIterator[dict]:  # type: ignore[return]
-    """Async SSE parser — mirrors iter_sse but for httpx async streaming."""
+def _warn_if_lossy(stats: SseStats) -> None:
+    """Log what a stream lost. An SDK consumer gets a record instead of silence."""
+    if stats.lossless:
+        return
+    _logger.warning(
+        "sse stream was lossy: %d unparseable frame(s)%s%s",
+        stats.dropped_frames,
+        ", stream ended mid-frame" if stats.truncated_tail else "",
+        f" — first: {stats.first_error!r}" if stats.first_error else "",
+    )
+
+
+def _parse_sse_chunk(raw: dict) -> Event | None:
+    """First event for one raw SSE dict, or None. Kept for callers predating the list form."""
+    events = _parse_sse_events(raw)
+    return events[0] if events else None
+
+
+async def _aiter_sse(
+    response: httpx.Response, stats: SseStats | None = None
+) -> AsyncIterator[dict]:  # type: ignore[return]
+    """Async SSE parser — mirrors iter_sse but for httpx async streaming.
+
+    Including its loss accounting: this is a second hand-written copy of the same parser, so
+    an `SseStats` threaded through only the sync one would report a clean stream on every
+    async call. See `SseStats` in kube_q.core.transport.
+    """
     import json
 
     buffer = ""
@@ -420,4 +476,10 @@ async def _aiter_sse(response: httpx.Response) -> AsyncIterator[dict]:  # type: 
                     try:
                         yield json.loads(payload)
                     except Exception:
-                        pass
+                        if stats is not None:
+                            stats._record_drop(payload)
+    if stats is not None and any(
+        line.startswith("data:") and line[len("data:"):].strip() not in ("", "[DONE]")
+        for line in buffer.splitlines()
+    ):
+        stats.truncated_tail = True

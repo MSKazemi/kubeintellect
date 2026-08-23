@@ -113,8 +113,14 @@ COPY --from=builder --chown=app:app /build/packages/kubeintellect-server/app ./a
 COPY --from=builder --chown=app:app /build/packages/ki-protocol/ki_protocol  ./ki_protocol
 COPY --from=builder --chown=app:app /build/packages/kube-q/kube_q            ./kube_q
 
+# The same VERSION that stamps the OCI label, also handed to the running app. The image
+# installs dependencies but not the workspace packages (module trees are copied in flat and
+# imported from the working directory), so importlib.metadata has no dist-info to read and
+# `/healthz` reported `0+unknown` on every published release. This is the only way the running
+# container can name the release it came from.
 ENV PATH="/app/.venv/bin:$PATH" \
     HOME="/home/app" \
+    KI_BUILD_VERSION="${VERSION}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 

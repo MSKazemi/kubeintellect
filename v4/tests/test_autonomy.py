@@ -138,8 +138,10 @@ class TestWatchtower:
         """A2 asks for proposals; A3-allowlisted asks for the fix + bypasses HITL."""
         captured = {}
 
-        async def fake_run_session(ask, session_id, user_id, user_role, auto_approve):
-            captured.update(ask=ask, auto=auto_approve)
+        async def fake_run_session(
+            ask, session_id, user_id, user_role, auto_approve, trigger_source
+        ):
+            captured.update(ask=ask, auto=auto_approve, provenance=trigger_source)
 
         mocker.patch("app.agent.workflow.run_session", side_effect=fake_run_session)
         mocker.patch("app.streaming.emitter.prepare_session")
@@ -152,6 +154,9 @@ class TestWatchtower:
         mocker.patch("app.autonomy.watchtower.a3_allowed", return_value=True)
         await watchtower._investigate(_finding(), "A3")
         assert captured["auto"] is True
+        # The watchtower is the one caller entitled to sensor-grade memory provenance; it
+        # must ask for it explicitly, because a chat client's `user_id` no longer grants it.
+        assert captured["provenance"] == "detector"
         assert "apply the appropriate fix" in captured["ask"]
 
         mocker.patch("app.autonomy.watchtower.a3_allowed", return_value=False)
@@ -219,8 +224,10 @@ class TestWatchtower:
     async def test_predicted_investigation_prompt_is_preemptive(self, mocker):
         captured = {}
 
-        async def fake_run_session(ask, session_id, user_id, user_role, auto_approve):
-            captured.update(ask=ask, auto=auto_approve)
+        async def fake_run_session(
+            ask, session_id, user_id, user_role, auto_approve, trigger_source
+        ):
+            captured.update(ask=ask, auto=auto_approve, provenance=trigger_source)
 
         mocker.patch("app.agent.workflow.run_session", side_effect=fake_run_session)
         mocker.patch("app.streaming.emitter.prepare_session")

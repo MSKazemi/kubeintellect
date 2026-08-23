@@ -34,7 +34,11 @@ def _anthropic(model: str, streaming: bool) -> BaseChatModel:
     return ChatAnthropic(
         model=model,
         api_key=settings.ANTHROPIC_API_KEY,
-        temperature=0.0,
+        # Honour LLM_TEMPERATURE like the azure/openai makers in app.core.llm do. This was
+        # hardcoded to 0.0, so the setting silently stopped configuring when the provider
+        # changed — invisible here because Anthropic accepts 0.0, unlike the three Azure
+        # deployments whose 400 is what made the temperature configurable in the first place.
+        temperature=settings.LLM_TEMPERATURE,
         max_tokens=4096,
         disable_streaming=not streaming,
     )

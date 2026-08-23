@@ -1,8 +1,9 @@
 """Natural-language detector authoring (ADR-012).
 
 A human describes a failure in plain English; an LLM compiles it into a `detect:`
-block, which is validated against the existing schema (the compiler *is* the
-validator) and staged as a SHADOW candidate in the `detectors` table. Shadow
+block, which is validated against the existing schema and then checked for liveness --
+compiling is not the same as being able to fire (`predicate_shape`) -- and staged as a
+SHADOW candidate in the `detectors` table. Shadow
 detectors observe and accrue precision but never reach the watchtower until a
 human promotes them (see `review.promote_candidate`).
 
@@ -15,6 +16,7 @@ import json
 import re
 
 from app.detectors.models import DetectBlock, parse_detect_block
+from app.detectors.predicate_shape import predicate_liveness_errors
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -78,8 +80,9 @@ def _parse_detect_json(text: str) -> dict:
 def validate_detect_block(raw: dict, name: str = "nl") -> tuple[DetectBlock | None, list[str]]:
     """Validate a compiled block by running it through the real compiler.
 
-    Returns (block, errors). block is None when nothing valid compiled or a
-    predicate is malformed (e.g. an uncompilable regex).
+    Returns (block, errors). block is None when nothing valid compiled, a predicate is
+    malformed (e.g. an uncompilable regex), or a predicate compiles cleanly but provably
+    cannot ever match — see `predicate_shape.predicate_liveness_errors`.
     """
     if not isinstance(raw, dict):
         return None, ["compiler did not return a JSON object"]
@@ -90,6 +93,16 @@ def validate_detect_block(raw: dict, name: str = "nl") -> tuple[DetectBlock | No
     if block is None:
         return None, ["no valid predicates (need watch_predicates or trend_predicates; "
                       "promql is recorded but never evaluated, so it cannot fire)"]
+
+    # Compiling is not the same as being able to fire. A model writing a regex from prose
+    # reproduces #114's mistake (a space inside an anchored alternation) more readily than a
+    # person reading the schema does, and the compiler has nothing to say about it. Reject a
+    # predicate that provably can never match rather than staging a candidate whose zero
+    # firings will be read as "the condition never occurred".
+    dead = [msg for p in block.watch_predicates for msg in predicate_liveness_errors(p)]
+    if dead:
+        return None, dead
+
     return block, []
 
 

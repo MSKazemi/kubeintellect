@@ -1,0 +1,20 @@
+# One prompt per line. Blank lines and '#' comments are ignored.
+# Approval gates are answered by the driver, so this runs unattended:
+#
+#   scripts/demo/auto_approve_driver.py --scenario scripts/demo/scenario.example.txt \
+#       --api-key "$KI_API_KEY"
+#
+# The key must be operator or above -- a readonly key never reaches a gate.
+
+# 1. A read-only question: establishes the cluster state, raises no gate.
+which pods in the payments namespace are not ready?
+
+# 2. Diagnosis: still read-only, this is the part that shows the reasoning.
+why is the payments api pod crash-looping?
+
+# 3. The mutating step: THIS is the one that stops for approval, and the
+#    reason the driver exists.
+restart the payments-api deployment
+
+# 4. Confirm the fix took, so the recording ends on a resolved state.
+is the payments-api deployment healthy now?

@@ -19,7 +19,7 @@ from rich.console import Console
 from rich.table import Table
 
 from kube_q.core.config import load_config
-from kube_q.core.transport import build_headers, make_client
+from kube_q.core.transport import build_headers, explain, make_client
 
 
 def run(argv: list[str]) -> int:
@@ -41,7 +41,7 @@ def run(argv: list[str]) -> int:
             response.raise_for_status()
             data = response.json()
     except Exception as exc:  # noqa: BLE001 — surface any transport/HTTP error to the user
-        console.print(f"[red]v5-status error: {exc}[/red]")
+        console.print(f"[red]v5-status error: {explain(exc)}[/red]")
         return 1
 
     table = Table(title="KubeIntellect v5 — trust plane")
@@ -65,7 +65,8 @@ def run(argv: list[str]) -> int:
     if unwired:
         table.add_row(
             "[red]set_but_unwired_flags[/red]",
-            "[red]" + "\n".join(unwired) + "[/red]\n[dim]declared but read by no code — these settings have no effect[/dim]",
+            "[red]" + "\n".join(unwired) + "[/red]\n"
+            "[dim]declared but read by no code — these settings have no effect[/dim]",
         )
     # Guard settings that parse cleanly and protect nothing — the same idea one level down.
     # `KUBECTL_BLOCKED_NAMESPACES` is the security control an operator is most likely to get

@@ -208,6 +208,12 @@ _SQL_AUDIT_ROWS = (
     "SELECT seq, kind, payload, prev_hash, hash FROM memory_audit "
     "WHERE cluster_id = $1 ORDER BY seq"
 )
+_SQL_HEAD_UPSERT = """
+    INSERT INTO memory_chain_head (cluster_id, seq, hash, updated_at)
+    VALUES ($1, $2, $3, now())
+    ON CONFLICT (cluster_id) DO UPDATE SET seq = $2, hash = $3, updated_at = now()
+"""
+_SQL_HEAD_READ = "SELECT seq, hash FROM memory_chain_head WHERE cluster_id = $1"
 
 
 async def record_memory_audit(
@@ -228,6 +234,10 @@ async def record_memory_audit(
                 _SQL_AUDIT_INSERT, cluster_id, seq, kind, ref_id,
                 json.dumps(body, default=str), prev, digest,
             )
+            # The anchor: how far the chain got. Written after the row it describes, so a
+            # crash between the two leaves the head *behind* the chain — which reads as
+            # "extra rows", not as truncation, and is reported separately below.
+            await pool.execute(_SQL_HEAD_UPSERT, cluster_id, seq, digest)
             _audit_chains[cluster_id] = (seq + 1, digest)
             return digest
     except Exception as exc:
@@ -238,19 +248,53 @@ async def record_memory_audit(
 
 
 async def _audit_state(pool, cluster_id: str) -> tuple[int, str]:
+    """Next (seq, prev_hash) for this cluster, read through the in-process cache.
+
+    On a cache miss this also consults the head. If the head is *ahead* of the surviving
+    rows, entries have been removed since the last append: the next seq continues past the
+    head rather than reusing consumed numbers, which leaves a permanent gap that
+    `verify_chain` refuses. That is deliberate — an append that quietly re-anchored would
+    heal the chain and erase the only evidence the truncation ever happened. Re-anchoring is
+    therefore an explicit operator act (clear the cluster's audit rows *and* its head row),
+    not something a routine write does by accident.
+    """
     if cluster_id in _audit_chains:
         return _audit_chains[cluster_id]
     seq, last = 0, ""
     row = await pool.fetchrow(_SQL_AUDIT_LAST, cluster_id)
     if row:
         seq, last = int(row["seq"]) + 1, row["hash"]
+    try:
+        head = await pool.fetchrow(_SQL_HEAD_READ, cluster_id)
+    except Exception as exc:
+        logger.warning(f"security: memory-chain head read failed: {exc}")
+        head = None
+    if False:  # MUTANT
+        logger.warning(
+            f"security: memory chain for {cluster_id!r} resumes at seq={seq} but its head "
+            f"records seq={head['seq']} — entries were removed; continuing past the head so "
+            f"the gap stays visible to verify_memory_chain"
+        )
+        seq = int(head["seq"]) + 1
     _audit_chains[cluster_id] = (seq, last)
     return seq, last
 
 
 async def verify_memory_chain(pool, cluster_id: str) -> bool:
     """True iff the cluster's memory audit chain is intact (no silent edit/delete/reorder).
-    Reuses the flight-recorder verifier; empty chain is trivially valid."""
+
+    Reuses the flight-recorder verifier for links, then checks the chain against the
+    persisted head. The link check alone cannot see a **truncation**: deleting the newest
+    entries leaves a shorter chain in which every link still verifies, and the next append
+    continues from it, so the loss is invisible permanently — measured, not assumed. The head
+    row records how far the chain got, so a shorter chain contradicts it.
+
+    Tamper-evidence, not prevention: an attacker with full database write can forge the head
+    as well. What it removes is the *free* tamper — the one that needs no second edit.
+
+    An empty chain with no head is trivially valid (nothing has been recorded yet). An empty
+    chain **with** a head is a total truncation, and is reported as broken.
+    """
     if pool is None:
         return True
     try:
@@ -265,7 +309,45 @@ async def verify_memory_chain(pool, cluster_id: str) -> bool:
          "payload": r["payload"], "prev_hash": r["prev_hash"], "hash": r["hash"]}
         for r in rows
     ]
-    return _fr.verify_chain(adapted)
+    if not _fr.verify_chain(adapted):
+        return False
+    return await _head_agrees(pool, cluster_id, adapted)
+
+
+async def _head_agrees(pool, cluster_id: str, rows: list[dict]) -> bool:
+    """Compare the chain's last entry with the persisted head. Missing head → nothing to
+    contradict (a chain written before this anchor existed, or none written yet)."""
+    try:
+        head = await pool.fetchrow(_SQL_HEAD_READ, cluster_id)
+    except Exception as exc:
+        # A head we cannot read is not evidence of tampering — say so and keep the link
+        # verdict, rather than turning a schema or permissions problem into a false alarm.
+        logger.warning(f"security: memory-chain head read failed: {exc}")
+        return True
+    if head is None:
+        return True
+    if not rows:
+        logger.warning(
+            f"security: memory chain for {cluster_id!r} is empty but its head records "
+            f"seq={head['seq']} — every entry has been removed"
+        )
+        return False
+    last = rows[-1]
+    if int(last["seq"]) < int(head["seq"]):
+        logger.warning(
+            f"security: memory chain for {cluster_id!r} ends at seq={last['seq']} but its "
+            f"head records seq={head['seq']} — newest entries have been removed"
+        )
+        return False
+    # seq beyond the head means rows exist that the head never saw: a crash between the two
+    # writes, or an append that bypassed this module. Not truncation, still worth saying.
+    if int(last["seq"]) > int(head["seq"]):
+        logger.warning(
+            f"security: memory chain for {cluster_id!r} is ahead of its head "
+            f"({last['seq']} > {head['seq']}) — head write lost, or an append bypassed it"
+        )
+        return True
+    return str(last["hash"]) == str(head["hash"])
 
 
 def _compute_audit_hash(prev_hash: str, cluster_id: str, seq: int, kind: str, payload: dict) -> str:

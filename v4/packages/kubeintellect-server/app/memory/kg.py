@@ -364,6 +364,33 @@ async def _open_runs_on_dst(cluster_id: str, pod_id: str) -> str | None:
 
 # ── Sensorium ingestion ───────────────────────────────────────────────────────
 
+def observation_ref(obs: Observation) -> str | None:
+    """A checkable handle for the object version an edge was derived from, or None.
+
+    Every edge carries ``source_kind`` (``NOT NULL DEFAULT 'observation'``) and that string
+    is the sole input to ``memory/security.trust_score`` — ``'observation'`` scores 1.0. Until
+    now the accompanying ``source_id`` was NULL on every edge the ingest path wrote, so the
+    graph asserted a provenance class it could not resolve: *which* observation was
+    unanswerable, and an operator auditing why the agent believes a fact had nowhere to go.
+
+    An id for the Observation itself would not fix that — observations are an in-memory
+    stream with no table behind them, so it would be a pointer to nothing. The apiserver's
+    ``uid`` + ``resourceVersion`` is the real evidence handle: it names the exact object
+    version the fact came from and can be checked against the cluster.
+
+    Honest about its limits: ``resourceVersion`` is not retained indefinitely and the object
+    may be deleted, so an old ref may no longer resolve. It still says *what* to look for,
+    which NULL never did.
+    """
+    fields = obs.fields or {}
+    uid = str(fields.get("uid") or "").strip()
+    if not uid:
+        return None
+    rv = str(fields.get("resource_version") or "").strip()
+    return f"{obs.kind}:{uid}@{rv}" if rv else f"{obs.kind}:{uid}"
+
+
+
 async def ingest_pod_observation(obs: Observation) -> None:
     """Maintain the graph from one pod_status observation.
 
@@ -400,7 +427,8 @@ async def ingest_pod_observation(obs: Observation) -> None:
                     # The pod moved nodes: the old fact stopped being true at obs time.
                     await close_edge(obs.cluster_id, pod_id, "runs_on", event_time=obs.ts)
                 await open_edge(
-                    obs.cluster_id, pod_id, "runs_on", node_id, event_time=obs.ts
+                    obs.cluster_id, pod_id, "runs_on", node_id,
+                    source_id=observation_ref(obs), event_time=obs.ts,
                 )
 
         owner = fields.get("owner")
@@ -411,7 +439,8 @@ async def ingest_pod_observation(obs: Observation) -> None:
             )
             if workload_id is not None:
                 await open_edge(
-                    obs.cluster_id, workload_id, "owns", pod_id, event_time=obs.ts
+                    obs.cluster_id, workload_id, "owns", pod_id,
+                    source_id=observation_ref(obs), event_time=obs.ts,
                 )
     except Exception as exc:
         logger.warning(f"kg: ingest_pod_observation failed ({obs.name}): {exc}")

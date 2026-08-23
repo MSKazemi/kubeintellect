@@ -22,7 +22,7 @@ from rich.console import Console
 from rich.table import Table
 
 from kube_q.core.config import load_config
-from kube_q.core.transport import build_headers, make_client
+from kube_q.core.transport import build_headers, explain, make_client
 
 
 def _peek_user(argv: list[str]) -> tuple[list[str], str]:
@@ -80,7 +80,7 @@ def run(argv: list[str]) -> int:
                 console.print(f"[green]forgotten[/green] {rest[0]}")
                 return 0
     except Exception as exc:
-        console.print(f"[red]preference command failed:[/red] {exc}")
+        console.print(f"[red]preference command failed:[/red] {explain(exc)}")
         return 1
 
     print(__doc__)

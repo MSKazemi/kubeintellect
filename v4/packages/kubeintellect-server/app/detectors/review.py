@@ -22,6 +22,57 @@ class DetectorStoreUnavailable(RuntimeError):
     """
 
 
+class DetectorCannotFire(RuntimeError):
+    """Promotion was refused because the detector's predicates can never match.
+
+    Distinct from "not found" for the same reason `DetectorStoreUnavailable` is distinct from
+    an empty list: `promote_candidate` returns a bool, and the endpoint turns a False into a
+    404. Reporting a dead detector as missing would be wrong, but reporting it as promoted is
+    worse — the operator is told `status: active` about something that will never fire again,
+    and a detector that never fires reads as a cluster that never has the problem.
+    """
+
+
+async def _liveness_error(name: str, cluster_id: str) -> str | None:
+    """Why this stored detector can never fire, or None. Unreadable/absent → None (not our call)."""
+    from app.detectors.models import parse_detect_block
+    from app.detectors.predicate_shape import predicate_liveness_errors
+    from app.memory import service
+
+    pool = service._pool
+    if pool is None:
+        return None
+    try:
+        row = await pool.fetchrow(
+            "SELECT predicate FROM detectors WHERE cluster_id = $1 AND name = $2",
+            cluster_id, name,
+        )
+    except Exception as exc:                       # a read failure is not evidence of deadness
+        logger.warning(f"detector_review: liveness read failed for {name}: {exc}")
+        return None
+    if not row:
+        return None
+    pred = row["predicate"]
+    if isinstance(pred, str):
+        try:
+            pred = json.loads(pred)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(pred, dict):
+        return None
+    try:
+        block = parse_detect_block(name, pred)
+    except Exception:
+        return None
+    if block is None:
+        return None
+    for predicate in block.watch_predicates:
+        errors = predicate_liveness_errors(predicate)
+        if errors:
+            return errors[0]
+    return None
+
+
 async def list_detectors(status: str | None = None, cluster_id: str = "global") -> list[dict]:
     """Detectors for a cluster.
 
@@ -88,7 +139,16 @@ async def _set_status(name: str, status: str, reviewer: str, cluster_id: str) ->
 
 
 async def promote_candidate(name: str, reviewer: str, cluster_id: str = "global") -> bool:
-    """Promote a shadow/candidate detector to active (it now reaches the watchtower)."""
+    """Promote a shadow/candidate detector to active (it now reaches the watchtower).
+
+    Raises `DetectorCannotFire` if its predicates provably cannot match. A shadow detector is
+    promoted on the strength of its precision stats, and a dead one shows zero firings — which
+    is indistinguishable from "the condition never occurred" unless something checks.
+    """
+    dead = await _liveness_error(name, cluster_id)
+    if dead:
+        logger.warning(f"detector_review: refused to promote {name}: {dead}")
+        raise DetectorCannotFire(f"detector {name!r} can never fire: {dead}")
     return await _set_status(name, "active", reviewer, cluster_id)
 
 
