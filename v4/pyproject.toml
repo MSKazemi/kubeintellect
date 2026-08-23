@@ -14,6 +14,7 @@ dev = [
     "pytest>=8",
     "pytest-asyncio>=1.0",
     "pytest-mock>=3.14",
+    "pytest-timeout>=2.4",
     "respx>=0.22",
     # Pinned below 0.16 deliberately: 0.16 enables new default rules that reported
     # 438 findings across app/, now 342 after #70 cleared the EXE002 family.
@@ -39,6 +40,15 @@ kubeintellect = { workspace = true }
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# A suite with no timeout cannot fail on a hang — it just stops, and in CI it burns until the
+# six-hour job ceiling with no failure message to read. This happened for real: one test drove
+# the sensorium's `_watch_loop` and depended on the HOST not having kubectl installed. Where
+# kubectl exists the loop retries with backoff forever, so the test did not fail, it wedged.
+#
+# 120s is ~85x the slowest legitimate test in this suite (the whole suite runs in ~85s), so it
+# can only ever fire on a genuine hang, never on a slow-but-working test on a loaded CI runner.
+timeout = 120
+timeout_method = "thread"
 
 [tool.mypy]
 python_version = "3.12"

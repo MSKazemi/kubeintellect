@@ -4,6 +4,42 @@ All notable changes to kube-q will be documented here.
 
 ## [Unreleased]
 
+### Added — exit code `5`: the chain is intact but the record has holes in it
+- `kq replay` and `kq export` exited `0` with a green *"✓ chain intact"* over an episode the
+  server had recorded as incomplete. A hash chain proves no stored record was altered; it cannot
+  prove that a record which was never stored is missing — and the flight recorder is
+  fire-and-forget, so an outage drops events. The server now writes each loss into the chain as a
+  `recorder_gap` record carrying the count and the cause. Both commands surface it: exit **5**,
+  the total lost, the number of gaps, and each reason. `0` now means intact *and* complete, `3`
+  (tampering) still wins over `5`, and an older server that does not send the field is treated as
+  complete rather than warned about without evidence.
+
+### Fixed — `kq replay` showed a blank summary for whole classes of record
+- The `summary` column was built from a list of seven top-level field names. A `finding`
+  payload shares none of them, and a `findings:<cluster>` episode contains nothing but
+  findings — so `kq replay findings:default` printed a table of blank summaries for detector
+  firings that had certainly fired. `plan` rows (all content in `steps`) and `ki_otel_span`
+  rows (all content in `attributes`) were blank for the same reason, and spans also showed a
+  `?` type because the replay stream yielded the payload without the row's recorded kind. The
+  server had a complete, kind-aware summariser all along, in the postmortem builder; there was
+  no reason for a second one here. Both now call `ki_protocol.record.summarise_record`, so a
+  newly recorded kind is described once or not at all — and a test that reads the recorded
+  kinds *and* both readers fails when one is unhandled.
+
+### Fixed — the SDK's typed events arrived with their payloads stripped
+- `KubeQClient` / `AsyncKubeQClient` parse each frame into a typed event through
+  `ki_protocol.events.parse_event`. That module and `ki_protocol.wire`, which the server emits
+  from, are two halves of one contract that nothing joined: no test in either suite imported
+  both, so each half was only checked against its own fixtures. Measured by serialising every
+  emission model and parsing it, five of the eight arrived stripped — a `tool_result` lost its
+  `output`, a `tool_call` its `command`, an `error` its message, and a `hitl_request` all four of
+  its fields, because the two halves spell the same things differently. `plan` frames, emitted
+  since V2 and on every Cortex turn, were discarded outright: the client union never carried the
+  type. `parse_event` now maps the wire's names onto the client's (never overwriting a field the
+  payload already set), and `PlanEvent` / `PlanData` are part of the union and exported from
+  `kube_q.core.events`. **The REPL was never affected** — it reads the raw frames — so this
+  changes what the SDK sees, not what `kq` prints.
+
 ### Fixed — `kq -q` now reports failure through its exit status
 - **A one-shot query that failed used to exit 0.** Every failure path — 401
   authentication, any non-200, invalid JSON from the server, retries exhausted —

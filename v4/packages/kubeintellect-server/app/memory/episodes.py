@@ -289,6 +289,17 @@ _SQL_RECALL_HYBRID_IMP = _SQL_RECALL_HYBRID.replace(
 )
 
 
+class MemoryUnavailable(RuntimeError):
+    """Recall was attempted and could not be answered — distinct from "nothing matched".
+
+    Returning `[]` for both meant a Postgres outage reached the model as an *absence of prior
+    incidents*: `render_recall_block([])` yields "", the triage prompt simply omits the "Similar
+    past episodes" section, and the log line reads `episodes=0` exactly as it does for a genuine
+    zero-recall. Neither the model nor the operator could tell that the memory — the one capability
+    this product is differentiated on — had failed to answer.
+    """
+
+
 async def recall_episodes(
     query_text: str, cluster_id: str, k: int = 3
 ) -> list[dict[str, Any]]:
@@ -329,7 +340,9 @@ async def recall_episodes(
                 )
             except Exception as exc2:
                 logger.warning(f"episodes: baseline recall also failed: {exc2}")
-                return []
+                raise MemoryUnavailable(
+                    f"episode recall failed on both channels: {exc2}"
+                ) from exc2
         else:
             return []
     out = []

@@ -15,11 +15,15 @@ spec:
       labels:
         {{- include "kubeintellect.selectorLabels" . | nindent 8 }}
       annotations:
+        # Without this a ConfigMap-only `helm upgrade` rewrites the map and leaves the old pod
+        # running with the OLD env: settings are read once at startup. Flipping an experiment
+        # flag would then report success while changing nothing.
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
-      # Give the drain window somewhere to happen: SIGTERM flips /readyz to 503, and the pod
-      # needs to outlive the seconds it takes kube-proxy to observe the Endpoints removal.
-      # Without this the default 30s applies and the process may exit while routes are stale.
+      # Must stay above drainSeconds: the preStop sleep is spent inside this budget, and a
+      # SIGKILL at the deadline lands mid-drain. The Kubernetes default of 30s is not enough
+      # once the sleep and in-flight requests both have to fit.
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | default 45 }}
       serviceAccountName: {{ .Values.serviceAccount.name }}
       {{- with .Values.nodeSelector }}
@@ -64,10 +68,35 @@ spec:
                 name: {{ include "kubeintellect.fullname" . }}-config
             - secretRef:
                 name: {{ include "kubeintellect.fullname" . }}-secrets
-          {{- if .Values.hotReload.enabled }}
+          {{- if or .Values.hotReload.enabled .Values.containerSecurityContext.readOnlyRootFilesystem }}
           volumeMounts:
+          {{- end }}
+          {{- if .Values.hotReload.enabled }}
             - name: hot-code
               mountPath: /app/app
+          {{- end }}
+          {{- if .Values.containerSecurityContext.readOnlyRootFilesystem }}
+            # With a read-only root, every path the process writes must be an explicit mount.
+            # HOME is /home/app in the image (Dockerfile: useradd app, HOME=/home/app) -- kubectl
+            # writes its discovery and HTTP cache there, and Python writes temp files. Without
+            # these the container starts cleanly and then fails on the first kubectl call, which
+            # reads as an RBAC problem rather than a filesystem one.
+            - name: tmp
+              mountPath: /tmp
+            - name: kube-cache
+              mountPath: /home/app/.kube/cache
+          {{- end }}
+          # THE drain mechanism. Kubernetes runs preStop *before* SIGTERM, and only this
+          # sleep keeps the listening socket open while the Endpoints removal propagates
+          # through every kube-proxy. Do not replace it with a readiness flip: uvicorn
+          # closes its socket the instant SIGTERM lands and runs the app's shutdown hook
+          # only afterwards, so a probe during drain observes ECONNREFUSED, never a 503 —
+          # a request on a stale route is dropped rather than served. Measured, not assumed.
+          {{- if gt (int .Values.drainSeconds) 0 }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sleep", "{{ .Values.drainSeconds }}"]
           {{- end }}
           livenessProbe:
             httpGet:
@@ -78,11 +107,12 @@ spec:
             timeoutSeconds: 10
             failureThreshold: 3
           # Readiness is a DIFFERENT question from liveness: "route to me right now?".
-          # /readyz reports local state only — 200 while serving, 503 once draining — so a
-          # rolling update stops receiving traffic before it closes its pools. It deliberately
-          # does not probe Postgres: a dependency-checking readiness probe takes every replica
-          # out of the Service at once when the shared DB blips, turning degradation into an
-          # outage. failureThreshold is 1 because draining should take effect immediately.
+          # /readyz reports local state only. It governs a RUNNING pod — a terminating one is
+          # dropped from EndpointSlices by deletion itself, whatever the probe says, which is
+          # why the preStop sleep above is what drains a rolling update and this is not.
+          # It deliberately does not probe Postgres: a dependency-checking readiness probe
+          # takes every replica out of the Service at once when the shared DB blips, turning
+          # degradation into an outage.
           readinessProbe:
             httpGet:
               path: /readyz
@@ -93,8 +123,23 @@ spec:
             failureThreshold: 1
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-      {{- if .Values.hotReload.enabled }}
+          # CONTAINER-level hardening. The pod-level securityContext above only sets the UID; it
+          # says nothing about privilege escalation, kernel capabilities, or the syscall filter,
+          # and those are what turn a code-execution bug in a dependency into node compromise.
+          # This container needs no capabilities at all: it makes outbound HTTP calls and execs
+          # kubectl. Dropping ALL is not a guess — it is the actual requirement.
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+      {{- if or .Values.hotReload.enabled .Values.containerSecurityContext.readOnlyRootFilesystem }}
       volumes:
+      {{- end }}
+      {{- if .Values.containerSecurityContext.readOnlyRootFilesystem }}
+        - name: tmp
+          emptyDir: {}
+        - name: kube-cache
+          emptyDir: {}
+      {{- end }}
+      {{- if .Values.hotReload.enabled }}
         - name: hot-code
           hostPath:
             path: {{ .Values.hotReload.hostPath }}

@@ -46,7 +46,12 @@ def _require_writer(request: Request) -> None:
 @router.get("/preferences")
 async def list_preferences(user: str = Query(default="default")):
     _require_enabled()
-    prefs = await preferences.recall_preferences(user, k=50)
+    try:
+        prefs = await preferences.recall_preferences(user, k=50)
+    except preferences.PreferenceStoreUnavailable as exc:
+        # 503, not an empty 200 — "you have no preferences" is a different answer from
+        # "I could not read them", and only one of them invites the operator to re-enter everything.
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return {"user": user, "preferences": prefs}
 
 

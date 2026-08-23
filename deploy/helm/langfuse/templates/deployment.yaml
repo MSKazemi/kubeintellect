@@ -28,7 +28,7 @@ spec:
     spec:
       containers:
         - name: postgres
-          image: postgres:16-alpine
+          image: {{ .Values.images.postgres }}
           env:
             - name: POSTGRES_USER
               value: langfuse
@@ -74,7 +74,7 @@ spec:
     spec:
       containers:
         - name: clickhouse
-          image: clickhouse/clickhouse-server:24.12
+          image: {{ .Values.images.clickhouse }}
           env:
             - name: CLICKHOUSE_DB
               value: langfuse
@@ -131,7 +131,7 @@ spec:
     spec:
       containers:
         - name: redis
-          image: redis:7-alpine
+          image: {{ .Values.images.redis }}
           # Require a password so Langfuse's REDIS_AUTH matches — without it the
           # web/worker log "ERR AUTH … called without any password configured".
           command: ["redis-server", "--requirepass", "$(REDIS_PASSWORD)"]
@@ -176,7 +176,7 @@ spec:
     spec:
       containers:
         - name: minio
-          image: minio/minio:latest
+          image: {{ .Values.images.minio }}
           args: ["server", "/data", "--console-address", ":9001"]
           env:
             - name: MINIO_ROOT_USER
@@ -225,20 +225,43 @@ spec:
     spec:
       initContainers:
         - name: wait-for-postgres
-          image: busybox:latest
+          image: {{ .Values.images.wait }}
           command: ["sh", "-c", "until nc -z langfuse-postgres 5432; do echo waiting for postgres; sleep 2; done"]
+        # `nc -z` proves only that the socket is open. ClickHouse binds 8123 well before its query
+        # engine can serve, so a port-only wait lets Langfuse start its ClickHouse migration against
+        # a half-ready server. Observed 2026-08-23: the migration failed mid-way and left
+        # `Dirty database version 39`, after which langfuse-web CrashLoopBackOff'd forever — a state
+        # no restart clears, because the dirty marker survives in ClickHouse itself.
+        # Asking for an actual query result is what distinguishes "listening" from "serving".
         - name: wait-for-clickhouse
-          image: busybox:latest
-          command: ["sh", "-c", "until nc -z langfuse-clickhouse 8123; do echo waiting for clickhouse; sleep 2; done"]
+          image: {{ .Values.images.wait }}
+          # Credentials are required: an unauthenticated query answers 403, which would make this
+          # loop wait forever on a perfectly healthy server. Passed as headers rather than as
+          # `?password=` query parameters so the password never enters a URL, a process list or a
+          # ClickHouse query log.
+          envFrom:
+            - secretRef:
+                name: langfuse-secret
+          command:
+            - sh
+            - -c
+            - |
+              until wget -q -O- \
+                    --header="X-ClickHouse-User: $CLICKHOUSE_USER" \
+                    --header="X-ClickHouse-Key: $CLICKHOUSE_PASSWORD" \
+                    'http://langfuse-clickhouse:8123/?query=SELECT%201' 2>/dev/null | grep -q '^1$'; do
+                echo 'waiting for clickhouse to SERVE, not just listen'
+                sleep 3
+              done
         - name: wait-for-redis
-          image: busybox:latest
+          image: {{ .Values.images.wait }}
           command: ["sh", "-c", "until nc -z langfuse-redis 6379; do echo waiting for redis; sleep 2; done"]
         - name: wait-for-minio
-          image: busybox:latest
+          image: {{ .Values.images.wait }}
           command: ["sh", "-c", "until nc -z langfuse-minio 9000; do echo waiting for minio; sleep 2; done"]
       containers:
         - name: langfuse-web
-          image: langfuse/langfuse:latest
+          image: {{ .Values.images.langfuse }}
           ports:
             - containerPort: 3000
           envFrom:
@@ -293,20 +316,43 @@ spec:
     spec:
       initContainers:
         - name: wait-for-postgres
-          image: busybox:latest
+          image: {{ .Values.images.wait }}
           command: ["sh", "-c", "until nc -z langfuse-postgres 5432; do echo waiting for postgres; sleep 2; done"]
+        # `nc -z` proves only that the socket is open. ClickHouse binds 8123 well before its query
+        # engine can serve, so a port-only wait lets Langfuse start its ClickHouse migration against
+        # a half-ready server. Observed 2026-08-23: the migration failed mid-way and left
+        # `Dirty database version 39`, after which langfuse-web CrashLoopBackOff'd forever — a state
+        # no restart clears, because the dirty marker survives in ClickHouse itself.
+        # Asking for an actual query result is what distinguishes "listening" from "serving".
         - name: wait-for-clickhouse
-          image: busybox:latest
-          command: ["sh", "-c", "until nc -z langfuse-clickhouse 8123; do echo waiting for clickhouse; sleep 2; done"]
+          image: {{ .Values.images.wait }}
+          # Credentials are required: an unauthenticated query answers 403, which would make this
+          # loop wait forever on a perfectly healthy server. Passed as headers rather than as
+          # `?password=` query parameters so the password never enters a URL, a process list or a
+          # ClickHouse query log.
+          envFrom:
+            - secretRef:
+                name: langfuse-secret
+          command:
+            - sh
+            - -c
+            - |
+              until wget -q -O- \
+                    --header="X-ClickHouse-User: $CLICKHOUSE_USER" \
+                    --header="X-ClickHouse-Key: $CLICKHOUSE_PASSWORD" \
+                    'http://langfuse-clickhouse:8123/?query=SELECT%201' 2>/dev/null | grep -q '^1$'; do
+                echo 'waiting for clickhouse to SERVE, not just listen'
+                sleep 3
+              done
         - name: wait-for-redis
-          image: busybox:latest
+          image: {{ .Values.images.wait }}
           command: ["sh", "-c", "until nc -z langfuse-redis 6379; do echo waiting for redis; sleep 2; done"]
         - name: wait-for-minio
-          image: busybox:latest
+          image: {{ .Values.images.wait }}
           command: ["sh", "-c", "until nc -z langfuse-minio 9000; do echo waiting for minio; sleep 2; done"]
       containers:
         - name: langfuse-worker
-          image: langfuse/langfuse-worker:latest
+          image: {{ .Values.images.langfuseWorker }}
           envFrom:
             - secretRef:
                 name: langfuse-secret

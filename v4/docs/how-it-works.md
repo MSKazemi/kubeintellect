@@ -169,7 +169,9 @@ worse than shipping nothing.
 
 **Everything lands in the log.** `app/db/flight_recorder.py` (ADR-005) appends every typed event
 to a hash-chained decision log, chained per episode so after-the-fact tampering is detectable.
-`kq replay <session-id>` reconstructs a session and exits non-zero if the chain is broken.
+`kq replay <session-id>` reconstructs a session and exits non-zero if the chain is broken — or
+if the recorder lost events, which it records in the chain rather than letting a hole pass as a
+complete record ([flight recorder](flight-recorder.md#tamper-evidence)).
 
 !!! note "What this diagram does not claim"
 

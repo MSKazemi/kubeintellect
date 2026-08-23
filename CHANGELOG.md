@@ -11,6 +11,1282 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- **`kq replay` printed a blank summary for every detector firing.** The hash-chained
+  `decision_log` has two readers — `app/digest/postmortem.py`, which builds the incident
+  narrative, and `kq replay`, which streams the record back to a terminal — and each turned a
+  row into a line of text with its own code. The postmortem handled all eleven recorded kinds;
+  the CLI matched seven *top-level field names*, so any row whose content lives elsewhere
+  rendered as an empty cell: `finding` (a `findings:<cluster>` episode contains nothing else,
+  so `kq replay findings:default` printed N rows of nothing while the detectors had certainly
+  fired), `plan` (all in `steps`) and `ki_otel_span` (all in `attributes`). A blank cell does
+  not read as *no summary available*; it reads as *this event carried nothing*, which is the
+  one thing a tamper-evident log must never say falsely. The summariser now lives once, in
+  `ki_protocol.record.summarise_record`, and both readers call it. Separately, the replay
+  endpoint yielded the payload alone, so the `type` column depended on each payload happening
+  to echo its own kind — every hand-written recorder call remembered to, but `otel_spans`
+  never did, and those rows replayed as type `?`; the row's `kind` is now authoritative. A new
+  suite reads *both* artefacts, so a kind nothing summarises fails a test instead of quietly
+  rendering as an empty cell.
+- **The two halves of `ki-protocol` did not agree, and the SDK dropped payloads because of it.**
+  `ki_protocol.wire` (server emission models) and `ki_protocol.events` (the client's typed union
+  and `parse_event`) are one contract whose own docstring says *"wire-format changes must update
+  both modules together"* — a rule kept by discipline and by nothing else: no test in either suite
+  imported both halves, so each was only ever checked against its own fixtures. Serialising every
+  emission model and feeding it to `parse_event` showed five of the eight arriving stripped —
+  `tool_result.output`, `tool_call.command`, `error.error` and all four `hitl_request` fields were
+  dropped into models that declare different names for the same things, and `plan` (emitted since
+  V2, and on every Cortex turn) was discarded entirely because the client union never carried it.
+  A dropped payload is worse than a rejected frame: `summary=""` is the shape of a tool that
+  returned nothing. `parse_event` now maps the wire's field names onto the client's, only where
+  the client-side name is not already set, and `PlanEvent`/`PlanData` join the union. The `kq`
+  REPL was never affected — it reads the raw frames — but `KubeQClient`/`AsyncKubeQClient`, the
+  documented SDK entry points, were. A generative test now walks every model in `wire` and fails
+  if one has no client counterpart.
+- **The connection/identity refusal turned the v5 capability sandbox off.** Refusing every
+  `--as` flag is right for one a model wrote; `app/tools/aci/sandbox.py` is not a caller
+  choosing an identity but app code narrowing it to a ServiceAccount with strictly fewer
+  rights — and it runs with `hitl_bypass=True` on exactly that basis. Measured, `run_as("get
+  pods -n prod", "read-only")` returned `[Protected] '--as' is not permitted.` and reached
+  kubectl not at all: the app-side gate given up, the cluster-side gate never applied, and a
+  refusal string handed back where the caller expected command output. `run_kubectl` now
+  accepts one impersonation token when the run config names that exact token
+  (`sandbox_identity`, injected by the graph the way `hitl_bypass` and `user_role` are, never
+  writable by a model); a different value, a second identity flag, or any other connection flag
+  beside it is refused as before. The existing sandbox tests could not see the break — every
+  case injects a `_runner`, so none of them crosses the seam into the real tool.
+
+### Documentation
+- **The architecture code map pointed at modules that do not exist.** `docs/architecture.md`
+  carries the map a contributor or integrator reads instead of the source tree. Three of its 34
+  `.py` entries named a module that exists nowhere under the server package — `endpoints/stream.py`,
+  `endpoints/memory.py` and `db/memory.py` — and one endpoint annotation, `GET
+  /v1/chat/stream/{session_id}`, named a route the server does not expose (cited twice: in the
+  request-flow diagram and in the map). Following the page, an integrator would have opened an SSE
+  connection to a path that 404s and read it as a server fault. In fact `POST /v1/chat/completions`
+  **is** the stream — it returns a `StreamingResponse` with `media_type="text/event-stream"` — and
+  the separate SSE route is `GET /v1/events/replay/{session_id}`, served by `events.py`; pinned
+  context is `preferences.py`, and the store lives under `app/memory/`. Map and diagram corrected,
+  and `db/` now lists the flight recorder it had omitted. 14 tests hold every module the map names
+  and every `/v1` path any doc page cites to what the server actually has, with non-vacuity floors
+  so a regex that stops matching fails instead of passing silently.
+
+### Security
+- **The "your setting did nothing" report could not say it about eleven of its own entries.**
+  `UNWIRED_EXPERIMENTAL_FLAGS` (`app/core/version.py`) lists the v5 settings that are declared,
+  documented and read by no code, and both its own comment and `docs/v5-experimental-flags.md` —
+  a public page in the docs nav — promise that setting one surfaces it under
+  `set_but_unwired_flags` in `GET /healthz`, `GET /v1/v5/status` and the startup line. But
+  `set_but_unwired_flags()` was `_on_booleans() & UNWIRED_EXPERIMENTAL_FLAGS`, and `_on_booleans()`
+  filters `isinstance(value, bool)` — while **11 of the 26 entries are `float` or `int`**. No value
+  an operator could give them would ever reach that report. Measured 2026-08-20 with three knobs
+  moved off their defaults next to one boolean as a control: `KI_V5_RIGHTSIZING=true` was reported
+  by `/healthz` and `version_line()`; `KI_V5_AGENT_COST_RATE_CAP=0.10`,
+  `KI_V5_SPEND_OUT_PRICE_PER_1K=0.99` and `KI_V5_DETECTOR_MIN_FIRINGS=3` were reported by nothing,
+  anywhere. The cost cap is the one that matters — it reads as a spend brake, the page describes it
+  as *"USD/min above this ⇒ runaway spend"*, and it was the quietest of the eleven. A knob now
+  counts as set when it differs from its **declared default**, not when it is truthy:
+  `KI_V5_AGENT_COST_RATE_CAP=0` is a deliberate instruction, and `KI_V5_STAGE_SIZE=1` is already
+  the default. `active_experimental_flags()` is deliberately unchanged — a knob is configuration,
+  not on/off runtime identity, which is a different question from "did what I set do anything".
+  117 tests pin it, including a negative control over all 21 *wired* experimental knobs and a gate
+  that walks every ⚠️ row on the public page and checks it can actually be surfaced.
+- **The reporter that exists to catch guards protecting nothing had that exact hole, and it
+  failed open.** `app/core/config_audit.py` was written so an operator who configures a
+  protection is told when it does nothing; `GET /v1/v5/status` and `kq v5-status` carry the
+  result. `autonomy_override_problems()` validated an entry's `=` and its *level* and never the
+  namespace it names — but `level_for_namespace` is an exact dict hit on a lowercased key, so an
+  entry whose namespace is not a real namespace name parses cleanly, stores a key nothing can
+  match, and was reported as fine. Measured with `AUTONOMY_LEVEL=A3` and
+  `AUTONOMY_NAMESPACE_LEVELS="prod-*=A0"` — a natural thing to write, because the sibling
+  `AUTONOMY_A3_ALLOWLIST` *does* take globs and `docs/configuration.md` said so one line away:
+  `unenforceable_guard_config()` returned `[]`, `level_for_namespace("prod-web")` returned **A3**
+  rather than the pinned A0, and with `AUTONOMY_A3_ALLOWLIST="CrashLoopBackOff/prod-*"`,
+  `a3_allowed("CrashLoopBackOff", "prod-web")` returned **True** — the watchtower would auto-fix
+  in precisely the namespaces the operator believed were pinned to investigate-only. A glob, a
+  `?`, a slash and an embedded space were all silent. `a3_allowlist_problems()` had the same class
+  of gap (empty playbook, empty pattern, a second `/`), failing closed rather than open. Both now
+  validate the whole entry, and the glob message names the setting where globs *do* work. The
+  empty key is deliberately still not reported: `level_for_namespace("")` is the cluster-scoped
+  lookup, so `=A0` really does pin cluster-scoped objects. 53 tests pin it, each asserting the
+  underlying behaviour first so the report is never its own only evidence.
+- **The break-glass page promised a stop button the product exposes nowhere.**
+  `docs/autonomy.md#stopping-the-agent-break-glass` — the page an operator reads *during* an
+  incident — said the two write brakes bind "without a redeploy" and listed the kill switch as
+  engageable by "`KI_V5_KILL_SWITCH=true`, or the runtime toggle (no restart)". Measured across
+  every operator surface: no API route matches kill/stop/freeze/brake in any of the 19 paths
+  (`GET /v1/v5/status` reports the brakes and nothing sets one); no `kq` command engages one; the
+  chart's ConfigMap is an explicit key allowlist with no `extraEnv` escape, so neither setting is
+  reachable through Helm values; and `engage_kill_switch()` has no caller in `app/` outside
+  `budget.py`. Settings are read once at process start — setting `KI_V5_KILL_SWITCH=true` in the
+  environment of a running process leaves `kill_switch_engaged()` False. So engaging a brake
+  required the restart the page said was unnecessary, and the in-process toggle sets a module
+  global in one process: even wired to a route it would stop only the replica that served the
+  request. The gates themselves were correct; the sentence was not. The page now documents what
+  exists (`kubectl set env deploy/kubeintellect KI_V5_KILL_SWITCH=true`, confirm with
+  `kq v5-status`) and states plainly which surfaces are missing and why the toggle is per-replica;
+  `budget.py`'s module docstring carried the same claim and is corrected. 24 tests hold the claim
+  to the mechanism — they re-permit it automatically if the toggle ever gets a production caller.
+- **`GET /v1/v5/status` read a brake source directly instead of its reader.** `kill_switch_engaged`
+  was reported through `kill_switch_engaged()`; `change_freeze` was reported as
+  `settings.KI_V5_CHANGE_FREEZE`, bypassing the `change_freeze_active()` reader the write gates
+  use. Behaviour is identical today — no caller injects freeze windows — so this is a consistency
+  fix, not a live defect; it removes the second place a future freeze source could be honoured by
+  the gates and not by the surface that reports them.
+- **A declared change freeze stopped one of the two write gates.** `KI_V5_CHANGE_FREEZE` is an
+  operator saying *stop* — `GET /v1/v5/status` reports it and `kq v5-status` prints it. Its sibling
+  brake, the kill switch, is read through one `kill_switch_engaged()` that composes its two sources,
+  so both write gates obey it. The change freeze had no such reader: `auto_write_permitted` (the
+  watchtower's A3 path) read the settings flag, while `gate_write` (the ACI write chokepoint) read
+  only an injected `(now_epoch, freeze_windows)` pair — which its one caller passes as neither. With
+  `KI_V5_CHANGE_FREEZE=true` and nothing else set, `gate_write()` returned *allow* and
+  `decide_write("kubectl scale …", earned_rung="L4")` returned **auto**, while the same settings
+  denied on the kill switch. Both gates now read one `change_freeze_active()`. Scope, stated plainly:
+  `decide_write`/`plan_mutation` have no production caller yet, so unlike the kill-switch defect this
+  was latent rather than live — what was live is a status surface reporting a brake that half the
+  gate surface did not implement. 45 tests pin it, including that patching the single reader moves
+  both gates.
+- **A `readonly` API key could grant itself `cluster-admin` via `kubectl auth reconcile`.** The
+  verb logic is an allowlist — a verb is a write unless it is on the read-only list — so a verb
+  wrongly *on* that list is an open door, not a missing rule. `auth` was on it because
+  `kubectl auth can-i` and `auth whoami` ask questions, but `kubectl auth reconcile` **writes**:
+  it creates and updates Roles, RoleBindings, ClusterRoles and ClusterRoleBindings from a
+  manifest. Measured 2026-08-20 with a stubbed kubectl, a `readonly` key ran
+  `kubectl auth reconcile -f -` carrying a ClusterRoleBinding to `cluster-admin` with no approval
+  prompt, while `kubectl create -f -` with the identical manifest was refused. `auth` now sits in
+  `_READ_ONLY_SUBCOMMANDS` alongside `rollout`, `config` and `certificate`, so `can-i` and
+  `whoami` still read and everything else — including a subcommand a future kubectl adds — is a
+  write. The two tables are additionally asserted disjoint, because a verb in both reads as a
+  blanket read before its subcommand is consulted.
+- **`kubectl cluster-info dump` returned the contents of every protected namespace.** Read-only
+  against the cluster is not read-only against what may be read. `cluster-info dump` walks every
+  namespace and prints pod specs, events and container logs; no namespace filter reaches it,
+  because the verb names no resource type and both filters key off that. Measured 2026-08-20, a
+  `readonly` key ran `kubectl cluster-info dump --all-namespaces` unfiltered. It is a concatenated
+  dump with no per-object shape to filter, so it is now refused for every role on the same rule
+  `-o custom-columns` is, with a message pointing at `-n <namespace>`. Bare `cluster-info` is
+  untouched. 55 tests added across both fixes.
+- **A boolean listed as a value flag made one shared parse swallow the verb — and every gate with
+  it.** `_skip_flags` is the single walk that finds the verb for every gate in `run_kubectl`; it
+  consults `_VALUE_FLAGS` to decide whether a flag consumes the token after it.
+  `--warnings-as-errors` is a boolean (pflag accepts it bare) and it was in that table, so the
+  walk consumed the verb as its value. Measured 2026-08-20 with `hitl_bypass` on (an
+  `auto_approve` session or "approve all"): `kubectl --warnings-as-errors get secrets -n prod` and
+  `... get sa -n prod` **ran and returned credential rows** where the unprefixed forms are
+  refused, and `kubectl --warnings-as-errors delete namespace shop` ran with **no always-confirm
+  prompt**. At the gate level the verb read as `secrets` / `namespace` / `image`, so
+  `_extract_resource_type` returned `None` (nothing to compare against the blocklist),
+  `_classify_risk` fell from `high` to `medium`, and `_requires_always_confirm` returned `False`.
+  Routing every gate through one parse — the fix for four earlier defects in this family — is what
+  made a single wrong table row move all of them at once. `--warnings-as-errors` is removed from
+  the table, a `_BOOLEAN_GLOBAL_FLAGS` set records kubectl's boolean globals, the two are asserted
+  disjoint, and a command corpus asserts that a flag carrying no meaning about the request changes
+  no gate's answer. 84 tests added.
+- **`helm get manifest` stripped the release's Secrets — unless you wrote `-n` before the verb.**
+  `run_helm` removes protected kinds from rendered manifests because `helm get manifest` returns
+  a release's own `kind: Secret` objects with their base64 `data:` intact, which is exactly what
+  `kubectl get secret` is refused for under every role. It decided when to strip from the first
+  non-flag token in `tokens[2:]`, so any global flag before the verb put its *value* there:
+  measured 2026-08-20, `helm -n prod get manifest shop`, `helm --namespace prod get manifest
+  shop` and `helm -n prod get all shop` all returned the base64 password in full, while
+  `helm get manifest shop -n prod` stripped it. `helm get hooks` renders manifests too and was
+  never on the enumerated list at all. Stripping now runs on **every** `helm get` — the decision
+  is removed rather than the parse repaired — and `_extract_verb`'s flag walk is a shared
+  `_skip_flags()` helper, matching `run_kubectl`.
+- **A quoted or comment-suffixed `kind:` kept a Secret in a Helm manifest.** The same stripper
+  matched the kind as a bare token to end-of-line (`^kind:\s*([A-Za-z0-9.-]+)\s*$`), so
+  `kind: "Secret"` and `kind: Secret  # managed by the platform team` — both ordinary YAML a
+  chart can render — failed to match and the document was returned with its `data:` block. Quotes
+  and trailing comments are now part of the line, not part of the value. 40 tests added across
+  both fixes.
+- **The namespace filter handled `-o jsonpath` by splitting the output on spaces — that is one
+  jsonpath.** A bare `kubectl get namespaces` is allowed *because* the protected entries are
+  stripped from the answer. For `-o jsonpath` the filter dropped whitespace-separated tokens
+  equal to a blocked name, which works only for the expression that prints bare names separated
+  by spaces. jsonpath prints whatever the caller asks for: measured 2026-08-20 against the
+  default blocklist, `{range .items[*]}{.metadata.name}{","}{end}` returned
+  `default,kube-system,monitoring,` and the `=`/`:` variants returned `kube-system=Active` — in
+  full, **with no withheld note**, so the answer looked complete. The name was still there, it
+  was simply no longer a whole token, and there is no separator jsonpath cannot produce.
+  `-o custom-columns` and `-o go-template` were already refused for exactly this reason, and the
+  `--all-namespaces` sibling already refused jsonpath too — two functions doing one job gave two
+  answers for one format. The branch is removed rather than patched, so jsonpath now falls to the
+  same `_FIXED_SHAPE_FORMATS` allowlist as every other caller-shaped format. Table, `-o wide`,
+  `-o name`, `-o json`, `-o yaml` and `describe` are filtered exactly as before. 25 tests added.
+- **The protected-namespace guard read one name, in one of the two places kubectl puts it.**
+  `_targeted_namespace` exists because an infrastructure namespace can be a command's
+  positional target rather than its `-n` value, and the documented rule is a hard refusal
+  including reads. It took the first non-flag token *after* the resource kind — so it missed
+  the `resource/name` shorthand its own sibling `_extract_resource_type` documents and handles,
+  and it missed every name after the first. Measured 2026-08-20 against the default blocklist:
+  `kubectl delete ns/kube-system`, `kubectl delete namespace/kube-system`,
+  `kubectl delete ns shop kube-system` and the **ungated read** `kubectl get ns/kube-system`
+  all ran; only `kubectl delete ns kube-system` was refused. Now `_targeted_namespaces()`
+  returns every name in both spellings and the guard tests all of them, while
+  `kubectl delete ns tenant-a tenant-b` stays a normal HITL-gated operation. Its remaining
+  `args.index(verb)` went too — `_operand_index()` is the one parse the verb, the resource
+  type, the always-confirm gate and this guard now share. 40 tests added.
+- **One flag between the verb and its target turned off the gate that cannot be turned off.**
+  `_requires_always_confirm` is the only gate in `run_kubectl` that fires *through*
+  `hitl_bypass` — cascading deletes (`namespace`, `pv`, `crd`) and live workload mutations
+  (`set image`, `set resources`) prompt the human even on an auto-approve session, because
+  none has a rollback path. It read its target as the fixed index `args[2]`, which is the
+  operand only when the command is written verb-first with nothing in between. Measured
+  2026-08-20: `kubectl delete -n prod namespace shop`, `kubectl -n prod delete namespace
+  shop`, `kubectl delete --force namespace shop`, `kubectl delete --ignore-not-found pv
+  my-volume` and `kubectl -n prod set image deploy/api api=nginx` all returned `False` — so
+  the *natural* way to write a cascading namespace deletion executed with no prompt while the
+  awkward way stopped and asked. `drain` was never affected (matched on the verb alone). The
+  same positional trap had already been fixed in both sibling parsers; this one was missed, so
+  all three now share one `_operand_after_verb()` helper. That helper also removes a second
+  assumption in `_extract_resource_type`, which located the verb with `args.index(verb)` — the
+  *first* place the verb string appears, which a flag value can take: in a namespace named
+  `get`, `kubectl --namespace get get secrets` read the resource as `get` and missed the
+  Secret block. 54 tests added.
+- **"approve all" bypassed HITL for one turn; four documentation surfaces said "for the rest
+  of the session".** `stream_events` rebuilds its run config on every call, and `hitl_bypass`
+  comes from `auto_approve` — the request body (`kq --auto-approve`) or the *current* message.
+  Nothing persists it, and the `kq` REPL does not latch it either. Measured over three turns:
+  `"approve all"` → bypass on, then the next two turns → bypass off, gated again. Meanwhile
+  `docs/security.md` said *"session-wide bypass"*, `docs/examples.md` and `docs/cli-reference.md`
+  said *"for the rest of a session"*, `docs/api-reference.md` said *"for the rest of the
+  session"*, and the log line announced *"HITL bypass enabled for session=…"*. The gap is in the
+  **safe** direction — the gate stays on — so the behaviour is left alone and the claim is
+  corrected everywhere, with `tests/test_approve_all_is_one_turn.py` pinning what actually
+  happens. Whether the bypass *should* span a session is an owner decision: widening the
+  product's central safety gate is not a side effect of fixing a sentence.
+- **The secret redactor was a YAML redactor, and reported itself applied to any text.**
+  Everything in `app/utils/redact.py` is line-aware — `key: value` matching, following a
+  credential key onto the lines its value occupies, recognising keys that are secrets by
+  convention — and every one of those rules was written against the shape `kubectl -o yaml`
+  produces. `kubectl -o json`, an equally ordinary read and the form the API itself returns,
+  writes quoted keys, which `_LINE_RE` did not match at all; both lines of the Kubernetes env
+  idiom fell through to the free-text branch. Measured on the same object: `-o yaml` gave
+  `value: <redacted>`, `-o json` stored `"value": "hunter2-prod-db"`, and a Secret's `tls.key`
+  went the same way. Whether a credential was caught depended on the `-o` flag the caller
+  happened to pass. The parser now captures the key's quote (back-referenced, so an opening
+  quote requires a closing one) and `_unwrap_value` gives the value's punctuation back to the
+  emitter — so a redacted JSON document is **still valid JSON**, keys and non-secret values
+  intact, rather than mangled text. A new suite renders the same objects both ways and asserts
+  neither leaks.
+- **The flight recorder's secret scrubber walked one level of the payload and reported itself
+  applied.** `REFLEXION_REDACT_SECRETS` (on by default) is documented as *apply secret/URL/token
+  scrubbing before persisting*, and `flight_recorder._scrub` said *redact secrets from string
+  fields*. What it did was iterate `payload.items()` and redact the values that happened to be
+  strings — anything inside a list or a nested object went into the hash-chained `decision_log`
+  verbatim. Measured: `{"attributes": {"ki.action": "kubectl … --token=AKIA…"}}` kept the token,
+  and so did a `plan`'s `steps`. Which payloads were covered was an accident of how each call
+  site shaped its dict; `rollback_point.pre_state` is safe only because `kubectl_tool` redacts
+  every capture itself before handing it over. The scrubber now walks dicts and lists to a bound
+  of six levels. The 1,500-character cap deliberately keeps its current reach — top-level fields
+  only — because a nested string arrives already capped by its producer, and re-capping a
+  rollback pre-state at 1,500 would cost that capture its restorability to enforce a limit
+  nothing asked for. `docs/data-handling.md`, which had stated the old limit accurately, is
+  updated.
+- **A rollback capture whose only redaction was a private key was described as, in full,
+  "redacted".** `kubectl_tool._capture_note` tells the operator what redaction did to a
+  pre-state capture, and it counted three of the six markers `redact_secrets` can emit — a
+  hand-copied subset. A PEM block (`<redacted-pem-block>`) and a Secret's `data:` block
+  (`<redacted-block>`) were not among them, so the most secret-dense objects there are produced
+  the least informative note. The vocabulary now lives once, as `redact.REDACTION_MARKERS` +
+  `count_redactions`, and a test reads the tuple against the literals in `redact.py`'s own
+  source so a new marker cannot be added without joining it.
+- **The cluster snapshot pasted into every prompt was a second, unguarded kubectl.**
+  `context_fetcher` pre-fetches `kubectl get pods --all-namespaces` and
+  `kubectl get events --all-namespaces --field-selector=type=Warning` through its own
+  `subprocess.run`, not through `run_kubectl`, and enforced none of that tool's policy. The
+  identical command *through* the tool has its blocked-namespace rows removed; the snapshot
+  pasted the whole table into the coordinator's system prompt on every turn, warning `MESSAGE`
+  column included — which is where a `FailedMount` event names the secret it could not find and
+  a failing probe names the apiserver's address. `snapshot_pod_count` counted those pods too, so
+  the model was told a number it could never reproduce with a tool call. Worse, the same executor
+  is handed `-n <namespace>` built from the `TARGETED:` line the **model** writes: `run_kubectl`
+  refuses `describe pod etcd-control-plane -n kube-system`, while the same read through the
+  snapshot path returned the full description — environment variable names, mounted certificate
+  paths — into the prompt. The blocklist and the connection/identity flag family are now enforced
+  at the one place the subprocess is launched, cluster-wide tables are row-filtered with the same
+  `namespace_guard` helper `run_kubectl` uses, and a filtered listing says so rather than
+  reading as a complete one.
+- **Detector findings carried raw Kubernetes event text out of the blocked namespaces.** The
+  sensorium runs `kubectl get pods -A --watch` and `kubectl get events -A --watch` as raw
+  subprocesses, not through `run_kubectl`, and `app/sensorium/` has no reference to the namespace
+  blocklist. That is deliberate — a watchtower that cannot see the infrastructure namespaces
+  cannot tell a quiet cluster from an unwatched one — but the free text came with it: a finding
+  in `kube-system`, `kubeintellect` or `monitoring` carried up to 140 characters of raw event
+  message (`MountVolume.SetUp failed … secret "kubeintellect-secrets" not found …`), and
+  `GET /v1/findings` returns it to every caller with no role parameter at all. An event `message`
+  is arbitrary cluster text; every other field a finding carries is an enum or an object name.
+  The message is now withheld for a blocked namespace and everything else is kept, so the
+  operator still learns that coredns is crash-looping. Only `pod_status` observations reach the
+  knowledge graph, so no event text was stored there — verified, not assumed. See
+  `tests/test_the_watch_channel_respects_the_blocklist.py`.
+
+### Documentation
+
+- **Corrected the RBAC table in `docs/security.md`.** It stated that infrastructure-namespace
+  access, reads included, is blocked for admin, operator and readonly. True of every agent tool;
+  never true of the sensorium, which is cluster-wide by design. The table now carries an explicit
+  row for detector findings from those namespaces instead of leaving it to be discovered.
+
+- **`kubectl get pods --server=http://attacker.example.com -A` ran, and so did `--as=system:masters`.**
+  Every gate in `run_kubectl` and `run_helm` reasons about *what* is being asked — the verb, the
+  resource, the namespace, the role. Nothing looked at *which cluster the command talks to* or
+  *under whose identity*, and nothing rejected the flags that decide it. Measured by capturing
+  the argv that reaches `subprocess.run`, `--as`, `--as-group`, `--server`, `--kubeconfig`,
+  `--context`, `--token`, `--insecure-skip-tls-verify` and Helm's `--kube-as-user`,
+  `--kube-apiserver`, `--kube-token`, `--kube-context` all executed byte-for-byte on the plain
+  read path with no role required. Impersonation still needed the ServiceAccount to hold
+  `impersonate`, which the shipped chart does not grant — it failed closed *at the API server*,
+  not in-app, and the chart offers `rbac.clusterAdmin: true` under which it would have worked.
+  Redirection needs no cluster permission at all: the response is then whatever that endpoint
+  returns, handed to the model as cluster truth, with the namespace filters reporting how much
+  they withheld from attacker-supplied text. Both tools now refuse the connection/identity family
+  — refused, not stripped, since silently dropping a flag answers a different question than the
+  one asked. The `--as…` and `--kube-*` families are matched by prefix. See
+  `tests/test_the_cluster_and_identity_are_not_arguments.py`.
+
+- **`kubectl get pods -A -o custom-columns=...` returned the protected namespaces' rows.** Both
+  namespace filters ended in a branch that assumes a kubectl table with NAMESPACE (or NAME) as
+  the first column. They refused `-o name` and `-o jsonpath` *by name* — a deny-list of the two
+  formats someone thought of — and let everything else reach that branch. `-o custom-columns`,
+  `-o go-template`, `-o template` and their `-file` variants render whatever the caller asked for
+  in whatever order, so the assumption is false: measured through the real tool, the `kube-system`
+  and `monitoring` rows came back whole and unannotated, from `get pods -A` and from
+  `get namespaces` alike. The same command with `NAME` in the *first* column was filtered
+  correctly, which is what makes it an assumption rather than a check. Inverted to an
+  **allowlist** of the shapes kubectl itself decides (`""`, `wide`, `json`, `yaml`), so an
+  unanticipated format fails closed; a structured payload that is not a list of items now fails
+  closed too. The tool's own parse-error message, which advised using `-o custom-columns`, now
+  points at `-o json`. See `tests/test_only_a_shape_kubectl_chose_can_be_filtered.py`.
+
+- **`query_prometheus` printed `= N/A` over live metrics, and crashed on `scalar(...)`.** The
+  tool discarded Prometheus's `resultType` and chose its renderer from `range_minutes` — the
+  *caller's* argument. An instant query whose expression carries a range selector
+  (`container_cpu_usage_seconds_total{...}[5m]`; the tool's own docstring examples use
+  `rate(x[5m])`) comes back as a **matrix**, whose entries have `values`, not `value` — so every
+  series rendered `= N/A`, which is the shape of *no data*, over samples that were right there.
+  A `scalar`/`string` result is a bare `[timestamp, "value"]` pair rather than a list of series,
+  so it reached the namespace filter and raised `AttributeError: 'int' object has no attribute
+  'get'` straight out of the tool — the guard was what destroyed the answer. Fixed: dispatch on
+  `resultType`, render scalars and strings, never hand a non-mapping to the filter, and have
+  `series_labels()` return `{}` for one instead of raising. `query_prometheus_series` (the
+  detector entry point) now reports an unprojectable shape as an error rather than an empty
+  list, so "no data" keeps meaning one thing. Detector paths were checked and were never
+  affected. See `tests/test_prometheus_renders_what_it_was_sent.py`.
+
+- **`query_loki` returned `kube-system` metric series with the namespace blocklist switched
+  off.** The guard was applied to the wrong key on most metric queries. The tool decided log-vs-
+  metric by testing whether the LogQL text *starts with* one of eight function names, and that
+  guess also chose where the filter looked for labels — `stream` for logs, `metric` for metrics.
+  A Loki **matrix** response has no `stream` key, so a misclassified metric query filtered
+  against `{}`, `""` is in no blocklist, and every series passed. Seven of ten ordinary metric
+  expressions failed the test, including `sum by (namespace) (rate({app="web"}[5m]))` — a space
+  after `sum`, not a parenthesis. The answer came back with the blocked series present, no labels
+  printed, and no notice that anything had been filtered. Fixed twice over, since either repair
+  alone closes it: rendering and filtering now follow Loki's own `data.resultType` (it had
+  already said what it returned), and `series_labels()` consults every known label container so a
+  wrong hint cannot disable the guard. The classification survives only to choose request
+  parameters. See `tests/test_loki_namespace_filter_survives_a_misroute.py`.
+
+- **`kubectl logs … | grep -A 3 Traceback` answered "(no matching lines)" for a log containing
+  the traceback.** `run_kubectl` reimplements `grep` in Python for its `|` support — a
+  documented defence layer that had **no tests at all**. The parser skipped every token starting
+  with `-` that was not `-v`, `-i` or `-E`, which produced two silently wrong answers, both
+  measured against this machine's `/usr/bin/grep`:
+  a **value-taking flag left its value in the pattern** (`grep -A 3 Traceback` searched for
+  `"3 Traceback"` and returned nothing where real grep returns five lines — and `-A`/`-B`/`-C`
+  is *the* idiom for reading a stack trace out of a log, so the agent was told the traceback in
+  front of it did not exist); and **combined short flags vanished** (`-iv` matches neither `-i`
+  nor `-v`, so `grep -iv info` ran as `grep info` and returned the exact **complement** of the
+  requested set). `-c`, `-l`, `-q`, `-m`, `-o` were likewise ignored rather than honoured.
+  The emulator now parses grep's arguments the way grep does — short clusters, attached values
+  (`-A3`), `--flag=value`, `--` — and implements `-v -i -E -F -w -x -c -n -o -s -a -A -B -C -m
+  -e`. **Anything it does not implement is named and refused**, which is the rule the module's
+  own docstring already stated for unsupported *commands*. Correctness is held by a differential
+  test that runs every supported combination through both implementations and compares byte for
+  byte. `tests/test_pipe_grep_matches_real_grep.py`.
+- **A filtered listing and a complete listing were the same bytes.** The namespace blocklist
+  enforces itself two ways — a *refusal* (`kubectl get ns monitoring` → `[Protected] …`) and a
+  *filter* (rows removed from a listing). The refusal is impossible to miss; the filter was
+  silent on five of its six paths. Measured 2026-08-20: `kubectl get namespaces` dropped 3 rows,
+  `kubectl get ns -o name` 2, `kubectl get ns -o json` 2, `kubectl describe namespaces` 2 and
+  `helm list -A` 2 — none of them said anything. Only `kubectl get pods -A` appended a notice.
+  The consequence is a false statement about the cluster: an agent asked whether the
+  `monitoring` namespace exists runs `kubectl get namespaces`, receives a list it has no way to
+  know is short, and answers **no**. Every filter now says what it withheld, and the note says
+  *"This listing is NOT the complete set."*
+  The sixth path told the truth and broke the format doing it: the `-A` filter appended its
+  `[Protected]` sentence *after* `json.dumps`, so `kubectl get pods -A -o json` returned output
+  that `json.loads` rejects with `Extra data` — a pre-existing defect an existing test had
+  worked around by parsing only `out.split("\n[Protected]")[0]`. Structured output now carries
+  the notice as a `withheldByPolicy` field inside the document.
+  `kubectl_tool` also carried a byte-identical private copy of the notice helper; there is now
+  one wording, in `namespace_guard`, for kubectl, Helm and the observability tools alike.
+  **One documented limit**: `helm list -A -o json` is a bare JSON array — no field can hold the
+  notice and nothing may follow it without making the payload unparseable. That case is logged
+  server-side and asserted as a limit rather than left to be discovered.
+  `tests/test_a_filtered_listing_says_so.py`.
+- **The secret redactor deleted the label and kept the credential.** `redact_secrets` is the
+  single funnel every stored artefact passes through — rollback captures, mutation captures,
+  episode summaries and root causes, preferences, flight-recorder payload fields. It classified
+  each line independently and dropped any line containing a keyword. YAML puts the name of a
+  thing and its value on *different* lines, so measured against a plain Deployment:
+  `- name: DB_PASSWORD` was dropped as `# <redacted-line>` and `value: hunter2-prod-db` was
+  **kept verbatim**. The stored record was worse than an unredacted one — the credential
+  survived and the only occurrence of the word "password" did not, so the review procedure the
+  module's own docstring prescribes (*grep stored data for patterns we missed*) returned nothing
+  on a record that was leaking. A `tls.key: |` block scalar stored its entire PEM body for the
+  same reason plus two more: `tls.key` contains no keyword, and
+  `-----BEGIN RSA PRIVATE KEY-----` does not match `private_key`.
+  Redaction is now line-*aware*: the key is kept and the value replaced, a credential key is
+  followed onto the lines its value actually occupies (block scalars and the `name:`/`value:`
+  pair Kubernetes uses for env vars), PEM armour is redacted wherever it appears, and keys that
+  are credentials by convention with no keyword in them (`tls.key`, `.dockerconfigjson`,
+  `id_rsa`) are recognised. Structural fields such as `kind:` now survive, because a type name
+  is not a credential and deleting it was the wrong half to delete.
+  Two limits are asserted rather than left to be discovered: an unlabelled value (`foo: hunter2`)
+  is kept, and a base64 blob embedded mid-line survives unless the whole value is base64 —
+  widening the token pattern across `+` and `/` would redact filesystem paths that diagnostics
+  need. This guards what is **stored**; it is not applied to the prompt sent to the model
+  provider. `tests/test_redaction_keeps_the_label_not_the_secret.py`.
+- **`KUBECTL_BLOCKED_RESOURCES="ConfigMap"` — the spelling Kubernetes itself uses for `kind:` —
+  blocked nothing at all.** The shipped defaults are kubectl's lowercase plural
+  (`secret,secrets,serviceaccount,serviceaccounts`), and every comparison folded only the
+  command line, so an operator extending the list had to guess both the case *and* the number
+  the code expected. Measured 2026-08-20 against the real `_check_protected_access`: with
+  `ConfigMap` configured, `get configmap`, `get ConfigMap`, `get configmaps` and `get cm` were
+  **all allowed**; with the lowercase singular `configmap`, `get configmaps` was still allowed.
+  The configured side is now case-folded in `Settings.kubectl_blocked_resources` and expanded
+  across singular and plural in `kubectl_tool._blocked_resources()` with the `-es`/`-ies` rules
+  Kubernetes resource names actually follow (`ingress` ⇒ `ingresses`, `networkpolicy` ⇒
+  `networkpolicies`, not the naive `+ "s"` that produces `ingres`); `helm_tool`'s manifest
+  stripping reads the same expansion, so the two tools cannot disagree. An entry that can never
+  match a resource type is reported through `config_audit` / `GET /v1/v5/status` / `kq v5-status`
+  like any other unenforceable guard setting.
+  **The credential floor was never affected** — `ALWAYS_BLOCKED_RESOURCES` is re-added
+  unconditionally, and `get secrets` was measured blocked in every configuration tried.
+  **kubectl short names are still not derived**: they come from API discovery, not from the
+  string, so blocking `configmaps` does not block `cm`. That limit is asserted by a test rather
+  than left to be discovered. `tests/test_blocked_resources_spelling.py`.
+- **One capital letter in `KUBECTL_BLOCKED_NAMESPACES` disabled every namespace guard, silently.**
+  Eight comparison sites across `kubectl_tool`, `helm_tool` and `namespace_guard` read
+  `<value>.lower() in blocked` — the normalisation was applied to one side only, and
+  `Settings.kubectl_blocked_namespaces` kept whatever case the operator typed. Measured
+  2026-08-20 with `KUBECTL_BLOCKED_NAMESPACES="Kube-System"`, against the real guards:
+  `kubectl get pods -A` returned the two `kube-system` rows the filter exists to remove;
+  `kubectl delete deployment coredns -n kube-system` was **allowed**, where it is normally a
+  `[Protected]` refusal at every role; the Loki/Prometheus query guard passed a
+  `{namespace="kube-system"}` selector straight through; and the autonomy ladder returned `A1`
+  where protected namespaces are meant to be pinned to `A0`. Nothing logged, nothing errored —
+  the configuration *looked* correct. `ladder._normalise` even carried the docstring *"Match how
+  the kubectl tool compares namespaces, so the two cannot disagree"*: it folded the namespace
+  under test but not the set, and the kubectl gate folded neither. The blocklist is now folded in
+  `config.py` (Kubernetes namespace names are RFC 1123 labels, so folding can only ever add
+  protection), the command-line side is folded too — an LLM-written `-nKUBE-SYSTEM` no longer
+  slips past — and a test asserts the property directly: a namespace is pinned to `A0` exactly
+  when the kubectl gate refuses it.
+- **Every guard setting is a comma-separated string whose parser discards silently.** What
+  case-folding cannot repair is now reported instead of vanishing: a `KUBECTL_BLOCKED_NAMESPACES`
+  entry that is not a legal namespace name (`kube-*` — a glob `AUTONOMY_A3_ALLOWLIST` supports and
+  this setting does not — or `ingress/nginx`, or anything over 63 characters); an
+  `AUTONOMY_NAMESPACE_LEVELS` entry the parser drops, which fails **open** by leaving the
+  namespace on the permissive default the override existed to tighten; and a malformed
+  `AUTONOMY_A3_ALLOWLIST` entry, which fails closed. New `app/core/config_audit.py` logs each at
+  startup as `guard_config_unenforceable` and `GET /v1/v5/status` returns them under
+  `unenforceable_guard_config`, rendered by `kq v5-status` — the same treatment
+  `set_but_unwired_flags` already gives a switch that does nothing, one level down. Never fatal:
+  an operator typo must not take the agent offline, only become impossible to miss.
+- **The morning digest called a window quiet that `kq findings` refused to call clear.** Two
+  surfaces answer the same question about the same window — `GET /v1/findings` (rendered by
+  `kq findings`) and the digest (`kq digest`) — and each computed the answer itself. The digest
+  validated its *recording* sources (recorder flag, SQLite mode, watchtower flag, pool, and both
+  queries) and never asked whether anything had been **looking**. Measured 2026-08-20 with a stub
+  Postgres pool answering every query truthfully with zero rows, all recorder flags on, and no
+  watch stream connected: `/v1/findings` returned `{"sensorium": "starting", "findings": []}` and
+  `kq findings` printed *"Sensorium is not watching … an empty result here does NOT mean the
+  cluster is healthy"*, while `kq digest` over the same window printed **"Quiet watch: no findings
+  in the last 24h."** The same held with `SENSORIUM_ENABLED=false`, where no detector could ever
+  have fired. A flawless empty record and an empty cluster read identically. The classification
+  now lives once in `app/detectors/perception.py` (`perception_state` / `perception_gaps`) and both
+  surfaces read it, so they cannot answer differently; a disconnected watch stream or a blind
+  predictive layer is a `degraded_reason` like any unreadable source, and the digest leads with
+  *"Digest INCOMPLETE … This is NOT a quiet watch"*. Stated in the docs rather than implied: stream
+  health is the state **now**, not a history of the window, so the reported gaps are a lower bound
+  on the blindness in it.
+- **The anticipatory detectors reported an all-clear that a connection refusal produced.** The
+  layer whose entire job is to warn *before* a failure had two ways to go quiet without saying so.
+  `query_prometheus_range_raw` returned only the series from `_query_raw` and **discarded the error
+  string**, so every caller saw an unreachable Prometheus as an empty result set. Measured
+  2026-08-20 against a real closed TCP port (`PROMETHEUS_URL=http://127.0.0.1:9`): the agentic/GPU
+  collector's `_default_scalar("…sandbox_escape_attempts…")` returned **0.0** — the value that
+  means *no escape attempts were observed* — and `collect_and_detect()` returned **`[]`**, which
+  the caller reads as "clear". Same result with `PROMETHEUS_URL` unset. An instrument that reports
+  `0` when it cannot read is worse than one that reports nothing: zero is an observation, and this
+  one was never made. `_default_scalar` now returns `None` on a query error and the collector emits
+  a `metrics-unavailable` warning hit naming how many of the seven agent/GPU signals it could not
+  read, so the detectors say *blind*, not *clear*. Note this reverses a contract that a test had
+  written down as intended behaviour (`test_scalar_exception_safe`, "verify the default path
+  swallows errors → 0 → no hit"); it is renamed and inverted, and flagged for review.
+- The detector engine had the same hole one level up, plus a guard that could never fire.
+  `evaluate_trends` logged `trend_query_error` from an `except` block — but `_query_raw` returns
+  its errors and does not raise, so a Prometheus outage could never reach that handler; the
+  documented warning had never been emitted by the failure it exists for. `evaluate_trends` now
+  reads `query_prometheus_series` (series, error) and, on an error, records `trend_blind_since` /
+  `last_trend_error` and logs `trend_query_unavailable` instead of evaluating a trend against an
+  empty series.
+- `GET /v1/findings` now carries `predictive` (`active` / `blind` / `off`), `predictive_detectors`
+  and `predictive_error` alongside `sensorium`. The two are independent claims — a connected watch
+  stream says nothing about whether Prometheus answered — and `kq findings` no longer prints the
+  green *"No findings · N detectors watching"* line while predictive detection is blind.
+- **Two of the project's own refusals came back from a read verb as cluster state — one of them as
+  a clean bill of health.** `_run`, the shared tail of all four ACI read verbs, separates "here is
+  the cluster" from "here is why I could not look" purely by reading `run_kubectl`'s string, and it
+  did so with a hand-kept marker list (`"blocked protected"`, `"requires confirmation"`, `"HITL"`,
+  `"not permitted"`) plus `lowered.startswith("error")`. Measured 2026-08-20 against the real
+  `run_kubectl`: `[Error] kubectl is not installed or not found in PATH…` returned **ok=True** with
+  the error text as the body the model reads as cluster state, and `_health_from` found the word
+  "error" in it and reported the target as **FAILED** — a verdict about a workload derived from a
+  missing binary. `startswith("error")` never fired, because the string starts with `[`. Worse,
+  `[Unsupported] 'kubectl edit' requires an interactive terminal which is not available…` also
+  returned ok=True and read as **CURRENT**, because the phrase *"is not available"* contains
+  "available" — a refusal reported as healthy. The three `[Protected]` refusals were caught only
+  because their wording happens to contain "not permitted": a coincidence of phrasing, not a check.
+  `_run` now classifies the string once through the shared `kubectl_output` reader, so a refusal or
+  an error is always `ok=False` with the text in `error` and never in `body`. Separately,
+  `_health_from` matched its status keywords as substrings anywhere in the body, so a Deployment
+  named `error-budget-exporter` read as FAILED and a `crashloop-detector` as crashlooping; health
+  words are now matched as whole whitespace-separated fields (splitting on whitespace only — a
+  hyphen is part of a Kubernetes name, and splitting on it is what turned `error-budget-exporter`
+  into the word "error").
+
+- **The capability sandbox ran unbounded commands when it did not recognise the role — with the
+  approval gate already switched off.** `run_as` (v5 P3 two-axis sandbox) executes with
+  `hitl_bypass=True`: the app-level HITL prompt is deliberately given up there, on the stated
+  grounds that the impersonated ServiceAccount's RBAC is the real guard. That trade only holds
+  while the impersonation is definitely applied. It was not — an unrecognised role produced no
+  flags, `as_impersonated` documented itself as a "no-op", and `run_as` executed the command
+  anyway, unimpersonated, returning an ordinary output string that said nothing about it. Measured
+  2026-08-20: `run_as("delete deployment web -n prod", "typo")` sent exactly
+  `delete deployment web -n prod` to the seam, and against the real `run_kubectl` that command runs
+  through to execution under `hitl_bypass=True` while the same command with `hitl_bypass=False`
+  stops at the approval interrupt — so both guards were off at once, each because the other was
+  presumed present. The role vocabulary makes it reachable by accident rather than by malice: this
+  module's roles are `read-only` / `namespace-write` / `never-cluster-admin`, while the API-key
+  roles used everywhere else in the codebase are `readonly` / `operator` / `admin` / `superadmin`,
+  so passing `"readonly"` — the spelling the rest of the project uses — silently disabled the
+  sandbox. A second hole: the command could bring its **own** identity. Real kubectl (v1.36.3,
+  `kubectl options`) documents `--as-group=[]` as *"Group to impersonate for the operation, this
+  flag can be repeated"*, so a command carrying `--as-group=system:masters` defeats the
+  never-cluster-admin property whatever ServiceAccount the appended `--as` flag names. `run_as` now
+  raises `SandboxContractError` — running nothing — for an unknown role, for a command that sets
+  any of `--as` / `--as-group` / `--as-uid` itself (matched as whole tokens, so a label value like
+  `team=--as-group` is not one), and as a last check if the impersonation flag is somehow absent
+  from what would be executed. The pure flag builders keep their behaviour: `impersonation_args`
+  still returns `""` for an unknown role, which is honest — there are no flags — and `run_as` is
+  the seam that refuses to act on it.
+
+- **The pre-apply validation gate reported "would apply cleanly" for commands the API server never
+  saw — and could switch its own server-side check off.** `validate_mutation` (v5 P3 chokepoint) is
+  the third link of validate → apply → verify, and it read `run_kubectl`'s prose the same way the
+  other two did: `ok = not admission and "error" not in output.lower()`. Measured 2026-08-20 with
+  the **real `run_kubectl`**: all five safety-gate refusals — readonly key on a write, operator key
+  on a high-risk verb, protected namespace, cluster-wide mutation, terminal-only verb — contain
+  none of those words, so every one produced `DryRunResult(ok=True, admission_denied=False)`: a
+  claim that the API server and its admission chain accepted a command that was never sent. An
+  unreachable cluster (`The connection to the server localhost:8080 was refused …`) and
+  `run_kubectl`'s own `(no output)` placeholder took the same path. The flag handling had the
+  mirror-image hole: `_with_server_dry_run` left the command untouched whenever the **substring**
+  `--dry-run` appeared, so `--dry-run=none` (which real kubectl v1.36.3 documents as the default —
+  *"--dry-run='none': Must be \"none\", \"server\", or \"client\""* — i.e. not a dry run), a bare
+  `--dry-run` (*"deprecated and can be replaced with --dry-run=client"*), and an explicit
+  `--dry-run=client` all suppressed the server-side validation while the result still claimed to be
+  one; `kubectl label deploy/web team=--dry-run` tripped it from inside a label value.
+  `DryRunResult` gained `validated`: false means the API server never answered, so `ok` and
+  `admission_denied` are statements about nothing. `_with_server_dry_run` now matches whole tokens
+  and rewrites any dry-run spelling to `--dry-run=server`. And `plan_mutation` downgrades an `auto`
+  decision to `approve` when the dry-run did not run — an unrun check is not a passed check, and
+  auto-execution is earned against evidence the server would accept the command. The production
+  HITL gate in `kubectl_tool.py` runs the same test against `args`, a `list[str]`, so there it is
+  exact token membership and `--dry-run=none` correctly still requires human approval; the defect
+  was confined to this module.
+
+- **The health oracle could not tell "not ready" from "I could not look" — and the executor rolled
+  back on both.** `deployment_ready` (v5 P3 TNR verification rung) reads the cluster through
+  `run_kubectl`, which returns a string and discards the exit code. Anything that is not a
+  `kubectl get` table therefore has no READY column, the parser found no row, and the oracle
+  answered `met=False, "deployment 'web' not found in 'prod'"` — the same verdict it gives a
+  genuinely unhealthy deployment. Measured 2026-08-20 with the **real `run_kubectl`**: a read of a
+  protected namespace returns `[Protected] Access to namespace 'kube-system' is not permitted`, and
+  a machine without the binary returns `[Error] kubectl is not installed or not found in PATH`;
+  both became *"deployment 'web' not found in 'prod'"* — a health verdict about a namespace the
+  oracle never looked at. `execute_transactional` reads `met=False` as a failed mitigation and runs
+  the rollback command, so an **instrument outage became a live mutation against a cluster we had
+  just been told we cannot read**. Real kubectl's `The connection to the server localhost:8080 was
+  refused …` and `run_kubectl`'s own `(no output)` placeholder took the same path.
+  `PostconditionResult` gained `evaluated`: false means the oracle has no observation at all, so
+  `met` must not be read as a verdict. `execute_transactional` answers that with the new
+  `VERIFY_INCONCLUSIVE` — escalate, **never roll back** — while a read that succeeded and simply
+  does not contain the row stays a real observation (`evaluated=True, met=False`). The
+  string-reading itself moved into `app/tools/aci/kubectl_output.py` so the apply side and the
+  verify side cannot disagree about what a given `run_kubectl` result meant. Same scope caveat as
+  the entry below: this executor has no production caller yet.
+
+- **A refused mutation was read as a successful one, and the executor then rolled back a change
+  that had never happened.** `execute_transactional` (v5 P3 TNR, shipped default-off and listed in
+  the v5 P3 entry below as "transactional apply→verify→auto-rollback") promises a mitigation
+  either commits or leaves the cluster as it was. It decided whether the apply had happened with
+  `not any(e in output.lower() for e in ("error", "exit=1", "not found", "forbidden", "invalid"))`
+  — a substring scan over prose, on a seam whose input is a human-readable string because
+  `run_kubectl` returns text and discards the exit code. Measured 2026-08-20 by driving the **real
+  `run_kubectl`**: every safety gate in the project answers a blocked mutation with a marker
+  string, and **all five read as SUCCESS** — readonly key on a write and operator key on a
+  high-risk verb (`[Permission Denied]`), infrastructure namespace and cluster-wide mutation
+  (`[Protected]`), a verb needing a terminal (`[Unsupported]`). End to end, a refused
+  `kubectl scale deploy/web --replicas=3` produced `status: rolled_back` and issued
+  `kubectl scale deploy/web --replicas=1` **against the live cluster**, undoing something that was
+  never done: the safety gate's refusal was converted into a mutation. The reverse direction is as
+  wrong and more likely — `deployment.apps/error-budget-exporter configured` is a successful apply
+  whose *resource name* contains "error", so it was reported `apply_failed`, the postcondition
+  oracle never ran, and the change stayed live and unverified. Real kubectl text was also missed
+  entirely: `The connection to the server localhost:8080 was refused …` contains none of those
+  five keywords. Replaced with `classify_apply()`, which reads KubeIntellect's own refusal markers
+  and kubectl's error openers as **line prefixes** rather than substrings anywhere, and returns
+  three outcomes: `APPLY_REFUSED` (nothing ran, nothing to roll back), `APPLY_FAILED` (kubectl
+  rejected it), or applied — where the postcondition oracle, not a keyword, is the authority.
+  Scope, stated plainly: `execute_transactional` has **no production caller** today (tests only),
+  so this is a guarantee that could not have been delivered, not a cluster that was harmed.
+
+- **Rollback points reported themselves armed while holding something that cannot be applied.**
+  Before every mutating `kubectl` command the tool layer captures the target's current YAML and
+  records it as a `rollback_point`; the digest listed them under *"Rollback points armed"*, the
+  server logged `rollback_point_armed`, and `docs/flight-recorder.md` said recovery is "manual
+  but mechanical: pipe the captured state into `kubectl apply -f -`". What is actually stored is
+  `redact_secrets(yaml, max_chars=4000)`, and both of those transformations can destroy the
+  object. Measured 2026-08-20 against real `bitnami/kubectl:latest` output at both ends: for a
+  **Secret**, the line `kind: Secret` contains a redaction keyword and is dropped, so kubectl
+  answers `error: unable to decode "STDIN": Object 'Kind' is missing` — nothing to restore; for a
+  **ConfigMap** whose values are token-shaped, every value becomes `<redacted-token>` and the
+  result is still **valid** (`kubectl label --local` accepts it as `configmap/app-config`), so the
+  documented recovery **succeeds and overwrites the live configuration with placeholders** — a
+  restore that destroys exactly what it was meant to protect; and any object over the cap (this
+  project's own chart `values.yaml` is 7.4 KB) is cut mid-line and no longer parses. Redaction is
+  not the defect and is not negotiable — the alternative is credentials in Postgres — so the
+  capture is now compared against what kubectl produced and the record says which of the two it
+  is: `restorable` plus `capture_notes` naming what changed. A capture that cannot be applied is
+  still recorded, as evidence of what the object looked like, but the log says *"NOT restorable,
+  do not apply it"* instead of *armed*, the digest section became *"Pre-mutation state captures
+  (N of M restorable)"* with a per-entry verdict, and the postmortem timeline marks it. Records
+  written before the field existed are reported as *unknown*, never promoted to armed.
+
+- **The tamper-evident audit log could lose records and still verify as intact.**
+  `docs/flight-recorder.md` promised there is "no way to edit, insert, or delete a record
+  without the chain failing verification afterwards", and two paragraphs later stated that
+  during a recorder outage "events are dropped, not buffered to disk". Both could not be true.
+  Measured 2026-08-20 by driving the real recorder against a real `postgres:16-alpine`: with the
+  `decision_log` table removed mid-episode, the in-process chain head advanced anyway, so the
+  same process resumed at a skipped `seq` and `verify_chain` reported the episode as **broken** —
+  `kq replay` exit 3, *"records may have been tampered with"*, permanently on the record for a
+  database blip that altered nothing. Worse in the other direction: if the process restarted
+  after the outage, the head was re-read from the database, the sequence came back contiguous,
+  and the result was six rows, `seq 0-5`, **`chain_valid=true`** — with three recorded events
+  silently gone and the postmortem printing *"✅ Audit chain verified intact — every event below
+  is tamper-evident."* A third path made loss permanent: a failed chain-head lookup was swallowed
+  and cached as a genesis head, so every later batch for that episode collided with
+  `UNIQUE (episode_id, seq)` and was dropped for good, while the log blamed "duplicate key" —
+  a symptom of its own retry, not the outage. The write path stays fire-and-forget (a recorder
+  outage must never break a user response), but loss is no longer invisible: a failed batch drops
+  the cached chain head instead of advancing it, so the chain stays contiguous and a blip is not
+  reported as tampering; the count and the real cause are carried forward and written **into the
+  chain** as a `recorder_gap` record the moment writes recover, where it cannot be removed without
+  breaking verification. `kq replay` and `kq export` gained exit code **5** — chain intact, episode
+  incomplete — and `kq postmortem` prints a **RECORD INCOMPLETE** banner beside the ✅ verdict with
+  the number lost and why. *Intact* and *complete* are two claims, and only the first was ever
+  a property of a hash chain.
+
+- **The zero-token detection layer reported itself "active" while nothing was being watched.**
+  `GET /v1/findings` returned `{"sensorium": "active", "detectors": N}` whenever a `DetectorEngine`
+  object had been constructed — a fact about object lifetime, not about perception. Nothing
+  anywhere tracked whether a `kubectl --watch` stream was connected. Measured 2026-08-20 by
+  starting the real watchers on a host without kubectl: both watch tasks hit `FileNotFoundError`
+  and **`return`** — that loop exits permanently and never reconnects for the rest of the process
+  lifetime — and the endpoint still answered `{"sensorium": "active", "detectors": 20,
+  "findings": []}`, which `kq findings` renders as the green line *"No findings · 20 detectors
+  watching"*. Nothing was watching. An RBAC denial reaches the same silence by a different route:
+  kubectl exits non-zero, the loop retries forever at a 60-second backoff cap, and `stderr` was
+  sent to `DEVNULL`, discarding the one piece of information that explains it — `pods is
+  forbidden: User "system:serviceaccount:…" cannot watch`. This is the layer that is supposed to
+  notice trouble without an LLM, so an empty findings list from a deaf sensorium is the most
+  expensive kind of silence. Each watch stream now records its own health — connected, permanently
+  stopped, consecutive failures, and kubectl's own stderr as the reason, captured through a
+  concurrent drain so a full stderr pipe can never block the child. `sensorium` became a real
+  state (`active` only while a stream is connected, otherwise `disabled`, `starting`,
+  `reconnecting` or `stopped`), the streams are reported alongside it, and `kq findings` prints the
+  green all-clear **only** when the sensorium is genuinely watching — otherwise it says an empty
+  result does not mean the cluster is healthy and lists each stream with its reason. The active
+  path, the disabled path and the findings table are unchanged and asserted as such.
+
+- **The morning digest said "Quiet watch" when nothing had been recorded.** `kq digest` is the
+  operator's check on what the agent did overnight, so an empty result is only reassuring if the
+  sources were readable. Measured 2026-08-20, four materially different states produced the
+  identical, confident line *"Quiet watch: no findings in the last 24h."*: a genuinely quiet night;
+  a `decision_log` query that raised (caught as `except Exception: rows = []`); **SQLite mode**, a
+  supported and documented configuration in which — per `docs/flight-recorder.md` — there is no
+  `decision_log` table at all, so the digest structurally cannot have data; and
+  `FLIGHT_RECORDER_ENABLED=false`, where nothing is ever written. Only a missing connection pool
+  was reported honestly. `kq digest` rendered that sentence and exited `0` in every case, so a
+  night with recording switched off was indistinguishable from a night on which nothing went
+  wrong. The digest now carries `degraded` and `degraded_reasons`, empty exactly when the digest
+  is a real observation of the window; it names the setting an operator would change
+  (`FLIGHT_RECORDER_ENABLED`, `USE_SQLITE`, `WATCHTOWER_ENABLED`) rather than only the resulting
+  error; the summary leads with `Digest INCOMPLETE … This is NOT a quiet watch`; and the rendered
+  markdown opens with a warning block before any section. Degraded does not mean suppressed —
+  whatever was readable is still reported, and a partially-readable digest keeps its sections and
+  still says so. A genuinely quiet watch is unchanged and is asserted as such. `kq digest`
+  deliberately still exits `0`: it is a successful report of a degraded state, and scripts should
+  branch on `degraded` in the JSON form.
+
+- **A predicate type the schema, the docs and the detector-authoring prompt all treat as working
+  is never evaluated.** Playbook `detect:` blocks accept three predicate types. `watch_predicates`
+  are matched by `DetectorEngine.process()`; `trend_predicates` are evaluated by the periodic tick
+  (ADR-010). **Nothing has ever read `DetectBlock.promql`** — verified 2026-08-20 across every
+  module in the server package. It was nonetheless treated as real everywhere else:
+  `parse_detect_block` accepted it as sufficient to make a block valid, `_is_detect_block` counted
+  it when deciding a database row was a recompilable detector, and `authoring.py` told the
+  NL-authoring model *"promql: list of instant PromQL strings (firing = non-empty result)"* — so
+  ADR-012 could mint a PromQL-only shadow candidate that validates, is staged for human promotion,
+  accrues no precision because it cannot fire, and would still never fire once promoted.
+  `Finding.source` likewise documents an unreachable `"promql"` value. Stated honestly: all 21
+  `promql:` queries in the shipped playbooks sit alongside real `watch_predicates`, so no shipped
+  detector is dead and nothing that fires today stops firing — what was false is the additional
+  coverage those queries appear to claim and the validity of a PromQL-only detector. This is the
+  same shape as the `kind:` trap already documented in the playbook reference: it parses, loads,
+  counts toward the detector total, passes the schema check, and matches nothing, ever. PromQL now
+  does not on its own make a block valid — a PromQL-only block is rejected at parse time with a
+  warning naming the reason — and the authoring prompt and error message say plainly that the key
+  is recorded but not evaluated. The queries themselves are kept and their count is pinned by a
+  test, so removing them has to be deliberate. **Evaluation has not been implemented**: that is a
+  new capability with its own failure semantics, not an audit fix, and a test now fails
+  deliberately if anything starts reading the field, so the docs cannot drift back out of date.
+
+- **A cluster read that failed was reported to the model as a cluster that was empty and
+  healthy — and to memory as a fix that worked.** `context_fetcher` pre-fetches pods and Warning
+  events before every turn; its runner returned `proc.stdout or proc.stderr` and never looked at
+  the exit code, so kubectl's error text was handed to the pod-table parser as cluster data.
+  Measured 2026-08-20 against the real binary (`bitnami/kubectl:latest`), the two failure shapes
+  produced two different lies. A connection failure prints three lines, two of which have enough
+  whitespace-separated columns to be counted as pod rows ⇒ `pod_count=2`, a quantity invented out
+  of an error message. A single-line failure — `error: You must be logged in to the server
+  (Unauthorized)` — was consumed as the header row ⇒ `pod_count=0, has_issues=False`. Three
+  consumers acted on that. (1) The prompt: `_snapshot_sufficiency_block` asserts *"the cluster
+  snapshot above was fetched Ns ago and contains 0 pods. Health flags: issues=false,
+  warnings=false"* and then instructs the model to **prefer answering directly from the snapshot**
+  for exactly the questions "how many pods", "is the cluster healthy", "what's running" — measured
+  with the pods read failing and the events read succeeding-and-empty, an ordinary asymmetric
+  failure. (2) R4 post-fix verification: `_verify_resolution` documents "None if verification …
+  failed to run", but nothing raised, so a failed read scanned clean and it returned
+  `(True, "resolved")`, recording an unverified fix as verified — and `promotion.py` selects those
+  rows (`WHERE verified = TRUE`) to mint learned rules and detector candidates. A cluster read is
+  most likely to fail immediately after a disruptive change, which is precisely when R4 runs.
+  (3) Playbook triggers ran their regexes over the stderr text. Each read is now checked by exit
+  code and carries an `ok` flag; a failed read sets a new `snapshot_read_failed` state field,
+  renders as an explicit **UNAVAILABLE** section that still shows kubectl's reason but is never
+  labelled pod state, is never parsed for a count, is not matched against playbook triggers, and
+  makes the sufficiency block assert no count and no health flags while requiring a fresh fetch.
+  R4 returns `(None, None)` on a failed read. The healthy path is unchanged and is asserted as
+  such.
+
+- **Cluster identity was unresolvable in the only mode the chart ships, so every deployment
+  wrote into a scope every other cluster reads.** `cluster_id.py` exists, in its own words, so
+  that "patterns from a Kind dev cluster would pollute prompts on prod EKS and vice versa" —
+  memory, episodes, learned failure patterns and findings are all scoped by the id it returns.
+  Two of its three strategies shelled out to `kubectl config`, which needs a kubeconfig **file**.
+  An in-cluster deployment has none: the chart sets `KUBECONFIG_PATH: ""` so kubectl
+  authenticates with the pod's ServiceAccount. Verified 2026-08-20 against the real binary
+  (`bitnami/kubectl:latest`, no kubeconfig): `kubectl config current-context` exits 1 with empty
+  stdout, and `config view --minify` exits 1 with "current-context must exist in order to
+  minify". Both strategies therefore returned nothing and identity fell through to the literal
+  `"unknown"`. The module's docstring called that "a sentinel that read paths can filter out",
+  which is the opposite of what the read paths do: `memory_store` recalls with
+  `cluster_id IN ($1, 'unknown')` — deliberately, so pre-column rows still match — which makes
+  the sentinel a **cross-cluster wildcard**. Two clusters sharing a database both wrote it and
+  both read each other's rows, which is exactly the contamination the module was written to
+  prevent, arriving by default and only in production: on a laptop a kubeconfig is present and
+  identity resolves, so it looked correct in development. `docs/reflexion.md` further claimed
+  the sentinel rows "age out via retention" so the system "naturally converges to per-cluster
+  patterns only" — untrue in-cluster, where fresh `'unknown'` rows are minted continuously.
+  Identity is now resolvable: a new `CLUSTER_ID` setting takes precedence over every probe
+  (Helm: `config.clusterId`), and where it is unset the `kube-system` namespace UID — the
+  conventional cluster identifier — is tried before giving up. The fallback still exists and
+  still returns the sentinel, because filtering those rows on read would discard the legitimate
+  data of every single-cluster deployment; it now logs a warning naming both the fix and the
+  consequence, and `cluster_id_is_resolved()` lets callers tell a real identity from the
+  sentinel. Two stale doc claims that the fingerprint hashes a "namespace count" were corrected
+  — no namespace count has ever been part of it.
+
+- **The kill switch an operator can see was not the kill switch the agent obeyed.**
+  `GET /v1/v5/status` reports `kill_switch_engaged` — annotated in the response model as
+  "⇒ all autonomous writes denied" — and `kq v5-status` prints it in red. But
+  `auto_write_permitted()` returned **allow** when `KI_V5_BLAST_RADIUS_BUDGET` was false,
+  *before* consulting the kill switch, and that flag defaults to `False`. Measured 2026-08-20
+  through the real watchtower path in the default configuration: with the kill switch engaged,
+  `kill_switch_engaged()` returned `True` (what the API and CLI report) while
+  `watchtower._should_auto_fix()` returned `True` — the agent kept auto-fixing. A declared
+  `KI_V5_CHANGE_FREEZE` was ignored the same way. The failure mode is the worst available for a
+  break-glass control: an operator stopping the agent mid-incident was told it had stopped, and
+  so did not reach for a real brake. The runtime toggle exists precisely so a stop needs no
+  redeploy, yet it was inert unless an unrelated experimental flag had been enabled by env var
+  beforehand. Both brakes now bind regardless of `KI_V5_BLAST_RADIUS_BUDGET`, which is left with
+  no consumer at all: `gate_write` never read it either, so the flag's only effect in the whole
+  codebase was to disable a brake. It is recorded as unwired in `UNWIRED_EXPERIMENTAL_FLAGS`
+  rather than given an invented purpose. Default behaviour is unchanged — a deployment
+  with no brake engaged sees the same ladder as before. Two existing tests asserted the defect
+  (`auto_write_permitted().allow is True` with the switch engaged, commented "gate inactive ⇒
+  ladder unchanged"); they now assert the corrected contract, alongside a new suite that checks
+  the reported state against the actual write decision over all sixteen combinations of the four
+  inputs, so the signal and the behaviour cannot drift apart again.
+
+- **Cluster-scoped objects escaped the autonomy safety model, which is built on namespaces.**
+  A Node, PersistentVolume or ClusterRole has no namespace, so a Warning event about one
+  (`NodeNotReady`, `Rebooted`, `KubeletHasDiskPressure` — among the most common warnings in any
+  cluster) reaches the watchtower with `namespace=""`. That fell through to the configured
+  default rather than being pinned. Because `fnmatch("", "*")` is true and `*` is the natural
+  way to write "all my namespaces" in an allowlist whose docstring advertises glob support, an
+  operator who set `AUTONOMY_A3_ALLOWLIST=SomePlaybook/*` silently made **Nodes auto-fixable** —
+  where an unattended remediation (cordon, drain, delete) is the least recoverable action the
+  system can take. Measured 2026-08-20 by feeding `_event_observation` a real-shaped
+  `NodeNotReady` event: `level_for_namespace("")` returned the default and
+  `a3_allowed("NodeNotReady", "")` returned `True`. An unattributable namespace is now capped at
+  A1 — investigated and reported, never mutated — with `a3_allowed` refusing it independently of
+  the cap; the cap is a ceiling, so a deployment pinned to A0 stays at A0. Observation is
+  unaffected. The ladder now also normalises namespace names (strip + lowercase) the way
+  `run_kubectl` does, so the two components cannot disagree about which namespace is protected.
+
+- **Ten of twelve `/v1` routes answered without an API key.** Authentication was a per-endpoint
+  convention — each handler called `get_user_role(request)` itself — so it was enforced exactly
+  where somebody had remembered it. Measured 2026-08-20 with auth enabled: `/v1/digest`,
+  `/v1/findings`, `/v1/episodes/{id}/replay` (the flight recorder — every command run and its
+  output), `/v1/episodes/{id}/postmortem`, `/v1/events/replay/{session}`, `/v1/namespaces`,
+  `/v1/v5/status`, and the **read** halves of `/v1/detectors` and `/v1/preferences` all returned
+  data to a request carrying no `Authorization` header; only `/v1/chat/completions` and
+  `/v1/auth/demo-keys` challenged. In `detectors.py` and `preferences.py` a `_require_writer`
+  helper gated every mutation and no read — the same "a read is a safe default" assumption found
+  in `run_helm` and the Loki/Prometheus tools the day before. Authentication is now a dependency
+  on the API router, so every route inherits it and a route added later cannot forget it;
+  `/healthz` and `/readyz` are mounted on a separate public router because they must answer an
+  unauthenticated kubelet. The documented open mode (no keys configured ⇒ every caller is
+  `admin`) is unchanged, and the per-verb role checks in the tools are untouched.
+
+### Fixed
+- **An unreachable cluster was reported as a cluster with no namespaces.** `GET /v1/namespaces`
+  shells out to `kubectl get namespaces` and never checked the return code, so an unreachable API
+  server, an expired credential, an RBAC denial or a bad `KUBECONFIG_PATH` produced empty stdout
+  and was returned as `200 {"namespaces": []}`. The wrong answer then travelled: `kq` validates
+  `/ns <name>` against this list, and its REPL is deliberately careful — it distinguishes present,
+  absent and *undetermined*, and only rejects on a definite absence so that a backend outage
+  cannot block an operator. A `200` with an empty list is a definite absence, so the care was
+  defeated and the REPL answered **"Namespace 'prod' not found in the cluster"** during exactly
+  the incident where the operator's credentials had expired — pointing them at a deleted namespace
+  instead of at their kubeconfig. The same empty list silently emptied `kq`'s namespace
+  tab-completion. Measured 2026-08-20 end to end. The endpoint now returns **503** with the first
+  line of kubectl's stderr (`FileNotFoundError` and a timeout included), so an empty list means
+  one thing only; the protected-namespace filter is re-asserted by test so the new error handling
+  cannot drop it.
+
+- `kq`'s `fetch_namespaces` mapped any `200` to `body.get("namespaces", [])`, so a response it
+  could not interpret — a missing key, a `null`, a gateway's own JSON — also became "zero
+  namespaces" rather than "unknown". Only a genuine list now counts as an answer; everything else
+  is `None`, which the caller already handles by failing open.
+
+- `kq`'s health check reported `"did not respond within 5 s"` whatever timeout was in force, even
+  though it is configurable via `KUBE_Q_HEALTH_TIMEOUT`. It now names the real value.
+
+- **The database migration could not fail.** Every path that applies `schema.sql` ran `psql -f`
+  without `ON_ERROR_STOP=1`. psql's documented default is to print an error, continue to the next
+  statement, and **exit 0** — so a migration that applied nothing still reported success. Measured
+  2026-08-20 against `postgres:16-alpine`, the image the chart's Job uses, running the real schema
+  as a role without `CREATE` on `public` (the ordinary shape of a managed instance): **70
+  statements failed, 0 of 18 tables were created, psql exited 0**. Kubernetes reads that exit code,
+  so the `job-db-init` Job was marked `Succeeded` and `helm upgrade` reported `deployed`. Nothing
+  downstream contradicted it — `/readyz` deliberately does not probe Postgres, and memory/recorder
+  writes are fire-and-forget by design, so the product degraded silently with only an unwatched
+  warning line in the server log. All five call sites now pass `ON_ERROR_STOP=1
+  --single-transaction`, making the migration all-or-nothing rather than half-applied: the Helm
+  Job, `make db-init`, the documented Alibaba RDS command, the schema header comment, and the
+  documented **restore** command in `docs/operations.md` — where the same default meant a disaster
+  recovery could report success and restore nothing. The `pip`/CLI path (`kubeintellect db-init`)
+  was already correct: it uses psycopg, which raises, and it exits 1. A new suite asserts the flags
+  on every shipped path, and that the two assumptions behind `--single-transaction` still hold (no
+  `CREATE INDEX CONCURRENTLY`; every statement idempotent, since the Job re-runs on each upgrade).
+
+- **The Helm chart shipped an unguarded manual copy of the schema.** `configmap-schema.yaml`
+  embeds 456 lines of SQL literally rather than reading `schema.sql`, and the Job applies the copy.
+  They are byte-identical today — verified — but nothing enforced that, and a stale-but-valid copy
+  would apply cleanly and report success. Now gated by a test that diffs the two.
+
+- The test harness claimed to force auth off and did not: `conftest.py` cleared three of the
+  four key lists, so a local `.env` carrying a superadmin key (or `DEMO_KEY_HMAC_SECRET`) left
+  `settings.auth_enabled` true while the comment said otherwise. Invisible until the routes
+  began enforcing it, at which point nine tests failed with 401. All five inputs are now cleared.
+
+- **`--all-namespaces` names every namespace, so it named none the guard could check.** The
+  protected-namespace check asks which namespace a command names; a command naming *all* of them
+  names none in particular, and for eleven passes of hardening it simply did not fire on `-A`.
+  Measured 2026-08-20 against the real tool: `kubectl get pods -n kube-system` was refused while
+  `kubectl get pods -A` returned the identical rows plus `kubeintellect` and `monitoring`;
+  `kubectl get events -A` and `kubectl get configmaps -A -o yaml` likewise. Worse on the write
+  side — `kubectl delete pods -n kube-system` was refused while `kubectl delete pods
+  --all-namespaces` reached the approval prompt and, once approved, would have deleted pods in
+  `kube-system`, `monitoring` and `kubeintellect`, the namespace KubeIntellect itself runs in;
+  it composed badly with the fail-open approval gate fixed the same day. Cluster-wide
+  **mutations are now refused for every role including superadmin**, with a message pointing at
+  `-n <namespace>`. Cluster-wide **reads keep working and are filtered** — table, `-o wide`,
+  `-o json`, `-o yaml` and `describe` drop entries from blocked namespaces and state how many
+  were withheld. `-o name` and `-o jsonpath` carry no namespace to filter on and are refused
+  rather than passed through, the same fail-closed choice made for an unparseable payload.
+
+### Fixed
+- `mkdocs build --strict` exited **0** on a broken intra-page anchor, reporting a link as
+  resolved when it was not — measured by deliberately breaking one. `validation.anchors` (and
+  unrecognized/absolute links, omitted files) is now raised to `warn`, which `--strict` turns
+  into an error; verified red-green. No pre-existing link in the site was broken.
+
+- **The two observability tools reached the same cluster's data with no blocklist at all.**
+  Four tools are registered for the agent. `run_kubectl` and `run_helm` reach the cluster
+  through a command line and gate on `-n`; `query_loki` and `query_prometheus` reach the same
+  data through a *query language*, where the namespace is a label matcher, and enforced nothing.
+  Measured 2026-08-20 against the real tools: `{namespace="kube-system"}`,
+  `{namespace="kubeintellect"} |= "key"`, `{namespace="monitoring"} |~ "token|password"`,
+  `rate({namespace="cert-manager"} |= "error" [5m])` and `kube_secret_info{namespace=
+  "kubeintellect"}` all executed and returned their data. Loki is the sharper end: `kubectl logs
+  -n kube-system` is refused precisely because logs carry credentials in plaintext, and
+  `query_loki` advertises itself as the better way to read logs. Both tools now gate twice — the
+  query is refused if it positively selects a blocked namespace (negative matchers are not
+  mistaken for selection), and every returned stream/series is dropped if its own `namespace`
+  label is blocked, which also catches `{app="nginx"}` matching a pod in `kube-system`. The
+  response states how many results were withheld. The detector engine's
+  `query_prometheus_range_raw` is deliberately exempt: its PromQL comes from human-reviewed
+  playbooks and is meant to watch `kube-system`. Residual documented in `docs/security.md`: a
+  result with no `namespace` label passes, so an aggregation that discards the label can still
+  return a scalar computed partly over a blocked namespace.
+
+- **The agent had a second way to reach the cluster, and it enforced neither blocklist.**
+  `run_helm` is read-only against the cluster — its verb check is an allowlist, so it can never
+  mutate a release — but read-only against the *cluster* is not read-only against *what may be
+  read*. It applied no namespace blocklist and no resource blocklist, so it answered in
+  protected namespaces questions `run_kubectl` refuses for every role. Measured 2026-08-20
+  against the real tool: `helm list -n kube-system`, `helm get values kubeintellect -n
+  kubeintellect`, `helm get manifest web -n prod`, `helm get all prometheus -n monitoring` and
+  `helm status cert-manager -n cert-manager` all executed. `helm get manifest` renders the
+  release's own `kind: Secret` objects with their base64 `data:` intact — precisely what
+  `kubectl get secret` is refused for unconditionally. Separately, `GET /v1/namespaces` runs its
+  own `kubectl get namespaces` and returned the blocked namespaces in full, because the pass that
+  added the namespace output filter added it to the tool and not to the route. `docs/security.md`
+  stated both guarantees about the product while one of three code paths enforced them. All three
+  now share one definition, read from `KUBECTL_BLOCKED_NAMESPACES` rather than copied.
+  `helm list -A` is filtered in table, JSON and YAML, failing closed on an unparseable payload.
+
+### Fixed
+- `run_helm` read its subcommand as `tokens[1]`, so `helm -n prod list` was rejected as an
+  unsupported subcommand. Behind the allowlist this was a usability bug rather than a bypass —
+  the same parser defect that was a *bypass* in `run_kubectl`'s deny-list (fixed 2026-08-13).
+  It now uses the shared flag-aware parser. Recorded in `docs/security.md` as the argument for
+  preferring allowlists: an allowlist turns a parser bug into a complaint, a deny-list turns the
+  same bug into a hole.
+- `docs/security.md` layer 6 carried a dangling half-sentence left by an earlier edit.
+- **A HITL denial that was not one of 13 exact phrases executed the command.** The paused graph
+  was resumed with `Command(resume=not is_denial(user_message))`, so approval was the default and
+  only a recognised *denial* prevented execution. `is_approval()` already existed and nothing
+  called it for this decision. Measured 2026-08-20 by driving the real `stream_events` with a
+  thread paused at an interrupt: `"No."` (with a full stop), `"NO!"`, `"no thanks"`,
+  `"don't do that"`, `"cancel it"`, `"stop it"`, `"not yet"`, `"wait"`, `"hold on"`, `"why?"`,
+  `"what will that do?"` and an **empty message** all resumed with `True` and ran the destructive
+  command. `docs/security.md` has always documented the opposite — *"anything else → treated as
+  denial"* — so the published contract was false in the fail-open direction, on the last gate
+  between an LLM and a destructive cluster operation. The resume value is now
+  `is_approval(msg) or is_auto_approve_request(msg)`; case, surrounding quotes and trailing
+  `.`/`!` are normalised so `No.` and `YES!` read as intended; an unrecognised reply cancels and
+  logs a warning naming it.
+
+### Fixed
+- **`kubectl rollout restart|undo|pause` armed no rollback point**, despite
+  `docs/flight-recorder.md` promising one before *"every mutating `kubectl` command"*. The
+  arming condition still used the enumerated `_HIGH_RISK | _MEDIUM_RISK` deny-list after the
+  approval gate had moved to `_is_write_verb`, so the two consumers of "is this destructive"
+  disagreed; any verb this build does not know also armed nothing. Both now use the same test.
+  Two silent no-ops inside the capture are fixed as well: `rollout` puts a subcommand before its
+  target, so the pre-state read was built as `kubectl get restart deployment/api -o yaml`, and
+  `kubectl label pod api-1 tier=web` kept `tier=web` as a resource name — both rejected by
+  kubectl and both swallowed by the deliberately best-effort wrapper, arming nothing while
+  appearing to arm something.
+
+### Security
+- **The namespace listing filter worked in three of its six output formats.** A bare
+  `kubectl get namespaces` is deliberately allowed *because* blocked namespaces are stripped from
+  the result. Measured 2026-08-20 with a `readonly` key: the default table, `-o wide`, `-o name`
+  and `-o jsonpath` filtered correctly, while **`-o json`, `-o yaml` and `-oname` returned the
+  blocked namespaces in full**, and **`kubectl describe namespaces` was not filtered at all**.
+  Three separate causes in one function: the `-o` reader did not accept pflag's attached
+  shorthand (the same gap fixed for `-n`, now sharing one `_flag_value` parser so they cannot
+  drift again); `json`/`yaml` returned the payload unchanged behind the comment *"too complex to
+  strip reliably; blocked at execution anyway"*, whose second half was false — nothing blocks a
+  bare listing at execution; and the filter passed a hardcoded `"get"` to `_extract_resource_type`,
+  so for any other verb the resource came back `None` and the filter returned early, handing back
+  the labels, annotations and quotas of every namespace. `-o json`/`-o yaml` are now parsed,
+  filtered and re-serialised, and a payload that cannot be parsed is replaced rather than
+  returned unfiltered. What leaked was namespace names and metadata, not credentials.
+
+### Security
+- **`kubectl apply -f <path|URL>` and `-k <URL>` ran with the manifest never reaching
+  KubeIntellect.** Pass-55's fix taught the protected-access checks to read a manifest on stdin;
+  these forms put it somewhere the process cannot reach at all. Measured 2026-08-20 for
+  `operator` and `admin`, `kubectl apply -f /tmp/payload.yaml`,
+  `kubectl apply -f https://example.com/m.yaml` and `kubectl apply -k https://github.com/…` all
+  executed. Three properties failed together: the protected-resource and protected-namespace
+  checks saw a command naming neither, so a Secret or a write into `kube-system` was invisible to
+  both; the approval prompt carried `stdin: null` and a `human_summary` that was just the command
+  line, so the approver had nothing to review — and for a URL the content did not exist yet at
+  approval time, since kubectl fetches it afterwards; and that fetch is unreviewed outbound
+  network access from the KubeIntellect pod. Any `-f`/`--filename`/`-k`/`--kustomize` whose value
+  is not `-` is now refused with a message pointing at the supported stdin form, in every
+  spelling pflag accepts (`-f x`, `-f=x`, `-fx`, `--filename=x`). `kubectl logs -f` is
+  unaffected — there `-f` means `--follow`.
+
+### Security
+- **A manifest on stdin was invisible to both protected-access checks.** `kubectl apply -f -`
+  names neither a resource nor a namespace on the command line — they are the manifest's `kind:`
+  and `metadata.namespace:` — and every check parsed argv. Measured 2026-08-20 for `operator` and
+  `admin`: applying a Pod whose `metadata.namespace` was `kube-system` reached an ordinary
+  approval prompt, while `kubectl apply -f - -n kube-system` was refused outright; a
+  `kind: Secret` manifest was likewise only prompted, while `kubectl create secret generic` was
+  refused. This is the form KubeIntellect itself recommends — the `kubectl edit` rejection message
+  points users at `kubectl apply -f -` with stdin. Both checks now read the manifest as well as
+  argv, walking every document in a multi-document stream and the items of a `kind: List`, and
+  the superadmin re-check uses the same manifest-aware helper so that role does not get the
+  closed bypass handed back. Scope is deliberately the manifest's `kind` and
+  `metadata.namespace` and nothing deeper: a Pod that mounts a Secret in its own namespace is
+  what Pods are for and still applies.
+
+### Security
+- **`kubectl -nkube-system` reached a protected namespace that `kubectl -n kube-system` could
+  not.** kubectl parses flags with pflag, which accepts a shorthand's value attached to it —
+  `-n kube-system`, `-n=kube-system` and `-nkube-system` are the same command. `_extract_namespace`
+  read only the spaced form and `--namespace=`, so for the other two it returned `None` and the
+  protected-namespace check never ran its comparison: the guard did not decide the namespace was
+  permitted, it never learned there was one. Measured 2026-08-20 through the real tool,
+  `kubectl get pods -nkube-system` **ran** for `readonly`, `operator` and `admin` — all three of
+  which are refused the identical command written with a space — and an admin's
+  `kubectl delete pod x -nkube-system` was downgraded from an outright `[Protected]` refusal to an
+  ordinary approval prompt. All five spellings are now equivalent, `superadmin` keeps its
+  documented bypass, and an unprotected namespace still works in every form.
+
+### Fixed
+- **Three documentation surfaces understated the infrastructure-namespace block.**
+  `docs/security.md` said *"read-only verbs always allowed"* in the HITL sequence and titled its
+  matrix row *"Writes to infrastructure namespaces"*, and `docs/architecture.md` said *"infra
+  namespace writes blocked"* for `admin`. The code blocks **all** access including reads
+  (`kubectl get pods -n kube-system` is refused for every role but `superadmin`), which is the
+  stronger and intended behaviour — a Secret is reachable through a Pod spec, an Event or a
+  ConfigMap, not only through `kubectl get secret`. The docs now say so.
+
+### Security
+- **The command gate was a deny-list, so every kubectl verb it did not name counted as a read.**
+  `DESTRUCTIVE_VERBS` enumerated 13 verbs; kubectl has many more. Measured through the real tool
+  with a **read-only** API key, all of these executed with no approval prompt: `label`,
+  `annotate`, `rollout restart`, `rollout undo`, `cp`, `debug`, `expose`, `autoscale`,
+  `port-forward` and `attach`. `kubectl cp prod/api-1:/etc/creds /tmp/` copies files out of a
+  container — mounted Secrets included — and `kubectl debug node/node-1` starts a privileged pod
+  on the node, so the two worst cases were readable by the role explicitly defined as unable to
+  read Secrets. The default is now inverted: `_READ_ONLY_VERBS` is an **allowlist** and anything
+  absent is treated as a write, so a verb introduced by a future kubectl release arrives blocked
+  rather than pre-approved. `rollout` is judged by its subcommand — `status` and `history` stay
+  available to a read-only key, `restart` / `undo` / `pause` / `resume` do not. `cp` and `debug`
+  are classified high-risk. The ACI bounds guard (`is_read_only`) delegates to the same function
+  instead of keeping its own copy, which fixes the same `rollout restart` hole there.
+
+### Security
+- **kubectl's own alternative spellings walked through the credential block.** The blocklist
+  compares literal strings, so `kubectl get sa` — the documented short name for
+  ServiceAccounts — and the fully-qualified `kubectl get secrets.v1.` / `serviceaccounts.v1.`
+  form returned the objects, as did `sa/default`. Resource tokens are now normalised (short
+  name, `resource.version.group` suffix, `resource/instance`, case) before being matched, at
+  both comparison sites including the superadmin re-check. Unrelated CRDs that merely start
+  with the same letters (`secretstores`, `sealedsecrets`) are unaffected.
+- **A protected namespace named as the command's target was only prompt-gated, not blocked.**
+  `kubectl delete pod x -n kube-system` was refused outright, but `kubectl delete namespace
+  kube-system` reached a human approval prompt instead — the same protected namespace, and the
+  documentation says infrastructure namespaces are blocked including reads. The namespace guard
+  now also reads a positional target. Listing namespaces still works (the output is filtered),
+  and deleting an ordinary namespace is still a normal approval-gated operation.
+- **Reordering a kubectl command bypassed every safety gate, including the read-only role.**
+  The subcommand verb was parsed as the second token, so `kubectl -n prod delete deployment api`
+  — as valid as the canonical order, and a form an LLM writes routinely — parsed its verb as
+  `-n`, a token in no risk set, no role set and no rejected set. Every check in `run_kubectl`
+  keys off that value, so all of them fell together. Measured through the real tool: a
+  **read-only** API key could delete Deployments and PersistentVolumeClaims and drain nodes,
+  destructive commands executed with **no approval prompt**, and six of eleven ordinary ways of
+  writing a Secret read returned the Secret. The verb and resource parsers now skip global flags
+  wherever they appear, and, as defence in depth, a destructive verb appearing anywhere in the
+  command is gated even if the parse misses it — matched on whole tokens, so `-l app=delete`
+  does not trip it. No configuration change is required. All 1093 pre-existing tests passed
+  before and after: every one of them writes the canonical order, which is why nothing caught it.
+- **Tuning the kubectl blocklist silently unblocked every Secret in the cluster.**
+  `KUBECTL_BLOCKED_RESOURCES` (Helm: `config.blockedResources`) *replaces* its list rather than
+  extending it, and `values.yaml` said *"Override to add tenant-specific or environment-specific
+  namespaces"* — so an operator following the documentation and adding `configmap` removed
+  `secret`. Verified through the real `run_kubectl`: reading every Secret in a namespace, listing
+  ServiceAccounts, and reading **this release's own API keys** all went from blocked to allowed,
+  with no warning anywhere, while the guard still answered with its promise that Secrets are
+  *"shielded from inspection to protect cluster credentials"*. The four credential types
+  (`secret`, `secrets`, `serviceaccount`, `serviceaccounts`) are now re-added unconditionally via
+  `ALWAYS_BLOCKED_RESOURCES` and cannot be configured away; operator additions still apply.
+  Namespaces deliberately keep **no** floor — letting the agent investigate `monitoring` is a
+  legitimate choice — but the values file now states the replace-not-merge semantics instead of
+  inviting the mistake. Requires no action on upgrade; a deployment that had narrowed the list
+  regains credential protection automatically.
+
+### Fixed
+- **A server crash mid-answer made `kq -q` exit `0`.** When the chat stream raised, the failure
+  path ended it with the *same* frames a successful answer ends with — a `finish_reason: "stop"`
+  chunk then `[DONE]` — and put the reason in `content` as `[Error: …]`. Prose is not a signal:
+  `run_single_query()` scores any non-empty text as an answer, so in a script or CI job a crashed
+  turn was indistinguishable from a real result, and a **partially streamed diagnosis was
+  presented as a complete one**. The stream now also emits a `ki_event` of type `error` with
+  **`fatal: true`**, and `kq` discards the partial answer and exits non-zero. `fatal` is what
+  separates this from the error events emitted when one tool fails and the agent recovers and
+  answers anyway — those still count as answers. The `[Error: …]` content chunk is retained so
+  OpenAI-compatible clients that ignore the side channel still see a reason rather than an
+  unexplained empty completion, and the `error` event type is now documented in the API
+  reference (it never was).
+- **The Helm chart's rolling-update drain never worked, and four places documented it as if it
+  did.** The chart, the deployment template, `app/core/readiness.py`, `app/api/v1/endpoints/health.py`
+  and the public API reference all described the same sequence: `SIGTERM` flips `/readyz` to `503`,
+  Kubernetes stops routing, then the pools close. Sending a real `SIGTERM` to a real server and
+  probing it showed the transition is `200` → **connection refused**: uvicorn closes its listening
+  socket first and runs the application's shutdown hook last, so the `503` is never observable and
+  a request arriving on a not-yet-updated kube-proxy route is *refused* rather than served — worse
+  than the problem the flag was added to fix. The chart now carries a **`preStop` sleep**
+  (`drainSeconds`, default `5`), which Kubernetes runs *before* `SIGTERM` and which actually holds
+  the socket open while the Endpoints removal propagates. `set_ready(False)` is kept as honest
+  in-process state but no longer claimed as a traffic-control mechanism, and every one of those
+  five descriptions was corrected. New `tests/test_chart_shutdown_contract.py` pins the hook and
+  the arithmetic — both failure modes (no hook; grace period at or below the drain) are otherwise
+  silent outside a cluster under load.
+- **The other half of the coordinator's memory context was still silent.** The previous entry made
+  episode recall report its own outage; `load_memory_context()` — the V4 pinned block carrying
+  operator preferences, failure hints, session notes and past RCA — still returned `""` on any
+  failure. `""` is exactly what a brand-new user with nothing stored produces, so a Postgres outage
+  reached the model as a clean slate: no preferences to honour, no precedent to build on, and no
+  signal anywhere. It now raises `MemoryStoreUnavailable`, and the node injects the same explicit
+  **"Memory unavailable"** block rather than an empty string. `USE_SQLITE` returning `""` is a
+  configured state, not an outage, and is unchanged.
+- **`GET /v1/preferences` answered `200` with an empty list when the store was unreadable**, so
+  `kq preference list` printed `No preferences remembered` during a database outage — inviting the
+  operator to re-enter preferences that already existed. It now answers **503**, matching
+  `GET /v1/detectors`. Unlike episode recall, no agent path depends on this read, so there is
+  nothing to fail open for.
+
+- **A memory outage reached the model as "this cluster has no history".** When both recall channels
+  failed, `recall_episodes()` returned `[]` — the same value as a genuine zero-recall. Downstream,
+  `render_recall_block([])` returns `""`, so the triage prompt simply **omitted** the "Similar past
+  episodes" section, and the log line read `episodes=0` exactly as it does when nothing matched.
+  Neither the model nor the operator could tell that recall had failed, on the one capability this
+  product is differentiated by; a Postgres blip silently degraded every investigation to
+  memoryless, and absence of recalled precedent reads as absence of precedent.
+
+  Recall now raises `MemoryUnavailable`. The agent turn still survives — an investigation without
+  memory beats no investigation — but the injected context carries an explicit **"Memory
+  unavailable"** block telling the model that prior history could not be checked and must not be
+  reported as absent, and the log line gains `degraded=true`. A genuine empty recall is unchanged
+  and still injects nothing.
+
+  Same change fixes a second, quieter failure: `regenerate_file_plane()` fed that `[]` straight into
+  the L0 projection, **overwriting a good `CLUSTER.md` / `MEMORY.md` with an empty one** on any
+  recall error. It catches the new exception and leaves the previous projection intact.
+
+- **An unreadable detector store reported "no detectors" instead of an error.**
+  `review.list_detectors()` returned `[]` both when no memory pool was configured and when the
+  query raised, so `GET /v1/detectors` answered `200 {"detectors": []}` in either case and
+  `kq detector list` printed `No detectors.` and exited `0`. An operator asking what watches their
+  cluster was told *nothing does* when the truth was that the question had not been answered — and
+  the only trace was a server-side log line they would never see.
+
+  The store now raises `DetectorStoreUnavailable`, which the endpoint translates to **503**. An
+  empty list means exactly one thing: the store was read and holds nothing. This follows the
+  pattern `GET /v1/findings` already used, where `sensorium: disabled` is reported rather than
+  disguised as an innocent empty result.
+
+- **`kq detector new` exited `0` when the detector was rejected.** A description the compiler
+  refuses comes back as a normal `200` carrying `staged: false` and the compile errors — a valid
+  response, not an HTTP failure — so `raise_for_status()` passed and the command returned success.
+  The human-readable output was honest (`Not staged.` plus each error); only the machine-readable
+  status lied, which is the half a script reads. `kq detector new … && kq detector promote …`
+  proceeded as though a detector existed.
+
+  It now exits **`3`** when nothing was staged, and the exit table is documented in
+  `kq detector --help` and the CLI reference. This matters most for NL-authored detectors
+  specifically: the author writes plain English and cannot read the compiled predicate to check
+  whether it survived.
+
+- **`kq replay` reported an unverified hash chain as intact.** The flight recorder is hash-chained
+  so tampering with stored records is detectable, and `kq replay` is the command that detects it.
+  The server sends its verdict as a `replay_meta` SSE frame — but the SSE reader silently discards
+  any frame it cannot parse (`except json.JSONDecodeError: pass`), and an older or proxied server
+  may not send one at all. In that case the command printed **no verdict line whatsoever** and
+  returned **`0`**, which the documented contract defines as *"chain intact"*. Absence of evidence
+  was being reported as evidence of integrity, so a script gating on `kq replay … && promote` could
+  not tell a missing check from a passed one.
+
+  It now fails closed with a new exit code **`4` — chain NOT VERIFIED**, and prints an explicit
+  warning that the rendered records are unverified. Exit `0` still means verified intact and `3`
+  still means broken; both were re-asserted by test. Verified empirically against four streams
+  (valid, tampered, truncated verdict frame, absent verdict frame).
+
+- **The server reported experimental features as active that no code implemented.** 25 of the 60
+  declared `KI_V5_*` / `CORTEX_V5_*` flags are read by nothing — they were written when the
+  configuration surface ran ahead of the implementation. Because `active_experimental_flags()`
+  reported *any* true boolean carrying an experimental prefix, setting one of them made
+  `GET /healthz`, `GET /v1/v5/status`, `kq v5-status` and the startup log line all state that the
+  slice was on. An operator could enable `KI_V5_RIGHTSIZING`, read back that rightsizing was
+  active, and be wrong — on precisely the surface used to confirm a rollout.
+
+  Those flags are now excluded from the active set and reported separately under
+  **`set_but_unwired_flags`** (both endpoints, plus `[set but NOT WIRED, no effect: …]` in the log
+  line), so a setting that does nothing is visible rather than either misreported or silently
+  swallowed. The list lives in `app/core/version.py` and is checked against real `settings.<FLAG>`
+  usage by `tests/test_v5_flag_wiring.py`, so it can only shrink: wiring a flag without removing
+  its entry fails the suite, and so does adding a new unwired one. `docs/v5-experimental-flags.md`
+  marks each affected row.
+
+  `kq v5-status` shows the same information as a red `set_but_unwired_flags` row, rendered only
+  when non-empty — otherwise excluding those flags from `active_flags` would have replaced a wrong
+  answer with a missing one, and the operator would read `(none — v4 baseline)` after setting a
+  switch. A newer `kq` against an older server tolerates the absent field.
+
+  All 10 `MEMORY_*` booleans were verified wired; the gap was confined to the v5 track. No
+  behaviour changes for anyone who had not set one of the 25 flags — the default install reports
+  an empty list exactly as before.
+
+### Fixed
+- **The agent's loop bound existed where it could not do harm, and was missing where it could.**
+  The read-only RCA subagents were capped at 50 recursion units (~16 tool calls), but the
+  **coordinator** — which holds the write-capable toolset — and the outer graph both inherited
+  LangGraph 1.x's default `recursion_limit` of **10007** (~3,300 ReAct steps). `GraphRecursionError`
+  was caught nowhere in the codebase, so exhausting that budget destroyed the entire turn with an
+  uncaught exception instead of returning what had already been found.
+
+  Both loops now carry an explicit, configurable budget — `AGENT_GRAPH_RECURSION_LIMIT` (120) and
+  `AGENT_COORDINATOR_RECURSION_LIMIT` (150) — and **exhaustion halts and escalates to the operator
+  with the partial result**, on both the single-turn and the streaming path. The defaults are a
+  runaway backstop set well above observed usage, not a tuned budget.
+
+  Highest-exposure path: an auto-approve session (`hitl_bypass`), where writes execute unprompted.
+  The always-confirm set still gated the largest blast radius — cascading deletes of
+  `namespace`/`pv`/`crd`, and `set image`/`set resources` — so this was never an unbounded-destruction
+  bug; it was an unbounded *loop* issuing medium-risk writes with no ceiling and no clean failure.
+
+  9 new tests, red-green verified: with the fix reverted, 4 of them fail — the exhaustion test with
+  exactly the uncaught `GraphRecursionError` that was the defect.
+
 ### Security
 - **`nanoid` bumped 3.3.17 → 3.3.18 in `v4/packages/kube-q/web`** (GHSA high: custom generators
   can loop indefinitely when size is zero). Transitive via Next.js/postcss in the web PTY relay.

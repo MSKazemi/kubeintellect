@@ -31,6 +31,11 @@ data:
   PREDICTIVE_DETECTION_ENABLED: {{ .Values.config.predictiveDetectionEnabled | default false | toString | quote }}
   NL_DETECTOR_AUTHORING_ENABLED: {{ .Values.config.nlDetectorAuthoringEnabled | default false | toString | quote }}
   POSTMORTEM_LLM_NARRATIVE: {{ .Values.config.postmortemLlmNarrative | default false | toString | quote }}
+  # Cluster identity for memory / findings / learned patterns. An in-cluster pod has no
+  # kubeconfig context to derive a name from, so without this the id falls back to the
+  # "unknown" sentinel — harmless for one cluster, but two clusters sharing a database would
+  # then share one memory scope. Set config.clusterId whenever that is possible.
+  CLUSTER_ID: {{ .Values.config.clusterId | default "" | quote }}
   # In-cluster auth — empty KUBECONFIG_PATH makes kubectl use the pod's ServiceAccount token.
   # kubectl_tool.py sets KUBECONFIG env var from this value; an empty path causes kubectl
   # to skip kubeconfig file loading and fall back to in-cluster auth automatically.
@@ -39,3 +44,19 @@ data:
   # Edit config.blockedNamespaces / config.blockedResources in values.yaml to adjust.
   KUBECTL_BLOCKED_NAMESPACES: {{ .Values.config.blockedNamespaces | join "," | quote }}
   KUBECTL_BLOCKED_RESOURCES: {{ .Values.config.blockedResources | join "," | quote }}
+  {{- /* Escape hatch for flags with no dedicated value (see values.yaml config.extraEnv).
+         Rendered last so an explicit override wins on duplicate keys in the emitted map.
+
+         The two SAFETY BRAKES are refused here, by name. They are deliberately not settable
+         through Helm values: docs/autonomy.md tells an operator, on the page they read during an
+         incident, exactly how the brakes are engaged, and a second undocumented path that only
+         works through a values file is the kind of thing nobody finds at 3am. This escape hatch
+         exists to carry additive, default-off EXPERIMENT flags, which is a different job from
+         operating a brake. Failing loudly beats silently accepting a key that an operator would
+         then believe had stopped the agent. */}}
+  {{- range $key, $value := .Values.config.extraEnv }}
+  {{- if has $key (list "KI_V5_KILL_SWITCH" "KI_V5_CHANGE_FREEZE") }}
+  {{- fail (printf "config.extraEnv must not set %s. The safety brakes are not a Helm value; see docs/autonomy.md for how to engage them." $key) }}
+  {{- end }}
+  {{ $key }}: {{ $value | toString | quote }}
+  {{- end }}

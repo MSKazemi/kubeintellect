@@ -6,6 +6,15 @@ isolation** — is enforced by the tenant-scoped WHERE clause on every read (a q
 rows from another tenant). Same contract as the in-process store; the difference is durability.
 
 Async over asyncpg; the pool is injected so this composes with the app's existing connection.
+
+⚠️ **Reachability, audited 2026-08-19: NOT WIRED.** Nothing in ``app/`` imports this module — the
+only importers are its own unit tests. Read the present tense above as the design contract, not as a
+description of a running system: no cluster records a signal here today, because no caller exists.
+The whole fleet tier is a closed island (``fleet_store_pg`` → ``fleet_exchange``,
+``fleet_signal_store`` → ``fleet_signals``, and nothing → either root), and its flags
+(``KI_V5_FLEET_EXCHANGE``, ``KI_V5_FLEET_SIGNAL_POOLING``, ``KI_V5_FLEET_PATTERN_MIN_CLUSTERS``) are
+read by no code — see ``tests/test_v5_flag_wiring.py``. The code is tested and believed correct; it
+is simply never executed in production. Wiring it is a v5 P5 task, not a bug fix.
 """
 
 from __future__ import annotations

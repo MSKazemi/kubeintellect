@@ -74,8 +74,9 @@ def get_langfuse_run_metadata(session_id: str) -> dict:
     return metadata
 
 
-def _make_azure(deployment: str, temperature: float = 0.0, max_tokens: int = 4096, streaming: bool = True) -> BaseChatModel:
+def _make_azure(deployment: str, temperature: float | None = None, max_tokens: int = 4096, streaming: bool = True) -> BaseChatModel:
     from langchain_openai import AzureChatOpenAI
+    temperature = settings.LLM_TEMPERATURE if temperature is None else temperature
     endpoint = settings.AZURE_OPENAI_ENDPOINT or ""
     if endpoint and not endpoint.startswith(("http://", "https://")):
         logger.warning(
@@ -101,8 +102,9 @@ def _make_azure(deployment: str, temperature: float = 0.0, max_tokens: int = 409
     )
 
 
-def _make_openai(model: str, temperature: float = 0.0, max_tokens: int = 4096, streaming: bool = True) -> BaseChatModel:
+def _make_openai(model: str, temperature: float | None = None, max_tokens: int = 4096, streaming: bool = True) -> BaseChatModel:
     from langchain_openai import ChatOpenAI
+    temperature = settings.LLM_TEMPERATURE if temperature is None else temperature
     return ChatOpenAI(
         model=model,
         api_key=_secret(settings.OPENAI_API_KEY),

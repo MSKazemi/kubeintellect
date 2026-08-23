@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 
-from app.tools.kubectl_tool import _READ_ONLY_VERBS, _extract_verb
+from app.tools.kubectl_tool import _extract_verb, _is_write_verb
 
 # Noise keys stripped from KRM YAML/JSON before the model sees it (R-aci-bound-04).
 _NOISE_LINE = re.compile(
@@ -18,10 +18,13 @@ _NOISE_LINE = re.compile(
 
 
 def is_read_only(command: str) -> bool:
-    """True iff the kubectl subcommand is in run_kubectl's read-only verb set.
+    """True iff the command cannot change anything, by run_kubectl's own definition.
 
-    ``diff`` and ``rollout`` are already read-only members of that set, so the
-    ACI diff_change verb passes this guard (R-aci-wrap-02).
+    ``diff`` is read-only, so the ACI diff_change verb passes this guard (R-aci-wrap-02).
+    ``rollout`` is only read-only in part — `status` and `history` report, while `restart`,
+    `undo` and `pause` mutate — and this guard used to accept the whole verb, so
+    `rollout restart` passed as read-only. Delegating to `_is_write_verb` keeps the two
+    modules from drifting apart, and makes unknown verbs fail closed here too.
     """
     try:
         tokens = command.split()
@@ -32,7 +35,7 @@ def is_read_only(command: str) -> bool:
         verb = _extract_verb(tokens)
     except Exception:
         return False
-    return verb in _READ_ONLY_VERBS
+    return not _is_write_verb(verb, tokens)
 
 
 def normalize_krm(text: str, view: str) -> str:

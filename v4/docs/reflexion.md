@@ -29,12 +29,24 @@ the following are true:
 
 1. The matched playbook keys the pattern (R2 — structured key).
 2. The cluster was actually healthy after the fix ran (R4 — verification gate).
+   A verification snapshot that *could not be read* counts as unverified
+   (`verified_resolved = NULL`), never as resolved — see below.
 3. The same `(pattern_name, cluster_id)` has been seen at least twice
    (R6 — `occurrence_count >= 2`).
 4. Confidence is `>= 0.9` (R5 — only "verified + playbook" reaches that).
 
 Without this gating, a single accidental fix on a flaky test cluster would
 become a permanent prompt injection on every future production query.
+
+!!! warning "R4 verifies against a read that can fail"
+    The post-fix snapshot runs `kubectl get pods` immediately after a mutation —
+    the moment a cluster read is *most* likely to fail. Until 2026-08-20 the exit
+    code was not checked, so a failed read scanned clean and R4 returned
+    "resolved": an unverified fix was recorded as verified, and
+    `promotion.py` selects exactly those rows (`WHERE verified = TRUE`) to mint
+    learned rules and detector candidates. A failed verification read now returns
+    `(None, None)` — the "failed to run" case the gate always claimed to have —
+    and logs a warning naming the kubectl error.
 
 ---
 
@@ -124,19 +136,30 @@ the SQL function is idempotent and returns counts.
 
 ## Cluster identity — why patterns are scoped per cluster
 
-`get_cluster_id()` (in `app/cluster_id.py`) hashes the kube-apiserver URL +
-namespace count to produce a stable cluster fingerprint. Every `rca_outcomes`
-row and every `failure_patterns` row carries it (`cluster_id` column).
+`get_cluster_id()` (in `app/cluster_id.py`) derives a stable cluster
+fingerprint — an explicit `CLUSTER_ID` if set, else the kubeconfig context name
+and a hash of the kube-apiserver URL, else the `kube-system` namespace UID.
+Every `rca_outcomes` row and every `failure_patterns` row carries it
+(`cluster_id` column). See
+[cluster identity](configuration.md#cluster-identity) for the full order.
 
 **Why.** A pattern learned on a Kind dev cluster is almost never the right
 fix for the same symptom on a production EKS cluster. Image registries,
 node sizes, RBAC, and CSI drivers all differ. Without scoping, the dev cluster
 poisons prod prompts (and vice versa).
 
-The read paths filter `cluster_id IN (current, 'unknown')` — old rows from
-before this column existed (`'unknown'`) still match anywhere; new rows are
-strict. As `'unknown'` rows age out via retention, the system naturally
-converges to per-cluster patterns only.
+The read paths filter `cluster_id IN (current, 'unknown')` — rows from
+before this column existed (`'unknown'`) still match anywhere; identified rows
+are strict.
+
+!!! warning "`'unknown'` is a shared scope, not a placeholder"
+    Because every cluster reads `'unknown'` rows, anything written under that id
+    is visible to every cluster sharing the database. That is harmless for a
+    single cluster and is exactly the cross-contamination described above for
+    two. An in-cluster deployment has no kubeconfig to derive an identity from,
+    so it lands on `'unknown'` **and keeps minting new `'unknown'` rows** — it
+    never ages out into per-cluster patterns on its own. Set `CLUSTER_ID`
+    (Helm: `config.clusterId`) on any cluster that shares a database.
 
 ---
 

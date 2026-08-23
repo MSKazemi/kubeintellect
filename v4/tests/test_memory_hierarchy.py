@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import time
 
+import pytest
+
 from app.core.config import settings
 from app.memory import episodes, service, summaries
 from app.memory.consolidation import _playbooks_from_key
@@ -142,13 +144,23 @@ class TestEpisodes:
         finally:
             episodes.close_episodes()
 
-    async def test_recall_hybrid_never_raises(self, mocker):
+    async def test_recall_reports_a_total_failure_instead_of_an_empty_result(self, mocker):
+        """Was `test_recall_hybrid_never_raises`, which asserted `== []` when both channels failed.
+
+        The invariant that test protected — *a memory failure must not break the agent turn* — is
+        real and still holds; it moved to the caller (`memory_loader`, asserted below). What it
+        should never have protected is the *silence*: `[]` made a Postgres outage identical to "this
+        cluster has no similar incidents", in the prompt (`render_recall_block([]) == ""`) and in
+        the log line (`episodes=0`). Pinning the mechanism instead of the property is what let that
+        stand. Recall now says it could not answer; the caller decides the turn survives.
+        """
         mocker.patch.object(episodes.settings, "MEMORY_HYBRID_RETRIEVAL", True)
         pool = FakePool()
         pool.raise_on = "fetch"
         episodes.init_episodes(pool)
         try:
-            assert await episodes.recall_episodes("x", "c1") == []
+            with pytest.raises(episodes.MemoryUnavailable):
+                await episodes.recall_episodes("x", "c1")
         finally:
             episodes.close_episodes()
 
@@ -249,3 +261,84 @@ class TestInjectionLatencyGate:
             assert p95 < 200, f"injection p95 {p95:.1f} ms"
         finally:
             episodes.close_episodes()
+
+
+class TestAMemoryOutageIsVisibleButNotFatal:
+    """The two halves of the invariant that `test_recall_hybrid_never_raises` used to half-cover.
+
+    A recall failure must (a) never break the agent turn — an investigation without memory beats no
+    investigation — and (b) never reach the model as *silence*, because absence of recalled episodes
+    is read as absence of precedent. Before this, only (a) held, and it held by hiding (b).
+    """
+
+    @staticmethod
+    def _patch(mocker, recall):
+        from app.agent.nodes import memory_loader
+        from app.memory import kg, service
+        mocker.patch.object(service, "memory_active", lambda: True)
+        mocker.patch.object(settings, "MEMORY_SUMMARY_TREE", False)
+        mocker.patch.object(episodes, "recall_episodes", recall)
+        mocker.patch.object(kg, "recent_changes_block", mocker.AsyncMock(return_value=""))
+        return memory_loader
+
+    async def test_the_turn_survives_and_the_model_is_told(self, mocker):
+        ml = self._patch(mocker, mocker.AsyncMock(
+            side_effect=episodes.MemoryUnavailable("pg down")))
+        out = await ml._hierarchy_context(
+            {"messages": [type("M", (), {"content": "payments crashlooping"})()]}
+        )
+        assert "Memory unavailable" in out
+        assert "could not be checked" in out
+
+    async def test_a_genuine_empty_recall_stays_silent(self, mocker):
+        """The fix must not make every quiet cluster shout — no matches is still no block."""
+        ml = self._patch(mocker, mocker.AsyncMock(return_value=[]))
+        out = await ml._hierarchy_context(
+            {"messages": [type("M", (), {"content": "payments crashlooping"})()]}
+        )
+        assert "Memory unavailable" not in out
+        assert out == ""
+
+
+class TestThePinnedV4ContextAlsoReportsItsOwnOutage:
+    """The other half of the coordinator's SystemMessage, missed by pass 46.
+
+    `memory_loader` assembles two blocks: `load_memory_context` (V4 — preferences, failure hints,
+    session notes, past RCA) and `_hierarchy_context` (V5 — episodes, KG changes). Pass 46 made the
+    second one honest and left the first returning `""` on any failure — the identical value a
+    brand-new user with nothing stored produces. A Postgres outage therefore still reached the model
+    as a clean slate: no preferences to honour, no precedent to build on, no signal at all.
+    """
+
+    async def test_the_store_raises_instead_of_returning_an_empty_context(self, mocker):
+        from app.db import memory_store
+
+        mocker.patch.object(memory_store.settings, "USE_SQLITE", False)
+        mocker.patch.object(
+            memory_store, "_get_conn", mocker.AsyncMock(side_effect=RuntimeError("pg down"))
+        )
+        with pytest.raises(memory_store.MemoryStoreUnavailable):
+            await memory_store.load_memory_context("u1", "s1")
+
+    async def test_the_node_degrades_and_says_so(self, mocker):
+        from app.agent.nodes import memory_loader
+
+        mocker.patch.object(
+            memory_loader, "load_memory_context",
+            mocker.AsyncMock(side_effect=memory_loader.MemoryStoreUnavailable("pg down")),
+        )
+        mocker.patch.object(memory_loader, "_hierarchy_context", mocker.AsyncMock(return_value=""))
+        mocker.patch.object(memory_loader, "emit", mocker.AsyncMock())
+
+        out = await memory_loader.memory_loader(
+            {"session_id": "s1", "user_id": "u1", "messages": []}
+        )
+        assert "Memory unavailable" in out["memory_context"]
+        assert "could not be checked" in out["memory_context"]
+
+    async def test_sqlite_mode_is_not_an_outage(self, mocker):
+        """USE_SQLITE returning "" is a configured state, not a failure — it must stay silent."""
+        from app.db import memory_store
+
+        mocker.patch.object(memory_store.settings, "USE_SQLITE", True)
+        assert await memory_store.load_memory_context("u1", "s1") == ""

@@ -1,0 +1,29 @@
+{{/*
+A PDB is what makes a multi-replica deployment survive VOLUNTARY disruption — node drains,
+cluster upgrades, autoscaler scale-down. Without one, a drain of the node holding the only
+replica takes the control plane down at exactly the moment an operator most needs to see what
+the cluster is doing, and the eviction is entirely permitted because nothing said otherwise.
+
+Deliberately NOT created at replicaCount 1: a PDB with minAvailable 1 over a single replica
+makes that pod UNEVICTABLE, and `kubectl drain` then hangs forever on a node that will never
+be drainable. That turns a availability feature into an operational deadlock — the failure
+mode people actually hit with PDBs.
+*/}}
+{{- if and .Values.podDisruptionBudget.enabled (gt (int .Values.replicaCount) 1) }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "kubeintellect.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- else }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable | default 1 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "kubeintellect.selectorLabels" . | nindent 6 }}
+{{- end }}

@@ -42,6 +42,21 @@ class TestShellInjectionGuard:
     def test_accepts_jsonpath_with_backslash_separators(self):
         # Backslashes are required for jsonpath {"\n"} separators and are safe
         # because the tool runs with shell=False.
+        # The command was `-A` until 2026-08-20; jsonpath carries no namespace, so
+        # --all-namespaces + jsonpath is now refused (it could not be filtered). The
+        # subject of this test is the backslash, so it is asserted on a namespaced
+        # command; the -A interaction is asserted below and in
+        # tests/test_all_namespaces_is_every_namespace.py.
+        proc = MagicMock()
+        proc.stdout = "nginx\nredis\n"
+        proc.stderr = ""
+        with patch("subprocess.run", return_value=proc):
+            result = self._call(
+                r'kubectl get pods -n prod -o jsonpath={range .items[*]}{.metadata.name}{"\n"}{end}'
+            )
+        assert "nginx" in result
+
+    def test_jsonpath_with_all_namespaces_is_refused_not_crashed(self):
         proc = MagicMock()
         proc.stdout = "nginx\nredis\n"
         proc.stderr = ""
@@ -49,7 +64,8 @@ class TestShellInjectionGuard:
             result = self._call(
                 r'kubectl get pods -A -o jsonpath={range .items[*]}{.metadata.name}{"\n"}{end}'
             )
-        assert "nginx" in result
+        assert "[Protected]" in result
+        assert "narrow" in result.lower() or "-n <namespace>" in result
 
     def test_prepends_kubectl_if_missing(self):
         proc = MagicMock()

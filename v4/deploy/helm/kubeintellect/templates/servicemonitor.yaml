@@ -1,0 +1,30 @@
+{{/*
+Scrape config for kube-prometheus-stack. Off by default because a ServiceMonitor on a cluster
+without the Prometheus Operator CRDs makes `helm install` fail outright ("no matches for kind
+ServiceMonitor"), which would break every quickstart to serve a feature only some clusters can
+use. Enterprise deployments that run the operator turn it on.
+*/}}
+{{- if .Values.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}
+  namespace: {{ .Values.serviceMonitor.namespace | default .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "kubeintellect.labels" . | nindent 4 }}
+    {{- with .Values.serviceMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "kubeintellect.selectorLabels" . | nindent 6 }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Values.namespace | default .Release.Namespace }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.serviceMonitor.interval | default "30s" }}
+      scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout | default "10s" }}
+{{- end }}

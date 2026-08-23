@@ -72,8 +72,12 @@ metadata:
   labels:
     component: langfuse
 spec:
+  type: {{ .Values.web.service.type | default "ClusterIP" }}
   selector:
     app: langfuse-web
   ports:
     - port: 3000
       targetPort: 3000
+      {{- if and (eq (.Values.web.service.type | default "ClusterIP") "NodePort") .Values.web.service.nodePort }}
+      nodePort: {{ .Values.web.service.nodePort }}
+      {{- end }}

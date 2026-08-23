@@ -9,11 +9,13 @@ has no events for the episode, this command exports nothing and says so, rather
 than emitting a plausible-looking empty report.
 
 Exit codes:
-  0  exported, audit chain intact
+  0  exported, audit chain intact and the episode is complete
   1  fetch or write failed
   2  usage error
   3  exported, but the audit chain is BROKEN (matches `kq replay`)
   4  no recorded events for that episode — nothing exported
+  5  exported, chain intact, but the episode is INCOMPLETE — the recorder lost events
+     and recorded the loss (`recorder_gap`). Matches `kq replay`.
 """
 from __future__ import annotations
 
@@ -133,6 +135,15 @@ def run(argv: list[str]) -> int:
             "have been altered. Treat this export as untrusted."
         )
         return 3
+    lost = int(report.get("events_lost") or 0)
+    if lost:
+        # Unaltered is not the same as whole. An export that reads as complete when the
+        # recorder dropped events is the failure this exit code exists to prevent.
+        err.print(
+            f"[yellow]⚠ EPISODE INCOMPLETE[/yellow] — {lost} event(s) were never written. "
+            "Nothing exported here was altered, but this is not the full sequence."
+        )
+        return 5
     return 0
 
 

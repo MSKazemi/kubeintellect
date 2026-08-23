@@ -24,10 +24,8 @@ from app.tools.aci.models import (
     LogsInput,
     SearchInput,
 )
+from app.tools.aci import kubectl_output as _out
 from app.tools.kubectl_tool import run_kubectl
-
-# Guard strings run_kubectl returns instead of raising (HITL / protected access).
-_GUARD_MARKERS = ("blocked protected", "requires confirmation", "HITL", "not permitted")
 
 
 def _exec(command: str) -> str:
@@ -58,11 +56,19 @@ def _run(verb: str, command: str, target: str, view: str = "summary") -> AciResu
 
     raw = _exec(command)
 
-    # run_kubectl surfaces errors as text (may include a guard string).
-    lowered = raw.lower()
-    if any(m.lower() in lowered for m in _GUARD_MARKERS):
-        return AciResult(verb=verb, ok=False, target=target, kubectl_command=command, error=raw.strip())
-    if lowered.startswith("error") or "exit=1" in lowered and _looks_empty(raw) is False and "\n" not in raw:
+    # run_kubectl surfaces refusals and errors as TEXT, so the only thing separating "here is the
+    # cluster" from "here is why I could not look" is how this string is read. It used to be read
+    # with a hand-kept marker list plus `lowered.startswith("error")` — and measured 2026-08-20,
+    # against the real run_kubectl, two of its own refusals sailed through as **content**:
+    #   `[Error] kubectl is not installed or not found in PATH…`  → ok=True, and _health_from read
+    #       "error" out of it and reported the target as FAILED — a cluster verdict from a tooling
+    #       problem. (`startswith("error")` is False: the string starts with `[`.)
+    #   `[Unsupported] 'kubectl edit' requires an interactive terminal which is not available…`
+    #       → ok=True, and "available" made it read as CURRENT — a refusal reported as healthy.
+    # The three `[Protected]` refusals were caught only because their wording happens to contain
+    # "not permitted". Classifying the string once, in the shared reader, is what keeps this from
+    # depending on the wording of a message someone may reasonably reword.
+    if _out.classify_output(raw) != _out.OK:
         return AciResult(verb=verb, ok=False, target=target, kubectl_command=command, error=raw.strip())
 
     if _looks_empty(raw):
@@ -81,15 +87,34 @@ def _run(verb: str, command: str, target: str, view: str = "summary") -> AciResu
     )
 
 
+# Health words are matched as whole whitespace-separated fields, not as substrings anywhere in the
+# body. A Deployment called `error-budget-exporter` is not an error, a `crashloop-detector` is not
+# crashlooping, and `availability-probe` is not a readiness verdict — a status word only means
+# something when it stands alone in a STATUS/phase position.
+_FAILED_WORDS = frozenset({"crashloopbackoff", "error", "failed", "imagepullbackoff"})
+_IN_PROGRESS_WORDS = frozenset({"pending", "containercreating", "progressing"})
+_CURRENT_WORDS = frozenset({"running", "ready", "active", "bound", "available"})
+_TERMINATING = "terminating"
+
+
+def _health_fields(body: str) -> set[str]:
+    """Whole fields of ``body``, lowercased, with surrounding punctuation stripped.
+
+    Split on whitespace only — a hyphen is part of a Kubernetes name, so splitting on it is what
+    turned `error-budget-exporter` into the word "error".
+    """
+    return {f.strip(":,.'\"()[]{}").lower() for f in body.split()}
+
+
 def _health_from(body: str) -> Health:
-    b = body.lower()
-    if "terminating" in b:
+    fields = _health_fields(body)
+    if _TERMINATING in fields:
         return Health.TERMINATING
-    if any(k in b for k in ("crashloopbackoff", "error", "failed", "imagepullbackoff")):
+    if fields & _FAILED_WORDS:
         return Health.FAILED
-    if any(k in b for k in ("pending", "containercreating", "progressing")):
+    if fields & _IN_PROGRESS_WORDS:
         return Health.IN_PROGRESS
-    if any(k in b for k in ("running", "ready", "active", "bound", "available")):
+    if fields & _CURRENT_WORDS:
         return Health.CURRENT
     return Health.UNKNOWN
 

@@ -108,9 +108,16 @@ repo public for the hackathon demo).
 Initialize the schema once (from a machine that can reach RDS):
 
 ```bash
-psql "postgresql://<user>:<password>@<host>:5432/kubeintellect" \
+psql -v ON_ERROR_STOP=1 --single-transaction \
+  "postgresql://<user>:<password>@<host>:5432/kubeintellect" \
   -f packages/kubeintellect-server/app/db/schema.sql
 ```
+
+!!! warning "Keep both flags"
+    Without `ON_ERROR_STOP=1`, psql reports each error and still **exits 0** — on a managed
+    instance, where the application role often cannot `CREATE`, that means a schema which applied
+    nothing at all still looks like it succeeded. `--single-transaction` makes it all-or-nothing
+    so a failure cannot leave the database half-migrated. The command is safe to re-run.
 
 ## 6. Configure values + secrets
 

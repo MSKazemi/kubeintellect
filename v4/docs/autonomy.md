@@ -64,6 +64,38 @@ regardless of configuration**. The watchtower never investigates or mutates
 infrastructure namespaces on its own, even if you set
 `AUTONOMY_NAMESPACE_LEVELS=kube-system=A3` by mistake.
 
+Namespace names are compared case-insensitively and with surrounding whitespace stripped, the
+same way `run_kubectl` compares them, so the two components cannot disagree about which
+namespace is protected. Until 2026-08-20 that was a comment rather than a fact: the ladder
+folded the namespace under test while the blocklist it compared against kept whatever case was
+configured, and the kubectl gate folded neither side. `KUBECTL_BLOCKED_NAMESPACES="Kube-System"`
+therefore left `kube-system` unpinned **and** unguarded. Both sides fold now, and a test asserts
+the property directly — a namespace is pinned to `A0` exactly when the kubectl gate refuses it.
+
+An entry that cannot match any namespace at all — a glob, a slash — protects nothing and is
+reported at startup and under `unenforceable_guard_config` in
+[`GET /v1/v5/status`](api-reference.md#get-v1v5status). Note the asymmetry with the setting two
+sections up: `AUTONOMY_A3_ALLOWLIST` **does** support a trailing `*` on the namespace;
+`KUBECTL_BLOCKED_NAMESPACES` does not.
+
+### Cluster-scoped objects are capped at A1
+
+A Node, PersistentVolume or ClusterRole has **no namespace**, so a model built on namespaces
+cannot judge it. A Warning event about one (`NodeNotReady`, `Rebooted`,
+`KubeletHasDiskPressure`) arrives with an empty namespace. Those findings are **investigated
+and reported, never auto-fixed** — the effective level is capped at A1 no matter what
+`AUTONOMY_LEVEL`, `AUTONOMY_NAMESPACE_LEVELS` or `AUTONOMY_A3_ALLOWLIST` say, and `a3_allowed`
+refuses them outright. If you have pinned everything to A0, they stay at A0: the cap is a
+ceiling, not a floor.
+
+> ⚠️ **Fixed 2026-08-20.** An empty namespace previously fell through to the configured
+> default. Because `fnmatch("", "*")` is true and `*` is the natural way to write "all my
+> namespaces", an operator who set `AUTONOMY_A3_ALLOWLIST=SomePlaybook/*` silently made
+> **Nodes auto-fixable** — the object where an unattended remediation (cordon, drain, delete)
+> is least recoverable. Measured by feeding the watcher a real-shaped `NodeNotReady` event:
+> `a3_allowed("NodeNotReady", "")` returned `True`. See
+> `tests/test_autonomy_cluster_scoped_objects.py`.
+
 ---
 
 ## Watchtower guard rails
@@ -86,6 +118,63 @@ kq replay auto-fnd-1a2b3c4d5e6f
 ```
 
 See [Flight Recorder & Replay](flight-recorder.md).
+
+---
+
+## Stopping the agent (break glass)
+
+Two settings deny **every** autonomous write — the A3 auto-fix path included — without touching the
+ladder configuration:
+
+| Control | How to engage | Effect |
+|---|---|---|
+| **Kill switch** | `KI_V5_KILL_SWITCH=true` | every autonomous write is denied |
+| **Change freeze** | `KI_V5_CHANGE_FREEZE=true` | every autonomous write is denied while it is set |
+
+**Both are read from the environment once, when the process starts**, so engaging one means setting
+it and restarting the pods. On a default chart install:
+
+```bash
+kubectl set env deploy/kubeintellect KI_V5_KILL_SWITCH=true   # explicit env beats the chart
+                                                              # ConfigMap; rolls the pods
+kq v5-status                                                  # confirm before trusting it
+```
+
+Know what is *not* there before you need it. There is **no API route and no `kq` command that
+engages a brake** — `GET /v1/v5/status` reports the state and nothing changes it — and the chart
+exposes neither setting as a Helm value. `app/autonomy/budget.py` does carry an in-process
+`engage_kill_switch()`, but nothing outside tests calls it, and it sets a module global in **one**
+process: with more than one replica it would stop only the replica that ran it. Until it has both a
+surface and shared state, the restart above is the way to stop the agent.
+
+Both controls are read through **one function each** — `kill_switch_engaged()` and
+`change_freeze_active()` — and both write gates (the watchtower's A3 path and the ACI write
+chokepoint) call those functions rather than reading a source directly. That is not tidiness: until
+2026-08-20 the change freeze had no such reader, and the two gates disagreed about it — the
+watchtower stopped, the write chokepoint did not.
+
+Confirm the state — the same values the write path obeys:
+
+```bash
+kq v5-status          # kill_switch_engaged is printed in red when engaged
+```
+
+```json
+GET /v1/v5/status → { "kill_switch_engaged": true, "change_freeze": false, … }
+```
+
+**Neither control is gated on `KI_V5_BLAST_RADIUS_BUDGET`.** That flag governs the
+spend/blast-radius budget machinery; a kill switch is not a feature to opt into, so it binds
+whether or not the budget gate is enabled. (Until 2026-08-20 it *was* gated on that flag, which
+defaults to off — so an engaged kill switch was reported in the API and printed in red by the
+CLI while the watchtower went on auto-fixing.)
+
+What the brakes do **not** do: they bind the *agent's* write authority only. They never block a
+running workload, a human `kubectl`, or your own break-glass access — those paths are independent
+of the agent stack (04-trust §6).
+
+A brake denies the write and lets the investigation continue: the finding is still investigated at
+A1 and the proposed fix is still reported, it is simply not applied.
 
 ---
 
@@ -128,11 +217,41 @@ curl "$KUBE_Q_URL/v1/digest?hours=24&format=json"
 |---|---|
 | **Detector findings** | `finding` records in the flight recorder |
 | **Autonomous investigations** | watchtower episodes, with outcome and verification status |
-| **Rollback points armed** | pre-mutation state captures (see [Flight Recorder → Rollback points](flight-recorder.md#rollback-points)) |
+| **Pre-mutation state captures** | each with whether it is actually restorable — a redacted or truncated capture is evidence, not a restore point (see [Flight Recorder → Restorable vs recorded](flight-recorder.md#restorable-vs-recorded)) |
 | **User sessions** | count of interactive sessions in the window |
 
 A quiet cluster produces an honest one-liner:
 `Quiet watch: no findings in the last 24h.`
+
+!!! warning "\"Quiet\" is only claimed when the sources were readable **and something was watching**"
+    An empty digest is reassuring only if the recorder could be read, so the
+    digest never says *quiet* unless it was. If the flight recorder is disabled,
+    the server is in [SQLite mode](flight-recorder.md#configuration-limitations)
+    (which has no `decision_log` table), the watchtower is off, or a query fails,
+    the digest is marked `degraded` and leads with
+    `Digest INCOMPLETE … This is NOT a quiet watch: <reason>` — plus a warning
+    block naming every source that could not answer. Whatever *is* readable is
+    still reported. Before 2026-08-20 all of those states produced the same
+    `Quiet watch` line as a genuinely quiet night, so a night with recording
+    switched off was indistinguishable from a night on which nothing went wrong.
+
+    Those are all checks on the **record**, and the record can be flawless and
+    empty because nothing was ever looking. So the digest asks the **perception**
+    side too, through the same classifier
+    [`GET /v1/findings`](api-reference.md#get-v1findings) uses: if no `kubectl`
+    watch stream is connected, or predictive detection is
+    [blind](api-reference.md#get-v1findings), that is a `degraded_reason` as well.
+    Measured 2026-08-20 with every recording source healthy and nothing watching,
+    `/v1/findings` answered `{"sensorium": "starting", "findings": []}` and
+    `kq findings` refused to call it clear — while `kq digest` over the same window
+    said *"Quiet watch: no findings in the last 24h."* The two surfaces now read one
+    classifier, so they cannot answer differently. What they cannot do is
+    reconstruct the window: stream health is a *current* state, so the reported gaps
+    are a lower bound on the blindness in the window, never an upper one.
+
+    `kq digest` still exits `0` when the digest is degraded — it is a successful
+    report of a degraded state, not a failed command. Scripts that need to branch
+    on it should read `degraded` from the JSON form.
 
 ---
 
