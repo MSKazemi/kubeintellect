@@ -63,3 +63,48 @@ def test_explicit_argument_still_wins_over_the_setting():
     # 0.0 is falsy; a `temperature or settings.LLM_TEMPERATURE` implementation would
     # discard it here and silently sample at 1.0.
     assert captured["temperature"] == 0.0
+
+
+def test_configured_temperature_reaches_the_openai_client():
+    captured = {}
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    with patch.object(llm.settings, "LLM_TEMPERATURE", 1.0), \
+         patch.object(llm.settings, "OPENAI_API_KEY", "sk-test"), \
+         patch.dict("sys.modules"):
+        fake = types.ModuleType("langchain_openai")
+        fake.ChatOpenAI = FakeOpenAI
+        sys.modules["langchain_openai"] = fake
+        llm._make_openai("gpt-4o")
+
+    assert captured["temperature"] == 1.0
+
+
+def test_configured_temperature_reaches_the_anthropic_client():
+    """The third provider, which is the one that used to ignore the setting.
+
+    `_anthropic()` hardcoded `temperature=0.0`, so `LLM_TEMPERATURE` was honoured by two
+    providers out of three. Nothing failed: Anthropic accepts 0.0, so the only symptom was a
+    setting that silently stopped configuring when the provider changed — the same shape as
+    the encoding fix that closed one half of a defect and left the other standing.
+    """
+    from app.cortex import models as cortex_models
+
+    captured = {}
+
+    class FakeAnthropic:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    with patch.object(cortex_models.settings, "LLM_TEMPERATURE", 1.0), \
+         patch.object(cortex_models.settings, "ANTHROPIC_API_KEY", "sk-ant-test"), \
+         patch.dict("sys.modules"):
+        fake = types.ModuleType("langchain_anthropic")
+        fake.ChatAnthropic = FakeAnthropic
+        sys.modules["langchain_anthropic"] = fake
+        cortex_models._anthropic("claude-sonnet-4", streaming=False)
+
+    assert captured["temperature"] == 1.0

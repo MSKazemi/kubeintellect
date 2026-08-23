@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 
 from kube_q.core.config import load_config
-from kube_q.core.transport import build_headers, make_client
+from kube_q.core.transport import build_headers, explain, make_client
 
 
 def run(argv: list[str]) -> int:
@@ -32,7 +32,7 @@ def run(argv: list[str]) -> int:
             console.print(Markdown(response.json().get("markdown", "")))
             return 0
     except Exception as exc:
-        console.print(f"[red]Postmortem fetch failed:[/red] {exc}")
+        console.print(f"[red]Postmortem fetch failed:[/red] {explain(exc)}")
         return 1
 
 

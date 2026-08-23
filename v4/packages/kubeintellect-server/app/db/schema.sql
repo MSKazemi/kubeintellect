@@ -403,6 +403,20 @@ CREATE TABLE IF NOT EXISTS memory_audit (
 );
 CREATE INDEX IF NOT EXISTS idx_memory_audit_chain ON memory_audit (cluster_id, seq);
 
+-- Chain head — the anchor that makes a *truncation* visible. A hash chain detects an edit,
+-- a reorder and an interior delete, because each breaks a link. Deleting the most recent
+-- rows breaks nothing: what is left is a shorter, perfectly valid chain, and the next append
+-- continues from it, so the deletion is invisible for ever. This row records how far the
+-- chain got, so a shorter chain contradicts it. It is tamper-EVIDENCE, not prevention: an
+-- attacker with full write access can forge this row too — but they must now forge two
+-- places instead of one, and a partial tamper is caught.
+CREATE TABLE IF NOT EXISTS memory_chain_head (
+    cluster_id TEXT PRIMARY KEY,
+    seq        BIGINT NOT NULL,                   -- seq of the newest appended entry
+    hash       TEXT   NOT NULL,                   -- its hash
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- ── v5 P5 Fleet memory exchange (ADR-105) ────────────────────────────────────
 -- Cross-cluster resolution sharing with STRICT tenant isolation enforced by the
 -- tenant-scoped query (a read never crosses tenants). Additive; idempotent.

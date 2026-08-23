@@ -51,9 +51,30 @@ class Playbook:
     detect: DetectBlock | None = None
 
 
-def _compile_trigger(raw: dict) -> Trigger:
+_TRIGGER_KEYS = ("pod_status_regex", "event_reason_regex", "event_message_regex")
+
+
+def _compile_trigger(raw: dict, playbook: str = "?") -> Trigger:
+    """Compile one `triggers:` entry. Unknown keys are dropped — loudly.
+
+    `Trigger` has exactly three fields, and anything else in the mapping is silently ignored
+    by `raw.get`. A near-miss key (`reason_regex` for `event_reason_regex`) therefore yields a
+    Trigger with all three regexes None: the playbook still loads, still counts, still passes
+    the schema check, and `match_playbooks` iterates it forever without ever matching. That is
+    the router-side twin of the dead `detect:` predicate in #114, so it must not pass quietly.
+    `tests/test_every_playbook_is_reachable.py` turns this warning into a hard failure; the
+    loader only warns, because dropping the playbook would also lose its investigation steps.
+    """
     def _maybe(pattern: str | None) -> re.Pattern | None:
         return re.compile(pattern, re.IGNORECASE) if pattern else None
+
+    unknown = [k for k in raw if k not in _TRIGGER_KEYS]
+    if unknown:
+        logger.warning(
+            "playbook %r: trigger keys %s are not recognised and are ignored (expected one of "
+            "%s) — a trigger with no recognised key can never match",
+            playbook, unknown, list(_TRIGGER_KEYS),
+        )
 
     return Trigger(
         pod_status_regex=_maybe(raw.get("pod_status_regex")),
@@ -72,7 +93,7 @@ def _load_one(path: Path) -> Playbook:
     triggers_raw = data.get("triggers") or []
     if not isinstance(triggers_raw, list):
         raise ValueError(f"Playbook {path.name}: 'triggers' must be a list")
-    triggers = tuple(_compile_trigger(t) for t in triggers_raw if isinstance(t, dict))
+    triggers = tuple(_compile_trigger(t, name) for t in triggers_raw if isinstance(t, dict))
     steps = tuple(data.get("investigation_steps") or [])
     evidence = tuple(data.get("expected_evidence") or [])
     fix = (data.get("recommended_fix_template") or "").strip()

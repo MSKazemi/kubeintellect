@@ -27,7 +27,7 @@ from pathlib import Path
 from rich.console import Console
 
 from kube_q.core.config import load_config
-from kube_q.core.transport import build_headers, make_client
+from kube_q.core.transport import build_headers, explain, make_client
 
 _FORMATS = ("json", "yaml")
 
@@ -95,7 +95,7 @@ def run(argv: list[str]) -> int:
             response.raise_for_status()
             report = response.json()
     except Exception as exc:
-        err.print(f"[red]Export failed:[/red] {exc}")
+        err.print(f"[red]Export failed:[/red] {explain(exc)}")
         return 1
 
     # An episode with no recorded events yields a well-formed but empty postmortem.

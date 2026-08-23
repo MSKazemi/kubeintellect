@@ -204,7 +204,7 @@ def test_stream_does_not_retry_after_partial_delivery(client: KubeQClient) -> No
     """If events were already yielded and then a transport error occurs, re-raise immediately."""
     call_count = 0
 
-    def broken_iter_sse(resp: httpx.Response):  # type: ignore[return]
+    def broken_iter_sse(resp: httpx.Response, stats=None):  # type: ignore[return]
         nonlocal call_count
         call_count += 1
         yield {"choices": [{"delta": {"content": "partial"}, "finish_reason": None}]}

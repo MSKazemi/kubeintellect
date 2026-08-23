@@ -471,6 +471,7 @@ async def load_db_detectors(
     (no pool / query error → empty tuples).
     """
     from app.detectors.models import parse_detect_block
+    from app.detectors.predicate_shape import predicate_liveness_errors
     from app.memory import service
 
     pool = service._pool
@@ -501,6 +502,20 @@ async def load_db_detectors(
         except Exception:
             continue
         if block is None:
+            continue
+        # Compiling is not the same as being able to fire. `validate_detect_block` gates the
+        # authoring endpoint, but it is not the only way a row reaches this table —
+        # consolidation writes here too, promotion only flips `status`, and any row stored
+        # before that gate existed is still here. This is the one point every DB detector
+        # passes through, so it is where the check has to be. A dead SHADOW row is the worst
+        # case: it accrues zero firings, and zero firings are read as precision evidence by
+        # the human deciding whether to promote it.
+        dead = [msg for p in block.watch_predicates for msg in predicate_liveness_errors(p)]
+        if dead:
+            logger.warning(
+                "db_detector_can_never_fire name=%r status=%r reason=%s — not loaded",
+                r["name"], r["status"], dead[0],
+            )
             continue
         (active if r["status"] == "active" else shadow).append(block)
     return tuple(active), tuple(shadow)

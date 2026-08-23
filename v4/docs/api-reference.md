@@ -143,6 +143,31 @@ data: [DONE]
 **Keepalive:** if the stream is silent for 15 seconds, the server sends an SSE
 comment line `: heartbeat` to keep the connection open. Ignore these.
 
+**Frames you cannot parse:** a client must decide what an undecodable frame means, and the
+answer is not always *"skip it"*. Frames carrying prose (`delta.content`) can be dropped and the
+answer stays readable; frames carrying a **verdict** cannot — the first frame of
+`GET /v1/episodes/{episode_id}/replay` is
+a meta record holding `chain_valid`, so treating it as absent silently converts *"the audit chain
+is broken"* into *"the audit chain was never mentioned"*. A stream that ends without a `[DONE]`
+sentinel is likewise truncated, not complete.
+
+`kube-q` handles this by counting rather than raising. `kube_q.core.transport.iter_sse` and its
+async twin `kube_q.core.client._aiter_sse` accept an optional `SseStats`:
+
+```python
+from kube_q.core.transport import SseStats, iter_sse
+
+stats = SseStats()
+for frame in iter_sse(response, stats):
+    ...
+if not stats.lossless:                     # dropped_frames, first_error, truncated_tail
+    raise RuntimeError(f"stream lost {stats.dropped_frames} frame(s)")
+```
+
+Passing no `SseStats` yields exactly the same frames as before. Interactive `kq` chat passes one
+and prints a warning that the answer may be incomplete; commands whose output is a verdict should
+fail closed on `stats.lossless` being false.
+
 ### Example
 
 ```bash
@@ -480,11 +505,20 @@ candidate that observes but never reaches the watchtower until promoted. Gated b
 |---|---|
 | `POST /v1/detectors` | Body `{"description": "...", "name"?: "..."}` → compile + validate + stage as shadow. Returns the compiled block + any validation errors. |
 | `GET /v1/detectors?status=` | List detectors (`candidate`/`shadow`/`active`/`demoted`). |
-| `POST /v1/detectors/{name}/promote` | Promote shadow → active (it now reaches the watchtower). |
+| `POST /v1/detectors/{name}/promote` | Promote shadow → active (it now reaches the watchtower). **409** if its predicates can never match — see below. |
 | `POST /v1/detectors/{name}/demote` | Demote/reject — stop it firing. |
 | `GET /v1/detectors/{name}/shadow-findings` | A shadow detector's firings (review before promoting). |
 
 `GET /v1/preferences` and `GET /v1/detectors` answer **503** when their store cannot be read (not configured, or the query failed) rather than an empty `200`. An empty `detectors` list therefore means exactly one thing: the store was read and holds nothing — never that the question could not be answered.
+
+Promotion is refused with **409** for a detector whose predicates provably cannot match — a
+`kind` outside `Pod`/`Event`/`Node`, a `Pod`/`Node` predicate with no `status_regex`, or a
+`reason_regex`/`status_regex` satisfiable only by something no cluster emits. Shadow detectors
+are promoted on their precision record, and one that cannot fire records zero firings, which
+looks identical to a condition that never occurred. The same check runs when detectors are
+loaded from the store, so such a row is skipped with a warning rather than counted as coverage.
+A store read failure is not treated as evidence that a detector is dead, a missing detector is
+still a **404**, and demotion is never blocked.
 
 ```json
 {"staged": true, "status": "shadow", "name": "nl:OOMKilled",

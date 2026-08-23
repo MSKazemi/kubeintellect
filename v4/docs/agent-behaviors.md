@@ -456,9 +456,14 @@ triggers:
     `kind:` selects which normalised stream the predicate reads — it is one of
     exactly **`Pod`**, **`Event`**, **`Node`**, and nothing else. Writing the
     object you care about (`kind: PersistentVolumeClaim`, `kind: Deployment`)
-    parses, loads into the registry, counts toward the detector total and passes
-    the schema check — and then matches nothing, ever, because
-    `WatchPredicate.matches()` falls through to `False` for any other value.
+    still parses and compiles — `WatchPredicate.matches()` then falls through to
+    `False` for any other value, so it matches nothing, ever. Two gates now catch
+    it instead of letting it load as a valid detector that silently does nothing:
+    `validate_detect_block` rejects it on the NL-authoring path, and
+    `tests/test_every_detector_can_actually_fire.py` fails for a shipped playbook.
+    The same two gates reject a `Pod`/`Node` predicate with no `status_regex`, and
+    a `reason_regex`/`status_regex` that can only be satisfied by something no
+    cluster emits — a space inside an anchored alternation (#114) is the classic.
     To narrow an Event to a subject, use `involved_kind:`:
 
     ```yaml
@@ -475,7 +480,18 @@ triggers:
     `TestProbeDetectorsDoNotCrossFire` in `tests/test_detectors.py` for the shape.
     Two class guards (`test_every_watch_predicate_uses_a_known_observation_kind`,
     `test_no_reason_regex_alternative_contains_whitespace`) catch the two ways
-    this has actually happened.
+    this has actually happened, and
+    `tests/test_every_detector_can_actually_fire.py` generalises them: every
+    string a `reason_regex`/`status_regex` can produce must be a value a cluster
+    actually emits.
+
+    The reverse — a perfect `detect:` block and a dead `triggers:` block — is
+    quieter still, because it costs the playbook its place in the *router*.
+    `Trigger` reads exactly `pod_status_regex`, `event_reason_regex` and
+    `event_message_regex`; any other key is dropped, so `reason_regex:` one level
+    up compiles to a trigger with nothing in it, and `match_playbooks` iterates
+    it forever without matching. The loader now warns, and
+    `tests/test_every_playbook_is_reachable.py` fails.
 
     Where a reason is shared by more than one failure — the kubelet emits
     `Unhealthy` for *both* readiness and liveness probes — the `message_regex`

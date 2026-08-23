@@ -131,6 +131,8 @@ async def _investigate(finding: Finding, level: str) -> None:
                 user_id="watchtower",
                 user_role=settings.WATCHTOWER_ROLE,
                 auto_approve=auto_fix,
+                # In-process, detector-triggered: the one caller entitled to sensor trust.
+                trigger_source="detector",
             ))
             # Drain the event stream (no human is attached); the flight
             # recorder + episode write are the durable outputs.

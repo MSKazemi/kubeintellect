@@ -304,6 +304,7 @@ def _fresh_turn_state(
     user_id: str,
     user_role: str,
     extra: dict[str, Any] | None = None,
+    trigger_source: str = "user_query",
 ) -> dict[str, Any]:
     """Build the per-turn state update that resets transient RCA fields.
 
@@ -334,6 +335,10 @@ def _fresh_turn_state(
         # Cluster identity (re-populated by context_fetcher each turn — cheap, cached)
         "cluster_id": "unknown",
         **(extra or {}),
+        # Deliberately AFTER the `extra` merge: provenance decides the memory
+        # write-admission trust score, so no caller-supplied bag of keys may set it.
+        # Untrusted by default; only an in-process caller passes the parameter.
+        "trigger_source": trigger_source,
     }
 
 
@@ -359,6 +364,7 @@ async def invoke(
     user_id: str = "default",
     user_role: str = "admin",
     extra_state: dict[str, Any] | None = None,
+    trigger_source: str = "user_query",
 ) -> AgentState:
     """Single-turn invoke (non-streaming). Returns final state."""
     graph = await get_graph()
@@ -369,7 +375,9 @@ async def invoke(
         "recursion_limit": settings.AGENT_GRAPH_RECURSION_LIMIT,
     }
 
-    state = _fresh_turn_state(user_message, session_id, user_id, user_role, extra_state)
+    state = _fresh_turn_state(
+        user_message, session_id, user_id, user_role, extra_state, trigger_source
+    )
 
     callbacks = get_langfuse_callbacks()
     if callbacks:
@@ -406,6 +414,7 @@ async def stream_events(
     user_id: str = "default",
     user_role: str = "admin",
     auto_approve: bool = False,
+    trigger_source: str = "user_query",
 ):
     """Async generator yielding LangGraph astream_events for SSE.
 
@@ -466,7 +475,10 @@ async def stream_events(
         input_data = Command(resume=approved)
         logger.info(f"stream_events: resuming HITL thread={session_id} approved={approved}")
     else:
-        input_data = _fresh_turn_state(user_message, session_id, user_id, user_role)
+        input_data = _fresh_turn_state(
+            user_message, session_id, user_id, user_role,
+            trigger_source=trigger_source,
+        )
 
     callbacks = get_langfuse_callbacks()
     if callbacks:
@@ -580,6 +592,7 @@ async def run_session(
     user_id: str = "default",
     user_role: str = "admin",
     auto_approve: bool = False,
+    trigger_source: str = "user_query",
 ) -> None:
     """
     Run the graph for one turn and emit typed events to the per-session queue.
@@ -601,7 +614,10 @@ async def run_session(
         # double-emit. The buffer workaround below is V2-only.
         v4 = settings.CORTEX_V4_ENABLED
 
-        async for raw in stream_events(user_message, session_id, user_id, user_role, auto_approve=auto_approve):
+        async for raw in stream_events(
+            user_message, session_id, user_id, user_role,
+            auto_approve=auto_approve, trigger_source=trigger_source,
+        ):
             kind = raw.get("event", "")
 
             if v4 and kind == "on_chat_model_stream":

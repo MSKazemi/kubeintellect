@@ -120,6 +120,12 @@ class AgentState(TypedDict):
     session_id: str
     user_id: str
     user_role: str   # "superadmin" | "admin" | "operator" | "readonly" — injected by API auth layer
+    # Provenance of the turn, and the ONLY input to the memory write-admission trust
+    # score (memory/security.py). It must never be derivable from anything a chat client
+    # sends: `user_id` is `body.user`, a free-form request field, so trusting it let any
+    # caller claim sensor provenance and skip every MINJA validator. Set by the in-process
+    # caller (watchtower passes "detector"); the HTTP endpoint cannot pass it at all.
+    trigger_source: str   # "detector" | "user_query"
 
     # Cluster identity (R1) — populated by context_fetcher; used to scope
     # reflexion outcomes and pattern hints so that learnings from one cluster
