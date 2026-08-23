@@ -12,6 +12,67 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Fixed
+- **Every knowledge-graph edge claimed a provenance it could not resolve.** `kg_edges.source_kind`
+  is `NOT NULL DEFAULT 'observation'` and is the sole input to the memory write-admission trust
+  score, where `observation` scores 1.0 — yet every edge the sensorium ingest path wrote carried
+  that claim with `source_id = NULL`, so *which* observation was unanswerable. Edges derived from
+  the cluster watch now cite the apiserver's `uid` + `resourceVersion` for the exact object version
+  behind the fact. An observation with no identity still writes its edges, with no citation rather
+  than a synthetic one — a reference that looks resolvable and is not would be worse than a blank.
+- **A chat client could claim sensor provenance and bypass the whole memory-poisoning guard.**
+  `MEMORY_SECURITY_HARDENING`'s write-admission guard treats provenance as its primary, non-LLM
+  validator: at trust ≥ 0.9 a write is admitted as `sensor_trusted` *before* the injection-signature
+  check, the rate limiter and the contradiction check run. The cortex `remember` node derived that
+  provenance from `state["user_id"]`, which is `body.user` — a free-form field of the chat request —
+  so a caller who sent `{"user": "watchtower"}` had their episode stored as detector-derived at trust
+  1.0 with every validator skipped, which is precisely the MINJA query-only attack the guard exists
+  to stop. Provenance is now a separate turn-state field (`trigger_source`) that only an in-process
+  caller can set, applied *after* the `extra_state` merge so no caller-supplied key can override it;
+  the watchtower asks for `detector` explicitly and the HTTP endpoint cannot pass it at all.
+  Both flags are off by default, so no default deployment was exposed.
+- **A dropped SSE frame was indistinguishable from a frame the server never sent.** Both
+  `kube-q` SSE parsers swallowed any frame they could not decode, and neither could see a stream
+  that ended mid-frame. They now count losses into an optional `SseStats` without changing what
+  they yield, and the chat stream warns that an answer may be incomplete instead of silently
+  presenting a partial one as whole. See the `kube-q` changelog.
+- **A stored detector that can never fire was still loaded, and could still be promoted.** The
+  liveness check added for natural-language authoring guarded one door; `memory/consolidation.py`
+  writes to the `detectors` table as well, `promote_candidate` only flipped `status` without
+  re-reading the predicate, and any row written before that gate existed was still in the table.
+  Three dead rows — #114's spaced alternation, a `kind` the engine never matches, and a `Pod`
+  predicate with no `status_regex` — loaded as two active and one shadow detector. The shadow
+  case is the damaging one: shadow detectors are promoted on their precision record, and a
+  detector that cannot fire shows zero firings, which is indistinguishable from a condition that
+  never occurred. `load_db_detectors` now drops such a row with a warning naming it and the
+  reason (per row — one bad candidate cannot cost the cluster its other detectors), and
+  `POST /v1/detectors/{name}/promote` answers **409** with the reason instead of a cheerful
+  `status: active`. A store read failure is still not treated as evidence of deadness, and a
+  missing detector is still a 404; demotion is never blocked.
+- **A mistyped `triggers:` key silently removed a playbook from the router.** `Trigger` reads
+  exactly `pod_status_regex`, `event_reason_regex` and `event_message_regex` via `raw.get`, so
+  a near miss — `reason_regex:` one level up, or a key one character short — compiled to a
+  trigger holding nothing. The playbook still loaded, still counted toward the playbook total
+  and still passed the schema check, while `match_playbooks` iterated it forever without ever
+  matching; the `if not pb.triggers` guard did not fire either, because the tuple is non-empty.
+  This is the router-side twin of #114's dead `detect:` predicate. The loader now warns with
+  the playbook name and the offending keys, and `tests/test_every_playbook_is_reachable.py`
+  turns it into a failure — it also checks every one of the 41 shipped trigger regexes actually
+  routes to its own playbook, so the two streams cannot be crossed unnoticed. All 23 shipped
+  playbooks were already reachable; nothing that fires today stops firing.
+- **A natural-language-authored detector could be staged as a permanent no-op, and its zero
+  firings would read as "the condition never occurred".** `validate_detect_block` documented
+  itself as *"the compiler **is** the validator"* — but the compiler only proves a predicate is
+  well-formed, never that it can match anything. Four shapes passed it with zero errors: a
+  `kind` the engine does not handle, a `kind` in the wrong case (`matches()` is
+  case-sensitive), a `Pod`/`Node` predicate with no `status_regex`, and a space inside an
+  anchored alternation — #114's exact mistake, which a model writing regexes from prose makes
+  more readily than a person reading the schema. A new `detectors/predicate_shape` module
+  expands a pattern into every string it can produce and requires each to be a value a cluster
+  actually emits (`message_regex` is exempt — an event message is prose; an unexpandable
+  pattern is treated as *unknown*, not dead, so a valid-but-exotic regex still passes). The
+  validator now returns those as errors, and the 30 shipped predicates are checked the same way
+  in CI. Asserting mere satisfiability does **not** work here and was tried first: the sample is
+  generated from the pattern, so the stray space rides along and the assertion passes.
 - **`kq replay` printed a blank summary for every detector firing.** The hash-chained
   `decision_log` has two readers — `app/digest/postmortem.py`, which builds the incident
   narrative, and `kq replay`, which streams the record back to a terminal — and each turned a

@@ -29,6 +29,16 @@ when a pod is deleted or moves nodes, the old edge is closed with a timestamp
 rather than erased. That turns *"what changed between 14:02 and 14:07"* into a
 single query over edge open/close events.
 
+Each edge also records **what it was derived from**. An edge learned from the cluster
+watch cites the apiserver's own identity for the exact object version that produced it —
+`uid` plus `resourceVersion` — so *"why does the agent believe this pod runs on that node"*
+has an answer you can check, rather than an unqualified `observation` label. Two limits
+stated plainly: a `resourceVersion` is not retained indefinitely and a deleted object is
+gone, so an old citation may name something you can no longer fetch; and an edge built from
+an observation that carried no identity is stored with **no** citation rather than a
+synthetic one, because a reference that looks resolvable and is not would be worse than an
+honest blank.
+
 ---
 
 ## What gets injected into the prompt

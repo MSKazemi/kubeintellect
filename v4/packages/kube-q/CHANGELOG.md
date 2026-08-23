@@ -4,6 +4,55 @@ All notable changes to kube-q will be documented here.
 
 ## [Unreleased]
 
+### Fixed — a lost SSE frame no longer looks like a frame the server never sent
+- Both SSE parsers — `core/transport.iter_sse` and its hand-written async twin
+  `core/client._aiter_sse` — answered an undecodable frame with `pass`. Nothing raised, nothing
+  logged, nothing counted, so a truncated answer and a complete one were observationally
+  identical, and a stream cut *mid-frame* left no trace at all: with no blank-line terminator
+  the loop never saw a frame to skip. That matters most where a frame carries a verdict rather
+  than prose — `kq replay`'s `replay_meta` holds `chain_valid`, so a dropped one turned *"the
+  audit chain is broken"* into *"the audit chain was never mentioned"*. Both parsers now take an
+  optional `SseStats` recording `dropped_frames`, the first bad payload, and `truncated_tail`,
+  **without changing a single frame they yield**; the interactive chat stream passes one and
+  prints *"⚠ This answer may be incomplete — 2 unreadable frames"* rather than aborting the turn,
+  because a partial answer is worth more to an operator than a raised exception.
+
+### Fixed — the server explained why, and `kq` printed a link to MDN
+- The API answers errors with a reason, not just a status: `GET /v1/detectors` returns **503**
+  with *"no memory pool — the detector store is not configured"* rather than an empty 200, so
+  *unqueryable* cannot be mistaken for *unmonitored*, and promoting a detector that can never
+  fire returns **409** naming the reason. All eight commands called `raise_for_status()` and
+  printed the resulting exception, whose message is the status line plus a link to
+  `developer.mozilla.org` — none of the server's `detail` ever reached the terminal. A shared
+  `transport.explain()` now renders it (FastAPI validation lists included) with the status code
+  alongside, and falls back to the exception whenever there is no usable body, so a missing
+  explanation can never become a missing error.
+
+### Fixed — the SDK exported an approval-gate event it could never emit
+- `kube_q.core.client` publishes `HitlRequestEvent` in its public API, which promises that a
+  caller can detect the approval gate without reading prose. The server merges the gate fields
+  onto the choice of an ordinary chunk rather than sending a `ki_event`, and the SDK's parser
+  inspected only `ki_event` and `delta.content` — so the event was unreachable and a caller
+  streaming through the SDK received a `TokenEvent` full of markdown and no machine-readable
+  signal that the agent was waiting for a human. The parser now returns every event a chunk
+  carries (the prose first, then the gate), both the sync and async stream loops yield all of
+  them, and `HitlRequestEvent.data.approval_id` carries the id needed to resume. The module's
+  own usage example shows the case, since an event nobody knows to match is still unreachable
+  in practice.
+
+### Fixed — the approval gate never reached the CLI on its default path
+- The server marks an approval gate with `hitl_required` (and the `action_id` needed to resume
+  it) on the gate chunk, whose `finish_reason` is `null`, and sends `finish_reason: "stop"` on a
+  separate terminal chunk that carries no gate fields. The streaming reader consulted
+  `hitl_required` only *inside* `if finish == "stop"`, so the two conditions were never true on
+  the same frame: `kq` streamed the "Approval Required" text to the screen while reporting
+  `hitl_pending = False` and `action_id = None`. The only other route to a pending gate was a
+  fallback watching for a 🛑 that nothing in the repo emits — and which blames
+  the server ("should be upgraded to send hitl_required") for a client-side condition. The
+  streaming path now trusts the field wherever it appears, as the non-streaming path already
+  did. The regression test feeds the *real* server frames to the *real* reader, because every
+  previous test of this side channel hand-built the chunk it then asserted on.
+
 ### Added — exit code `5`: the chain is intact but the record has holes in it
 - `kq replay` and `kq export` exited `0` with a green *"✓ chain intact"* over an episode the
   server had recorded as incomplete. A hash chain proves no stored record was altered; it cannot

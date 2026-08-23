@@ -16,7 +16,7 @@ from rich.console import Console
 from rich.table import Table
 
 from kube_q.core.config import load_config
-from kube_q.core.transport import build_headers, make_client
+from kube_q.core.transport import build_headers, explain, make_client
 
 
 def run(argv: list[str]) -> int:
@@ -45,7 +45,7 @@ def run(argv: list[str]) -> int:
             response.raise_for_status()
             data = response.json()
     except Exception as exc:
-        console.print(f"[red]Findings fetch failed:[/red] {exc}")
+        console.print(f"[red]Findings fetch failed:[/red] {explain(exc)}")
         return 1
 
     state = data.get("sensorium")

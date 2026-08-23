@@ -4,11 +4,19 @@ name: Publish to PyPI
 # live in the repository ROOT .github/workflows/ — the per-version file under v4/
 # is packaged with that directory and is never run by GitHub.
 #
-# Manual trigger only: Actions -> Publish to PyPI -> Run workflow.
+# Fires on a `v*` tag, alongside docker-publish.yml, helm-publish.yml and
+# release-binaries.yml. Before this trigger existed the PyPI job was
+# workflow_dispatch-only, so tagging a release shipped the image, the chart and the
+# binaries but silently left PyPI on the previous version — a partial release that
+# reported green. Also runnable by hand: Actions -> Publish to PyPI -> Run workflow.
+#
 # Requires a `pypi` environment with PyPI trusted publishing (OIDC) configured
 # for all three distributions.
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -56,6 +64,7 @@ jobs:
           ls -l dist
 
       - name: Upload to PyPI
+        # On a tag push `inputs.dry_run` is null, so this is true and the upload runs.
         if: ${{ !inputs.dry_run }}
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2
         with:

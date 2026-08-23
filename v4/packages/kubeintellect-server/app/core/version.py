@@ -81,11 +81,21 @@ UNWIRED_EXPERIMENTAL_FLAGS = frozenset({
 
 
 def code_version() -> str:
-    """The authoritative software version (from the installed package = pyproject `version`)."""
+    """The authoritative software version (from the installed package = pyproject `version`).
+
+    In the container there is no installed package to read: the image installs dependencies only
+    and copies the module trees in flat, so this falls through to the build stamp the image was
+    labelled with. Without that fallback every published release reported ``0+unknown`` on
+    ``/healthz`` -- the one field that identifies which release is running. An installed package
+    always wins; the stamp is the degraded answer, never an override.
+    """
     try:
         return _pkg_version("kubeintellect")
-    except PackageNotFoundError:  # running from source without an install
-        return "0+unknown"
+    except PackageNotFoundError:  # running from source without an install (e.g. the image)
+        # `git describe` emits the tag verbatim, and the tags are `vX.Y.Z`; the leading `v` is
+        # tag syntax, not part of the version.
+        stamp = settings.KI_BUILD_VERSION.strip().removeprefix("v")
+        return stamp or "0+unknown"
 
 
 def arm() -> str:

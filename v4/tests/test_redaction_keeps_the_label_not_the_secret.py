@@ -179,7 +179,7 @@ class TestKeysWithNoKeywordInThem:
 # ── L6: whole-line base64 ─────────────────────────────────────────────────────
 
 class TestWholeLineBase64:
-    """The case `_TOKEN_RE` structurally cannot reach.
+    r"""The case `_TOKEN_RE` structurally cannot reach.
 
     `_TOKEN_RE` is `[a-zA-Z0-9_\-]{32,}` — it does not span `+` or `/`, so real base64
     is chopped into sub-32 fragments and survives it entirely. A blob of pure

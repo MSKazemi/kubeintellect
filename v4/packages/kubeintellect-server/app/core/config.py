@@ -195,6 +195,14 @@ class Settings(BaseSettings):
     # per KubeIntellect version (per-version projects need Langfuse Enterprise).
     KI_VERSION: str = "v4"
 
+    # Build stamp, set by the container image only (Dockerfile: ENV KI_BUILD_VERSION=${VERSION},
+    # fed by docker-publish.yml's `git describe --tags --always`). It exists because the image
+    # installs dependencies but NOT the workspace packages -- module trees are copied in flat and
+    # imported from the working directory -- so there is no dist-info to read and
+    # importlib.metadata cannot answer "which release am I?". Empty everywhere else, where the
+    # installed package is the authority and this is never consulted.
+    KI_BUILD_VERSION: str = ""
+
     # ── App ───────────────────────────────────────────────────────────────────
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "text"

@@ -199,16 +199,26 @@ class TestMemoryAuditChain:
     """R8.2 tamper-evidence — a per-cluster hash chain over memory writes (reuses ADR-005)."""
 
     class ChainPool:
-        """A tiny in-memory memory_audit table that supports the chain SQL."""
+        """A tiny in-memory memory_audit + memory_chain_head pair.
+
+        It dispatches on the SQL exactly as two real tables would. A double that accepted
+        every `execute` into one list would swallow the head write and still look green.
+        """
         def __init__(self):
             self.rows: list[dict] = []
+            self.head: dict[str, dict] = {}
 
         async def fetchrow(self, sql, *a):
             cid = a[0]
+            if "memory_chain_head" in sql:
+                return self.head.get(cid)
             rows = [r for r in self.rows if r["cluster_id"] == cid]
             return max(rows, key=lambda r: r["seq"]) if rows else None
 
         async def execute(self, sql, *a):
+            if "memory_chain_head" in sql:
+                self.head[a[0]] = {"seq": a[1], "hash": a[2]}
+                return "INSERT 0 1"
             self.rows.append({
                 "cluster_id": a[0], "seq": a[1], "kind": a[2], "ref_id": a[3],
                 "payload": a[4], "prev_hash": a[5], "hash": a[6],

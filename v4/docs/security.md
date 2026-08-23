@@ -102,6 +102,22 @@ overridden away by `KUBECTL_BLOCKED_RESOURCES` or Helm's `config.blockedResource
 
 **HITL = Human-in-the-Loop.** Even superadmin and admin users cannot execute destructive commands without explicitly typing `yes` or `/approve` in the same session.
 
+Role enforcement on the **HTTP API** is separate from the tool-layer rules above, and is now
+gated the same way authentication is. `tests/test_every_route_is_authenticated.py` proves every
+route challenges an anonymous or invalid caller;
+`tests/test_every_write_route_refuses_a_readonly_key.py` proves every mutating route answers
+**403** to a valid `readonly` key — `POST /v1/detectors`, both detector review actions,
+`PUT /v1/preferences`, `DELETE /v1/preferences/{key}` and `POST /v1/auth/demo-keys`. Both lists
+come from the application's own OpenAPI schema, so a route added later is covered without
+anyone remembering. `POST /v1/chat/completions` is the deliberate exception: the public demo key
+is readonly, and every state-changing *action* inside a turn is gated in the tool layer instead.
+
+> The second test insists on exactly `403` rather than "not `200`" for a measured reason. With
+> the shipped defaults, four of those six routes answer `404` or `503` first — the NL-authoring
+> flag is off and the memory hierarchy is inactive — so a laxer assertion stays green with the
+> role check deleted. The test enables the flags and makes the store look active so the role
+> check is the first thing that can refuse.
+
 ---
 
 ## 3. Kubernetes RBAC tiers
@@ -883,6 +899,15 @@ it were a learned fact. The experimental Memory V5 upgrade defends this behind
   check, a per-requester rate limiter, and a contradiction check against high-confidence sensor
   facts. Poisoned or low-trust writes are quarantined, never persisted as trusted memory. The
   guard **fails open** so a guard bug never drops legitimate memory.
+- **Provenance is not a field the caller fills in.** The trust score is the *primary* validator
+  and the strongest one — at trust ≥ 0.9 a write is admitted as `sensor_trusted` **before any
+  other check runs**, so a forged provenance is not one bypassed validator but all of them.
+  Provenance is therefore carried on the agent turn state (`trigger_source`) and can only be
+  set by an in-process caller: the watchtower passes `detector` when a detector finding
+  triggers an investigation. The chat endpoint never passes it, and `trigger_source` is not a
+  field of the chat request, so a request body cannot reach sensor trust. In particular the
+  `user` field of `POST /v1/chat/completions` is free-form and **nothing keys a trust decision
+  off it** — it identifies a caller for logging and recall scoping, it does not vouch for one.
 - **Tamper-evidence** — an append-only, per-cluster SHA-256 **hash chain** over memory-mutating
   events (the same primitive as the flight recorder, §nearby); a silent edit, delete, or reorder
   of learned memory is detectable via `verify_memory_chain`.

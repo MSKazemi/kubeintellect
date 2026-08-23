@@ -15,6 +15,7 @@ KubeQClient async iterator is implemented (Phase 1 Step 8).
 
 import json
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -134,8 +135,43 @@ def build_payload(
 
 # ── SSE parser ────────────────────────────────────────────────────────────────
 
-def iter_sse(response: httpx.Response) -> Any:
-    """Yield parsed SSE data objects. Handles multi-line data and [DONE] sentinel."""
+@dataclass
+class SseStats:
+    """What a stream lost, for a caller that needs to know it lost something.
+
+    `iter_sse` used to answer a malformed frame with `except JSONDecodeError: pass`, so a
+    truncated or corrupted frame was indistinguishable from a frame the server never sent.
+    Every command built on SSE inherited that, and the consequence is worst where the frame
+    carries a verdict rather than prose: `kq replay`'s `replay_meta` holds `chain_valid`, so a
+    dropped one turned "the audit chain is broken" into "the audit chain was never mentioned".
+
+    Counting rather than raising is deliberate. Raising would abort the interactive chat
+    stream — the highest-traffic surface in the product — on a single bad frame, when a partial
+    answer is exactly what the user wants; logging alone would leave the loss unobservable to
+    the caller, which is the defect itself. A caller that must be fail-closed inspects this and
+    refuses; chat degrades and says so.
+    """
+
+    dropped_frames: int = 0
+    first_error: str | None = None      # the first unparseable payload, truncated
+    truncated_tail: bool = False        # the stream ended mid-frame, with no [DONE]
+
+    @property
+    def lossless(self) -> bool:
+        return self.dropped_frames == 0 and not self.truncated_tail
+
+    def _record_drop(self, payload: str) -> None:
+        self.dropped_frames += 1
+        if self.first_error is None:
+            self.first_error = payload[:200]
+
+
+def iter_sse(response: httpx.Response, stats: SseStats | None = None) -> Any:
+    """Yield parsed SSE data objects. Handles multi-line data and [DONE] sentinel.
+
+    Pass `stats` to learn what was lost; see `SseStats`. Without it the behaviour is exactly
+    as before, so no existing caller changes.
+    """
     buffer = ""
     for raw_chunk in response.iter_text():
         buffer += raw_chunk
@@ -149,7 +185,16 @@ def iter_sse(response: httpx.Response) -> Any:
                     try:
                         yield json.loads(payload)
                     except json.JSONDecodeError:
-                        pass
+                        if stats is not None:
+                            stats._record_drop(payload)
+    # A stream that ends without the blank-line terminator leaves a frame in the buffer that
+    # the loop above can never see. It is not yielded — that would change what callers
+    # receive — but it is no longer lost in silence.
+    if stats is not None and any(
+        line.startswith("data:") and line[len("data:"):].strip() not in ("", "[DONE]")
+        for line in buffer.splitlines()
+    ):
+        stats.truncated_tail = True
 
 
 # ── Health check ──────────────────────────────────────────────────────────────
@@ -228,3 +273,30 @@ def fetch_namespaces(
         return None
     except Exception:
         return None
+
+
+# ── Server-side error text ────────────────────────────────────────────────────
+
+def explain(exc: BaseException) -> str:
+    """The server's own words for a failure, not just the status line.
+
+    `str(httpx.HTTPStatusError)` renders as "Client error '403 Forbidden' for url ...", which
+    tells an operator that something was refused but never *why* — the reason the server took
+    the trouble to put in `detail` is discarded. Falls back to `str(exc)` whenever there is no
+    readable detail, so a transport error or an HTML error page still prints something.
+    """
+    response = getattr(exc, "response", None)
+    if response is None:
+        return str(exc)
+    try:
+        payload = response.json()
+    except Exception:
+        payload = None
+    detail = payload.get("detail") if isinstance(payload, dict) else None
+    if isinstance(detail, list):                      # FastAPI validation errors
+        detail = "; ".join(
+            str(d.get("msg", d)) if isinstance(d, dict) else str(d) for d in detail
+        )
+    if not isinstance(detail, str) or not detail.strip():
+        return str(exc)
+    return f"{detail} (HTTP {response.status_code})"

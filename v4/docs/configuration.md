@@ -349,6 +349,7 @@ If empty, kubectl-based queries still work — only metrics and log queries are 
 | `LANGFUSE_SECRET_KEY` | — | Langfuse project secret key — auto-filled by `make langfuse-provision` |
 | `LANGFUSE_HOST` | — | Langfuse server URL. docker-compose: `http://localhost:3001`; in-cluster (Helm): `http://langfuse-web.monitoring.svc.cluster.local:3000` |
 | `KI_VERSION` | `v4` | Per-version trace tag. Stamps every Langfuse trace with `version:<KI_VERSION>`; env-overridable. All KubeIntellect versions share one Langfuse project, so this tag is what lets cost/tokens be filtered per version. |
+| `KI_BUILD_VERSION` | — | **Set by the container image, not by you.** The image installs dependencies but not the workspace packages, so `importlib.metadata` has no version to read and `/healthz` would report `0+unknown`. The Dockerfile exports the same value that stamps the OCI `org.opencontainers.image.version` label, and `/healthz` falls back to it. Ignored wherever the package is properly installed — an installed version always wins. |
 
 Provision the keys instead of copying them by hand. From the repo root (or
 `cd v4 && make langfuse-provision`):

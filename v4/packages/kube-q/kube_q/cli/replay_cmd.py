@@ -21,13 +21,12 @@ from __future__ import annotations
 import sys
 import uuid
 
+from ki_protocol.record import GAP_KIND, summarise_record
 from rich.console import Console
 from rich.table import Table
 
-from ki_protocol.record import GAP_KIND, summarise_record
-
 from kube_q.core.config import load_config
-from kube_q.core.transport import build_headers, iter_sse, make_client
+from kube_q.core.transport import build_headers, explain, iter_sse, make_client
 
 # `ki_protocol.record.GAP_KIND` — the recorder's own record of what it lost.
 _GAP_TYPE = GAP_KIND
@@ -120,7 +119,7 @@ def run(argv: list[str]) -> int:
                     return 5
                 return 0
     except Exception as exc:
-        console.print(f"[red]Replay failed:[/red] {exc}")
+        console.print(f"[red]Replay failed:[/red] {explain(exc)}")
         return 1
 
 

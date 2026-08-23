@@ -469,7 +469,12 @@ async def remember(state: CortexState, config: RunnableConfig) -> dict:
             cluster_id = state.get("cluster_id") or get_cluster_id()
             _asyncio.create_task(write_episode(
                 cluster_id=cluster_id,
-                trigger_kind="detector" if state.get("user_id") == "watchtower" else "user_query",
+                # Provenance drives the memory write-admission trust score, so it is read
+                # from the state field only an in-process caller can set — never from
+                # `user_id`, which is `body.user` and free for any chat client to choose.
+                trigger_kind=(
+                    "detector" if state.get("trigger_source") == "detector" else "user_query"
+                ),
                 trigger_detail=_last_user_text(state)[:300],
                 summary=answer[:1200],
                 outcome="report_only",

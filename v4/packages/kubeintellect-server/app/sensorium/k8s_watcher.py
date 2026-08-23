@@ -128,6 +128,13 @@ def _pod_observation(doc: dict, cluster_id: str) -> Observation | None:
             "watch_type": doc.get("type", ""),
             "node": obj.get("spec", {}).get("nodeName", ""),
             "owner": owner,
+            # The apiserver's own identity for this exact object version. Carried so a
+            # graph edge derived from this observation can cite what it was derived FROM
+            # (kg.observation_ref). Observations are an in-memory stream — there is no
+            # observations table — so a synthetic observation id would point at nothing;
+            # uid + resourceVersion is a handle that can be checked against the cluster.
+            "uid": meta.get("uid", ""),
+            "resource_version": meta.get("resourceVersion", ""),
         },
     )
 

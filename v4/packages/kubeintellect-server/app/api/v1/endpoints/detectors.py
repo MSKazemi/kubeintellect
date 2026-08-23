@@ -79,7 +79,12 @@ async def list_detectors(status: str | None = Query(default=None)):
 async def promote_detector(name: str, request: Request):
     _require_enabled()
     reviewer = _require_writer(request)
-    ok = await review.promote_candidate(name, reviewer=reviewer)
+    try:
+        ok = await review.promote_candidate(name, reviewer=reviewer)
+    except review.DetectorCannotFire as exc:
+        # 409, not a cheerful 200. Flipping the row would make this endpoint answer
+        # `status: active` about a detector that can never match anything.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not ok:
         raise HTTPException(status_code=404, detail=f"detector '{name}' not found")
     return {"name": name, "status": "active", "reviewed_by": reviewer}

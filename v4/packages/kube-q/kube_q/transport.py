@@ -32,6 +32,7 @@ from kube_q.cli.renderer import (
 )
 from kube_q.core.transport import (
     QUERY_RETRY_DELAYS,
+    SseStats,
     build_headers,
     build_payload,
     check_health,  # noqa: F401 (re-export for callers)
@@ -119,7 +120,12 @@ def _stream_once(
             # stream, and its reason arrives as `content`, so it would otherwise read as a
             # perfectly good answer.
             saw_fatal_error = False
-            for event in iter_sse(resp):
+            # A frame the parser cannot decode used to vanish. The stream still ends, the
+            # answer still prints, and nothing anywhere says a piece of it is missing — so a
+            # truncated answer is indistinguishable from a complete one. Count instead of
+            # raising: a partial answer is worth more here than an aborted turn.
+            sse_stats = SseStats()
+            for event in iter_sse(resp, sse_stats):
                 _logger.debug("sse event: %s", event)
 
                 # ── Side-channel ki_event ────────────────────────────────────
@@ -175,16 +181,24 @@ def _stream_once(
                     full_text += content
                     body = Markdown(full_text) if not _plain_output else Text(full_text)
                     live.update(_compose())
-                if finish == "stop":
-                    if choice.get("hitl_required"):
-                        hitl_pending = True
-                        action_id = choice.get("action_id")
-                    elif "🛑" in full_text:
-                        hitl_pending = True
-                        console.print(
-                            "[dim]Warning: HITL triggered via emoji fallback "
-                            "— server should be upgraded to send hitl_required.[/dim]"
-                        )
+                # Trust the side channel wherever it appears, exactly as non_stream_query
+                # does. This used to be nested under `finish == "stop"`, and the two are never
+                # true on the same frame: the server puts `hitl_required` on the gate chunk,
+                # whose finish_reason is null, and sends `finish_reason: "stop"` on a separate
+                # terminal chunk carrying no gate fields. So the gate was never seen on the
+                # streaming path -- the default one -- and `action_id` was always lost with it.
+                if choice.get("hitl_required"):
+                    hitl_pending = True
+                    action_id = choice.get("action_id")
+                elif finish == "stop" and not hitl_pending and "🛑" in full_text:
+                    # Kept only for a server old enough to signal the gate in prose. Nothing in
+                    # this repo emits that character, so for a current server this is unreachable
+                    # and the upgrade advice it prints would be false.
+                    hitl_pending = True
+                    console.print(
+                        "[dim]Warning: HITL triggered via emoji fallback "
+                        "— server should be upgraded to send hitl_required.[/dim]"
+                    )
 
         # Collapse the plan out of the final live frame so it isn't shown twice
         # — it is re-printed persistently below the answer via on_plan().
@@ -192,6 +206,21 @@ def _stream_once(
             live.update(body)
 
     elapsed = time.monotonic() - t0
+    if not sse_stats.lossless:
+        _logger.warning(
+            "sse stream was lossy: dropped=%d truncated_tail=%s first=%r",
+            sse_stats.dropped_frames, sse_stats.truncated_tail, sse_stats.first_error,
+        )
+        detail = []
+        if sse_stats.dropped_frames:
+            n = sse_stats.dropped_frames
+            detail.append(f"{n} unreadable frame{'s' if n != 1 else ''}")
+        if sse_stats.truncated_tail:
+            detail.append("the stream ended mid-frame")
+        console.print(
+            f"[yellow]⚠ This answer may be incomplete[/yellow] — "
+            f"{' and '.join(detail)}. [dim]Run with -v for the raw payload.[/dim]"
+        )
     if last_usage is None:
         _logger.debug(
             "stream completed without usage data — "
