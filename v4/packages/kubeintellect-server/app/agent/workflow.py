@@ -21,15 +21,17 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import AbstractAsyncContextManager
-from typing import Any
+from typing import Any, cast
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.errors import GraphRecursionError
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, Send
 
 from app.agent.hitl import is_auto_approve_request as _is_auto_approve_request
+from app.agent.hitl import is_approval as _is_approval
 from app.agent.hitl import is_denial as _is_denial
 from app.agent.nodes.context_fetcher import context_fetcher
 from app.agent.nodes.coordinator import coordinator
@@ -77,12 +79,31 @@ async def subagent_executor(payload: SubagentInput) -> dict:
 async def targeted_investigator(state: AgentState) -> dict:
     """Run 3 parallel targeted reads for a single-resource issue, then return to coordinator."""
     from app.agent.nodes.context_fetcher import _run_kubectl_snapshot
+    from app.tools.namespace_guard import protected_message
 
     info = state.get("targeted_investigation") or {}
     ns = info.get("namespace", "")
     pod = info.get("pod", "")
     issue = info.get("issue", "")
     session_id = state.get("session_id", "-")
+
+    # `ns` and `pod` are `(\S+?)` captures out of a line the model wrote, and they are spliced
+    # straight into an argv. `_kubectl_snapshot` refuses a blocked namespace itself, but a
+    # refusal rendered inside a fence headed "### Pod Description" reads as a description; say
+    # plainly that the read did not happen, and skip three subprocesses that cannot return.
+    if ns.strip().lower() in settings.kubectl_blocked_namespaces:
+        logger.warning(f"targeted_investigator: refused protected namespace {ns!r} session={session_id}")
+        existing_snapshot = state.get("cluster_snapshot", "")
+        refusal = (
+            f"## Targeted Investigation: {pod} in {ns}\n"
+            f"{protected_message(ns)}\n\n"
+            "No pod description, events or deployments were read. Tell the user this "
+            "namespace is protected; do not infer its contents from anything above."
+        )
+        return {
+            "cluster_snapshot": f"{existing_snapshot}\n\n{refusal}" if existing_snapshot else refusal,
+            "targeted_investigation": None,
+        }
 
     await emit(session_id, StatusEvent(
         phase="investigating",
@@ -305,6 +326,7 @@ def _fresh_turn_state(
         "snapshot_has_issues": False,
         "snapshot_has_warnings": False,
         "snapshot_pod_count": 0,
+        "snapshot_read_failed": False,
         "snapshot_built_at": 0.0,
         "investigation_plan": None,
         # Matched playbooks (re-populated by context_fetcher each turn)
@@ -313,6 +335,19 @@ def _fresh_turn_state(
         "cluster_id": "unknown",
         **(extra or {}),
     }
+
+
+# Shown to the operator when the OUTER graph hits its budget — i.e. the
+# coordinator↔investigation cycle failed to converge. Distinct from the coordinator's
+# own tool-call budget message: this one means the turn as a whole did not settle.
+GRAPH_BUDGET_EXHAUSTED_MESSAGE = (
+    "I stopped because this turn hit its overall step budget ({limit} recursion units) "
+    "without settling on an answer.\n\n"
+    "Everything produced before this point is above, and no further action was taken. "
+    "This usually means the investigation kept re-opening instead of converging.\n\n"
+    "You can: ask a narrower question, or raise `AGENT_GRAPH_RECURSION_LIMIT` if this "
+    "genuinely needs more cycles."
+)
 
 
 # ── Public invoke helpers ──────────────────────────────────────────────────────
@@ -327,7 +362,12 @@ async def invoke(
 ) -> AgentState:
     """Single-turn invoke (non-streaming). Returns final state."""
     graph = await get_graph()
-    config: RunnableConfig = {"configurable": {"thread_id": session_id, "user_role": user_role}}
+    config: RunnableConfig = {
+        "configurable": {"thread_id": session_id, "user_role": user_role},
+        # Explicit runaway backstop — see settings.AGENT_GRAPH_RECURSION_LIMIT.
+        # LangGraph's default is 10007, which is not a bound in any useful sense.
+        "recursion_limit": settings.AGENT_GRAPH_RECURSION_LIMIT,
+    }
 
     state = _fresh_turn_state(user_message, session_id, user_id, user_role, extra_state)
 
@@ -335,7 +375,28 @@ async def invoke(
     if callbacks:
         config["callbacks"] = callbacks
         config["metadata"] = get_langfuse_run_metadata(session_id)
-    result = await graph.ainvoke(state, config=config)
+    try:
+        result = await graph.ainvoke(state, config=config)
+    except GraphRecursionError:
+        # Halt and escalate with the last checkpointed state rather than losing the
+        # whole turn to an uncaught exception. The caller still sees every message
+        # produced before the budget ran out, plus an explicit escalation.
+        logger.error(
+            f"invoke: graph budget exhausted session={session_id} "
+            f"limit={settings.AGENT_GRAPH_RECURSION_LIMIT} — returning partial state",
+            extra={"session_id": session_id},
+        )
+        snapshot = await graph.aget_state(config)
+        partial = cast(
+            AgentState,
+            dict(snapshot.values) if snapshot and snapshot.values else state,
+        )
+        partial["messages"] = list(partial.get("messages", [])) + [
+            AIMessage(content=GRAPH_BUDGET_EXHAUSTED_MESSAGE.format(
+                limit=settings.AGENT_GRAPH_RECURSION_LIMIT,
+            ))
+        ]
+        return partial
     return result
 
 
@@ -358,14 +419,25 @@ async def stream_events(
     """
     graph = await get_graph()
     config: RunnableConfig = {
-        "configurable": {"thread_id": session_id, "user_role": user_role, "hitl_bypass": auto_approve}
+        "configurable": {"thread_id": session_id, "user_role": user_role, "hitl_bypass": auto_approve},
+        # Explicit runaway backstop — see settings.AGENT_GRAPH_RECURSION_LIMIT.
+        "recursion_limit": settings.AGENT_GRAPH_RECURSION_LIMIT,
     }
 
-    # "approve all" message activates session-wide bypass for this turn onward
+    # "approve all" bypasses HITL for **this turn only**, not for the session.
+    #
+    # Nothing persists it: `hitl_bypass` is rebuilt from `auto_approve` on every call, and
+    # `auto_approve` comes from the request body (`kq --auto-approve`) or from the current
+    # message. The next turn starts gated again, and the `kq` REPL does not latch it either.
+    # Measured 2026-08-20 — turn 1 "approve all" -> True, turns 2 and 3 -> False — after four
+    # doc surfaces and this log line had said "for the rest of the session" since the feature
+    # was written. The gap is in the **safe** direction (the gate stays on), so the code is
+    # left as it is and the claim is corrected; whether the bypass should genuinely span a
+    # session is an owner decision, not a side effect of a wording fix.
     if _is_auto_approve_request(user_message):
         auto_approve = True
         config["configurable"]["hitl_bypass"] = True
-        logger.info(f"stream_events: HITL bypass enabled for session={session_id}")
+        logger.info(f"stream_events: HITL bypassed for this turn session={session_id}")
 
     # Check whether this thread is paused at a HITL interrupt
     graph_state = await graph.aget_state(config)
@@ -376,9 +448,23 @@ async def stream_events(
     # Either a resume command or the partial state update from _fresh_turn_state.
     input_data: Command[Any] | dict[str, Any]
     if has_interrupt:
-        denied = _is_denial(user_message)
-        input_data = Command(resume=not denied)
-        logger.info(f"stream_events: resuming HITL thread={session_id} approved={not denied}")
+        # An approval must be *recognised*, never merely "not recognised as a denial". This was
+        # `resume=not _is_denial(...)` against an exact-match list of 13 phrases, which meant
+        # every unlisted reply executed the pending destructive command. Measured 2026-08-20:
+        # "No.", "NO!", "no thanks", "don't do that", "cancel it", "stop it", "not yet", "wait",
+        # "why?" and an empty message all resumed with True. `docs/security.md` has always
+        # documented the opposite ("anything else -> treated as denial"); the code now matches it.
+        # "approve all" counts as an approval of the pending action as well as enabling bypass —
+        # it is an approval phrase, and cancelling the very action the user just approved would
+        # be a new bug in the other direction.
+        approved = _is_approval(user_message) or _is_auto_approve_request(user_message)
+        if not approved and not _is_denial(user_message):
+            logger.warning(
+                f"stream_events: HITL reply not recognised as approval, cancelling "
+                f"thread={session_id} reply={user_message[:80]!r}"
+            )
+        input_data = Command(resume=approved)
+        logger.info(f"stream_events: resuming HITL thread={session_id} approved={approved}")
     else:
         input_data = _fresh_turn_state(user_message, session_id, user_id, user_role)
 
@@ -386,8 +472,22 @@ async def stream_events(
     if callbacks:
         config["callbacks"] = callbacks
         config["metadata"] = get_langfuse_run_metadata(session_id)
-    async for event in graph.astream_events(input_data, config=config, version="v2"):
-        yield event
+    try:
+        async for event in graph.astream_events(input_data, config=config, version="v2"):
+            yield event
+    except GraphRecursionError:
+        # Surface the halt to the operator as a real event. Dropping it here would be
+        # exactly the silent truncation this budget exists to prevent.
+        logger.error(
+            f"stream_events: graph budget exhausted session={session_id} "
+            f"limit={settings.AGENT_GRAPH_RECURSION_LIMIT} — escalating to the operator",
+            extra={"session_id": session_id},
+        )
+        yield {
+            "event": "on_agent_budget_exhausted",
+            "data": {"limit": settings.AGENT_GRAPH_RECURSION_LIMIT},
+        }
+        return
 
     # After the stream ends, check for a newly created interrupt and surface it
     new_state = await graph.aget_state(config)
@@ -430,6 +530,13 @@ def _translate_raw_event(session_id: str, raw: dict) -> ToolCallEvent | ToolResu
         chunk = raw.get("data", {}).get("chunk")
         if chunk and hasattr(chunk, "content") and chunk.content:
             return TokenEvent(content=chunk.content, session_id=session_id)
+
+    if kind == "on_agent_budget_exhausted":
+        limit = raw.get("data", {}).get("limit", 0)
+        return TokenEvent(
+            content=GRAPH_BUDGET_EXHAUSTED_MESSAGE.format(limit=limit),
+            session_id=session_id,
+        )
 
     if kind == "on_hitl_interrupt":
         val = raw.get("data", {})

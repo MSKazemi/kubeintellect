@@ -4,7 +4,35 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
+import pytest
+from app.detectors import service as detector_service
 from app.digest import builder
+from app.sensorium import k8s_watcher
+from app.sensorium.k8s_watcher import StreamHealth, reset_stream_health
+
+
+class _Engine:
+    """Enough of a DetectorEngine for `perception_state` to classify."""
+
+    detectors = tuple(range(20))
+    trend_blind_since = None
+    last_trend_error = None
+
+
+@pytest.fixture(autouse=True)
+def _something_is_watching(monkeypatch):
+    """CHANGED-2026-08-20: "Quiet watch" is now a claim about perception as well as
+    about the record, so these builder tests stand up a connected watch stream. Without
+    one the digest correctly reports that nothing could have fired — see
+    `test_digest_quiet_requires_watching.py`, which owns that case.
+    """
+    reset_stream_health()
+    monkeypatch.setattr(detector_service, "_engine", _Engine())
+    health = StreamHealth("get pods -A")
+    health.connected = True
+    k8s_watcher._streams["get pods -A"] = health
+    yield
+    reset_stream_health()
 
 
 class FakePool:

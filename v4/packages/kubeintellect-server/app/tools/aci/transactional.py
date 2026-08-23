@@ -15,6 +15,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from app.tools.aci import kubectl_output as _out
 from app.tools.aci.postcondition import PostconditionResult
 
 # apply(command) -> combined output. Injectable; default runs the real (auto-approved) mutation.
@@ -25,14 +26,28 @@ PostconditionFn = Callable[[], PostconditionResult]
 COMMITTED = "committed"
 ROLLED_BACK = "rolled_back"
 APPLY_FAILED = "apply_failed"
+APPLY_REFUSED = "apply_refused"
 VERIFY_FAILED_NO_ROLLBACK = "verify_failed_no_rollback"
+VERIFY_INCONCLUSIVE = "verify_inconclusive"
 
-_ERR = ("error", "exit=1", "not found", "forbidden", "invalid")
+# Outcome of reading the apply seam's output. The classifier lives in `kubectl_output` because
+# the verification side (`postcondition.py`) has to read the same strings, and the two must never
+# disagree about what a given `run_kubectl` result meant.
+REFUSED = _out.REFUSED  # KubeIntellect blocked it — nothing was sent to the cluster
+FAILED = _out.FAILED  # kubectl itself reported an error
+APPLIED = "applied"  # nothing says it failed; the oracle is the authority from here
 
 
-def _ok(output: str) -> bool:
-    low = output.lower()
-    return not any(e in low for e in _ERR)
+def classify_apply(output: str) -> str:
+    """REFUSED / FAILED / APPLIED for one apply-seam result.
+
+    Anything unrecognised is APPLIED — not because it certainly landed, but because the
+    postcondition oracle is a better authority on that than a keyword, and this classifier
+    exists only to catch the two cases where running the oracle would be wrong: a command
+    KubeIntellect refused (nothing to verify, nothing to roll back) and one kubectl rejected.
+    """
+    verdict = _out.classify_output(output)
+    return APPLIED if verdict == _out.OK else verdict
 
 
 def _default_apply(command: str) -> str:
@@ -58,17 +73,33 @@ def execute_transactional(
 ) -> ExecutionResult:
     """Apply ``command``, verify the ``postcondition`` oracle, roll back on failure.
 
-    - apply fails ⇒ APPLY_FAILED (nothing to roll back).
+    - KubeIntellect refused the command ⇒ APPLY_REFUSED (nothing ran, nothing to roll back).
+    - kubectl reported an error ⇒ APPLY_FAILED (nothing to roll back).
+    - the oracle could not evaluate ⇒ VERIFY_INCONCLUSIVE (escalate; **no rollback**).
     - postcondition holds ⇒ COMMITTED.
     - postcondition fails + rollback_command ⇒ run it ⇒ ROLLED_BACK.
     - postcondition fails + no rollback_command ⇒ VERIFY_FAILED_NO_ROLLBACK (escalate).
+
+    The refused branch is not a nicety. Every safety gate in the project — role denial, protected
+    namespace, cluster-wide block, unsupported verb — answers with a string, and the substring
+    test this replaced read all five as success: the executor then failed the oracle (of course:
+    nothing had changed) and issued the **rollback command against the live cluster**, undoing
+    something that was never done. A multi-document apply that fails halfway is the one case
+    APPLY_FAILED can under-report; kubectl's own error line is all this seam has to go on.
     """
     apply_fn = apply_fn or _default_apply
     out = apply_fn(command)
-    if not _ok(out):
+    outcome = classify_apply(out)
+    if outcome == REFUSED:
+        return ExecutionResult(APPLY_REFUSED, apply_output=out.strip()[:2000])
+    if outcome == FAILED:
         return ExecutionResult(APPLY_FAILED, apply_output=out.strip()[:2000])
 
     verdict = postcondition()
+    if not verdict.evaluated:
+        # The oracle could not look. That is not a failed mitigation, and rolling back on it
+        # would mutate a cluster we have just been told we cannot read. Escalate instead.
+        return ExecutionResult(VERIFY_INCONCLUSIVE, verdict, out.strip()[:2000])
     if verdict.met:
         return ExecutionResult(COMMITTED, verdict, out.strip()[:2000])
 

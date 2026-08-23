@@ -1,6 +1,8 @@
 """Operator-preference memory — set/recall/render/forget, learning, forgetting."""
 from __future__ import annotations
 
+import pytest
+
 from app.memory import preferences
 
 
@@ -88,12 +90,21 @@ class TestRecallAndRender:
         finally:
             preferences.close_preferences()
 
-    async def test_recall_fail_open(self):
+    async def test_recall_reports_failure_instead_of_failing_open(self):
+        """Was `test_recall_fail_open`, which asserted `== []` when the query raised.
+
+        Failing open buys something real when a prompt path depends on the read — pass 46 kept
+        exactly that property for episode recall. It buys nothing here: `recall_preferences` has a
+        single consumer, `GET /v1/preferences`, and no agent turn depends on it. All the `[]` did
+        was make `kq preference list` print "No preferences remembered for user 'u1'" during a
+        database outage — inviting the operator to re-enter preferences that already exist.
+        """
         pool = FakePool()
         pool.raise_on = "fetch"
         preferences.init_preferences(pool)
         try:
-            assert await preferences.recall_preferences("u1") == []
+            with pytest.raises(preferences.PreferenceStoreUnavailable):
+                await preferences.recall_preferences("u1")
         finally:
             preferences.close_preferences()
 
@@ -143,3 +154,30 @@ class TestForgetAndLearn:
             assert await preferences.decay_and_forget() == 3
         finally:
             preferences.close_preferences()
+
+
+class TestPreferenceReadsDoNotFakeAnEmptyAnswer:
+    """Sibling of the pass-45 detector-inventory fix, found by the same sweep."""
+
+    @pytest.mark.asyncio
+    async def test_a_failed_query_raises(self, monkeypatch):
+        from app.memory import preferences as prefs
+
+        class _Boom:
+            async def fetch(self, *a, **k):
+                raise RuntimeError("connection reset")
+
+        monkeypatch.setattr(prefs, "_pool", _Boom(), raising=False)
+        with pytest.raises(prefs.PreferenceStoreUnavailable):
+            await prefs.recall_preferences("u1")
+
+    @pytest.mark.asyncio
+    async def test_a_readable_but_empty_store_is_still_empty(self, monkeypatch):
+        from app.memory import preferences as prefs
+
+        class _Empty:
+            async def fetch(self, *a, **k):
+                return []
+
+        monkeypatch.setattr(prefs, "_pool", _Empty(), raising=False)
+        assert await prefs.recall_preferences("u1") == []

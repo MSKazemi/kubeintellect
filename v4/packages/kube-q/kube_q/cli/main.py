@@ -185,8 +185,11 @@ def run_single_query(
 
     Returns ``True`` when the server actually answered (or paused for HITL
     approval), ``False`` when it did not. Both transports signal every failure
-    path — 401, non-200, invalid JSON, retries exhausted — by returning empty
-    text, so an empty answer is the uniform "this did not work" signal. The
+    path — 401, non-200, invalid JSON, retries exhausted, **and a stream that
+    died mid-turn** — by returning empty text, so an empty answer is the uniform
+    "this did not work" signal. That last one was the exception until 2026-08-19:
+    a crashed stream delivers its reason as ordinary content, so it arrived here
+    as a non-empty answer and this returned ``True``. The
     caller turns that into a non-zero exit status: ``kq -q`` is used in scripts
     and CI, where a failure that exits 0 is indistinguishable from an answer.
     """

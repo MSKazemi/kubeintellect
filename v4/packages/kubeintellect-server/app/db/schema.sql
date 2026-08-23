@@ -1,5 +1,6 @@
 -- KubeIntellect V2 database schema
--- Run once: psql $POSTGRES_DSN -f app/db/schema.sql
+-- Run once: psql -v ON_ERROR_STOP=1 --single-transaction $POSTGRES_DSN -f app/db/schema.sql
+-- (both flags matter: psql otherwise exits 0 after a failed statement)
 
 -- ── User preferences ──────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS user_prefs (

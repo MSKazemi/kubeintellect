@@ -64,7 +64,15 @@ async def create_detector(req: NewDetectorRequest, request: Request):
 @router.get("/detectors")
 async def list_detectors(status: str | None = Query(default=None)):
     _require_enabled()
-    return {"detectors": await review.list_detectors(status=status)}
+    try:
+        detectors = await review.list_detectors(status=status)
+    except review.DetectorStoreUnavailable as exc:
+        # 503, not an empty 200. "I cannot answer" and "the answer is nothing" are different, and
+        # for a detector inventory the difference is whether the operator believes their cluster is
+        # unmonitored or merely unqueryable. Same reasoning as /findings reporting
+        # `sensorium: disabled` instead of an innocent empty list.
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"detectors": detectors}
 
 
 @router.post("/detectors/{name}/promote")

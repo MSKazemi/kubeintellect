@@ -43,6 +43,47 @@ initProject:
   publicKey: ""
   secretKey: ""
 
+# Every image this chart runs, pinned. Nothing here may be a floating tag.
+#
+# Why this block exists. The chart previously hardcoded `langfuse/langfuse:latest` alongside a
+# PINNED `clickhouse-server:24.12`, which is a combination that is only ever one upstream release
+# away from breaking. It broke on 2026-08-23: `latest` had moved from Langfuse v3 to **4.16.0**,
+# whose ClickHouse migration 39 creates `events_full` with a skip index that ClickHouse 24.12's
+# parser rejects (`Code: 80 … Only literals can be skip index arguments`). The migration failed
+# half-applied, left `Dirty database version 39` inside ClickHouse — a marker no restart clears —
+# and langfuse-web CrashLoopBackOff'd permanently, on a cluster where every other component
+# reported healthy.
+#
+# Langfuse is pinned to the last v3 release on purpose: this chart's ClickHouse Keeper config, its
+# environment variables and its project seeding were all written for v3, and the evaluation
+# tooling (`backfill_langfuse.py`, `token_backfill.py`) reads the v3 API. Moving to v4 is a real
+# migration, not a tag bump.
+images:
+  langfuse: "langfuse/langfuse:3.225.4"
+  langfuseWorker: "langfuse/langfuse-worker:3.225.4"
+  clickhouse: "clickhouse/clickhouse-server:24.12"
+  postgres: "postgres:16-alpine"
+  redis: "redis:7-alpine"
+  minio: "minio/minio:RELEASE.2025-04-22T22-12-26Z"
+  wait: "busybox:1.37"
+
+# How the Langfuse UI and ingest API are reached from outside the cluster.
+#
+# The default ClusterIP + ingress is right for a laptop Kind cluster, where an ingress controller
+# is already running and `langfuse.local` is in /etc/hosts. It is wrong for a remote VM that
+# deliberately runs no ingress controller: the API then has no address at all, and every campaign
+# run silently records zero tokens and zero cost while otherwise looking healthy — which is how a
+# previous campaign's Cost/Tokens columns ended up empty.
+#
+# Setting `web.service.type: NodePort` gives the service one fixed, externally reachable port.
+# Defaults below preserve the existing behaviour exactly, so the Kind path is unaffected.
+web:
+  service:
+    type: ClusterIP
+    # Only read when type is NodePort. Pinned rather than allocated, so a lane VM can be told the
+    # address before this chart has been installed.
+    nodePort: null
+
 ingress:
   enabled: false
   className: nginx

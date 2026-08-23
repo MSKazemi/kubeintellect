@@ -13,7 +13,7 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_core.runnables import RunnableConfig
-from langgraph.errors import GraphInterrupt
+from langgraph.errors import GraphInterrupt, GraphRecursionError
 
 from app.agent.state import AgentState, PlanStep
 from app.core.config import settings
@@ -542,6 +542,19 @@ queries — only when 3 or more steps are needed.
 """
 
 
+# Shown to the operator when the coordinator's inner ReAct loop hits its budget.
+# This is an escalation, not a result: it says what happened, that the work is
+# incomplete, and what to do next — never a silent stop.
+_BUDGET_EXHAUSTED_MESSAGE = (
+    "I stopped because this investigation hit its tool-call budget "
+    "({limit} recursion units) without reaching a conclusion.\n\n"
+    "Nothing further was attempted, and no action was taken beyond what you can see above. "
+    "This usually means the question was too broad, or I was looping on a tool that kept failing.\n\n"
+    "You can: narrow the question to one namespace or workload, re-run it, "
+    "or raise `AGENT_COORDINATOR_RECURSION_LIMIT` if this investigation legitimately needs more steps."
+)
+
+
 # ── Proactive Fix prompt block (injected when hitl_bypass=True) ───────────────
 
 _PROACTIVE_FIX_BLOCK = """\
@@ -574,6 +587,23 @@ def _snapshot_sufficiency_block(state: AgentState) -> str:
     if mode == "off":
         return ""
     age_s = max(0, int(time.time() - state.get("snapshot_built_at", time.time())))
+    if state.get("snapshot_read_failed"):
+        # The snapshot is not a snapshot. Asserting a pod count here is how a
+        # credentials outage used to reach the model as "contains 0 pods,
+        # issues=false, warnings=false" — together with an instruction to prefer
+        # answering "how many pods" and "is the cluster healthy" without fetching.
+        return """
+
+## Snapshot Sufficiency
+
+**The cluster snapshot is UNAVAILABLE — the read failed.** It reports no pod
+count and no health flags, because none are known. An unavailable snapshot is
+not an empty or healthy cluster.
+
+- ALWAYS use a tool to fetch what you need; never answer from the snapshot.
+- If the tool call fails too, say the cluster could not be reached and surface
+  the error. Do not report zero pods, no warnings, or a healthy cluster.
+"""
     issues = bool(state.get("snapshot_has_issues", False))
     warnings = bool(state.get("snapshot_has_warnings", False))
     pod_count = int(state.get("snapshot_pod_count", 0))
@@ -776,7 +806,29 @@ async def _direct_answer(state: AgentState, config: Optional[RunnableConfig] = N
     if history_summary:
         system_parts.append(f"\n\n{history_summary}")
     input_messages = [SystemMessage(content="\n".join(system_parts))] + history
-    result = await agent.ainvoke({"messages": input_messages}, config=config)
+
+    # Bound the coordinator's inner ReAct loop explicitly. Without this it inherits
+    # LangGraph's default (10007 ≈ 3,300 steps) from the parent config — unbounded in
+    # practice, and this is the loop that holds the write-capable toolset. On exhaustion
+    # we halt and escalate with whatever was found; we never truncate silently.
+    react_config: RunnableConfig = {
+        **(config or {}),
+        "recursion_limit": settings.AGENT_COORDINATOR_RECURSION_LIMIT,
+    }
+    try:
+        result = await agent.ainvoke({"messages": input_messages}, config=react_config)
+    except GraphRecursionError:
+        logger.error(
+            "coordinator: tool-call budget exhausted "
+            f"session={session_id} limit={settings.AGENT_COORDINATOR_RECURSION_LIMIT} — "
+            "halting and escalating to the operator",
+            extra={"session_id": session_id},
+        )
+        return {
+            "messages": [AIMessage(content=_BUDGET_EXHAUSTED_MESSAGE.format(
+                limit=settings.AGENT_COORDINATOR_RECURSION_LIMIT,
+            ))],
+        }
 
     new_messages = result["messages"][len(input_messages):]
     new_messages = _trim_tool_messages(new_messages)  # A4: cap tool output before state storage
@@ -980,8 +1032,9 @@ def _verify_resolution(namespace: str | None, pre_state: dict | None = None) -> 
         return None, None
     try:
         from app.agent.nodes.context_fetcher import (
-            _run_kubectl_snapshot,
+            _kubectl_snapshot,
             _scan_snapshot,
+            _unavailable_reason,
         )
 
         # Wait for any rolling deployment to settle before snapshotting.
@@ -991,13 +1044,28 @@ def _verify_resolution(namespace: str | None, pre_state: dict | None = None) -> 
             _wait_for_rollout(namespace)
 
         ns_arg = ["-n", namespace] if namespace else ["--all-namespaces"]
-        pods_out = _run_kubectl_snapshot(["get", "pods", *ns_arg])
-        events_out = _run_kubectl_snapshot([
+        pods_ok, pods_out = _kubectl_snapshot(["get", "pods", *ns_arg])
+        events_ok, events_out = _kubectl_snapshot([
             "get", "events", *ns_arg,
             "--sort-by=.lastTimestamp",
             "--field-selector=type=Warning",
         ])
-        has_issues, _has_warnings, _ = _scan_snapshot(pods_out, events_out)
+        if not pods_ok:
+            # This is the "failed to run" case the docstring promises. It never
+            # fired before: the runner swallowed kubectl's exit code, so a failed
+            # post-fix read scanned clean and this function returned
+            # (True, "resolved") — recording an unverified fix as verified, which
+            # `promotion.py` then selects on (`WHERE verified = TRUE`) to mint
+            # learned rules and detector candidates. A read is most likely to fail
+            # right after a disruptive change, which is exactly when this runs.
+            logger.warning(
+                "reflexion: cannot verify resolution — the post-fix cluster read "
+                "failed (%s); recording the outcome as unverified, not resolved",
+                _unavailable_reason(pods_out),
+            )
+            return None, None
+        has_issues, has_warnings, _ = _scan_snapshot(
+            pods_out, events_out, pods_ok=pods_ok, events_ok=events_ok)
 
         if not has_issues:
             # Pods are healthy — even if old warning events linger, the fix

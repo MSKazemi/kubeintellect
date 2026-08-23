@@ -354,7 +354,10 @@ dev-postgres-stop: ## Stop the docker compose Postgres
 	docker compose stop postgres
 
 db-init: ## Apply schema.sql to the configured Postgres database (uses docker compose postgres)
+	@# ON_ERROR_STOP=1 + --single-transaction: without them psql exits 0 after a failed
+	@# statement, so `make db-init` reported success on a schema that never landed.
 	docker compose exec -T postgres psql \
+	  -v ON_ERROR_STOP=1 --single-transaction \
 	  -U $${POSTGRES_USER:-kubeintellect} \
 	  -d $${POSTGRES_DB:-kubeintellect} \
 	  -f /dev/stdin < packages/kubeintellect-server/app/db/schema.sql
@@ -425,3 +428,6 @@ docs-build: ## Build static docs site (output: site/)
 
 docs-check: ## Verify numbered doc claims (playbooks, detectors, providers, flags) match code
 	uv run python scripts/check_doc_claims.py
+
+docs-fix: ## Rewrite drifted numbered doc claims to match the code (adding a playbook moves 8 numbers)
+	uv run python scripts/check_doc_claims.py --fix

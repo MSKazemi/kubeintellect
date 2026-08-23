@@ -28,7 +28,10 @@ the LLM provider independently (`azure` | `openai` | `qwen` | `anthropic`).
 All overlays pull the same image (`ghcr.io/mskazemi/kubeintellect`, mirrorable to
 ECR / Artifact Registry / ACR) and use the same chart; only registry, ingress class,
 storage class, and managed-DB wiring differ. The chart's `job-db-init` applies the
-schema on install, so no manual `psql` step is needed.
+schema on install, so no manual `psql` step is needed. It is all-or-nothing and fails loudly if it
+cannot apply the schema — with a managed database, grant the application role `CREATE` on the
+`public` schema before installing, or run the schema once as an admin role. See
+[confirming the migration applied](../operations.md#confirming-the-migration-actually-applied).
 
 ---
 

@@ -47,7 +47,16 @@ agent's context (when relevant content exists):
 
 The injection is budget-bounded and latency-tracked; if the hierarchy is
 inactive or finds nothing relevant, nothing is injected. Memory can **never
-break a request** — every memory read catches failures and returns empty.
+break a request** — a memory failure degrades the investigation, it does not
+fail it.
+
+Degrading, however, is not the same as hiding. Episode recall distinguishes
+*"nothing matched"* from *"I could not check"*: when recall fails outright, the
+prompt carries an explicit **`## Memory unavailable`** block instructing the
+model not to report the incident as having no precedent, and the log line
+records `degraded=true`. Returning an empty result for both made a database
+outage look identical to a cluster with no history — in the prompt, and in the
+`episodes=0` log line. A genuine empty recall still injects nothing at all.
 
 ---
 

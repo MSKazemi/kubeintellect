@@ -248,6 +248,19 @@ async def _stream(
 
     except Exception as exc:
         logger.error(f"stream error session={session_id}: {exc}", exc_info=True)
+        # Machine-readable first. The terminal frames below are byte-identical to the ones a
+        # successful answer sends — `finish_reason: "stop"` then `[DONE]` — so without this
+        # side-channel event the only thing distinguishing a crash from an answer is prose
+        # inside `content`. A scripted consumer cannot read prose: `kq -q` scored the
+        # `[Error: …]` text as a non-empty answer and exited 0, which in CI is indistinguishable
+        # from success. The content chunk is kept so OpenAI-compatible clients that ignore the
+        # side channel still surface the reason rather than an unexplained empty completion.
+        # `fatal` is what separates this from the error events emitted mid-turn when a single
+        # tool fails and the agent recovers and still answers. Those must keep counting as
+        # answers; this one ended the turn. Older clients ignore the key and behave as before.
+        yield _make_ki_event_chunk(
+            completion_id, {"type": "error", "fatal": True, "message": str(exc)}
+        )
         yield _make_chunk(completion_id, f"\n\n[Error: {exc}]", finish_reason="stop")
         yield _done_chunk()
 

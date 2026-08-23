@@ -78,3 +78,49 @@ def test_replay_unknown_episode_exits_1(monkeypatch, capsys):
 def test_replay_usage_without_args():
     assert replay_cmd.run([]) == 2
     assert replay_cmd.run(["--help"]) == 0
+
+
+@respx.mock
+def test_missing_verdict_is_not_success(monkeypatch, capsys):
+    """A replay whose integrity verdict never arrived must NOT exit 0.
+
+    `kq replay` is the tool you reach for to check whether the hash-chained flight recorder was
+    tampered with. `iter_sse` silently drops any frame it cannot parse, so a corrupt or absent
+    `replay_meta` left `meta = None` — and the command then printed no verdict line at all and
+    returned 0, which the documented contract defines as "chain intact". Absence of evidence was
+    being reported as evidence of integrity.
+    """
+    monkeypatch.setenv("KUBE_Q_URL", "http://test-server")
+    body = _sse({"type": "tool_call", "name": "kubectl"})          # no replay_meta at all
+    respx.get("http://test-server/v1/episodes/ep1/replay").mock(
+        return_value=Response(200, text=body, headers={"content-type": "text/event-stream"})
+    )
+    assert replay_cmd.run(["ep1"]) == 4
+    out = capsys.readouterr().out
+    assert "NOT VERIFIED" in out
+    assert "chain intact" not in out
+
+
+@respx.mock
+def test_a_corrupt_verdict_frame_is_also_not_success(monkeypatch, capsys):
+    """The realistic path: iter_sse's `except JSONDecodeError: pass` eats a truncated meta frame."""
+    monkeypatch.setenv("KUBE_Q_URL", "http://test-server")
+    body = ('data: {"type": "replay_meta", "chain_va\n\n'
+            + 'data: ' + json.dumps({"type": "tool_call"}) + "\n\ndata: [DONE]\n\n")
+    respx.get("http://test-server/v1/episodes/ep1/replay").mock(
+        return_value=Response(200, text=body, headers={"content-type": "text/event-stream"})
+    )
+    assert replay_cmd.run(["ep1"]) == 4
+    assert "NOT VERIFIED" in capsys.readouterr().out
+
+
+@respx.mock
+def test_the_intact_and_broken_verdicts_still_behave(monkeypatch, capsys):
+    monkeypatch.setenv("KUBE_Q_URL", "http://test-server")
+    for valid, code in ((True, 0), (False, 3)):
+        respx.get("http://test-server/v1/episodes/ep1/replay").mock(
+            return_value=Response(200, text=_sse(_meta(valid, 2), {"type": "tool_call"}),
+                                  headers={"content-type": "text/event-stream"})
+        )
+        assert replay_cmd.run(["ep1"]) == code
+        assert "NOT VERIFIED" not in capsys.readouterr().out

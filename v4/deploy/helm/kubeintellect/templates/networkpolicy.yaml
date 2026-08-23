@@ -1,0 +1,84 @@
+{{/*
+Default-deny egress with an explicit allowlist.
+
+This is the control plane for a cluster: it holds an LLM provider credential, a database
+password, and RBAC that can read Secrets across namespaces. A compromised dependency inside
+this pod, with no NetworkPolicy, can reach every service in the cluster and every host on the
+internet. The blast radius of one bad transitive dependency is the whole data centre.
+
+Egress is therefore an allowlist: DNS, the database, the Kubernetes API, the observability
+stack, and the LLM endpoint. Everything else is denied. Ingress is restricted to the ports
+this app actually serves.
+
+⚠️ `llmEgressCIDR` defaults to 0.0.0.0/0 minus RFC1918 — a hosted LLM API has no stable IP
+range, so pinning it is not possible in general. That is an honest partial control: it stops
+lateral movement INSIDE the cluster, which is the part that matters most here, and does not
+pretend to stop exfiltration to the internet. Set it to your egress proxy's address to close
+that too.
+*/}}
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "kubeintellect.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "kubeintellect.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        {{- toYaml .Values.networkPolicy.ingressFrom | nindent 8 }}
+      ports:
+        - port: 8000
+          protocol: TCP
+  egress:
+    # DNS. Without this every other rule below is unreachable by name and the pod fails in a way
+    # that looks like the database being down.
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # The Kubernetes API server — this is how every kubectl call and the whole sensorium works.
+    - to:
+        - ipBlock:
+            cidr: {{ .Values.networkPolicy.apiServerCIDR | quote }}
+      ports:
+        - port: 443
+          protocol: TCP
+        - port: 6443
+          protocol: TCP
+    # Postgres, in-cluster or external.
+    - to:
+        {{- toYaml .Values.networkPolicy.databaseTo | nindent 8 }}
+      ports:
+        - port: 5432
+          protocol: TCP
+    # Observability: Prometheus, Loki, Langfuse all live in `monitoring` by project rule.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.monitoringNamespace | default "monitoring" }}
+    # The LLM provider.
+    - to:
+        - ipBlock:
+            cidr: {{ .Values.networkPolicy.llmEgressCIDR | quote }}
+            {{- with .Values.networkPolicy.llmEgressExcept }}
+            except:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+      ports:
+        - port: 443
+          protocol: TCP
+{{- end }}

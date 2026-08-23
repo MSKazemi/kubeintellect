@@ -38,7 +38,14 @@ spec:
           command:
             - sh
             - -c
-            - psql -h {{ include "kubeintellect.fullname" . }}-postgres -U {{ .Values.postgres.user }} -d {{ .Values.postgres.database }} -f /schema/schema.sql
+            # ON_ERROR_STOP=1 is not optional: psql's DEFAULT is to report an error, carry on,
+            # and exit 0 — so a schema that failed every statement produced a Job marked
+            # Succeeded and a `helm upgrade` marked deployed (measured 2026-08-20: 70 errors,
+            # 0 of 18 tables created, exit 0). --single-transaction makes it all-or-nothing, so a
+            # failure can never leave a half-applied schema behind. Both are safe to re-run: the
+            # schema is idempotent (CREATE ... IF NOT EXISTS + ALTER ... ADD COLUMN IF NOT EXISTS)
+            # and uses no CREATE INDEX CONCURRENTLY, which is the one thing a transaction forbids.
+            - psql -v ON_ERROR_STOP=1 --single-transaction -h {{ include "kubeintellect.fullname" . }}-postgres -U {{ .Values.postgres.user }} -d {{ .Values.postgres.database }} -f /schema/schema.sql
           env:
             - name: PGPASSWORD
               valueFrom:

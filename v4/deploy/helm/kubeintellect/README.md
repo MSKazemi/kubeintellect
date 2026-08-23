@@ -84,6 +84,8 @@ ServiceAccounts, or touch `kube-system`.
 |---|---|---|
 | `image.tag` | `""` | Empty means the chart's `appVersion`. Pin only to run a different image. |
 | `replicaCount` | `1` | Server replicas. |
+| `drainSeconds` | `5` | preStop sleep that drains a rolling update. This, not the readiness probe, is what stops requests being dropped — see `app/core/readiness.py`. `0` disables it. |
+| `terminationGracePeriodSeconds` | `45` | Total shutdown budget. Must stay comfortably above `drainSeconds`. |
 | `service.type` / `service.port` | `ClusterIP` / `8000` | How the API is exposed. |
 | `ingress.enabled` | `false` | Ingress with `ingress.className`, `hosts`, `tls`. |
 | `config.prometheusUrl` / `config.lokiUrl` | `""` | Enables metric and log questions. Empty still allows kubectl-based work. |

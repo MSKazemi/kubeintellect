@@ -32,8 +32,7 @@ This page is the single home for everything published about KubeIntellect.
 
 Two papers cover KubeIntellect: the **peer-reviewed foundation** (the first
 generation) and a **newer preprint** on its evolution into an autonomous
-operator. Both are by Mohsen Seyedkazemi Ardebili and Andrea Bartolini
-(University of Bologna).
+operator. Both are by Mohsen Seyedkazemi Ardebili and Andrea Bartolini.
 
 ### 1. Peer-reviewed paper — the framework (generation `v1`)
 

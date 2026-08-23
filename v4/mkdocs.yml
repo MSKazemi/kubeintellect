@@ -99,6 +99,16 @@ plugins:
       lang: en
       separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)'
 
+# `mkdocs build --strict` exits 0 on a broken intra-page anchor unless anchor validation is
+# raised to a warning first — measured 2026-08-20 by deliberately breaking one. Ten passes had
+# treated a clean --strict run as proof that links resolve. Under --strict a warning is an
+# error, so this makes the doc gate mean what it was assumed to mean.
+validation:
+  anchors: warn
+  unrecognized_links: warn
+  absolute_links: warn
+  omitted_files: warn
+
 nav:
   - Home: index.md
   - Start here: start-here.md

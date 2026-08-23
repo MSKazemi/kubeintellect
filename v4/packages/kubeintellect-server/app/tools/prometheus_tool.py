@@ -10,11 +10,19 @@ Output is capped at 6 000 chars to stay within LLM context budgets.
 from __future__ import annotations
 
 import time
+from typing import Any
 
 import httpx
 from langchain_core.tools import tool
 
 from app.core.config import settings
+from app.tools.namespace_guard import (
+    all_withheld_message,
+    blocked_namespace_in_query,
+    drop_blocked_series,
+    protected_message,
+    withheld_note,
+)
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -35,9 +43,9 @@ def _fmt_instant(query: str, results: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _fmt_range(query: str, range_minutes: int, results: list[dict]) -> str:
+def _fmt_range(query: str, span: str, results: list[dict]) -> str:
     lines = [
-        f"PromQL (range {range_minutes}m): {query}",
+        f"PromQL ({span}): {query}",
         f"Series: {len(results)}",
     ]
     for r in results[:_RANGE_SERIES_CAP]:
@@ -55,6 +63,13 @@ def _fmt_range(query: str, range_minutes: int, results: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _fmt_scalar(query: str, result_type: str, raw: Any) -> str:
+    """Render a `scalar`/`string` result — a bare `[timestamp, "value"]` pair."""
+    if isinstance(raw, list) and len(raw) == 2:
+        return f"PromQL ({result_type}): {query}\n  = {raw[1]}"
+    return f"PromQL ({result_type}): {query}\n  (unreadable {result_type} result)"
+
+
 def _base_url() -> str | None:
     """Normalise PROMETHEUS_URL to a scheme-qualified base, or None if unset."""
     if not settings.PROMETHEUS_URL:
@@ -66,16 +81,25 @@ def _base_url() -> str | None:
     return prom_url.rstrip("/")
 
 
-def _query_raw(promql: str, range_minutes: int) -> tuple[list[dict], str | None]:
-    """Run a Prometheus query and return (result series, error-string-or-None).
+def _query_typed(promql: str, range_minutes: int) -> tuple[str, Any, str | None]:
+    """Run a Prometheus query and return (resultType, raw result, error-string-or-None).
 
-    Shared by the LLM tool (which renders the series) and the detector engine's
-    trend evaluation (which projects them). Never raises — errors come back as
-    the second tuple element.
+    **Prometheus says what shape it returned; nothing here may guess it.** `/api/v1/query`
+    answers with a `vector` for an ordinary instant query, a **`matrix`** when the expression
+    carries a range selector (`metric[5m]` — the docstring's own examples use that form), and a
+    `scalar`/`string` for `time()`, `scalar(...)` or a string literal. The last two are not a
+    list of series at all: the result is a bare `[timestamp, "value"]` pair.
+
+    Fixed 2026-08-20 — `range_minutes` used to pick the renderer, so a matrix from an instant
+    query was read with `r["value"]` (which a matrix entry does not have) and every series
+    printed `= N/A` over live data, while a scalar reached the namespace filter and raised
+    `AttributeError: 'int' object has no attribute 'get'`.
+
+    Never raises — errors come back as the third tuple element.
     """
     base_url = _base_url()
     if base_url is None:
-        return [], "Prometheus is not configured. Set PROMETHEUS_URL in ~/.kubeintellect/.env and restart."
+        return "", None, "Prometheus is not configured. Set PROMETHEUS_URL in ~/.kubeintellect/.env and restart."
     logger.debug(f"query_prometheus: {promql!r} range_minutes={range_minutes}")
     try:
         with httpx.Client(timeout=15.0) as client:
@@ -93,30 +117,62 @@ def _query_raw(promql: str, range_minutes: int) -> tuple[list[dict], str | None]
                     },
                 )
         if resp.status_code != 200:
-            return [], f"Prometheus HTTP {resp.status_code}: {resp.text[:500]}"
+            return "", None, f"Prometheus HTTP {resp.status_code}: {resp.text[:500]}"
         data = resp.json()
         if data.get("status") != "success":
-            return [], f"Prometheus error: {data.get('error', 'unknown')}"
-        return data.get("data", {}).get("result", []), None
+            return "", None, f"Prometheus error: {data.get('error', 'unknown')}"
+        payload = data.get("data", {})
+        return str(payload.get("resultType", "")), payload.get("result", []), None
     except httpx.ConnectError:
-        return [], (
+        return "", None, (
             f"Cannot reach Prometheus at {base_url}. "
             "Is kube-prometheus-stack deployed? (make install-prometheus-kind)"
         )
     except httpx.TimeoutException:
-        return [], "Prometheus query timed out (15s)."
+        return "", None, "Prometheus query timed out (15s)."
     except Exception as exc:
-        return [], f"Prometheus error: {exc}"
+        return "", None, f"Prometheus error: {exc}"
+
+
+def _query_raw(promql: str, range_minutes: int) -> tuple[list[dict], str | None]:
+    """(result series, error-string-or-None) — for consumers that project labelled series.
+
+    A `scalar`/`string` answer is reported as an **error**, not as an empty list: these callers
+    feed verdicts, and "no series" and "an answer of a shape I cannot project" are different
+    facts (the lens of pass 79). The detector engine's trend predicates always use range
+    queries, so this can only be reached by a hand-written scalar expression.
+    """
+    result_type, result, error = _query_typed(promql, range_minutes)
+    if error is not None:
+        return [], error
+    if not isinstance(result, list) or any(not isinstance(r, dict) for r in result):
+        return [], (
+            f"Prometheus returned a '{result_type or 'unknown'}' result, which carries no "
+            "labelled series. Wrap the expression so it yields a vector or matrix."
+        )
+    return result, None
+
+
+def query_prometheus_series(promql: str, range_minutes: int) -> tuple[list[dict], str | None]:
+    """Result series **and** the error, for deterministic (non-LLM) consumers.
+
+    Returns the Prometheus `data.result` list (each series has `metric` labels and `values`
+    [[ts, "value"], ...]) together with an error string, or None when the query really ran.
+    "No data" and "I could not ask" are different answers and this is where a detector gets
+    to tell them apart — `[]` alone cannot.
+    """
+    return _query_raw(promql, range_minutes)
 
 
 def query_prometheus_range_raw(promql: str, range_minutes: int) -> list[dict]:
-    """Raw range-query result series for deterministic (non-LLM) consumers.
+    """Series only, error discarded. **Never decide health with this.**
 
-    Returns the Prometheus `data.result` list (each series has `metric` labels
-    and `values` [[ts, "value"], ...]); empty list on any error or no data.
-    Used by the detector engine's trend projection (ADR-010) — zero tokens.
+    Kept for callers that genuinely only want data. An unreachable, unconfigured or erroring
+    Prometheus is indistinguishable here from a healthy cluster with nothing to report — which
+    is exactly how a security detector came to read `sandbox_escape_attempts = 0` off a
+    connection refusal. Use `query_prometheus_series` anywhere the answer feeds a verdict.
     """
-    results, _err = _query_raw(promql, range_minutes)
+    results, _err = query_prometheus_series(promql, range_minutes)
     return results
 
 
@@ -143,17 +199,40 @@ def query_prometheus(promql: str, range_minutes: int = 0) -> str:
     Returns:
         Formatted metric results, capped at 6 000 characters.
     """
-    results, error = _query_raw(promql, range_minutes)
+    blocked_ns = blocked_namespace_in_query(promql)
+    if blocked_ns:
+        logger.warning(
+            f"query_prometheus: refused — query selects blocked namespace {blocked_ns!r}"
+        )
+        return protected_message(blocked_ns)
+
+    result_type, raw, error = _query_typed(promql, range_minutes)
     if error is not None:
         return error
-    if not results:
-        return f"No data for query: {promql}"
 
-    output = (
-        _fmt_instant(promql, results)
-        if range_minutes <= 0
-        else _fmt_range(promql, range_minutes, results)
+    # A scalar/string answer is a single `[timestamp, "value"]` pair, not a series list. It
+    # carries no labels, so there is nothing for the namespace filter to read — and handing it
+    # to the filter is what used to raise AttributeError out of the tool.
+    if result_type in ("scalar", "string"):
+        return _fmt_scalar(promql, result_type, raw)
+
+    results, dropped = drop_blocked_series(
+        [r for r in raw if isinstance(r, dict)] if isinstance(raw, list) else [], "metric"
     )
+    if not results:
+        return (
+            all_withheld_message(dropped) if dropped else f"No data for query: {promql}"
+        )
+
+    # `matrix` from an instant query means the expression carried a range selector.
+    if result_type == "matrix":
+        span = f"range {range_minutes}m" if range_minutes > 0 else "range selector"
+        output = _fmt_range(promql, span, results)
+    else:
+        output = _fmt_instant(promql, results)
+
+    if dropped:
+        output += withheld_note(dropped)
 
     if len(output) > _OUTPUT_CAP:
         output = output[:_OUTPUT_CAP] + "\n... [truncated — use a more specific query]"

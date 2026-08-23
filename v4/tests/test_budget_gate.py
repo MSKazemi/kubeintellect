@@ -88,10 +88,21 @@ class TestGateWrite:
 
 
 class TestAutoWritePermitted:
-    def test_flag_off_always_allows(self, mocker):
+    def test_flag_off_still_honours_the_kill_switch(self, mocker):
+        # Was `test_flag_off_always_allows`, asserting allow==True here. That encoded the
+        # 2026-08-20 defect: the experimental flag defaults to False, so the operator's
+        # break-glass switch was inert in every default deployment while /v5/status reported
+        # it engaged. A kill switch is not a feature to opt into.
         mocker.patch.object(settings, "KI_V5_BLAST_RADIUS_BUDGET", False)
         engage_kill_switch()
-        assert auto_write_permitted().allow is True   # gate inactive ⇒ ladder unchanged
+        assert auto_write_permitted().allow is False
+
+    def test_flag_off_with_no_brake_leaves_the_ladder_unchanged(self, mocker):
+        # The invariant the old test was actually protecting, and it still holds.
+        mocker.patch.object(settings, "KI_V5_BLAST_RADIUS_BUDGET", False)
+        mocker.patch.object(settings, "KI_V5_KILL_SWITCH", False)
+        mocker.patch.object(settings, "KI_V5_CHANGE_FREEZE", False)
+        assert auto_write_permitted().allow is True
 
     def test_flag_on_kill_switch_denies(self, mocker):
         mocker.patch.object(settings, "KI_V5_BLAST_RADIUS_BUDGET", True)
@@ -122,9 +133,19 @@ class TestWatchtowerWiring:
         engage_kill_switch()
         assert watchtower._should_auto_fix(self._finding(), "A3") is False
 
-    def test_gate_off_preserves_a3(self, mocker):
+    def test_gate_off_still_blocks_a3_when_the_kill_switch_is_engaged(self, mocker):
+        # Was `test_gate_off_preserves_a3`, asserting True. See the note above: with the flag at
+        # its default the watchtower kept auto-fixing through an engaged kill switch.
         from app.autonomy import watchtower
         mocker.patch.object(watchtower, "a3_allowed", return_value=True)
         mocker.patch.object(settings, "KI_V5_BLAST_RADIUS_BUDGET", False)
-        engage_kill_switch()                      # engaged but gate inactive
+        engage_kill_switch()
+        assert watchtower._should_auto_fix(self._finding(), "A3") is False
+
+    def test_gate_off_with_no_brake_preserves_a3(self, mocker):
+        from app.autonomy import watchtower
+        mocker.patch.object(watchtower, "a3_allowed", return_value=True)
+        mocker.patch.object(settings, "KI_V5_BLAST_RADIUS_BUDGET", False)
+        mocker.patch.object(settings, "KI_V5_KILL_SWITCH", False)
+        mocker.patch.object(settings, "KI_V5_CHANGE_FREEZE", False)
         assert watchtower._should_auto_fix(self._finding(), "A3") is True
