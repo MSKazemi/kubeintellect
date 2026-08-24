@@ -169,12 +169,73 @@ def a3_allowlist_problems() -> list[str]:
     return problems
 
 
+def cors_origin_problems() -> list[str]:
+    """Entries of `ALLOWED_ORIGINS` that no browser will ever match — and the one that matches
+    far too much.
+
+    This module opens by claiming *every* security-relevant comma-separated setting silently
+    discards what it cannot use. It then audited four of the five. `ALLOWED_ORIGINS` was the
+    fifth, and it is the only one whose failure mode runs in **both** directions.
+
+    Measured 2026-08-24 against a real `CORSMiddleware`, which compares origins as exact strings:
+
+    * ``"http://localhost:3080, http://app.example.com"`` — a space after the comma — a request
+      from `http://app.example.com` came back with no `access-control-allow-origin` header at
+      all. Fixed at the source by :attr:`Settings.allowed_origins`, which strips.
+    * ``"http://app.example.com/"`` — a trailing slash — same silence. An `Origin` header never
+      carries a path, so this can never match. Not repairable by guessing: stripping the slash
+      would mean inventing an origin the operator did not write.
+    * ``"*"`` — a request from `https://attacker.example` came back with
+      ``access-control-allow-origin: https://attacker.example`` **and**
+      ``access-control-allow-credentials: true``. This is the reverse of what an operator
+      expects: the browser rule that credentialed requests are refused against a wildcard is
+      never reached, because Starlette echoes the requesting origin instead of emitting `*`
+      when credentials are enabled. `app/main.py` sets ``allow_credentials=True``
+      unconditionally, so `*` means *any website a logged-in operator visits may call this API
+      with their session*, not *anonymous read-only access*.
+
+    Reported, never refused, and never silently rewritten — same posture as the rest of this
+    module. An operator's typo should not take a cluster's agent offline; it should be
+    impossible to miss.
+    """
+    problems: list[str] = []
+    raw = settings.ALLOWED_ORIGINS
+    for entry in (part.strip() for part in raw.split(",")):
+        if not entry:
+            continue
+        if entry == "*":
+            problems.append(
+                "ALLOWED_ORIGINS contains '*' while CORS is configured with "
+                "allow_credentials=True, so the server echoes the CALLING origin back and "
+                "marks it credentialed — any site a logged-in operator visits can call this "
+                "API with their session. This is not anonymous read-only access. List the "
+                "origins you mean instead.")
+            continue
+        if "://" not in entry:
+            problems.append(
+                f"ALLOWED_ORIGINS entry {entry!r} has no scheme; a browser Origin header is "
+                f"always 'scheme://host[:port]', so this matches nothing and that origin is "
+                f"silently NOT allowed.")
+            continue
+        if entry.rstrip("/") != entry:
+            problems.append(
+                f"ALLOWED_ORIGINS entry {entry!r} ends in '/'; an Origin header never carries "
+                f"a path, so this matches nothing and that origin is silently NOT allowed. "
+                f"Write {entry.rstrip('/')!r}.")
+    if raw.strip() and not settings.allowed_origins:
+        problems.append(
+            f"ALLOWED_ORIGINS is set to {raw!r} but yields no usable origin, so every "
+            f"cross-origin browser request is refused.")
+    return problems
+
+
 def unenforceable_guard_config() -> list[str]:
     """Every configured guard entry that has no effect. Empty when the config is enforceable."""
     return (blocked_namespace_problems()
             + blocked_resource_problems()
             + autonomy_override_problems()
-            + a3_allowlist_problems())
+            + a3_allowlist_problems()
+            + cors_origin_problems())
 
 
 def log_guard_config_problems() -> list[str]:

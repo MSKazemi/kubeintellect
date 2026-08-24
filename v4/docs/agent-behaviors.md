@@ -38,6 +38,68 @@ START → memory_loader → context_fetcher → coordinator
 back to the coordinator happens automatically once all four `Send` branches
 write into the `findings` reducer.
 
+> **A failed tool call never serialises as a result.** `run_kubectl` returns `[kubectl exited N]`
+> and `run_helm` returns `[helm exited N]`, both carrying the command's own stderr; partial output
+> printed before the error is labelled *"absence from it is NOT evidence"*. Neither tool pipes,
+> filters or parses stderr — that is how an unreachable cluster came to read as a clean empty
+> listing, and a clean listing came to read as a protection failure.
+>
+> Those markers are also **read by machine**, not only by the model: the autonomy layer's health
+> oracle and its transactional gate classify a tool result before deciding whether a mitigation
+> worked. Adding the marker in front of kubectl's own error line is what broke that classifier on
+> 2026-08-24 — it matches on line prefixes, so every failure briefly read as a normal result. A
+> change to how a tool reports failure is a change to that contract.
+>
+> **Two read verbs are exempt, because their non-zero exit is an answer.** `kubectl diff` exits 1
+> when it *finds* differences (0 = none, >1 = the tool failed) and `kubectl auth can-i` exits 1
+> when the answer is `no`. Both are returned as the plain result. Without the exemption a complete
+> diff arrived wrapped in a failure caveat, and `can-i` was asymmetric — a clean `yes` against a
+> `no` the agent had been told not to trust, which is unusable for reasoning about its own
+> permissions.
+
+### Responder brief
+
+With `KI_V5_ESCALATION_BRIEFS` on, an **investigate** answer gains a responder brief: a short
+plan calibrated to `KI_V5_RESPONDER_LEVEL`, with explicit *escalate only if* bounds. Three things
+about it are always true, so the brief can be read at a glance:
+
+- It **always** states a confidence, and states it as the **brief's own** — what the brief writer
+  thinks of the plan it just wrote, not what the root-cause analysis thinks of the diagnosis. A
+  brief that could not rate itself says so; it does not fall silent. (Until 2026-08-24 the line was
+  printed only when the number was non-zero, so a brief rating itself 5% carried a caveat and one
+  rating itself 0% carried none.)
+- When the model failed or returned an unusable brief, the heading is marked **FALLBACK** and the
+  conservative default is used — escalate if unsure, never a "safe to proceed alone" signal.
+- The three standing escalation conditions are appended to whatever the model produced, so they
+  are present on every brief.
+
+### Verification ladder — adversarial RCA review
+
+With `KI_V5_VERIFY_LADDER` on, a fresh-context reviewer that sees **only** the claim and the raw
+evidence — never the investigation's own reasoning — looks for statements the evidence does not
+support, and its verdict is appended to the answer. The reviewer **fails open**: it can never
+block or contradict an answer. Since 2026-08-24 failing open no longer means failing *silent*,
+because the user's only cue that verification happened is what the block says:
+
+- A reviewer that died, timed out or returned an unparseable verdict now renders
+  **"⚠ Verification NOT PERFORMED"**. It used to render nothing at all — byte-identical to a
+  clean review — so a total outage of the reviewer was indistinguishable from its approval.
+- A flagged review **always** states a confidence. Printing it only when the number was non-zero
+  made the block quietest at maximum alarm: `0.0` means the reviewer has *no* confidence in the
+  RCA, and that was exactly the value that removed the line.
+- "The reviewer stated no confidence value" is a distinct outcome from a stated `0%` — an absent
+  or unparseable field is the absence of a verdict, not a verdict of zero.
+- **The evidence handed to the reviewer says when it is partial.** That text is the reviewer's
+  entire world — it is given the claim and this, and asked which statements the evidence does not
+  support. It is bounded, and the bound used to be a silent slice: an over-budget gather ended
+  mid-row, on a line that read like a complete one, with nothing saying anything had been dropped.
+  A reviewer whose grounds for objecting were manufactured by the truncation would then flag a
+  well-evidenced claim as unsupported. The cut is now line-aligned (unless the nearest line break
+  would waste more than half the budget) and carries an explicit marker naming how many characters
+  were dropped, in the same terms `run_kubectl` uses for partial tool output: absence of a fact
+  from that text is not evidence that it was not observed.
+
+
 ---
 
 ## Behaviors
@@ -70,7 +132,20 @@ Error from server (NotFound): pods "payments-1" not found
 → Pod may have been rescheduled — re-run `kubectl get pods -n <ns>` to find the new name.
 ```
 
-**Disable:** `KUBECTL_ERROR_HINTS_ENABLED=false`.
+Every non-zero exit is stated outright, hint or no hint: the result begins
+`[kubectl exited <code>]`, so a failure never has to be inferred from the wording of a
+message the agent did not write. When `stderr` is empty the result says so
+(`(kubectl wrote nothing to stderr)`) rather than reading as a blank tool result.
+
+**A partial failure shows both halves.** `kubectl get pods -A` with one namespace
+forbidden exits non-zero *and* prints the namespaces it could read. Until 2026-08-24 the
+tool layer kept stdout and discarded stderr whenever stdout had anything, so that
+listing reached the agent looking like a complete census with no sign a namespace had
+been denied. Both are now returned, with the surviving rows explicitly marked as
+possibly partial — absence from them is not evidence.
+
+**Disable:** `KUBECTL_ERROR_HINTS_ENABLED=false` (the exit-code line and the partial-output
+notice are not gated by it — they are statements of fact, not interpretation).
 
 ---
 
@@ -442,6 +517,27 @@ triggers:
 - `detect: null` marks a playbook as **LLM-only** (no machine signal exists,
   or the signal is owned by another playbook).
 
+!!! warning "A tuning knob set to `0` used to be read as *absent*"
+    Every trend-predicate knob was parsed as `entry.get(key) or default`, which cannot tell
+    "not set" from "set to zero" — so an author who wrote `0` silently got the default, and
+    the detector that loaded was not the one that had been written. The two cases pull in
+    opposite directions, so one rule does not cover them:
+
+    - **`min_r2: 0` is a real setting.** The projection gates on `r2 < min_r2`, so zero
+      deliberately turns the fit-quality check off. Restoring `0.5` makes the detector
+      *quieter* than authored — a false negative, the failure nobody notices. It is now
+      honoured, silently and correctly.
+    - **`window_minutes`, `projection_horizon_minutes` and `fire_if_eta_within_minutes` at
+      zero** produce a predicate the engine can never fire (a zero window fits no samples; an
+      ETA of zero or less is already dropped before the `fire_if_eta_within_minutes` test).
+      These fall back to the default **with a warning** naming the field, the authored value,
+      the reason it cannot work, and that the loaded detector differs from the written one.
+    - `debounce_seconds` accepts `0` (the documented "fire immediately"), and refuses a
+      negative value, which would disable debouncing entirely rather than shorten it.
+
+    An absent key and an explicit YAML `null` still take the default in silence — those are
+    genuinely "not set".
+
 !!! warning "`promql:` is recorded, not evaluated"
     Only `watch_predicates` and `trend_predicates` run. `promql:` is parsed,
     stored and exported, but **no code path evaluates it** — a detector whose
@@ -527,6 +623,28 @@ The sensorium degrades gracefully: missing kubectl, RBAC failures, or dropped
 watches disable perception (with exponential-backoff reconnect) but never
 affect request handling.
 
+Promoted (`active`) and `shadow` detectors are reloaded from the database every
+`DB_DETECTOR_REFRESH_SECONDS`, so a promotion takes effect without a restart. **A refresh whose
+query fails keeps the detectors already loaded** — it does not reload an empty set. Until
+2026-08-24 it did: the read failed open to empty tuples and the refresh assigned them straight
+into the live engine, so a transient DNS blip disarmed every promoted detector for a whole
+refresh interval, with nothing logged to connect the outage to the loss of coverage. An empty
+result from a *successful* query still applies, because that is a human demoting detectors and
+is a real answer.
+
+Two log lines make the state readable:
+
+```text
+sensorium: db detectors — 3 active, 0 shadow (was 0/0)
+sensorium: db-detector refresh failed, KEEPING the <active>/<shadow> db detectors already loaded: …
+load_db_detectors: <n> of <total> stored detectors were not loaded — nl:x: predicate is not valid JSON; …
+```
+
+The first is logged whenever the counts change, **including a drop to zero** — coverage going
+away is the news, and the previous condition (`if active or shadow:`) announced arrival and hid
+removal. The third exists because four of the five ways a stored row is discarded used to
+`continue` in silence, leaving a table of malformed rows indistinguishable from an empty one.
+
 **Disable:** `SENSORIUM_ENABLED=false`.
 
 ### The findings feed
@@ -540,7 +658,7 @@ kq findings --limit 20
 curl "$KUBE_Q_URL/v1/findings?limit=100"
 ```
 
-`GET /v1/findings` returns `{"sensorium": "active", "detectors": N,
+`GET /v1/findings` returns `{"sensorium": "active", "sensorium_reason": "", "detectors": N,
 "predictive": "active", "predictive_detectors": M, "predictive_error": null,
 "streams": [...], "findings": [...]}` — each finding carries its playbook,
 namespace, object, one-line evidence, and timestamps. `sensorium` is `active`
@@ -568,6 +686,13 @@ What changes when it is on:
   investigation plan as structured JSON — not parsed out of prose. Each tool
   batch advances the plan cursor and emits a `PlanEvent`, so `kq` shows steps
   moving `pending → in_progress → done` (or `skipped`) in real time.
+  A batch in which **every** tool call errored ends the step as **`failed`** (`✗`, red),
+  not `done`. `done` was set unconditionally once the batch returned — and a tool exception
+  is deliberately turned into an ordinary `ToolMessage` so the model can react to it, so the
+  batch returns identically whether every tool worked or every tool failed. The result was a
+  green `✓` over a step that gathered nothing. A batch where *some* calls succeeded is still
+  `done` — it did gather evidence — but every failure is named in a server-side warning
+  either way.
 - **True token streaming.** Only the synthesis model streams; the triage and
   tool-loop tiers have streaming disabled, so every token on the wire belongs
   to the final answer.

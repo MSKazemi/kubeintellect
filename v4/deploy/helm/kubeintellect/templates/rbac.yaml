@@ -34,6 +34,9 @@ rules:
     - endpoints
     - events
     - persistentvolumeclaims
+    # QuotaExceeded's first investigation step is `kubectl describe resourcequota`. Without
+    # this the step returns Forbidden during the one incident the playbook exists for.
+    - resourcequotas
   verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
   resources:
@@ -41,6 +44,10 @@ rules:
     - daemonsets
     - statefulsets
     - replicasets
+  verbs: ["get", "list", "watch"]
+# HPANotScaling reads the HPA's status conditions — the whole playbook is about them.
+- apiGroups: ["autoscaling"]
+  resources: ["horizontalpodautoscalers"]
   verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -78,9 +85,29 @@ rules:
     - endpoints
     - events
     - persistentvolumeclaims
+    - resourcequotas
   verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
   resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
+  verbs: ["get", "list", "watch"]
+# Every rule below is read-only cluster metadata that a shipped playbook's investigation
+# steps name directly. They were missing until 2026-08-24, so four of the 23 playbooks —
+# HPANotScaling, PvcPending, QuotaExceeded and WebhookAdmissionRejected — hit
+# `Error from server (Forbidden)` on their own first step, during the incident they exist
+# for. Nothing reported it: `helm install` succeeded, `kubeintellect status` was green, and
+# the playbook count said 23. `tests/test_rbac_covers_the_playbooks.py` now derives this
+# list from the playbooks instead of trusting it.
+- apiGroups: ["autoscaling"]
+  resources: ["horizontalpodautoscalers"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apiregistration.k8s.io"]
+  resources: ["apiservices"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["admissionregistration.k8s.io"]
+  resources: ["validatingwebhookconfigurations", "mutatingwebhookconfigurations"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["networking.k8s.io"]
   resources: ["ingresses", "networkpolicies"]

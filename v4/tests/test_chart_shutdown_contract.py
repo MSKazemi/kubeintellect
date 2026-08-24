@@ -19,6 +19,8 @@ cluster is the only other place either mistake shows up, and only under load.
 from __future__ import annotations
 
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -30,7 +32,7 @@ _DEPLOYMENT = _CHART / "templates" / "deployment.yaml"
 
 def _values(path: Path) -> dict:
     """Load a values file. These are plain YAML — only templates carry Go syntax."""
-    return yaml.safe_load(path.read_text()) or {}
+    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
 def _values_files() -> list[Path]:
@@ -46,7 +48,7 @@ def _values_files() -> list[Path]:
 
 class TestTheDrainMechanismIsPresent:
     def test_the_deployment_declares_a_prestop_hook(self):
-        text = _DEPLOYMENT.read_text()
+        text = _DEPLOYMENT.read_text(encoding="utf-8")
         assert "preStop:" in text, (
             "The deployment has no preStop hook, so nothing holds the listening socket open "
             "while the Endpoints removal propagates. Readiness cannot substitute: uvicorn "
@@ -54,7 +56,7 @@ class TestTheDrainMechanismIsPresent:
         )
 
     def test_the_hook_sleeps_for_the_configured_drain(self):
-        text = _DEPLOYMENT.read_text()
+        text = _DEPLOYMENT.read_text(encoding="utf-8")
         assert re.search(r"command:\s*\[\"/bin/sleep\",\s*\"\{\{\s*\.Values\.drainSeconds", text), (
             "The preStop hook must sleep for .Values.drainSeconds. A hardcoded duration "
             "cannot be tuned per environment, and the arithmetic test below stops applying."
@@ -107,7 +109,7 @@ class TestTheProbesAnswerTheirOwnQuestion:
         # would let a genuinely mispointed probe hide behind a paragraph that names the
         # right path.
         text = "\n".join(
-            line for line in _DEPLOYMENT.read_text().splitlines()
+            line for line in _DEPLOYMENT.read_text(encoding="utf-8").splitlines()
             if not line.lstrip().startswith("#")
         )
         liveness = text.split("livenessProbe:", 1)[1].split("readinessProbe:", 1)[0]
@@ -119,3 +121,52 @@ class TestTheProbesAnswerTheirOwnQuestion:
             "restart the pod mid-shutdown, and any dependency check reachable from readiness "
             "would turn one database blip into a cluster-wide restart loop."
         )
+
+@pytest.mark.skipif(shutil.which("helm") is None, reason="needs a real helm to render with")
+class TestTheChartRefusesTheBrokenArithmetic:
+    """The arithmetic above is checked for values files *in git*. Nobody installs those.
+
+    `--set drainSeconds=60` and a private `-f my-values.yaml` are the normal way this knob gets
+    tuned — the values.yaml comment even explains why a bigger cluster wants a longer sleep — and
+    neither is visible to a test that globs the chart directory. Until 2026-08-24 `helm template`
+    rendered a 60s sleep inside a 45s grace period and exited 0. These tests cover the install
+    path rather than the repository, so the guard has to live in the template.
+    """
+
+    @staticmethod
+    def _render(*overrides: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["helm", "template", "contract-test", str(_CHART), *overrides],
+            capture_output=True, text=True, timeout=120,
+        )
+
+    def test_a_drain_longer_than_the_grace_period_is_refused(self):
+        proc = self._render("--set", "drainSeconds=60")
+        assert proc.returncode != 0, "helm rendered a pod that is SIGKILLed 15s before it drains"
+        assert "terminationGracePeriodSeconds" in proc.stderr
+
+    def test_the_refusal_says_what_to_set_it_to(self):
+        """An error an operator cannot act on sends them to the source, or to a workaround."""
+        proc = self._render("--set", "drainSeconds=60")
+        assert "at least 75" in proc.stderr, proc.stderr
+
+    @pytest.mark.parametrize("drain,grace,ok", [
+        (30, 45, True),    # exactly the 15s floor the arithmetic tests require
+        (31, 45, False),   # one second under it
+        (5,  45, True),    # the chart defaults
+        (0,   5, True),    # hook disabled — no drain to outlast, so any grace is legal
+    ])
+    def test_the_boundary_is_the_same_fifteen_seconds_the_other_tests_assert(self, drain, grace, ok):
+        proc = self._render("--set", f"drainSeconds={drain}", "--set", f"terminationGracePeriodSeconds={grace}")
+        assert (proc.returncode == 0) is ok, proc.stderr
+
+    def test_the_shipped_values_files_all_still_render(self):
+        """A guard that rejects the chart's own values would be caught here and nowhere else."""
+        for path in sorted(_CHART.glob("values*.yaml*")):
+            proc = self._render("-f", str(path))
+            assert proc.returncode == 0, f"{path.name} no longer renders: {proc.stderr}"
+
+    def test_this_suite_is_actually_invoking_helm(self):
+        """Vacuity guard: without a helm binary every assertion above passes for the wrong reason."""
+        proc = self._render()
+        assert proc.returncode == 0 and "kind: Deployment" in proc.stdout

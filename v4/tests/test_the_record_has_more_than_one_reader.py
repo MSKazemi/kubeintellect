@@ -234,7 +234,13 @@ class TestTheStreamCarriesTheKind:
         ]
         from app.api.v1.endpoints import episodes
         mocker.patch.object(episodes, "fetch_episode", return_value=self.rows)
-        mocker.patch.object(episodes, "verify_chain", return_value=True)
+        # verify_episode is async and three-state: it consults the truncation anchor, not just
+        # the links, and says separately whether that consultation happened at all.
+        from app.db.flight_recorder import ChainVerdict
+        mocker.patch.object(
+            episodes, "verify_episode", new_callable=mocker.AsyncMock,
+            return_value=ChainVerdict(valid=True, verified=True),
+        )
 
     @pytest.mark.asyncio
     async def test_the_type_column_is_the_recorded_kind(self):

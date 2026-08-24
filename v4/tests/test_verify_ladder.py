@@ -62,9 +62,11 @@ class TestReviewRca:
         r = await review_rca("c", "e", llm=_LLM('{"supported": true, "confidence": 5, "unsupported": []}'))
         assert r.confidence == 1.0
 
-    async def test_bad_confidence_defaults_zero(self):
+    async def test_bad_confidence_is_none_not_zero(self):
+        # 0.0 is a verdict ("no confidence in this RCA"); an unparseable field is the absence of
+        # one. Collapsing them made the loudest verdict indistinguishable from a typo.
         r = await review_rca("c", "e", llm=_LLM('{"supported": true, "confidence": "high", "unsupported": []}'))
-        assert r.confidence == 0.0
+        assert r.confidence is None
 
     async def test_exception_fails_open_errored(self):
         r = await review_rca("c", "e", llm=_BoomLLM())
@@ -75,8 +77,12 @@ class TestRenderNote:
     def test_supported_renders_empty(self):
         assert render_review_note(RcaReview(supported=True, confidence=0.9)) == ""
 
-    def test_errored_renders_empty(self):
-        assert render_review_note(RcaReview(supported=False, confidence=0.0, unsupported=["x"], errored=True)) == ""
+    def test_errored_says_it_did_not_run(self):
+        # It used to render "" — byte-identical to a clean review, so a dead reviewer read to the
+        # user as an approving one. Fail-open must not mean fail-silent.
+        note = render_review_note(RcaReview(supported=False, confidence=None, unsupported=["x"], errored=True))
+        assert "NOT PERFORMED" in note and "unverified" in note
+        assert render_review_note(RcaReview(supported=True, confidence=0.9)) != note
 
     def test_unsupported_renders_caveat(self):
         note = render_review_note(RcaReview(supported=False, confidence=0.3, unsupported=["theory A", "theory B"]))

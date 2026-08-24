@@ -112,14 +112,19 @@ _ENV_MAP: dict[str, tuple[str, type]] = {
 }
 
 
-def _load_dotenv_file(path: Path) -> None:
-    """Minimal .env parser — sets env vars not already in the environment.
+def _read_dotenv_file(path: Path) -> dict[str, str]:
+    """Parse a .env file into a plain dict. Pure — the caller decides what wins.
 
     Supports KEY=VALUE, KEY="VALUE", KEY='VALUE', and inline # comments.
-    Shell-set variables always win (no override).
+
+    This used to write straight into ``os.environ`` and skip any key already there, which
+    inverted the documented precedence: the *first* file loaded (``~/.kube-q/.env``) populated the
+    environment, so the profile and ``./.env`` loaded after it were silently ignored for every key
+    it had already set — the keys people actually set. Layering is now the caller's job.
     """
+    values: dict[str, str] = {}
     if not path.exists():
-        return
+        return values
     try:
         for raw_line in path.read_text(encoding="utf-8").splitlines():
             line = raw_line.strip()
@@ -128,10 +133,33 @@ def _load_dotenv_file(path: Path) -> None:
             key, _, value = line.partition("=")
             key = key.strip()
             value = value.split("#")[0].strip().strip("\"'")
-            if key and key not in os.environ:
-                os.environ[key] = value
+            if key:
+                values[key] = value
     except OSError:
         pass
+    return values
+
+
+#: Keys this module copied out of a .env file into ``os.environ``, and the value it wrote.
+#: File values have to land in ``os.environ`` because ``repl`` and ``plugins`` read it directly —
+#: but without this record a second ``load_config()`` would mistake the first call's leftovers for
+#: shell exports and pin the precedence to whatever that call happened to load.
+_INJECTED: dict[str, str] = {}
+
+#: Where each value in the last ``load_config()`` came from, keyed by env var. ``kq config show``
+#: reads this instead of re-deriving the source by comparison — a comparison cannot tell a
+#: profile apart from a shell export, and reported both as "shell env".
+_VALUE_SOURCES: dict[str, str] = {}
+
+
+def config_sources() -> dict[str, str]:
+    """Where each configured value came from, as of the last ``load_config()`` call."""
+    return dict(_VALUE_SOURCES)
+
+
+def _shell_owned() -> set[str]:
+    """Keys the environment owns in its own right — everything except our own leftovers."""
+    return {k for k in os.environ if not (k in _INJECTED and os.environ[k] == _INJECTED[k])}
 
 
 def _apply_env(cfg: Config) -> None:
@@ -285,20 +313,55 @@ def load_config(strict: bool = True) -> Config:
     """
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Load .env files before reading env vars.
-    # Shell-exported variables are never overwritten.
-    # Precedence (lowest → highest, later overrides earlier):
+    # Precedence, lowest → highest. Every layer really can override the one below it; until
+    # 2026-08-24 the first file loaded won instead, making a profile and a project-local `.env`
+    # silent no-ops for any key `~/.kube-q/.env` already set.
     #   ~/.kube-q/.env
     #   ~/.kube-q/profiles/<profile>.env  (if KUBE_Q_PROFILE is set)
     #   ./.env
     #   shell env (always wins)
-    _load_dotenv_file(CONFIG_DIR / ".env")   # user-level defaults
+    shell = _shell_owned()
+    user_file = CONFIG_DIR / ".env"
+    user_values = _read_dotenv_file(user_file)
 
-    profile_name = os.environ.get("KUBE_Q_PROFILE")
+    # The profile is named by the shell, or failing that by the user-level file — a directory-local
+    # `.env` has never been able to select one, and this keeps that.
+    profile_name = (
+        os.environ.get("KUBE_Q_PROFILE") if "KUBE_Q_PROFILE" in shell
+        else user_values.get("KUBE_Q_PROFILE")
+    )
+
+    layers: list[tuple[str, dict[str, str]]] = [(f"file ({user_file})", user_values)]
     if profile_name:
-        _load_dotenv_file(PROFILES_DIR / f"{profile_name}.env")
+        layers.append((
+            f"profile ({profile_name})",
+            _read_dotenv_file(PROFILES_DIR / f"{profile_name}.env"),
+        ))
+    layers.append(("file (./.env)", _read_dotenv_file(Path(".env"))))
 
-    _load_dotenv_file(Path(".env"))          # local        (higher priority)
+    resolved: dict[str, str] = {}
+    sources: dict[str, str] = {}
+    for label, values in layers:          # later layers override earlier ones …
+        for key, value in values.items():
+            if key in shell:              # … but a shell export outranks every file
+                continue
+            resolved[key] = value
+            sources[key] = label
+
+    # Drop leftovers from a previous call whose key has since left every file, so a removed key
+    # does not survive in os.environ as a phantom shell export.
+    for key, value in list(_INJECTED.items()):
+        if key not in resolved and os.environ.get(key) == value:
+            del os.environ[key]
+            del _INJECTED[key]
+
+    for key, value in resolved.items():
+        os.environ[key] = value
+        _INJECTED[key] = value
+    for key in shell:
+        sources.setdefault(key, "shell env")
+    _VALUE_SOURCES.clear()
+    _VALUE_SOURCES.update(sources)
 
     cfg = Config()
     _apply_env(cfg)

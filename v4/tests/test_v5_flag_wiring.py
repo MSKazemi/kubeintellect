@@ -25,7 +25,9 @@ _VERSION = _APP / "core" / "version.py"
 _ALLOWLIST_LITERAL = re.compile(r"UNWIRED_EXPERIMENTAL_FLAGS = frozenset\(\{.*?\n\}\)", re.S)
 _FIELD_RE = re.compile(r"^\s{4}((?:KI_V5|CORTEX_V5)_[A-Z0-9_]+)\s*:", re.M)
 
-from app.core.version import UNWIRED_EXPERIMENTAL_FLAGS as KNOWN_UNWIRED
+# E402 on purpose: this import belongs next to the note below, which is the whole reason the
+# allowlist lives in production code rather than in this file.
+from app.core.version import UNWIRED_EXPERIMENTAL_FLAGS as KNOWN_UNWIRED  # noqa: E402
 
 #: The allowlist now lives in PRODUCTION code (`app/core/version.py`), not here — because the
 #: reporting surface has to consult it at runtime to avoid calling an unwired flag "active".
@@ -34,7 +36,7 @@ from app.core.version import UNWIRED_EXPERIMENTAL_FLAGS as KNOWN_UNWIRED
 
 
 def _declared() -> set[str]:
-    return set(_FIELD_RE.findall(_CONFIG.read_text()))
+    return set(_FIELD_RE.findall(_CONFIG.read_text(encoding="utf-8")))
 
 
 def _app_source() -> str:
@@ -49,7 +51,7 @@ def _app_source() -> str:
     for p in _APP.rglob("*.py"):
         if p == _CONFIG:
             continue
-        text = p.read_text()
+        text = p.read_text(encoding="utf-8")
         if p == _VERSION:
             text = _ALLOWLIST_LITERAL.sub("", text)
         parts.append(text)
@@ -90,7 +92,7 @@ class TestV5FlagWiring:
         # unwired flag does not merely do nothing, it makes the product claim a feature is on.
         from app.core.version import active_experimental_flags
         assert callable(active_experimental_flags)
-        src = (_APP / "core" / "version.py").read_text()
+        src = (_APP / "core" / "version.py").read_text(encoding="utf-8")
         assert "isinstance(value, bool)" in src and "startswith(_EXPERIMENTAL_PREFIXES)" in src
 
 
@@ -103,7 +105,7 @@ class TestPublicDocTellsTheTruth:
 
     def _marked(self) -> set[str]:
         return set(
-            re.findall(r"^\| `((?:KI_V5|CORTEX_V5)_[A-Z0-9_]+)` \u26a0\ufe0f \|", _DOC.read_text(), re.M)
+            re.findall(r"^\| `((?:KI_V5|CORTEX_V5)_[A-Z0-9_]+)` \u26a0\ufe0f \|", _DOC.read_text(encoding="utf-8"), re.M)
         )
 
     def test_the_doc_marks_exactly_the_unwired_flags(self):
@@ -114,10 +116,10 @@ class TestPublicDocTellsTheTruth:
         )
 
     def test_the_doc_explains_the_marker(self):
-        assert "declared but not wired" in _DOC.read_text()
+        assert "declared but not wired" in _DOC.read_text(encoding="utf-8")
 
     def test_every_documented_flag_is_a_real_field(self):
-        documented = set(re.findall(r"^\| `((?:KI_V5|CORTEX_V5)_[A-Z0-9_]+)`", _DOC.read_text(), re.M))
+        documented = set(re.findall(r"^\| `((?:KI_V5|CORTEX_V5)_[A-Z0-9_]+)`", _DOC.read_text(encoding="utf-8"), re.M))
         assert not documented - _declared(), f"documented but not declared: {sorted(documented - _declared())}"
 
 
@@ -181,7 +183,7 @@ class TestTheCliRendersEveryFieldTheApiReturns:
 
     def test_no_response_field_is_dropped_by_the_cli(self):
         from app.api.v1.endpoints.v5_status import V5Status
-        src = self._CMD.read_text()
+        src = self._CMD.read_text(encoding="utf-8")
         missing = [f for f in V5Status.model_fields if f'"{f}"' not in src]
         assert not missing, (
             f"GET /v1/v5/status returns {missing} and `kq v5-status` never mentions it — the CLI "

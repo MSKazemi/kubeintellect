@@ -4,6 +4,257 @@ All notable changes to kube-q will be documented here.
 
 ## [Unreleased]
 
+### Fixed — `kq replay` printed `✓ chain intact` for a chain the server could not check
+- the server's `replay_meta` frame now carries `chain_verified` beside `chain_valid`. When it is
+  `false` the server could not read the episode's chain anchor, so `chain_valid` means only
+  *"nothing contradicted these records"* — and nothing could have. `kq replay` prints
+  `✗ chain NOT VERIFIED` and exits **4**, the code it already used when the meta frame itself was
+  missing; the two are the same fact, that the records above are unverified.
+- an absent `chain_verified` reads as `true`, so a server older than 2026-08-24 behaves exactly
+  as it did.
+
+### Fixed — documented exit codes that the commands did not return
+- `kq replay` documented `0/1/3/4/5` and returned `0/1/2/3/4/5`. The undocumented `2` is the
+  usage error, and it was missing from both surfaces that state the contract — the reference
+  table and the `Exit codes:` block in the module's own usage text, which is printed *when you
+  make a usage error*. A script written against the table cannot branch on a code the table
+  does not have; it takes the wrong arm and reports success.
+- `kq completion`, `kq config`, `kq digest`, `kq findings`, `kq preference` and `kq v5-status`
+  had no exit-code table at all, though each returns `1` (the request failed) or `2` (usage) as
+  well as `0`. Their tables now also record where `0` is deliberately *not* a health verdict:
+  `kq findings` and `kq digest` exit `0` on a degraded sensorium or an incomplete digest, and
+  say so in the row, because the command cannot tell you the cluster is fine.
+- these are now checked. `make docs-check` derives each command's real return set from the AST
+  — following the helpers that `kq postmortem` and `kq config` return through — and fails on a
+  code that is returned but undocumented, documented but unreachable, or on a table that is
+  missing entirely.
+
+### Fixed — `kq detector promote` reported a dead detector as a failed request
+- the server answers **409** for exactly one thing: promoting would make `/v1/detectors` report
+  `status: active` about a detector whose predicate can never match an observation — the failure
+  mode this project shipped once, where a stray space in an alternation made a detector a
+  permanent no-op through a green suite. The CLI mapped it to exit `1`, "the request failed", so
+  it was indistinguishable from the store being down and a script's retry loop would retry a dead
+  detector forever. It now exits `3`, the code this command already owns for "understood, refused
+  on the merits, nothing changed", and prints the server's reason plus "retrying will not help".
+- `404` no longer prints "Detector command failed" — it names the detector that is missing.
+- `transport.server_detail()` is now the one reader of a server's `detail`. There were two, and
+  only `explain()` knew FastAPI sends validation errors as a *list* of dicts, so `replay_cmd`
+  rendered a 422 as `[{'type': 'missing', …}]`.
+
+### Fixed — `kq detector shadow` printed a bare count that was not always a measurement
+- the line `<name>: N shadow firing(s)` is what a reviewer promotes or rejects a candidate on,
+  and it read identically whether the detector had run quietly, had never been loaded by the
+  process answering, or the fixed-size firing ring had overflowed and dropped the older half.
+  The server now reports `watching` and `buffer.saturated`; the CLI annotates the count with
+  "not a measurement of precision — …" when either applies, and still prints the number.
+- a `503` from the endpoint no longer renders as a firing count at all.
+
+### Fixed — a `break` in the caller erased the record of a lossy stream
+- `stream()` counted every unparseable SSE frame into an `SseStats` and called
+  `_warn_if_lossy(stats)` on the line *after* the loop. A `break` closes a generator at the
+  `yield`, so that line ran on a full drain and on nothing else — and `case FinalEvent(): break`
+  is exactly the pattern `docs/sdk.md` and the class docstring tell people to write. Measured
+  with one bad frame ahead of the final event: draining logged the loss, breaking logged nothing,
+  on both the sync and the async client. Now in a `finally`.
+- `SseStats` says "a caller that must be fail-closed inspects this and refuses", which was true
+  of the CLI and never of the SDK — `stats` was a local nobody could reach. It is now
+  `client.last_stream_stats`, assigned before the first yield so an early `break` can still read
+  it, `None` until a stream has run so "not yet" is not reported as "lost nothing". Documented
+  with a fail-closed example in `docs/sdk.md`.
+
+### Fixed — the two health checks named different causes for the same failure
+- `AsyncKubeQClient.health` hand-rolled the classification that `check_health` already owned, and
+  had drifted from it. A hostname that does not resolve was reported as **"Connection refused —
+  nothing is listening at …"**: nothing was ever contacted, so no port can be blamed, and the
+  reader was sent to check the service instead of the hostname. The sync half had said
+  "DNS resolution failed for '…' — check the hostname or /etc/hosts" all along.
+- its timeout message also dropped the duration in force, the exact wording the sync side had
+  been corrected to include; and although both docstrings promise a *fast* connectivity check,
+  the async one ran on `self.timeout` — the **query** timeout, 120 s by default against 5 s.
+- the classification now lives once, in `transport.health_status_reason` /
+  `transport.health_failure_reason`, with `HEALTH_TIMEOUT` and `HEALTH_PATH` shared by both
+  clients. Tests assert the two surfaces are byte-identical across seven outcomes.
+
+### Fixed — `AsyncKubeQClient.stream` reported an unreachable server as an empty answer
+- after exhausting its retries the async generator fell off the end of the loop, and a `return`
+  from an async generator is a **clean end of stream**: the caller's `async for` completed with
+  zero events and no exception. The sync `KubeQClient.stream` raised the last `TransportError`,
+  and `docs/sdk.md` promised both clients "give up and raise". Measured against a refused
+  connection: sync raised `ConnectError`, async yielded 0 events silently. The async half now
+  carries `last_exc` and re-raises, like its sibling.
+- `docs/sdk.md` "Retry behaviour" also named a schedule the code has never used
+  (`[1s, 3s, 5s]` vs the real `(2, 5, 10)`) and claimed 4xx/5xx are "raised immediately" for both
+  entry points — true of `stream()`, but `query()` logs a warning and returns `{"text": "", …}`.
+  Rewritten as a table of what each entry point actually does, and pinned by tests.
+
+### Fixed — `kq replay` reported total truncation as a missing episode
+- `GET /v1/episodes/{id}/replay` answers **409** when the chain anchor proves the episode had
+  records and none survive, separating it from a 404 on purpose — its own comment calls
+  laundering that into an absence "the one wrong answer this endpoint must not give". The CLI
+  mapped it to exit **1**, the same code as a mistyped episode id or a DNS failure, so
+  `kq replay X; [ $? -eq 3 ]` could not fire on the one case where every record is gone. It now
+  exits **3** and names it as a broken chain.
+- second half of the same defect: the request is **streamed**, so the response body was never
+  read and `explain()`'s `response.json()` raised — silently falling back to httpx's
+  `Client error '409 Conflict' for url …` line and discarding the server's explanation on every
+  error status. The body is now read before `raise_for_status()`, as the 503 branch already did.
+
+### Fixed — `kq findings` printed a green all-clear over observations it had been told were dropped
+- the sensorium's watch queue sheds the **oldest** observation when it overflows (deliberately —
+  blocking would stall the watch and trigger a reconnect storm plus a full relist), so the loss is
+  silent where it happens and `queue.shed_total` in `GET /v1/findings` is the only record of it.
+  Nothing read that field: not this command, not the docs. Measured 2026-08-24 with
+  `shed_total: 4271`, a healthy stream and no findings — the output was
+  `No findings · 16 detectors watching`, in green.
+- the command already refused the all-clear for the two *named* blindnesses (stream not connected,
+  Prometheus unreachable); shedding was the sibling in between. It now prints **Perception is
+  lossy** with the dropped count and the queue high-water, above the findings table as well as
+  instead of it — shedding makes an empty list not an all-clear and a non-empty one not a complete
+  list. A server that sends no `queue` is not accused of shedding.
+
+### Fixed — `kq postmortem` printed the tamper warning and exited 0
+- `kq replay`, `kq export` and `kq postmortem` all render the same flight-recorder
+  audit-chain verdict, and the first two map it to exit **3** (chain broken), **4** (nothing
+  read, so not verified) and **5** (unaltered but incomplete). `kq postmortem` returned **0**
+  in all of them, so `kq postmortem X > report.md && attach-to-ticket` could not tell a
+  tamper-evident report from a broken one. It now follows the documented convention.
+- the root cause was on the wire, not in the CLI: `GET /v1/episodes/{id}/postmortem?format=markdown`
+  returned `{"markdown": ...}` and nothing else, so the verdict arrived as one of four English
+  banners and the command had no datum to branch on. The response now carries `chain_valid`,
+  `chain_verified`, `events_lost`, `gaps` and `enrichment_failed` alongside the prose —
+  additive, so a caller reading only `markdown` is unaffected, and `format=json` is untouched.
+- a server too old to send those fields is reported as exit **4**, not 0: an absent verdict is
+  not a passing one.
+
+### Fixed — `kq config show` reported success over a config it had just called invalid
+- the command printed `⚠ Invalid values detected:` and returned **0**, so the human-readable
+  answer and the machine-readable one disagreed — and `kq config show || exit 1` in an install
+  script or CI pre-flight only reads the second. It now exits **2**, the code the CLI already
+  uses when `load_config(strict=True)` finds the same errors; a valid config still exits 0.
+- both `config show` and `config set` rendered `err.splitlines()[0]`. `validate_config` builds
+  each message in three parts on purpose — the offending value, an example of a valid one, and
+  the env var to edit — and the last two sit on lines 2 and 3. The user saw
+  `Invalid URL: 'not-a-url' — must start with http://` and never
+  `Fix: set KUBE_Q_URL in ~/.kube-q/.env`. Both now print the whole message, matching what
+  `load_config(strict=True)` has always done.
+
+### Fixed — `kq v5-status` could not show that an "active" flag was doing nothing
+- the server now reports `degraded_experimental_flags` (a flag the code *does* read, sitting in a
+  subsystem that is not running) and the `memory` state behind it. Both were dropped on the floor
+  by the CLI, which would have printed `active_flags: MEMORY_HIERARCHY_ENABLED` and no sign that
+  the hierarchy was unreachable. The command now renders a red `degraded_experimental_flags` row
+  carrying the reason, and a `memory` row that always shows the hierarchy's state and the count of
+  sensorium observations dropped — an empty degraded list is only evidence when the hierarchy is
+  visibly up.
+- the flags stay listed under `active_flags` on purpose: that list is rollout identity, not
+  liveness. A server predating either field renders exactly as before.
+- `docs/cli-reference.md` documents the third red row under `kq v5-status`.
+
+### Fixed — `kq findings` printed one word for four unrelated sensorium absences
+- the server classifies a missing detector engine four ways and sends the sentence in
+  `sensorium_reason` (switched off, no compiled detectors, a **failed start**, a
+  **leader-election standby**). The command ignored the field and printed
+  *"Sensorium is disabled on this server."* for all four. Driving each of the four payloads
+  through `findings_cmd.run` produced one distinct line, not four — and for two of them that
+  line is a false statement: a sensorium that **crashed** was never disabled, and a standby
+  replica is behaving correctly while the lock-holding replica does the perceiving, so
+  "disabled on this server" sends the operator to look at the wrong replica's silence.
+- it now renders the server's sentence verbatim. Against a server too old to send the field it
+  says it does not know — *"this server does not report why, so an empty result here does NOT
+  mean the cluster is healthy"* — rather than naming the likeliest cause. Exit stays `0` in all
+  four cases, and every other `sensorium` state (`starting`, `reconnecting`, `stopped`,
+  `active`) is untouched.
+- `docs/cli-reference.md` gains the four-situation table under `kq findings`.
+
+### Fixed — `replay` and `export` restated a recorder outage as a missing episode
+- the server now answers `503` when the decision log cannot be read at all and keeps `404` for an
+  episode that genuinely has no rows. `kq replay` recognised only the `404` wording, so any
+  non-200 it handled printed *"No recorded episode 'X'."* — an absence claim about an episode
+  nobody was able to look up. It now prints the server's own reason and says explicitly that this
+  is **not** a statement that the episode has no records.
+- `kq export` reported *"No recorded events … nothing exported"* (exit `4`) whenever the
+  postmortem's timeline was empty, which is exactly what an unreadable recorder produces. It now
+  reads `recorder_available` and exits `1` with the reason instead; a server that predates the
+  field behaves as before.
+
+### Fixed — an unreadable history store was rendered as an empty one
+- `store.py` swallows every `sqlite3.Error` by design (a broken local cache must not crash the
+  REPL), but each read then returns `[]` — which is also what a fresh install returns. Measured
+  against a `~/.kube-q/history.db` holding one line of text, `kq --list` printed *"No sessions
+  found."* and exited 0, with nothing on stderr: the `_logger.warning` meant to say otherwise goes
+  to a logger with no stderr handler outside `--debug`.
+- the store now records why the **last** operation failed — `_db()` clears it on every open, so a
+  stale error can never be printed beside a healthy empty result — and `renderer.print_store_failure()`
+  is consulted before any empty line is rendered: `kq --list`, `kq --search`, and the REPL's
+  `/list`, `/search`, `/branches` and resume picker. A genuinely empty store still prints the
+  plain line.
+- `docs/session-history.md` gains *When the store cannot be read* (message, causes, fix), and its
+  schema-version row is corrected from v3 to the v4 the code has been writing since the
+  `kube_context` migration.
+
+### Fixed — the kubeconfig fallback could not read the file kubectl writes
+- `list_contexts()` tries `kubectl config get-contexts` and falls back to a minimal scan of
+  `~/.kube/config`. The fallback matched only `- name:`, the ordering where the YAML sequence dash
+  lands on the name — but kubectl writes `- context:` with `name:` on the following line.
+  Measured against a kubectl-written file holding two contexts, `kubectl` printed both and the
+  fallback returned nothing. That branch runs precisely when kubectl is *not installed*, i.e.
+  when it is the only source there is, so a `kq`-only client machine got no `/context`
+  completions and was told "No kubectl contexts found (is kubectl installed and is
+  `~/.kube/config` valid?)" — a question whose two hypotheses the user checks and finds innocent.
+  The scan now keys off the position of an entry's keys rather than which key carries the dash,
+  handles both orderings and entries indented under `contexts:`, still stops at the next
+  top-level key (so a `users:` entry is never offered as a context), and ignores the `name:`
+  inside a nested `extensions:` entry (`context_info`).
+
+### Fixed — `/plugins` told you to install plugins you had already installed
+- The command whose entire job is to answer *"what plugins do I have?"* read only the registry.
+  With a plugins directory holding nothing but files that had all failed to import it printed
+  *"No plugins loaded. Drop Python files into `~/.kube-q/plugins/`…"* — advice to do the thing the
+  user had just done, with the reason for the failure only in `~/.kube-q/kube-q.log`. It now
+  reports failures whether or not anything loaded, and the rendering moved out of the REPL loop
+  into `_render_plugins()` so it can be tested.
+
+### Added — the plugin system is documented
+- `~/.kube-q/plugins/` is a real extension point with a decorator API, a context object and a
+  `KUBE_Q_PLUGIN_DIR` override, and until now `grep -rn plugin v4/docs/*.md` returned nothing —
+  the module docstring was its only specification. `docs/cli-reference.md` now covers the
+  directory, load order, the `register()` contract, everything on `PluginContext`, the "this is
+  code you are choosing to run" warning, and what happens when a plugin fails.
+
+### Fixed — a plugin that failed to import was indistinguishable from one never installed
+- `load_plugins` documented its errors as "logged (and printed as a dim warning)", but the
+  `kube_q` logger only gets a stderr handler under `--debug`, so the warning went to
+  `~/.kube-q/kube-q.log` and nowhere else. Measured with `setup_logging()` configured exactly as
+  `kq` does at start-up, a plugins directory containing a broken file produced **empty stdout and
+  empty stderr**: the user drops a file into `~/.kube-q/plugins/`, the banner does not mention it,
+  their command comes back "Unknown command", and nothing on screen says why. Failures are now
+  collected in `plugins.load_failures()` and the REPL prints each one with its exception type and
+  message.
+- A module that raised *after* calling `register` left its commands in the registry. `register`
+  runs at import time, so `/plugins` listed, tab-completion offered and `/`-dispatch would run a
+  command from a module whose remaining lines — including whatever state the handler depends on —
+  had never executed, while the start-up banner's "Plugins loaded:" line said it had not loaded. A failed module's
+  registrations are now rolled back (including a handler it overwrote), and it is removed from
+  `sys.modules` rather than left half-initialised and importable. A file Python cannot even build
+  an import spec for is reported instead of skipped in silence.
+
+### Fixed — a profile and a project-local `.env` were silent no-ops
+- `load_config` documents four layers (`~/.kube-q/.env` → active profile → `./.env` → shell) but
+  `_load_dotenv_file` wrote each file into `os.environ` and skipped keys already there, so the
+  **first** file read won and the precedence was inverted. Every key `~/.kube-q/.env` already set
+  — `url`, `api_key`, `context`, i.e. everything `kq config set` writes — could not be overridden
+  by a profile or a directory-local `.env`, so `kq config profile prod` changed nothing for a
+  configured user. Layering is now explicit: `_read_dotenv_file` parses, `load_config` merges
+  lowest-first, and a shell export still outranks every file. File values still land in
+  `os.environ` (`repl` reads it directly), but the loader now records what it put there, so a
+  second `load_config()` in the same process no longer mistakes its own leftovers for shell
+  exports — and a key deleted from every file stops being returned.
+- `kq config show`'s **Source** column derived the source by comparing `os.environ` against
+  `~/.kube-q/.env`. That comparison cannot see a profile or a local `.env`, so it reported both as
+  `shell env`, while `docs/cli-reference.md` promises the column names them. It now reads the
+  layer that actually won, and prints `profile (prod)` / `file (./.env)` / `file (…)` / `shell env`.
+
 ### Fixed — a lost SSE frame no longer looks like a frame the server never sent
 - Both SSE parsers — `core/transport.iter_sse` and its hand-written async twin
   `core/client._aiter_sse` — answered an undecodable frame with `pass`. Nothing raised, nothing

@@ -56,7 +56,17 @@ def open_pr(
 ) -> PRResult:
     """Push ``branch`` and open a PR for ``fix``. Fails safe (a no-op fix opens nothing)."""
     if fix.is_noop:
-        return PRResult(False, False, "no change to propose (fix is a no-op)")
+        if fix.repair_failed_reason:
+            # Not "nothing to fix". Nothing was *produced*, and the violation is untouched.
+            return PRResult(
+                False, False,
+                f"no fix was produced, so the violation is UNRESOLVED — "
+                f"{fix.repair_failed_reason}. This is NOT a statement that the manifest complies.",
+            )
+        return PRResult(
+            False, False,
+            "no change to propose — the repair step ran and the manifest needed no edit",
+        )
     run = runner or _default_runner
 
     push_rc, push_out = run(["git", "-C", repo_dir, "push", "-u", remote, branch])

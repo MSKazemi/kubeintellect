@@ -24,6 +24,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.memory import service
+from app.memory import pass_health
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -111,6 +112,7 @@ async def build_summary_tree() -> int:
         groups = await pool.fetch(_SQL_THEME_GROUPS, settings.MEMORY_SUMMARY_MIN_CLUSTER)
     except Exception as exc:
         logger.warning(f"summaries: fetch failed: {exc}")
+        pass_health.record_failure("summaries_built", exc)
         return 0
 
     written = 0

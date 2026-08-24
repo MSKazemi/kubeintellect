@@ -51,7 +51,9 @@ class EscalationBrief:
     actions: list[str] = field(default_factory=list)
     escalate_if: list[str] = field(default_factory=list)
     responder_level: str = "intermediate"
-    confidence: float = 0.0
+    # None ⇒ the model gave no usable confidence (absent, or unparseable). Distinct from 0.0,
+    # which is the model stating it has none — the renderer used to print neither.
+    confidence: float | None = None
     fell_back: bool = False
 
 
@@ -84,7 +86,7 @@ def _fallback(level: str) -> EscalationBrief:
         actions=["Review the investigation evidence above before taking any action."],
         escalate_if=list(_FALLBACK_ESCALATE_IF),
         responder_level=level,
-        confidence=0.0,
+        confidence=None,
         fell_back=True,
     )
 
@@ -112,10 +114,14 @@ async def build_brief(
         if not summary or not actions or not escalate_if:
             # A brief with no actions or no escalation boundary is unsafe — fall back.
             return _fallback(level)
+        raw_confidence = obj.get("confidence")
         try:
-            confidence = max(0.0, min(1.0, float(obj.get("confidence", 0.0))))
+            confidence: float | None = (
+                None if raw_confidence is None else max(0.0, min(1.0, float(raw_confidence)))
+            )
         except (ValueError, TypeError):
-            confidence = 0.0
+            # `"confidence": "high"` is not a refusal to answer, but it is not an answer either.
+            confidence = None
         # Always keep the safety net conditions in addition to any model-specific ones.
         for cond in _FALLBACK_ESCALATE_IF:
             if cond not in escalate_if:
@@ -128,13 +134,29 @@ async def build_brief(
 
 
 def render_brief(brief: EscalationBrief) -> str:
-    """Deterministic markdown for the brief, appended to an investigation answer."""
-    lines = ["", "---", f"### Responder brief ({brief.responder_level})", "", brief.summary, "",
+    """Deterministic markdown for the brief, appended to an investigation answer.
+
+    This is the surface a responder actually reads, so both halves of the confidence signal have
+    to reach it. `if brief.confidence:` printed 5% and printed nothing at all for 0% — the least
+    confident brief was the only one carrying no caveat — and it collapsed three different states
+    (the model said zero, the model omitted the field, the model answered "high") into that same
+    silence. A confidence is now always stated, including when there is none to state.
+    """
+    heading = f"### Responder brief ({brief.responder_level})"
+    if brief.fell_back:
+        heading += " — FALLBACK"
+    lines = ["", "---", heading, "", brief.summary, "",
              "**Do:**"]
     lines.extend(f"1. {a}" if i == 0 else f"{i + 1}. {a}" for i, a in enumerate(brief.actions))
     lines.append("")
     lines.append("**Escalate only if:**")
     lines.extend(f"- {c}" for c in brief.escalate_if)
-    if brief.confidence:
-        lines.append(f"\n_RCA confidence: {brief.confidence:.0%}._")
+    if brief.confidence is None:
+        # Said, not omitted. Silence here reads as "confidence was never part of this brief",
+        # which is a different claim from "the brief could not report one".
+        lines.append("\n_This brief reported no confidence in itself._")
+    else:
+        # Labelled as the brief's own, not the RCA's: it is what the brief writer thinks of the
+        # plan it just wrote, and attributing it to the root-cause analysis inflates its standing.
+        lines.append(f"\n_Brief confidence: {brief.confidence:.0%}._")
     return "\n".join(lines)

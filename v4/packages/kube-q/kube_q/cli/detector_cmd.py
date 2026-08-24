@@ -13,9 +13,12 @@ Exit codes:
   0  the operation succeeded (for `new`: the detector was staged in shadow)
   1  the request failed
   2  usage error
-  3  `new` only: the description was REJECTED — nothing was staged. The server answers
-     200 with staged=false and the compile errors, so the exit code is the only
-     machine-readable signal that no detector was created.
+  3  the detector was REJECTED on its merits and nothing changed. Two ways to get it:
+     `new` — the description would not compile into a stageable detector (the server
+     answers 200 with staged=false and the compile errors, so the exit code is the only
+     machine-readable signal that no detector was created); `promote`/`reject` — the
+     server answered 409 because the predicate can never match an observation. Distinct
+     from 1 on purpose: 1 is worth retrying and 3 never is.
 """
 from __future__ import annotations
 
@@ -27,7 +30,12 @@ from rich.console import Console
 from rich.table import Table
 
 from kube_q.core.config import load_config
-from kube_q.core.transport import build_headers, explain, make_client
+from kube_q.core.transport import build_headers, explain, make_client, server_detail
+
+
+def _detail(response) -> str:
+    """The server's own explanation for an error response, or its status line."""
+    return server_detail(response) or f"HTTP {response.status_code}"
 
 
 def run(argv: list[str]) -> int:
@@ -95,8 +103,24 @@ def run(argv: list[str]) -> int:
                     return 2
                 r = client.get(f"{base}/{rest[0]}/shadow-findings", headers=headers)
                 r.raise_for_status()
-                found = r.json().get("findings", [])
+                body = r.json()
+                found = body.get("findings", [])
+                # This count is what a reviewer promotes or rejects on, so it must never be
+                # printed bare when it is not a measurement. The server distinguishes "not
+                # loaded here" and "the ring overflowed" from "ran and stayed quiet"; printing
+                # only the number collapsed all of them back into one line.
+                caveats = []
+                if body.get("watching") is False:
+                    caveats.append("this process has not loaded it as a shadow detector")
+                if (body.get("buffer") or {}).get("saturated"):
+                    cap = body["buffer"].get("capacity")
+                    caveats.append(
+                        f"the {cap}-firing buffer is full, so older firings were dropped")
                 console.print(f"[cyan]{rest[0]}[/cyan]: {len(found)} shadow firing(s)")
+                if caveats:
+                    console.print(
+                        f"  [yellow]⚠[/yellow] not a measurement of precision — "
+                        f"{' and '.join(caveats)}.")
                 for f in found[-20:]:
                     where = f"{f.get('namespace')}/{f.get('object')}"
                     console.print(f"  · {where} — {f.get('evidence', '')[:70]}")
@@ -108,6 +132,24 @@ def run(argv: list[str]) -> int:
                     return 2
                 action = "promote" if sub == "promote" else "demote"
                 r = client.post(f"{base}/{rest[0]}/{action}", headers=headers)
+                if r.status_code == 409:
+                    # The server refuses to flip the row because the compiled predicate can
+                    # never match an observation — the failure mode this project actually
+                    # shipped once, where a stray space in an alternation made a detector a
+                    # permanent no-op. It is the same *kind* of answer as `new`'s rejection:
+                    # understood, refused on the merits, nothing changed. That is exit 3.
+                    # It was exit 1, "the request failed", indistinguishable from the store
+                    # being down — so a script's retry loop would retry a dead detector forever.
+                    console.print(
+                        f"[red]✗ {rest[0]} was NOT {action}d[/red] — {_detail(r)}")
+                    console.print(
+                        "[dim]Nothing changed. The detector was rejected on its merits, not the "
+                        "request — retrying will not help.[/dim]")
+                    return 3
+                if r.status_code == 404:
+                    # Says which thing is missing. "Detector command failed" reads as our side.
+                    console.print(f"[red]No detector named '{rest[0]}'.[/red]")
+                    return 1
                 r.raise_for_status()
                 console.print(f"[green]{rest[0]} → {r.json().get('status')}[/green]")
                 return 0

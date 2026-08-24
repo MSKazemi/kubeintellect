@@ -56,6 +56,7 @@ __all__ = [
     "close_session",
     "emit",
     "get_history",
+    "has_history",
     "prepare_session",
     "stream",
 ]
@@ -117,8 +118,23 @@ async def close_session(session_id: str) -> None:
     await q.put(_DONE)
 
 
+def has_history(session_id: str) -> bool:
+    """True if *this process* has a history entry for *session_id*, empty or not.
+
+    The distinction `get_history` cannot express: it returns `[]` both for a session that
+    emitted nothing and for one this process has never heard of — and, because `_histories`
+    is in-memory, "never heard of" also covers every session lost to a restart or handled by
+    another replica. Callers that turn a history into a user-visible answer need to tell an
+    empty session from an absent one; see `/v1/events/replay/{session_id}`.
+    """
+    return session_id in _histories
+
+
 def get_history(session_id: str) -> list[dict]:
-    """Return all events recorded for *session_id* (for replay)."""
+    """Return all events recorded for *session_id* (for replay).
+
+    `[]` is ambiguous — check `has_history` first if the difference matters.
+    """
     return list(_histories.get(session_id, []))
 
 

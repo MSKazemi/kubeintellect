@@ -21,6 +21,7 @@ import asyncio
 import json
 import time
 
+from app.memory import pass_health
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -60,7 +61,7 @@ async def run_consolidation_once(startup: bool = False) -> dict:
 
     stats: dict[str, int] = {}
     if not service.memory_active():
-        return stats
+        return stats  # memory is off or down; `memory_status()` is the authority on which
 
     if startup:
         try:
@@ -112,7 +113,21 @@ async def run_consolidation_once(startup: bool = False) -> dict:
     if settings.CORTEX_V5_ENABLED and settings.KI_V5_CHANGE_WATCHDOG:
         stats["watchdogs_fired"] = await _sweep_change_watchdogs()
 
-    if any(stats.values()):
+    # Every pass above returns 0 for "nothing to do" AND for "it raised and I caught it", so the
+    # counters alone cannot tell a healthy idle cluster from a dead subsystem — measured, they are
+    # byte-identical. The register is what separates them; see `app.memory.pass_health`.
+    # Read "did anything happen?" off the counters BEFORE the failure count joins them, so the
+    # test does not have to exclude a key from itself.
+    did_work = any(stats.values())
+    failures = pass_health.drain()
+    stats["failed_passes"] = len(failures)
+    if failures:
+        detail = "; ".join(f"{name}: {why}" for name, why in failures)
+        logger.warning(
+            f"consolidation_pass INCOMPLETE — {len(failures)} of {len(stats) - 1} passes failed "
+            f"[{detail}] · counters {json.dumps(stats)}"
+        )
+    elif did_work:
         logger.info(f"consolidation_pass {json.dumps(stats)}")
     return stats
 
@@ -151,6 +166,7 @@ async def _close_stale_edges() -> int:
         return int(result.split()[-1]) if result else 0
     except Exception as exc:
         logger.warning(f"consolidation: stale-edge pass failed: {exc}")
+        pass_health.record_failure("stale_edges_closed", exc)
         return 0
 
 
@@ -174,6 +190,7 @@ async def _propose_detector_candidates() -> int:
         )
     except Exception as exc:
         logger.warning(f"consolidation: pattern fetch failed: {exc}")
+        pass_health.record_failure("detector_candidates", exc)
         return 0
 
     created = 0

@@ -39,6 +39,13 @@ _EVENTS = [
 ]
 
 
+class _NullPool:
+    """Answers every lookup with "asked, and there is nothing"."""
+
+    async def fetchrow(self, _sql, *_args):
+        return None
+
+
 def _patch_fetch(mocker, rows):
     async def _fetch(_episode_id):
         return rows
@@ -68,6 +75,10 @@ class TestBuildPostmortem:
         assert pm["chain_valid"] is False
 
     async def test_empty_episode_degrades(self, mocker):
+        # A reachable store with no anchor row. Leaving `_pool` at None would say the recorder
+        # is not running, and an episode with no events and no readable anchor is no longer
+        # reported as empty — it cannot be told apart from one whose records were all removed.
+        mocker.patch.object(flight_recorder, "_pool", _NullPool())
         _patch_fetch(mocker, [])
         pm = await postmortem.build_postmortem("missing")
         assert pm["timeline"] == []

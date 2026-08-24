@@ -13,7 +13,7 @@ from rich.markdown import Markdown
 from rich.rule import Rule
 
 from kube_q.cli import store
-from kube_q.cli.renderer import _print_sessions_table, console
+from kube_q.cli.renderer import _print_sessions_table, console, print_store_failure
 from kube_q.core.session import SessionState
 
 # ── Interactive session picker ────────────────────────────────────────────────
@@ -52,7 +52,8 @@ def _pick_session_interactive(limit: int = 20) -> str | None:
     """Show an arrow-key picker of recent sessions; return session_id or None."""
     sessions = store.list_sessions(limit)
     if not sessions:
-        console.print("[muted]No sessions found.[/muted]")
+        if not print_store_failure():
+            console.print("[muted]No sessions found.[/muted]")
         return None
 
     values = [(s["session_id"], _format_session_row(s)) for s in sessions]

@@ -184,6 +184,25 @@ def _scrub_inline(line: str) -> str:
     return _TOKEN_RE.sub("<redacted-token>", line)
 
 
+def redact_identifier(name: str) -> str:
+    """Redact a **name** — a dict key, a label, an env-var name — not a line of text.
+
+    `redact_secrets` is built for content and applies two rules that are wrong for an
+    identifier: it drops a whole free-text line that merely *looks* secret, and it treats
+    `key: value` shapes specially. Measured 2026-08-24, `redact_secrets("token")` returns
+    `"# <redacted-line>"` and so does `redact_secrets("password")` — so redacting keys with it
+    would rename two ordinary, non-secret field names to the *same* string and silently merge
+    them into one entry of the record.
+
+    A key name is not a credential; a key that *is* a credential (a bearer token used as a
+    map key) is. So this applies only the substitutions that identify secret **material** —
+    the `password=…` assignment shape and long token/URL shapes — and never the line rules.
+    """
+    if not name:
+        return name
+    return _scrub_inline(_KV_RE.sub(lambda m: f"{m.group(1)}=<redacted>", name))
+
+
 def redact_secrets(text: str | None, *, max_chars: int | None = 1500) -> str:
     """Return a redacted copy of `text`. Deterministic; safe on all inputs.
 

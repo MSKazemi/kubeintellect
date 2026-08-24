@@ -10,7 +10,7 @@ data:
     -- KubeIntellect V2 database schema
     -- Run once: psql -v ON_ERROR_STOP=1 --single-transaction $POSTGRES_DSN -f app/db/schema.sql
     -- (both flags matter: psql otherwise exits 0 after a failed statement)
-    
+
     -- ── User preferences ──────────────────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS user_prefs (
         user_id    TEXT NOT NULL,
@@ -19,7 +19,7 @@ data:
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         PRIMARY KEY (user_id, key)
     );
-    
+
     -- Preference memory (MemoryAgent) — additive columns, idempotent for existing
     -- deployments. Explicit prefs are set by the user (confidence 1.0, immortal);
     -- inferred prefs are learned from behaviour and decay/forget when not reinforced.
@@ -29,7 +29,7 @@ data:
     ALTER TABLE user_prefs ADD COLUMN IF NOT EXISTS last_seen_at     TIMESTAMPTZ NOT NULL DEFAULT now();
     CREATE INDEX IF NOT EXISTS idx_user_prefs_active
         ON user_prefs (user_id, confidence DESC, last_seen_at DESC);
-    
+
     -- Forgetting policy for inferred preferences. Explicit prefs are never purged.
     -- Returns the number of stale, low-confidence inferred preferences deleted.
     CREATE OR REPLACE FUNCTION preference_purge(
@@ -47,7 +47,7 @@ data:
         RETURN deleted;
     END;
     $$ LANGUAGE plpgsql;
-    
+
     -- ── Session notes ─────────────────────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS session_notes (
         id         BIGSERIAL PRIMARY KEY,
@@ -56,7 +56,7 @@ data:
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_session_notes_session_id ON session_notes (session_id);
-    
+
     -- ── RCA outcomes (self-improvement source) ────────────────────────────────────
     CREATE TABLE IF NOT EXISTS rca_outcomes (
         id               BIGSERIAL PRIMARY KEY,
@@ -69,7 +69,7 @@ data:
         created_at       TIMESTAMPTZ   NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_rca_outcomes_user_id ON rca_outcomes (user_id, created_at DESC);
-    
+
     -- Reflexion v2 — additive columns. Idempotent for existing deployments.
     ALTER TABLE rca_outcomes ADD COLUMN IF NOT EXISTS cluster_id        TEXT NOT NULL DEFAULT 'unknown';
     ALTER TABLE rca_outcomes ADD COLUMN IF NOT EXISTS namespace         TEXT;
@@ -79,7 +79,7 @@ data:
     ALTER TABLE rca_outcomes ADD COLUMN IF NOT EXISTS request_id        TEXT;
     CREATE INDEX IF NOT EXISTS idx_rca_outcomes_cluster
         ON rca_outcomes (cluster_id, user_id, created_at DESC);
-    
+
     -- ── Failure patterns (auto-seeded; verified, confidence ≥0.9 AND occurrence ≥2) ─
     CREATE TABLE IF NOT EXISTS failure_patterns (
         pattern_name     TEXT    PRIMARY KEY,
@@ -90,7 +90,7 @@ data:
         created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
         updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
     );
-    
+
     -- Reflexion v2 — pattern lifecycle (cluster scoping, decay, demotion).
     ALTER TABLE failure_patterns ADD COLUMN IF NOT EXISTS cluster_id   TEXT NOT NULL DEFAULT 'unknown';
     ALTER TABLE failure_patterns ADD COLUMN IF NOT EXISTS namespace    TEXT;
@@ -103,7 +103,7 @@ data:
         ON failure_patterns (pattern_name, cluster_id);
     CREATE INDEX IF NOT EXISTS idx_failure_patterns_active
         ON failure_patterns (cluster_id, last_seen_at DESC) WHERE demoted = FALSE;
-    
+
     -- ── API request audit log ────────────────────────────────────────────────────
     -- Every POST /v1/chat/completions is recorded here so you can see who ran what.
     -- user_role tells you if it was an admin, operator, or readonly user.
@@ -122,7 +122,7 @@ data:
     );
     CREATE INDEX IF NOT EXISTS idx_request_log_user_id    ON request_log (user_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_request_log_session_id ON request_log (session_id, created_at DESC);
-    
+
     -- ── Runbooks ──────────────────────────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS runbooks (
         id          BIGSERIAL PRIMARY KEY,
@@ -131,7 +131,7 @@ data:
         content     TEXT NOT NULL,
         created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
     );
-    
+
     -- ── Reflexion retention (R8) ─────────────────────────────────────────────────
     -- Single function, idempotent. Call from cron, ops command, or `make db-purge`.
     -- Returns a row of (rca_outcomes_deleted, failure_patterns_deleted).
@@ -151,16 +151,16 @@ data:
         DELETE FROM rca_outcomes
             WHERE created_at < now() - (retain_outcomes_days || ' days')::INTERVAL;
         GET DIAGNOSTICS rca_count = ROW_COUNT;
-    
+
         DELETE FROM failure_patterns
             WHERE last_seen_at < now() - (retain_patterns_days || ' days')::INTERVAL
               AND confidence < 0.9;
         GET DIAGNOSTICS pat_count = ROW_COUNT;
-    
+
         RETURN QUERY SELECT rca_count, pat_count;
     END;
     $$ LANGUAGE plpgsql;
-    
+
     -- ── Flight recorder (V4 ADR-005) ─────────────────────────────────────────────
     -- Append-only, hash-chained decision log. One row per recorded event; the
     -- chain is per episode_id (== session_id under V2 instrumentation):
@@ -177,7 +177,7 @@ data:
         created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
         UNIQUE (episode_id, seq)
     );
-    
+
     -- ── v5 OTel-span projection columns (specs/02) ───────────────────────────────
     -- Fast provenance-query projections for kind='ki_otel_span' rows. Deliberately
     -- EXCLUDED from the hash canonical form {episode_id,seq,kind,payload} so every
@@ -187,13 +187,13 @@ data:
     ALTER TABLE decision_log ADD COLUMN IF NOT EXISTS span_id        TEXT;
     ALTER TABLE decision_log ADD COLUMN IF NOT EXISTS parent_span_id TEXT;
     CREATE INDEX IF NOT EXISTS idx_decision_log_trace ON decision_log (trace_id) WHERE trace_id IS NOT NULL;
-    
+
     -- ── V4 Hippocampus (ADR-002) ─────────────────────────────────────────────────
     -- L1 episodic memory: every investigation becomes an Episode. The embedding
     -- column is added at runtime only when the pgvector extension is available;
     -- the baseline recall path uses pg_trgm similarity (stock Postgres).
     CREATE EXTENSION IF NOT EXISTS pg_trgm;
-    
+
     CREATE TABLE IF NOT EXISTS episodes (
         id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         cluster_id      TEXT NOT NULL,
@@ -222,7 +222,7 @@ data:
     -- the to_tsvector(...) call in episodes.recall_episodes exactly for the index to apply.
     CREATE INDEX IF NOT EXISTS idx_episodes_fts
         ON episodes USING gin (to_tsvector('english', summary || ' ' || COALESCE(root_cause, '')));
-    
+
     -- Memory V5 P6 (ADR-017): importance/surprise-weighted retention. `importance`
     -- derives from incident severity (regression/verified/confidence) and modulates
     -- RECALL RANKING only — never retention, because episodes are an audit record
@@ -232,13 +232,13 @@ data:
     -- rows keep NULL → recall COALESCEs them to a neutral 0.5 weight).
     ALTER TABLE episodes ADD COLUMN IF NOT EXISTS importance REAL;
     ALTER TABLE episodes ADD COLUMN IF NOT EXISTS surprise   REAL;
-    
+
     -- Memory V5 P7 (ADR-018): provenance TRUST on every episode — the write-admission guard
     -- (R8.1) stamps a [0,1] trust derived from the write's provenance (sensor/detector = 1.0
     -- ground truth; user-chat-derived = low, the MINJA surface). Low-trust user writes are
     -- quarantined at admission, not silently trusted. NULL for pre-P7 rows.
     ALTER TABLE episodes ADD COLUMN IF NOT EXISTS trust REAL;
-    
+
     -- L2 semantic memory: temporal knowledge graph (valid-time edges).
     CREATE TABLE IF NOT EXISTS kg_entities (
         id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -249,7 +249,7 @@ data:
         attrs       JSONB NOT NULL DEFAULT '{}',
         UNIQUE (cluster_id, kind, namespace, name)
     );
-    
+
     CREATE TABLE IF NOT EXISTS kg_edges (
         id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         cluster_id   TEXT NOT NULL,
@@ -264,7 +264,7 @@ data:
     );
     CREATE INDEX IF NOT EXISTS idx_kg_edges_window ON kg_edges (cluster_id, valid_from, valid_to);
     CREATE INDEX IF NOT EXISTS idx_kg_edges_open ON kg_edges (src, rel) WHERE valid_to IS NULL;
-    
+
     -- Memory V5 P2 (ADR-013): make the KG bi-temporal. Existing valid_from/valid_to are
     -- the EVENT-time axis (when a cluster fact held). Add the TRANSACTION-time axis
     -- (ingested_at = when the agent learned it, retracted_at = when it stopped believing
@@ -281,7 +281,7 @@ data:
     -- "Currently believed" fast path (S1 default read): valid + not-retracted.
     CREATE INDEX IF NOT EXISTS idx_kg_edges_current ON kg_edges (cluster_id, src, rel)
         WHERE valid_to IS NULL AND retracted_at IS NULL;
-    
+
     -- Memory V5 P5 (ADR-016): the promotion middle layer. Verified, recurring episodic
     -- reflections are consolidated into semantic rules (IF context → THEN guidance); a rule
     -- that recurs enough becomes 'active' (injected into the prompt) and is eligible to seed a
@@ -301,7 +301,7 @@ data:
     );
     CREATE INDEX IF NOT EXISTS idx_semantic_rules_active ON semantic_rules (cluster_id, status)
         WHERE status = 'active';
-    
+
     -- Memory V5 P6 (ADR-017): first-class PROSPECTIVE memory — "remember to re-check
     -- condition C at/after time T." The watchtower records one after an autonomous fix
     -- ("did the fix hold?"); the consolidation scheduler fires due rows and records the
@@ -327,7 +327,7 @@ data:
     -- Scheduler fast path: the next pending re-check that is due.
     CREATE INDEX IF NOT EXISTS idx_prospective_due ON prospective_memory (due_at)
         WHERE status = 'pending';
-    
+
     -- Memory V5 P8 (spec R7): a RAPTOR/GraphRAG-style SUMMARY HIERARCHY over episode clusters,
     -- so the agent can answer theme-level questions ("what keeps failing in payments?") without
     -- scanning every episode. `level` 1 = a theme summary (leaf cluster); higher levels reserved
@@ -352,7 +352,7 @@ data:
     CREATE INDEX IF NOT EXISTS idx_memory_summaries_cluster ON memory_summaries (cluster_id, level);
     CREATE INDEX IF NOT EXISTS idx_memory_summaries_trgm
         ON memory_summaries USING gin ((theme_key || ' ' || summary) gin_trgm_ops);
-    
+
     -- L3 procedural memory: learned detector candidates (ADR-006). Human review
     -- is always required before activation.
     CREATE TABLE IF NOT EXISTS detectors (
@@ -368,7 +368,7 @@ data:
         created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
         UNIQUE (cluster_id, name)
     );
-    
+
     -- ─────────────────────────────────────────────────────────────────────────────
     -- Memory V5 P7 (ADR-018 R8.3): per-cluster/tenant Row-Level Security scaffolding.
     --
@@ -393,7 +393,7 @@ data:
     -- `current_setting(..., true)` returns NULL (not an error) when unset, so an
     -- admin/maintenance connection that does not set the GUC still fails CLOSED (no rows),
     -- never open. RTBF deletes (R8.4) run through the same tenant context.
-    
+
     -- Memory V5 P7 (ADR-018 R8.2): tamper-evidence for the learning write path. An append-only,
     -- per-cluster SHA-256 hash chain over memory-mutating events (episode writes, quarantines,
     -- forgets), computed with the SAME primitive as the flight recorder (ADR-005) so an auditor can
@@ -411,7 +411,34 @@ data:
         UNIQUE (cluster_id, seq)
     );
     CREATE INDEX IF NOT EXISTS idx_memory_audit_chain ON memory_audit (cluster_id, seq);
-    
+
+    -- Chain head — the anchor that makes a *truncation* visible. A hash chain detects an edit,
+    -- a reorder and an interior delete, because each breaks a link. Deleting the most recent
+    -- rows breaks nothing: what is left is a shorter, perfectly valid chain, and the next append
+    -- continues from it, so the deletion is invisible for ever. This row records how far the
+    -- chain got, so a shorter chain contradicts it. It is tamper-EVIDENCE, not prevention: an
+    -- attacker with full write access can forge this row too — but they must now forge two
+    -- places instead of one, and a partial tamper is caught.
+    CREATE TABLE IF NOT EXISTS memory_chain_head (
+        cluster_id TEXT PRIMARY KEY,
+        seq        BIGINT NOT NULL,                   -- seq of the newest appended entry
+        hash       TEXT   NOT NULL,                   -- its hash
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    -- Flight-recorder chain head — the same anchor as `memory_chain_head`, for the same reason,
+    -- on the chain that actually renders a tamper-evidence banner to a human. `verify_chain` over
+    -- `decision_log` proves links; deleting the newest rows of an episode breaks no link, so the
+    -- postmortem printed "✅ Audit chain verified intact" over a truncated incident record
+    -- (measured 2026-08-24: 9 rows → delete 3 → still True). This row records how far each
+    -- episode's chain got, so a shorter chain contradicts it.
+    CREATE TABLE IF NOT EXISTS decision_log_head (
+        episode_id TEXT PRIMARY KEY,
+        seq        BIGINT NOT NULL,                   -- seq of the newest appended event
+        hash       TEXT   NOT NULL,                   -- its hash
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
     -- ── v5 P5 Fleet memory exchange (ADR-105) ────────────────────────────────────
     -- Cross-cluster resolution sharing with STRICT tenant isolation enforced by the
     -- tenant-scoped query (a read never crosses tenants). Additive; idempotent.
@@ -424,7 +451,7 @@ data:
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_fleet_memory_tenant ON fleet_memory (tenant, signature);
-    
+
     -- ── v5 P3 Statistical-promotion outcome store (ADR-102) ──────────────────────
     -- Per-action-class shadow-agreement outcomes that feed the Wilson-LCB promotion
     -- engine. Purpose-built (not hash-chained — these are statistical samples, not
@@ -440,7 +467,7 @@ data:
         created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_promotion_outcomes_class ON promotion_outcomes (action_class, ts_days);
-    
+
     -- ── v5 P5 fleet_memory RLS tenancy (ADR-105) — DEFINED but DISABLED ───────────
     -- DB-enforced tenant isolation (defense in depth beyond the tenant-scoped query).
     -- The policy keys on a per-transaction GUC (ki.tenant). Kept DISABLED because
@@ -451,7 +478,7 @@ data:
     CREATE POLICY fleet_tenant_isolation ON fleet_memory
         USING (tenant = current_setting('ki.tenant', true));
     -- ALTER TABLE fleet_memory ENABLE ROW LEVEL SECURITY;  -- enable with GUC binding
-    
+
     -- ── v5 P5 Fleet signal store (fleet-wide pattern pooling) ─────────────────────
     -- Per-cluster detector/agent-runaway signals, pooled per tenant for fleet-wide
     -- pattern detection. Tenant-scoped reads (isolation). Additive; idempotent.

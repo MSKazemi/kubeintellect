@@ -60,7 +60,7 @@ def _norm(path: str) -> str:
 
 
 def _code_map() -> str:
-    blocks = re.findall(r"```[a-z]*\n(.*?)```", _ARCH.read_text(), re.S)
+    blocks = re.findall(r"```[a-z]*\n(.*?)```", _ARCH.read_text(encoding="utf-8"), re.S)
     maps = [b for b in blocks if "core/" in b and "config.py" in b]
     assert len(maps) == 1, f"expected exactly one code map in architecture.md, found {len(maps)}"
     return maps[0]
@@ -83,7 +83,7 @@ def _cited_paths() -> dict[str, set[str]]:
     """Every `/v1/...` path mentioned anywhere in the docs → the pages that mention it."""
     cited: dict[str, set[str]] = {}
     for page in _doc_pages():
-        for m in re.finditer(r"(?<![\w/])/v1/[A-Za-z0-9_\-{}/]+", page.read_text()):
+        for m in re.finditer(r"(?<![\w/])/v1/[A-Za-z0-9_\-{}/]+", page.read_text(encoding="utf-8")):
             cited.setdefault(_norm(m.group(0).rstrip(".,;:)`")), set()).add(page.name)
     return cited
 
@@ -140,7 +140,7 @@ class TestEveryRouteTheDocsCiteIsReal:
     def test_no_page_cites_the_removed_stream_route(self):
         """The specific regression: it appeared twice, in a diagram and in the map."""
         for page in _doc_pages():
-            assert "chat/stream" not in page.read_text(), f"{page.name} still cites it"
+            assert "chat/stream" not in page.read_text(encoding="utf-8"), f"{page.name} still cites it"
 
     def test_every_annotated_method_matches_the_real_route(self):
         """`postmortem.py — GET /v1/episodes/{id}/postmortem` claims a verb as well as a path."""
@@ -148,7 +148,7 @@ class TestEveryRouteTheDocsCiteIsReal:
         wrong = []
         for verb_group, path in re.findall(
             r"((?:GET|POST|PUT|DELETE)(?:/(?:GET|POST|PUT|DELETE))*)\s+(/[A-Za-z0-9_{}/-]+)",
-            _ARCH.read_text(),
+            _ARCH.read_text(encoding="utf-8"),
         ):
             key = _norm(path)
             if key not in methods:
@@ -163,7 +163,7 @@ class TestEveryRouteTheDocsCiteIsReal:
 class TestTheDiagramDescribesHowStreamingActuallyWorks:
 
     def test_the_page_says_the_post_itself_streams(self):
-        text = _ARCH.read_text()
+        text = _ARCH.read_text(encoding="utf-8")
         assert "text/event-stream" in text, (
             "the page should say how the stream is delivered, since the separate GET it used to "
             "name never existed"
@@ -171,11 +171,11 @@ class TestTheDiagramDescribesHowStreamingActuallyWorks:
 
     def test_the_chat_endpoint_really_returns_an_event_stream(self):
         """The doc claim, checked against the code rather than against another doc."""
-        src = (_SERVER / "app" / "api" / "v1" / "endpoints" / "chat_completions.py").read_text()
+        src = (_SERVER / "app" / "api" / "v1" / "endpoints" / "chat_completions.py").read_text(encoding="utf-8")
         assert 'media_type="text/event-stream"' in src
         assert "StreamingResponse" in src
 
     def test_the_replay_route_really_is_the_sse_one(self):
-        src = (_SERVER / "app" / "api" / "v1" / "endpoints" / "events.py").read_text()
+        src = (_SERVER / "app" / "api" / "v1" / "endpoints" / "events.py").read_text(encoding="utf-8")
         assert '@router.get("/events/replay/{session_id}")' in src
         assert 'media_type="text/event-stream"' in src

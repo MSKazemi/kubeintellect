@@ -225,7 +225,7 @@ class TestThePublicPageNowTellsTheTruth:
     """The page states the contract to users; every row it marks ⚠️ must be reachable."""
 
     def test_every_flag_the_page_marks_unwired_can_actually_be_surfaced(self, set_flag):
-        marked = set(re.findall(r"\|\s*`((?:KI_V5|CORTEX_V5)_[A-Z0-9_]+)`\s*⚠️", _DOC.read_text()))
+        marked = set(re.findall(r"\|\s*`((?:KI_V5|CORTEX_V5)_[A-Z0-9_]+)`\s*⚠️", _DOC.read_text(encoding="utf-8")))
         assert len(marked) >= 20, f"only {len(marked)} ⚠️ rows parsed from {_DOC.name}"
         unreachable = []
         for name in sorted(marked):
@@ -240,7 +240,7 @@ class TestThePublicPageNowTellsTheTruth:
         )
 
     def test_the_page_still_makes_the_promise_this_gate_checks(self):
-        assert "set_but_unwired_flags" in _DOC.read_text()
+        assert "set_but_unwired_flags" in _DOC.read_text(encoding="utf-8")
 
 
 class TestSilentOnADefaultDeployment:

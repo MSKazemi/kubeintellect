@@ -25,6 +25,42 @@ _logger = logging.getLogger(__name__)
 
 DB_PATH = CONFIG_DIR / "history.db"
 
+# Why the last failure is remembered, and not only logged ─────────────────────
+# Every operation below swallows `sqlite3.Error` so a broken local cache can never crash the
+# REPL — that part is right, and the docstring above promises it. But the reads return `[]`,
+# and `[]` is also what a brand-new install returns, so `kq --list` printed "No sessions found."
+# for a `history.db` that was corrupt, unreadable or on a full disk. The warning that was
+# supposed to say otherwise goes to a `kube_q` logger with no stderr handler outside `--debug`,
+# so stdout said "empty", stderr said nothing, and the exit code said success — for a user whose
+# history was in fact still there and unreachable.
+#
+# `last_error()` describes the *most recent* store operation only: `_db()` clears it on every
+# open, so a stale failure can never be reported next to a healthy empty result.
+_LAST_ERROR: str | None = None
+
+
+def _failed(op: str, exc: Exception) -> None:
+    """Record and log a swallowed store failure."""
+    global _LAST_ERROR
+    _LAST_ERROR = f"{op}: {exc}"
+    _logger.warning("store.%s failed: %s", op, exc)
+
+
+def last_error() -> str | None:
+    """Why the last store operation failed, or ``None`` if it did not."""
+    return _LAST_ERROR
+
+
+def empty_result_note() -> str:
+    """A line to print beside an empty result, or ``""`` when the read really was clean."""
+    err = _LAST_ERROR
+    if not err:
+        return ""
+    return (
+        f"the local history store could not be read — this is not necessarily an empty "
+        f"history.\n{DB_PATH}: {err}"
+    )
+
 # ── Schema definitions ────────────────────────────────────────────────────────
 
 _V1_SCHEMA = """
@@ -189,6 +225,8 @@ def get_db() -> sqlite3.Connection:
 @contextmanager
 def _db() -> Generator[sqlite3.Connection, None, None]:
     """Open a connection and guarantee it is closed, even on exception."""
+    global _LAST_ERROR
+    _LAST_ERROR = None      # so `last_error()` always describes *this* operation
     conn = get_db()
     try:
         yield conn
@@ -222,7 +260,7 @@ def upsert_session(
             )
             conn.commit()
     except sqlite3.Error as exc:
-        _logger.warning("store.upsert_session failed: %s", exc)
+        _failed("upsert_session", exc)
 
 
 def load_session_meta(session_id: str) -> dict | None:
@@ -237,7 +275,7 @@ def load_session_meta(session_id: str) -> dict | None:
             ).fetchone()
         return dict(row) if row else None
     except sqlite3.Error as exc:
-        _logger.warning("store.load_session_meta failed: %s", exc)
+        _failed("load_session_meta", exc)
         return None
 
 
@@ -251,7 +289,7 @@ def set_session_title(session_id: str, title: str) -> None:
             )
             conn.commit()
     except sqlite3.Error as exc:
-        _logger.warning("store.set_session_title failed: %s", exc)
+        _failed("set_session_title", exc)
 
 
 def delete_session(session_id: str) -> None:
@@ -261,7 +299,7 @@ def delete_session(session_id: str) -> None:
             conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
             conn.commit()
     except sqlite3.Error as exc:
-        _logger.warning("store.delete_session failed: %s", exc)
+        _failed("delete_session", exc)
 
 
 def list_sessions(limit: int = 20) -> list[dict]:
@@ -294,7 +332,7 @@ def list_sessions(limit: int = 20) -> list[dict]:
             result.append(d)
         return result
     except sqlite3.Error as exc:
-        _logger.warning("store.list_sessions failed: %s", exc)
+        _failed("list_sessions", exc)
         return []
 
 
@@ -318,7 +356,7 @@ def append_message(
             )
             conn.commit()
     except sqlite3.Error as exc:
-        _logger.warning("store.append_message failed: %s", exc)
+        _failed("append_message", exc)
 
 
 def load_messages(session_id: str) -> list[dict]:
@@ -331,7 +369,7 @@ def load_messages(session_id: str) -> list[dict]:
             ).fetchall()
         return [{"role": row["role"], "content": row["content"]} for row in rows]
     except sqlite3.Error as exc:
-        _logger.warning("store.load_messages failed: %s", exc)
+        _failed("load_messages", exc)
         return []
 
 
@@ -367,7 +405,7 @@ def log_tokens(
             )
             conn.commit()
     except sqlite3.Error as exc:
-        _logger.warning("store.log_tokens failed: %s", exc)
+        _failed("log_tokens", exc)
 
 
 def get_session_tokens(session_id: str) -> dict:
@@ -403,7 +441,7 @@ def get_session_tokens(session_id: str) -> dict:
             "request_count": count_row["cnt"] if count_row else 0,
         }
     except sqlite3.Error as exc:
-        _logger.warning("store.get_session_tokens failed: %s", exc)
+        _failed("get_session_tokens", exc)
         return {
             "total_prompt_tokens": 0,
             "total_completion_tokens": 0,
@@ -426,7 +464,7 @@ def get_last_usage(session_id: str) -> dict | None:
             ).fetchone()
         return dict(row) if row else None
     except sqlite3.Error as exc:
-        _logger.warning("store.get_last_usage failed: %s", exc)
+        _failed("get_last_usage", exc)
         return None
 
 
@@ -470,7 +508,7 @@ def search_sessions(query: str, limit: int = 20) -> list[dict]:
                 result.append(d)
         return result
     except sqlite3.Error as exc:
-        _logger.warning("store.search_sessions failed: %s", exc)
+        _failed("search_sessions", exc)
         return []
 
 
@@ -532,7 +570,7 @@ def branch_session(
             ).fetchone())
         return new_session
     except sqlite3.Error as exc:
-        _logger.warning("store.branch_session failed: %s", exc)
+        _failed("branch_session", exc)
         return {}
 
 
@@ -593,7 +631,7 @@ def list_branches(session_id: str) -> list[dict]:
             result.append(d)
         return result
     except sqlite3.Error as exc:
-        _logger.warning("store.list_branches failed: %s", exc)
+        _failed("list_branches", exc)
         return []
 
 
@@ -607,4 +645,4 @@ def rename_session(session_id: str, title: str) -> None:
             )
             conn.commit()
     except sqlite3.Error as exc:
-        _logger.warning("store.rename_session failed: %s", exc)
+        _failed("rename_session", exc)

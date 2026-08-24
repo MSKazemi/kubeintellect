@@ -65,36 +65,47 @@ def _package_dirs(text: str) -> list[str]:
 
 def _documented_env_rows() -> list[tuple[str, str]]:
     """`| \\`NAME\\` | default | description |` rows from the configuration page."""
-    return re.findall(r"^\|\s*`([A-Z][A-Z0-9_]+)`\s*\|\s*([^|]*?)\s*\|", _CONFIG_DOC.read_text(), re.M)
+    return re.findall(r"^\|\s*`([A-Z][A-Z0-9_]+)`\s*\|\s*([^|]*?)\s*\|", _CONFIG_DOC.read_text(encoding="utf-8"), re.M)
 
 
 def _read_anywhere(name: str) -> bool:
     return any(
-        name in p.read_text()
+        name in p.read_text(encoding="utf-8")
         for p in (_V4 / "packages").rglob("*.py")
         if "/tests/" not in p.as_posix()
     )
 
 
+#: `v4/CLAUDE.md` is tracked in the private tree only — a public clone, and therefore CI, has
+#: no such file. Asserting on it unguarded is not a stricter test, it is a `FileNotFoundError`
+#: everywhere but this laptop. The guard is narrow on purpose: it covers exactly the one map
+#: that is private, and `TestThePublicMapsAreNeverSkipped` below fails if it ever widens.
+_CLAUDE_MAP_PRESENT = _CLAUDE_MD.is_file()
+
+
+@pytest.mark.skipif(
+    not _CLAUDE_MAP_PRESENT,
+    reason="v4/CLAUDE.md is tracked in the private tree only; nothing to check here",
+)
 class TestTheClaudeMapNamesRealModules:
     """`v4/CLAUDE.md` is the map every session reads before touching anything."""
 
     def test_the_scan_found_the_map(self):
-        text = _CLAUDE_MD.read_text()
+        text = _CLAUDE_MD.read_text(encoding="utf-8")
         assert len(_module_paths(text)) >= _MIN_CLAUDE_PATHS
         assert len(_package_dirs(text)) >= _MIN_CLAUDE_DIRS
 
     def test_every_module_path_exists(self):
-        missing = [p for p in _module_paths(_CLAUDE_MD.read_text()) if not (_SERVER / p).exists()]
+        missing = [p for p in _module_paths(_CLAUDE_MD.read_text(encoding="utf-8")) if not (_SERVER / p).exists()]
         assert missing == [], f"CLAUDE.md names modules that do not exist: {missing}"
 
     def test_every_package_dir_exists(self):
-        missing = [d for d in _package_dirs(_CLAUDE_MD.read_text()) if not (_SERVER / d).is_dir()]
+        missing = [d for d in _package_dirs(_CLAUDE_MD.read_text(encoding="utf-8")) if not (_SERVER / d).is_dir()]
         assert missing == [], f"CLAUDE.md names packages that do not exist: {missing}"
 
     def test_every_setting_it_names_is_a_real_setting(self):
         """The layer tables pair each feature with the flag that gates it."""
-        named = set(re.findall(r"`([A-Z][A-Z0-9_]{4,})`", _CLAUDE_MD.read_text()))
+        named = set(re.findall(r"`([A-Z][A-Z0-9_]{4,})`", _CLAUDE_MD.read_text(encoding="utf-8")))
         # names that are plainly not settings: wire formats, acronyms, other namespaces
         candidates = {
             n for n in named
@@ -108,12 +119,12 @@ class TestTheClaudeMapNamesRealModules:
 class TestTheAgentsMapNamesRealModules:
 
     def test_every_module_path_exists(self):
-        text = _AGENTS_MD.read_text()
+        text = _AGENTS_MD.read_text(encoding="utf-8")
         missing = [p for p in _module_paths(text) if not (_SERVER / p).exists()]
         assert missing == [], f"AGENTS.md names modules that do not exist: {missing}"
 
     def test_every_package_dir_exists(self):
-        text = _AGENTS_MD.read_text()
+        text = _AGENTS_MD.read_text(encoding="utf-8")
         missing = [d for d in _package_dirs(text) if not (_SERVER / d).is_dir()]
         assert missing == [], f"AGENTS.md names packages that do not exist: {missing}"
 
@@ -151,3 +162,44 @@ class TestEveryDocumentedEnvVarGoesSomewhere:
         documented = {name for name, _ in _documented_env_rows()}
         stale = sorted(set(_NON_SERVER_VARS) - documented)
         assert stale == [], f"_NON_SERVER_VARS excuses rows configuration.md no longer has: {stale}"
+
+
+class TestThePublicMapsAreNeverSkipped:
+    """A skip is how a suite stops testing without ever going red.
+
+    One class above is conditional, because the map it checks is genuinely absent from a public
+    checkout. That is the only acceptable skip in this file, and it must stay the only one: if
+    the public maps ever went missing too, every assertion here would be skipped and the file
+    would report green having checked nothing.
+    """
+
+    def test_the_public_maps_are_present(self):
+        missing = [p.name for p in (_AGENTS_MD, _CONFIG_DOC) if not p.is_file()]
+
+        assert missing == [], f"a map this file must always check is absent: {missing}"
+
+    def test_the_public_map_checks_are_not_vacuous(self):
+        rows = _documented_env_rows()
+        agents_paths = _module_paths(_AGENTS_MD.read_text(encoding="utf-8"))
+
+        assert len(rows) >= _MIN_CONFIG_ROWS, f"only {len(rows)} documented env rows parsed"
+        assert agents_paths, "no module paths parsed out of AGENTS.md"
+
+    def test_only_the_private_map_is_allowed_to_be_conditional(self):
+        """Pins the exception. A second `skipif` in this file has to be argued for.
+
+        Counted from the AST, not from the text: a substring count of "skipif" also matches
+        this test's own assertion, so it would report 2 forever and never mean anything.
+        """
+        import ast
+
+        tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+        skips = [
+            node.name
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+            for dec in node.decorator_list
+            if "skipif" in ast.dump(dec)
+        ]
+
+        assert skips == ["TestTheClaudeMapNamesRealModules"], f"unexpected conditionals: {skips}"

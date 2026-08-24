@@ -88,13 +88,24 @@ def tracked_python_files(root: str | None = None) -> list[str]:
     return [p for p in paths if not p.startswith(FROZEN_PREFIXES)]
 
 
-def check_paths(paths: list[str], root: str = "") -> tuple[int, list[tuple[str, str]]]:
-    """Compile each path; return (files checked, [(path, complaint), …]).
+def check_paths(
+    paths: list[str], root: str = ""
+) -> tuple[int, list[tuple[str, str]], list[str]]:
+    """Compile each path; return (files checked, [(path, complaint), …], [skipped path, …]).
 
     Split out from main() so the gate can be exercised against fixture files in
     a test without touching the git index.
+
+    `skipped` is returned rather than swallowed. Whether an unreadable path should
+    FAIL the gate is a settled question — it must not, because a hook that passes a
+    list including a just-deleted path would be turned red for doing the right thing
+    (see test_an_explicit_file_list_is_still_the_callers_business). But that decision
+    was about the exit code, not about silence: a gate that prints `syntax OK — 1
+    file(s)` after being handed three is describing its own effort as if it were
+    coverage. The caller chose the scope; the gate still has to say what it did with it.
     """
     failures: list[tuple[str, str]] = []
+    skipped: list[str] = []
     checked = 0
 
     for path in paths:
@@ -104,7 +115,10 @@ def check_paths(paths: list[str], root: str = "") -> tuple[int, list[tuple[str, 
                 source = fh.read()
         except OSError:
             # A tracked path that is not readable here (submodule, deleted in
-            # the working tree) is not this gate's business.
+            # the working tree) is not this gate's business to FAIL on — but it is
+            # its business to report, or the printed count silently redefines
+            # itself from "the scope" to "whatever happened to be readable".
+            skipped.append(path)
             continue
 
         checked += 1
@@ -124,7 +138,7 @@ def check_paths(paths: list[str], root: str = "") -> tuple[int, list[tuple[str, 
                 # than leaving it to surface as a mystery import error.
                 failures.append((path, f"SyntaxError: {exc}"))
 
-    return checked, failures
+    return checked, failures, skipped
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -141,18 +155,58 @@ def main(argv: list[str] | None = None) -> int:
             print("ERROR: not inside a git repository", file=sys.stderr)
             return 2
 
-    checked, failures = check_paths(paths, root)
+    checked, failures, skipped = check_paths(paths, root)
     version = ".".join(str(n) for n in sys.version_info[:3])
+
+    if skipped:
+        # stderr, always, in both forms. The exit code stays the caller's contract;
+        # what changes is that the number in the OK line can no longer be mistaken
+        # for the number of files the caller asked about.
+        print(
+            f"NOTE: {len(skipped)} of {len(paths)} path(s) could not be read and were "
+            f"NOT compiled — they are not covered by the verdict below:",
+            file=sys.stderr,
+        )
+        for path in skipped[:20]:
+            print(f"  - {path}", file=sys.stderr)
+        if len(skipped) > 20:
+            print(f"  … and {len(skipped) - 20} more", file=sys.stderr)
+
+    if not argv and checked == 0:
+        # Sibling of the same defect in check-file-modes.sh: a gate that compiled
+        # nothing is not a gate that passed. Reachable from a sparse or partial
+        # checkout, and from an index that tracks no Python outside v1-v3. The
+        # count was already printed, but printing "0" beside the word OK still
+        # reads as a pass to anyone scanning CI output.
+        print(
+            "ERROR: found 0 tracked Python files outside v1-v3 — nothing was "
+            "compiled.\nThis is not a pass. A sparse or partial checkout produces "
+            "it; check out the full tree.",
+            file=sys.stderr,
+        )
+        return 1
     scope = (
         f"{checked} file(s)"
         if argv
         else f"{checked} tracked Python files outside v1-v3"
     )
+    shortfall = f" ({len(skipped)} of {len(paths)} skipped, see above)" if skipped else ""
 
     if not failures:
+        if checked == 0:
+            # Only reachable in the explicit-file form; the tracked form already
+            # failed above. The contract says do not turn the caller red, so the
+            # code stays 0 — but "OK" is not a word that may appear over a scan
+            # that opened no files at all.
+            print(
+                f"nothing compiled — all {len(paths)} path(s) given were unreadable"
+                "; this verdict covers no code",
+                file=sys.stderr,
+            )
+            return 0
         print(
             f"syntax OK — {scope} compile with no SyntaxWarning "
-            f"on Python {version}"
+            f"on Python {version}{shortfall}"
         )
         return 0
 

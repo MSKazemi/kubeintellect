@@ -29,6 +29,13 @@ APPLY_FAILED = "apply_failed"
 APPLY_REFUSED = "apply_refused"
 VERIFY_FAILED_NO_ROLLBACK = "verify_failed_no_rollback"
 VERIFY_INCONCLUSIVE = "verify_inconclusive"
+# The rollback is a mutation too, and it can be refused, rejected or simply not answer. Reporting
+# `rolled_back` for those said the cluster had been restored when it had not — the half-applied
+# state this module exists to prevent, with the status asserting the opposite. Mirrors the apply
+# side's own vocabulary, because the same three things can happen to either command.
+ROLLBACK_REFUSED = "rollback_refused"  # blocked by KubeIntellect; nothing was sent
+ROLLBACK_FAILED = "rollback_failed"  # kubectl rejected it
+ROLLBACK_UNCONFIRMED = "rollback_unconfirmed"  # nothing came back that confirms it ran
 
 # Outcome of reading the apply seam's output. The classifier lives in `kubectl_output` because
 # the verification side (`postcondition.py`) has to read the same strings, and the two must never
@@ -77,7 +84,8 @@ def execute_transactional(
     - kubectl reported an error ⇒ APPLY_FAILED (nothing to roll back).
     - the oracle could not evaluate ⇒ VERIFY_INCONCLUSIVE (escalate; **no rollback**).
     - postcondition holds ⇒ COMMITTED.
-    - postcondition fails + rollback_command ⇒ run it ⇒ ROLLED_BACK.
+    - postcondition fails + rollback_command ⇒ run it ⇒ ROLLED_BACK **if it is confirmed**,
+      otherwise ROLLBACK_REFUSED / ROLLBACK_FAILED / ROLLBACK_UNCONFIRMED (all escalate).
     - postcondition fails + no rollback_command ⇒ VERIFY_FAILED_NO_ROLLBACK (escalate).
 
     The refused branch is not a nicety. Every safety gate in the project — role denial, protected
@@ -86,6 +94,13 @@ def execute_transactional(
     nothing had changed) and issued the **rollback command against the live cluster**, undoing
     something that was never done. A multi-document apply that fails halfway is the one case
     APPLY_FAILED can under-report; kubectl's own error line is all this seam has to go on.
+
+    The rollback gets read the same way, for the same reason. It used to be issued and its result
+    discarded, so measured 2026-08-24 a rollback that was refused (`[Protected]`), rejected
+    (`[kubectl exited 1] Error from server (Forbidden)`), unreachable, or silent all returned
+    `rolled_back` — four ways to leave the cluster half-applied while telling the caller, and the
+    audit trail, that it had been restored. That is the one status a trust plane must be able to
+    believe: it is what says no operator needs to look.
     """
     apply_fn = apply_fn or _default_apply
     out = apply_fn(command)
@@ -106,4 +121,14 @@ def execute_transactional(
     if rollback_command is None:
         return ExecutionResult(VERIFY_FAILED_NO_ROLLBACK, verdict, out.strip()[:2000])
     rb = apply_fn(rollback_command)
-    return ExecutionResult(ROLLED_BACK, verdict, out.strip()[:2000], rb.strip()[:2000])
+    rb_outcome = classify_apply(rb)
+    if rb_outcome == REFUSED:
+        status = ROLLBACK_REFUSED
+    elif rb_outcome == FAILED:
+        # `(no output)` classifies FAILED too, and that is a different thing from a rejection —
+        # nothing said the rollback failed, but nothing said it ran either. Named apart, because
+        # "it did not work" and "I cannot tell" are the distinction this whole seam turns on.
+        status = ROLLBACK_UNCONFIRMED if rb.strip() == _out.NO_OUTPUT else ROLLBACK_FAILED
+    else:
+        status = ROLLED_BACK
+    return ExecutionResult(status, verdict, out.strip()[:2000], rb.strip()[:2000])

@@ -43,7 +43,8 @@ class TestVersionInfoAndLine:
     def test_version_info_has_all_axes(self, mocker):
         mocker.patch.object(settings, "CORTEX_V5_ENABLED", True)
         info = ver.version_info()
-        assert set(info) == {"arm", "semver", "experimental_flags", "set_but_unwired_flags"}
+        assert set(info) == {"arm", "semver", "experimental_flags", "set_but_unwired_flags",
+                             "degraded_experimental_flags"}
         assert "CORTEX_V5_ENABLED" in info["experimental_flags"]
 
     def test_line_baseline_vs_flagged(self, mocker):

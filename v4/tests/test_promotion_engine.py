@@ -95,3 +95,62 @@ class TestSource:
         set_outcome_source(lambda ac: _successes(60))
         d = decide("misconfig-fix", "L1->L2", "L1", now_days=10.0)   # no events kwarg
         assert d.action == "promote"
+
+
+class TestAFailedReadDoesNotLookLikeAnEmptyOne:
+    """ADR-102 is *fast down, slow up* — a read failure must not read as "no harm recorded".
+
+    `outcomes_for` swallowed every exception and returned `[]` with no log line anywhere, so a
+    broken outcome source was byte-identical to a class that has simply not run in shadow yet.
+    The decision then says `hold` because *"n 0 < n_min 20"*, which an operator reads as *not
+    enough evidence*; the truth is *the evidence could not be read*, and a class whose agreement
+    collapsed stays at its rung indefinitely because the demotion check never sees the outcomes.
+    """
+
+    def test_an_empty_source_is_reported_as_empty_not_as_broken(self):
+        from app.autonomy.promotion_engine import read_outcomes, set_outcome_source
+
+        set_outcome_source(lambda ac: [])
+        read = read_outcomes("misconfig-fix")
+        assert read.events == []
+        assert read.source_failed is False
+
+    def test_a_raising_source_is_reported_as_broken(self):
+        from app.autonomy.promotion_engine import read_outcomes, set_outcome_source
+
+        def _boom(action_class):
+            raise RuntimeError("the store is unreachable")
+
+        set_outcome_source(_boom)
+        read = read_outcomes("misconfig-fix")
+        assert read.events == []
+        assert read.source_failed is True, (
+            "a source that raised is indistinguishable from a class with no shadow data yet"
+        )
+
+    def test_a_raising_source_is_logged(self, caplog):
+        import logging
+
+        from app.autonomy.promotion_engine import read_outcomes, set_outcome_source
+
+        def _boom(action_class):
+            raise RuntimeError("the store is unreachable")
+
+        set_outcome_source(_boom)
+        with caplog.at_level(logging.WARNING):
+            read_outcomes("misconfig-fix")
+        assert any("outcome source failed" in r.message for r in caplog.records), (
+            f"the failure left no trace at all; records={[r.message for r in caplog.records]}"
+        )
+        assert any("misconfig-fix" in r.message for r in caplog.records), (
+            "the log line does not say which action class lost its evidence"
+        )
+
+    def test_the_old_entry_point_still_never_raises(self):
+        from app.autonomy.promotion_engine import outcomes_for, set_outcome_source
+
+        def _boom(action_class):
+            raise RuntimeError("the store is unreachable")
+
+        set_outcome_source(_boom)
+        assert outcomes_for("misconfig-fix") == []

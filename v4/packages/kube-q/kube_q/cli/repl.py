@@ -37,6 +37,7 @@ from kube_q.cli.renderer import (
     error_timestamp,
     format_branches,
     format_search_results,
+    print_store_failure,
     render_hitl_panel,
     render_status_footer,
 )
@@ -50,7 +51,12 @@ from kube_q.core.kubeconfig import list_contexts
 from kube_q.core.session import SessionState
 from kube_q.core.session import load_or_create_user_id as _load_or_create_user_id
 from kube_q.core.session import resolve_attachments as _resolve_attachments
-from kube_q.core.transport import fetch_namespaces
+from kube_q.core.transport import (
+    NamespaceListing,
+    fetch_namespace_listing,
+    fetch_namespaces,
+    namespace_verdict,
+)
 from kube_q.transport import check_health, non_stream_query, stream_query
 
 # ── REPL configuration dataclass ─────────────────────────────────────────────
@@ -125,6 +131,60 @@ def _save_conversation(
 
 # ── REPL ──────────────────────────────────────────────────────────────────────
 
+def _render_plugins() -> None:
+    """Answer "what plugins do I have?" — including the ones that did not load.
+
+    Reporting only the registry made this command say *"No plugins loaded. Drop Python files
+    into ~/.kube-q/plugins/…"* to a user whose plugins directory was full of files that had all
+    failed to import: it told them to do the thing they had already done, and the reason sat in
+    a log file. Failures are printed whether or not anything loaded.
+    """
+    entries = plugins.registered_commands()
+    failures = plugins.load_failures()
+
+    if entries:
+        console.print(f"[bold cyan]Plugin commands ({len(entries)}):[/bold cyan]")
+        for name in sorted(entries):
+            _fn, help_text = entries[name]
+            console.print(
+                f"  [yellow]{name}[/yellow]"
+                + (f"  [dim]— {help_text}[/dim]" if help_text else "")
+            )
+    elif failures:
+        console.print(
+            f"[yellow]No plugin commands are available — "
+            f"{len(failures)} file(s) in ~/.kube-q/plugins/ failed to load:[/yellow]"
+        )
+    else:
+        console.print(
+            "[dim]No plugins loaded. Drop Python files into "
+            "[yellow]~/.kube-q/plugins/[/yellow] that call "
+            "[yellow]kube_q.plugins.register(...)[/yellow].[/dim]"
+        )
+
+    for plugin_file, reason in failures:
+        console.print(f"  [red]✗ {plugin_file}[/red]  [dim]— {reason}[/dim]")
+
+
+def namespace_set_result(listing: NamespaceListing, ns_arg: str) -> tuple[bool, str]:
+    """Whether `/ns <name>` accepts the namespace, and exactly what the operator is told.
+
+    Split out of the REPL loop so the *sentence* is testable, because the sentence was the bug:
+    a withheld namespace produced "not found in the cluster", which is false, alongside advice
+    to run `list all ns` — the one path that would have said the listing was short.
+
+    Only a definite absence is refused. Everything else is accepted: an operator must not be
+    blocked because we could not establish the answer, and a protected namespace is refused out
+    loud by `run_kubectl` on the very next command anyway.
+    """
+    if namespace_verdict(listing, ns_arg) is False:
+        return False, (
+            f"[red]Namespace '{ns_arg}' not found in the cluster.[/red] "
+            "Use [bold]list all ns[/bold] to see available namespaces."
+        )
+    return True, f"[dim]Active namespace set to[/dim] [bold]{ns_arg}[/bold]"
+
+
 def run_repl(cfg: ReplConfig) -> None:
     """Run the interactive REPL loop using the provided configuration."""
     url = cfg.url
@@ -166,6 +226,12 @@ def run_repl(cfg: ReplConfig) -> None:
 
     # ── Load user plugins (best-effort) ───────────────────────────────────────
     loaded_plugins = plugins.load_plugins()
+    for plugin_file, reason in plugins.load_failures():
+        # Say it here rather than only in the log. A user who has just dropped a file into
+        # ~/.kube-q/plugins/ and sees nothing will type their command and be told it is unknown.
+        console.print(
+            f"[yellow]⚠ Plugin [bold]{plugin_file}[/bold] did not load:[/yellow] {reason}"
+        )
     plugin_cmds: dict[str, str] = {
         name: (help_text or "plugin command")
         for name, (_fn, help_text) in plugins.registered_commands().items()
@@ -556,23 +622,7 @@ def run_repl(cfg: ReplConfig) -> None:
             continue
 
         if user_input.lower() == "/plugins":
-            entries = plugins.registered_commands()
-            if not entries:
-                console.print(
-                    "[dim]No plugins loaded. Drop Python files into "
-                    "[yellow]~/.kube-q/plugins/[/yellow] that call "
-                    "[yellow]kube_q.plugins.register(...)[/yellow].[/dim]"
-                )
-            else:
-                console.print(
-                    f"[bold cyan]Plugin commands ({len(entries)}):[/bold cyan]"
-                )
-                for name in sorted(entries):
-                    _fn, help_text = entries[name]
-                    console.print(
-                        f"  [yellow]{name}[/yellow]"
-                        + (f"  [dim]— {help_text}[/dim]" if help_text else "")
-                    )
+            _render_plugins()
             continue
 
         if user_input.lower().startswith("/ns"):
@@ -583,24 +633,21 @@ def run_repl(cfg: ReplConfig) -> None:
                 _prepend_ns_once = False
                 console.print("[dim]Namespace cleared.[/dim]")
             else:
-                # Validate against the cluster namespace list from the backend.
-                _known = fetch_namespaces(
+                # Validate against the cluster namespace list from the backend. Three states,
+                # not two — and a *short* listing is the third one just as much as an
+                # unreachable backend is. The backend removes protected namespaces from this
+                # list, so before it began saying so (2026-08-24) `/ns monitoring` announced
+                # that a namespace which exists was "not found in the cluster" and sent the
+                # operator to `list all ns`, the one path that would have contradicted it.
+                _listing = fetch_namespace_listing(
                     url, state.user_id, api_key=api_key,
                     ca_cert=ca_cert, timeout=namespace_timeout
                 )
-                _ns_valid: bool | None = (
-                    ns_arg in _known if _known is not None else None
-                )
-
-                if _ns_valid is False:
-                    console.print(
-                        f"[red]Namespace '{ns_arg}' not found in the cluster.[/red] "
-                        "Use [bold]list all ns[/bold] to see available namespaces."
-                    )
-                else:
+                _accept, _message = namespace_set_result(_listing, ns_arg)
+                if _accept:
                     state.current_namespace = ns_arg
                     _prepend_ns_once = True
-                    console.print(f"[dim]Active namespace set to[/dim] [bold]{ns_arg}[/bold]")
+                console.print(_message)
             continue
 
         if user_input.lower() in ("/sessions", "/resume"):
@@ -657,7 +704,7 @@ def run_repl(cfg: ReplConfig) -> None:
                 results = store.search_sessions(query)
                 if results:
                     format_search_results(results)
-                else:
+                elif not print_store_failure():
                     console.print(f"[dim]No sessions matched '{query}'.[/dim]")
             continue
 

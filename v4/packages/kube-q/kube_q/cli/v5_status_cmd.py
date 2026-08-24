@@ -4,9 +4,11 @@ Reads GET /v1/v5/status: which v5 slices are active, and whether the fail-closed
 (kill switch, change freeze) are engaged. Zero LLM tokens.
 
 Also surfaces `set_but_unwired_flags` when non-empty: flags you turned on that no code reads, so
-a setting with no effect is visible instead of being quietly absent from `active_flags`; and
-`unenforceable_guard_config`, the same idea for the guard settings — a blocked-namespace entry
-that cannot match any namespace, or an autonomy override the parser drops.
+a setting with no effect is visible instead of being quietly absent from `active_flags`;
+`degraded_experimental_flags`, the same outcome one level out — the code does read the flag, but
+the subsystem it lives in is not running; and `unenforceable_guard_config`, the same idea for the
+guard settings — a blocked-namespace entry that cannot match any namespace, or an autonomy
+override the parser drops.
 
 Usage:
   kq v5-status
@@ -68,6 +70,34 @@ def run(argv: list[str]) -> int:
             "[red]" + "\n".join(unwired) + "[/red]\n"
             "[dim]declared but read by no code — these settings have no effect[/dim]",
         )
+    # Flags that ARE wired and still do nothing, because their subsystem is down. These stay in
+    # `active_flags` above on purpose (that list is rollout identity and must not flap), so
+    # without this row the two facts never meet: the operator reads "active" and is wrong.
+    degraded = data.get("degraded_experimental_flags") or []
+    if degraded:
+        memory = data.get("memory") or {}
+        why = memory.get("reason") or "no reason recorded"
+        state = memory.get("state") or "unknown"
+        table.add_row(
+            "[red]degraded_experimental_flags[/red]",
+            "[red]" + "\n".join(degraded) + "[/red]\n"
+            f"[dim]read by code, but the memory hierarchy is {state} ({why}) — "
+            "these settings change nothing while it is down[/dim]",
+        )
+    # The hierarchy's own state, always shown: it is what `degraded_experimental_flags` above
+    # means, and a healthy row is the only thing that makes an empty degraded list evidence.
+    memory = data.get("memory") or {}
+    if memory:
+        state = str(memory.get("state", "unknown"))
+        dropped = memory.get("observations_dropped", 0)
+        if memory.get("enabled"):
+            table.add_row("memory", f"{state}")
+        else:
+            table.add_row(
+                "[red]memory[/red]",
+                f"[red]{state}[/red] — {memory.get('reason') or 'no reason recorded'}\n"
+                f"[dim]{dropped} observation(s) dropped since this process started[/dim]",
+            )
     # Guard settings that parse cleanly and protect nothing — the same idea one level down.
     # `KUBECTL_BLOCKED_NAMESPACES` is the security control an operator is most likely to get
     # subtly wrong (a glob, a slash), and every parser for it discards silently.

@@ -23,6 +23,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.memory import service
+from app.memory import pass_health
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -119,6 +120,7 @@ async def promote_from_episodes(min_recurrence: int = _DEFAULT_ACTIVATE_AT) -> i
         return promoted
     except Exception as exc:
         logger.warning(f"promotion: promote_from_episodes failed: {exc}")
+        pass_health.record_failure("rules_promoted", exc)
         return 0
 
 

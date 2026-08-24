@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.config import settings
+from app.memory import pass_health
 from app.utils.logger import get_logger
 from app.utils.redact import redact_secrets
 
@@ -219,6 +220,7 @@ async def infer_from_behaviour() -> int:
         )
     except Exception as exc:
         logger.warning(f"preferences: inference query failed: {exc}")
+        pass_health.record_failure("prefs_inferred", exc)
         return 0
 
     updated = 0
@@ -261,4 +263,5 @@ async def decay_and_forget() -> int:
         return count
     except Exception as exc:
         logger.warning(f"preferences: decay failed: {exc}")
+        pass_health.record_failure("prefs_forgotten", exc)
         return 0

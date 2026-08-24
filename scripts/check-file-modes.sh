@@ -33,20 +33,50 @@
 #
 #   ./scripts/check-file-modes.sh          # report violations, exit 1 if any
 #   ./scripts/check-file-modes.sh --fix    # correct them in place, then report
+#   ./scripts/check-file-modes.sh --git-dir DIR
+#                                          # read DIR's index instead of the default one
 #
 #   make check-modes                       # same, from the repo root
+#
+# WHAT "OK" MEANS, EXACTLY
+#
+# The invariant is checked over ONE index — the modes recorded in the git
+# directory being read — and the summary line now says which index and how many
+# files it examined. It used to say "every tracked file outside v1-v3", which is
+# a claim about the *tree*: a file tracked in a different index, or absent from
+# this checkout, was skipped in silence and still counted as OK. A run that
+# examines nothing now FAILS rather than reporting a clean tree it never looked
+# at, and files skipped because they are missing from the worktree are counted
+# and reported.
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
 FIX=0
-case "${1:-}" in
-  --fix) FIX=1 ;;
-  "")    ;;
-  -h|--help) sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-  *)     echo "unknown argument: $1 (try --help)" >&2; exit 2 ;;
-esac
+GIT_DIR_ARG=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --fix) FIX=1 ;;
+    --git-dir) shift; [ $# -gt 0 ] || { echo "--git-dir needs a directory" >&2; exit 2; }
+               GIT_DIR_ARG="$1" ;;
+    --git-dir=*) GIT_DIR_ARG="${1#--git-dir=}" ;;
+    -h|--help) sed -n '2,52p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *)     echo "unknown argument: $1 (try --help)" >&2; exit 2 ;;
+  esac
+  shift
+done
 
 cd "$(git rev-parse --show-toplevel)"
+
+# Which index is being read. Every git invocation below goes through this array,
+# so the report, the --fix write-back and the summary line can never disagree
+# about which index they are talking about.
+GIT=(git)
+INDEX_LABEL="the default git index"
+if [ -n "$GIT_DIR_ARG" ]; then
+  [ -d "$GIT_DIR_ARG" ] || { echo "no such git directory: $GIT_DIR_ARG" >&2; exit 2; }
+  GIT=(git --git-dir "$GIT_DIR_ARG")
+  INDEX_LABEL="the index of $GIT_DIR_ARG"
+fi
 
 # Frozen generations — see SCOPE above.
 FROZEN_RE='^v[123]/'
@@ -76,6 +106,8 @@ has_shebang() {
 
 exec_no_shebang=()
 shebang_not_exec=()
+examined=0        # files whose bytes were actually read — the denominator of "OK"
+absent=0          # tracked here, but not present in this checkout, so unknowable
 
 # `git ls-files -s` reports the mode recorded in the INDEX, which is what CI and
 # every clone actually sees. Reading the filesystem instead would give a
@@ -83,7 +115,11 @@ shebang_not_exec=()
 while read -r mode _ _ path; do
   case "$path" in ''|*$'\n'*) continue ;; esac
   [[ "$path" =~ $FROZEN_RE ]] && continue
-  [ -f "$path" ] || continue          # skip symlinks, gitlinks, deleted entries
+  # Symlinks, gitlinks and entries deleted from this checkout cannot be read, so
+  # the invariant is unknowable for them. Counted, not silently dropped: a sparse
+  # or partial checkout used to make this gate pass having examined nothing.
+  if [ ! -f "$path" ]; then absent=$((absent + 1)); continue; fi
+  examined=$((examined + 1))
 
   case "$mode" in
     100755)
@@ -97,13 +133,36 @@ while read -r mode _ _ path; do
       fi
       ;;
   esac
-done < <(git ls-files -s)
+done < <("${GIT[@]}" ls-files -s)
 
 n_exec=${#exec_no_shebang[@]}
 n_shebang=${#shebang_not_exec[@]}
 
+# A gate that examined nothing is not a gate that passed. This is reachable on a
+# sparse/partial checkout and on an empty or wrong --git-dir, and it used to print
+# the same confident OK line as a full, clean run.
+if [ "$examined" -eq 0 ]; then
+  echo "ERROR: examined 0 files from $INDEX_LABEL — nothing was checked."
+  echo "This is not a pass. A sparse or partial checkout, or an index that tracks"
+  echo "no files outside v1-v3, produces this. Check out the full tree, or point"
+  echo "--git-dir at the index you meant."
+  exit 1
+fi
+
+# Printed on EVERY path from here down, not only the clean one. This note used to live
+# inside the OK branch alone, so a run that found violations printed "checked N file(s)"
+# with no hint that others had never been examined, and `--fix` printed "fixed: …" and
+# exited 0 while the same paths stayed unknowable — a completion claim over an incomplete
+# examination. A gap in the denominator does not become less true when the numerator is
+# bad news, and hoisting it here means a branch added later cannot forget to say it.
+if [ "$absent" -gt 0 ]; then
+  echo "note: $absent tracked path(s) were skipped — not regular files in this checkout"
+fi
+
 if [ "$n_exec" -eq 0 ] && [ "$n_shebang" -eq 0 ]; then
-  echo "file modes OK — every tracked file outside v1-v3 is executable if and only if it has a shebang"
+  # Say what was actually checked. The old line claimed "every tracked file
+  # outside v1-v3", which is a claim about the tree rather than about this index.
+  echo "file modes OK — $examined file(s) from $INDEX_LABEL are executable if and only if they have a shebang"
   exit 0
 fi
 
@@ -115,11 +174,11 @@ if [ "$FIX" -eq 1 ]; then
   # what actually lands in the commit.
   if [ "$n_exec" -gt 0 ]; then
     chmod -x -- "${exec_no_shebang[@]}"
-    git update-index --chmod=-x -- "${exec_no_shebang[@]}"
+    "${GIT[@]}" update-index --chmod=-x -- "${exec_no_shebang[@]}"
   fi
   if [ "$n_shebang" -gt 0 ]; then
     chmod +x -- "${shebang_not_exec[@]}"
-    git update-index --chmod=+x -- "${shebang_not_exec[@]}"
+    "${GIT[@]}" update-index --chmod=+x -- "${shebang_not_exec[@]}"
   fi
   echo "fixed: removed +x from $n_exec file(s), added +x to $n_shebang file(s)"
   echo "The mode changes are STAGED (index + working tree). Review with:"
@@ -127,6 +186,7 @@ if [ "$FIX" -eq 1 ]; then
   exit 0
 fi
 
+echo "checked $examined file(s) from $INDEX_LABEL."
 if [ "$n_exec" -gt 0 ]; then
   echo "ERROR: $n_exec tracked file(s) are executable but have no shebang (ruff EXE002)."
   echo "These are source/data files, not programs. The fix is to remove the bit, NOT to add a shebang:"
@@ -143,9 +203,13 @@ if [ "$n_shebang" -gt 0 ]; then
   echo
 fi
 
+# The remedy must name the index that was actually checked. A bare `--fix` would
+# rewrite the DEFAULT index, which is not where these violations were found.
+FIX_HINT="./scripts/check-file-modes.sh --fix"
+[ -n "$GIT_DIR_ARG" ] && FIX_HINT="$FIX_HINT --git-dir $GIT_DIR_ARG"
 echo "Fix all of the above with:"
 echo
-echo "    ./scripts/check-file-modes.sh --fix"
+echo "    $FIX_HINT"
 echo
 echo "If a file genuinely must be executable without a shebang (a compiled binary),"
 echo "add it to ALLOW_EXEC_WITHOUT_SHEBANG in this script with a comment saying why."

@@ -122,6 +122,24 @@ class Settings(BaseSettings):
     )
 
     @property
+    def allowed_origins(self) -> list[str]:
+        """CORS origins, **whitespace-stripped**, empties dropped.
+
+        `main.py` passed `ALLOWED_ORIGINS.split(",")` straight to `CORSMiddleware`, which
+        compares origins as exact strings. The natural way to write a list —
+        `"http://localhost:3080, http://app.example.com"` — therefore produced a second entry
+        of `" http://app.example.com"`, which matches no browser's `Origin` header. Measured
+        2026-08-24: a request from `http://app.example.com` came back with **no**
+        `access-control-allow-origin` header at all, so the origin the operator listed was
+        silently not allowed and nothing anywhere said why.
+
+        Stripping can only ever allow origins the operator explicitly wrote, never widen the
+        set. What stripping cannot repair — a trailing slash, a missing scheme, a bare `*` —
+        is reported by :mod:`app.core.config_audit` rather than guessed at here.
+        """
+        return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
+
+    @property
     def kubectl_blocked_namespaces(self) -> frozenset[str]:
         """The protected-namespace set, **case-folded**.
 
@@ -515,6 +533,8 @@ class Settings(BaseSettings):
     # Rightsizing recommendations (P4, A-CH-08): evidence-grounded resource-limit advice from
     # observed OOM/peak-memory/CPU-throttle signals (recommendations are commodity; being believed
     # is the product). Default-off. A resize applied autonomously would go through the P3 chokepoint.
+    # A recommendation carries `assessed`: silence because usage is in-band and silence because the
+    # container was never observed are different answers, and a no-op reads as an all-clear.
     KI_V5_RIGHTSIZING: bool = False
     # Predictive-detection fusion (P4): a predicted (ADR-010 TrendPredicate) finding now LAUNCHES a
     # read-only investigation of the leading indicators before the failure realizes, instead of

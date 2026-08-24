@@ -41,6 +41,7 @@ from app.agent.nodes.memory_loader import memory_loader
 from app.agent.state import AgentState, PlanStep
 from app.core.config import settings
 from app.streaming.emitter import PlanEvent, StatusEvent, TokenEvent, emit
+from app.tools.output_policy import split_policy_lines
 from app.tools.registry import ALL_TOOLS
 from app.utils.logger import get_logger
 
@@ -234,8 +235,15 @@ async def gather_once(state: CortexState, config: RunnableConfig) -> dict:
     # Change-first RCA (P2): rank recent changes as the search prior. No-op until the P1 change
     # ledger is populated (empty source ⇒ empty block ⇒ prompt unchanged). Default-off.
     if settings.CORTEX_V5_ENABLED and settings.KI_V5_CHANGE_FIRST_RCA:
+        from app.cluster_id import get_cluster_id
         from app.cortex.change_rca import recent_changes, render_change_prior
-        prior = render_change_prior(recent_changes(state.get("cluster_id") or ""))
+        # Resolve the id the same way the *write* side does (the ledger append below). These
+        # two disagreed: the append fell back to `get_cluster_id()` and the read fell back to
+        # `""`, a key nothing is ever recorded under — so on any state without a cluster_id
+        # (`watchdog_dispatch` builds exactly that, `cluster_id: ""`) the ledger held the
+        # change and the prior came back empty, which renders as no block at all.
+        cluster_id = state.get("cluster_id") or get_cluster_id()
+        prior = render_change_prior(recent_changes(cluster_id))
         if prior:
             system += f"\n\n{prior}"
 
@@ -262,11 +270,22 @@ def _bound_tool_content(content: str) -> str:
     flag on: the never-silent, line-aligned ≤2k-token summary bound — same char
     budget, but cut on a line boundary and stamped with an explicit truncation
     marker so the model is never handed a silently clipped result.
+
+    **Whichever bound applies, the tool's own policy lines survive it** — fixed 2026-08-24.
+    `run_kubectl` caps itself at 8 000 chars and appends `[truncated: N chars omitted …]`
+    *after* that cap, so it returns 8 173 chars and `content[:8000]` deleted the notice with
+    probability 1, on every single over-cap listing; the same cut takes the `[Protected] …
+    withheld` sentence off a filtered one. The chop of the *body* stays silent here, because
+    v4's silence is what the ADR-101 flag exists to change — but a sentence the tool already
+    wrote is not this function's to destroy, on either side of the flag.
     """
+    body, policy = split_policy_lines(content)
     if settings.CORTEX_V5_ENABLED and settings.KI_V5_HARNESS_FANOUT:
         from app.cortex.harness import bound_summary
-        return bound_summary(content)[0]
-    return content[:8000]
+        bounded = bound_summary(body)[0]
+    else:
+        bounded = body[:8000]
+    return f"{bounded}\n{policy}" if policy else bounded
 
 
 async def gather_tools(state: CortexState, config: RunnableConfig) -> dict:
@@ -277,11 +296,18 @@ async def gather_tools(state: CortexState, config: RunnableConfig) -> dict:
     last = state["messages"][-1]
     tool_calls = getattr(last, "tool_calls", None) or []
 
+    # Which calls in this batch produced no usable result. `_run_one` deliberately turns a
+    # tool exception into an ordinary ToolMessage so the model can react to it — which means
+    # the batch returns normally whether every tool worked or every tool failed, and the plan
+    # transition below cannot tell those apart without being told.
+    failures: list[str] = []
+
     async def _run_one(tc: dict) -> ToolMessage:
         name = tc.get("name", "")
         args = tc.get("args") or {}
         tool = _TOOLS_BY_NAME.get(name)
         if tool is None:
+            failures.append(f"{name or '<unnamed>'}: unknown tool")
             return ToolMessage(tool_call_id=tc.get("id", ""), name=name,
                                content=f"Unknown tool: {name}")
         try:
@@ -293,6 +319,7 @@ async def gather_tools(state: CortexState, config: RunnableConfig) -> dict:
             from langgraph.errors import GraphInterrupt
             if isinstance(exc, GraphInterrupt):
                 raise
+            failures.append(f"{name}: {exc}")
             content = f"Tool error: {exc}"
         return ToolMessage(tool_call_id=tc.get("id", ""), name=name, content=_bound_tool_content(str(content)))
 
@@ -314,7 +341,19 @@ async def gather_tools(state: CortexState, config: RunnableConfig) -> dict:
     plan = list(state.get("investigation_plan") or [])
     cursor = state.get("plan_cursor", 0)
     if cursor < len(plan):
-        plan[cursor] = plan[cursor].model_copy(update={"status": "done"})
+        # "done" is a claim that the step was carried out. A batch in which every tool errored
+        # carried nothing out — and the CLI renders "done" as a green ✓, so the investigation
+        # looked like it was progressing while it gathered nothing. The cursor still advances:
+        # the step is finished either way, and a plan that never advances would hang the UI.
+        step_status = "failed" if tool_calls and len(failures) == len(tool_calls) else "done"
+        if failures:
+            logger.warning(
+                f"cortex.gather_tools: {len(failures)} of {len(tool_calls)} tool call(s) "
+                f"failed for plan step {cursor} — marking it {step_status!r} "
+                f"[{'; '.join(failures[:5])}"
+                + (f" (+{len(failures) - 5} more)]" if len(failures) > 5 else "]")
+            )
+        plan[cursor] = plan[cursor].model_copy(update={"status": step_status})
         cursor += 1
         if cursor < len(plan):
             plan[cursor] = plan[cursor].model_copy(update={"status": "in_progress"})
@@ -422,15 +461,43 @@ async def synthesize(state: CortexState, config: RunnableConfig) -> dict:
     }
 
 
+_EVIDENCE_BUDGET = 8000
+
+
 def _gathered_evidence(state: CortexState) -> str:
-    """Concatenate this turn's evidence (tool + fan-out message text) for the reviewer, bounded."""
+    """Concatenate this turn's evidence (tool + fan-out message text) for the reviewer, bounded.
+
+    The bound is never silent. This text is the *entire* world of the adversarial reviewer —
+    it is given the claim and this, and asked which statements the evidence does not support,
+    with a standing instruction to treat "not found" conclusions with suspicion. A silent
+    `[:8000]` therefore does not merely lose evidence, it manufactures the reviewer's grounds
+    for objecting: measured 2026-08-24 on a six-read gather, the decisive
+    `Reason: OOMKilled / Limits: memory 128Mi` lines fell 749 characters past the cut, and what
+    the reviewer received ended mid-row at `web-022   1/1` — a partial line that reads as a
+    complete one. Nothing in the text said any of it was missing.
+
+    The cut is line-aligned and stamped, in the same terms `run_kubectl` uses for partial tool
+    output: absence from this text is not evidence.
+    """
     start = state.get("turn_start_index", 0)
     parts = []
     for msg in (state.get("messages") or [])[start:]:
         content = getattr(msg, "content", "")
         if isinstance(content, str) and content.strip():
             parts.append(content)
-    return "\n\n".join(parts)[:8000]
+    joined = "\n\n".join(parts)
+    if len(joined) <= _EVIDENCE_BUDGET:
+        return joined
+    cut = joined[:_EVIDENCE_BUDGET]
+    nl = cut.rfind("\n")
+    if nl > _EVIDENCE_BUDGET // 2:  # only prefer a line break if it is not wastefully early
+        cut = cut[:nl]
+    dropped = len(joined) - len(cut)
+    return cut.rstrip() + (
+        f"\n\n…[TRUNCATED: {dropped} of {len(joined)} characters of gathered evidence are NOT "
+        f"included above, and what was dropped is the MOST RECENT evidence of this turn. "
+        f"Absence of a fact from this text is NOT evidence that it was not observed.]"
+    )
 
 
 async def remember(state: CortexState, config: RunnableConfig) -> dict:

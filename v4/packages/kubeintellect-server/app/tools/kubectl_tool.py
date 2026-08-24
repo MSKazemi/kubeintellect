@@ -102,6 +102,27 @@ _READ_ONLY_SUBCOMMANDS = {
 }
 
 
+def _exit_is_an_answer(verb: str, args: list[str], code: int) -> bool:
+    """True when kubectl used a non-zero exit to *answer*, not to report a failure.
+
+    Two of the read verbs do this, both documented, both the ordinary outcome:
+
+      * `kubectl diff` — exit 0 no differences, **exit 1 differences found**, >1 kubectl or the
+        diff program failed. Finding differences is the entire point of running it.
+      * `kubectl auth can-i` — **exit 1 when the answer is "no"**, with `no` on stdout.
+
+    Measured 2026-08-24: treating those as failures wrapped a complete diff, and an authoritative
+    `no`, in *"it may be partial, and absence from it is NOT evidence"* — and left `can-i`
+    asymmetric, a clean `yes` against an `no` the agent is told not to trust. Only the listed code
+    counts; a higher one is still an error, which is exactly how kubectl documents `diff`.
+    """
+    if verb == "diff":
+        return code == 1
+    if verb == "auth" and _operand_after_verb(args) == "can-i":
+        return code == 1
+    return False
+
+
 def _is_write_verb(verb: str, args: list[str]) -> bool:
     """True when the command can change something. Unknown verbs count as writes."""
     if not verb:
@@ -567,28 +588,67 @@ def _apply_pipes(output: str, pipe_segments: list[str]) -> str:
     return output
 
 
-def _flag_value(args: list[str], short: str, long: str) -> str | None:
+# Shorthands that never take a value, so a single-dash group continues past them. Measured from
+# `kubectl <verb> --help` across every subcommand of kubectl v1.36.4 rather than recalled: a
+# boolean prints `=false`, a value flag prints `=''` or `=[]`.
+_KUBECTL_BOOLEAN_SHORTHANDS = frozenset("AhiqRtw")
+
+# `-f` and `-p` are the only two letters that are boolean in one subcommand and a value flag in
+# every other: `--follow`/`--previous` on `kubectl logs`, `--filename`/`--patch` elsewhere. The
+# verb is what decides, so a caller that knows it passes it; one that does not stops at those
+# letters rather than guessing, because guessing wrong invents a namespace out of a filename
+# (`-fns.yaml` would otherwise read as `-n s.yaml`).
+_VERB_BOOLEAN_SHORTHANDS = {"logs": frozenset("fp")}
+
+
+def _flag_value(args: list[str], short: str, long: str, verb: str | None = None) -> str | None:
     """The value of a flag, in every form pflag accepts.
 
     `-o json`, `-o=json`, `-ojson`, `--output json`, `--output=json` are one flag. Every place
-    that reads a flag value needs all five, so there is one parser rather than one per caller —
+    that reads a flag value needs all of them, so there is one parser rather than one per caller —
     the `-n` reader and the `-o` reader drifted apart exactly this way, and the `-o` one was
     still missing the attached form when it filtered a namespace listing.
+
+    **Those five were not all of them.** pflag also accepts a *combined shorthand group*, and
+    until 2026-08-24 this read none of that family — it looked for an argument that began with
+    `-n`, and `-Rn kube-system` begins with `-R`. Verified against kubectl v1.36.4 itself:
+    `-Rn kube-system`, `-Rnkube-system` and `-Rn=kube-system` all parse, `-Rwn` fails on the
+    *`w`* alone (so the group is decomposed left to right), and `-Rn` with nothing after it says
+    `flag needs an argument: 'n' in -n` (so `-n` really does consume the next token). Every one
+    of them was invisible here, which meant `kubectl exec -itn kube-system pod -- sh` reached
+    `_check_protected_access` with **no namespace at all** — the guard did not decide kube-system
+    was allowed, it never saw it. Same defect as the 2026-08-20 `-nkube-system` one, one form out.
+
+    A group is walked left to right, exactly as pflag walks it: the first letter that takes a
+    value swallows the rest of the group, so scanning the whole group for the target letter would
+    be wrong — `-ojson` contains an `n`, and reading it as `--namespace` would take whatever came
+    next. The walk therefore stops at any letter not known to be boolean.
     """
+    letter = short.lstrip("-")
+    booleans = _KUBECTL_BOOLEAN_SHORTHANDS | _VERB_BOOLEAN_SHORTHANDS.get(verb or "", frozenset())
     for i, arg in enumerate(args):
         if arg in (short, long):
             return args[i + 1] if i + 1 < len(args) else None
         if arg.startswith(f"{long}="):
             return arg.split("=", 1)[1] or None
-        # Attached shorthand. Guard on `--` first: `--no-headers` and `--overwrite` begin with a
-        # dash and the same letter but are different flags.
-        if arg.startswith(short) and not arg.startswith("--") and len(arg) > len(short):
-            rest = arg[len(short):]
-            return (rest[1:] if rest.startswith("=") else rest) or None
+        # A single-dash group. Guard on `--` first: `--no-headers` and `--overwrite` begin with a
+        # dash and the same letter but are different flags. `-` alone is stdin, not a group.
+        if arg.startswith("-") and not arg.startswith("--") and len(arg) > 1:
+            group = arg[1:]
+            for j, char in enumerate(group):
+                if char == letter:
+                    rest = group[j + 1:]
+                    if rest.startswith("="):
+                        return rest[1:] or None
+                    if rest:
+                        return rest
+                    return args[i + 1] if i + 1 < len(args) else None
+                if char not in booleans:
+                    break  # this letter takes a value; the rest of the group is that value
     return None
 
 
-def _extract_namespace(args: list[str]) -> str | None:
+def _extract_namespace(args: list[str], verb: str | None = None) -> str | None:
     """Extract the -n / --namespace value, in every form kubectl accepts.
 
     kubectl parses its flags with pflag, which accepts a shorthand's value **attached** to it,
@@ -605,7 +665,7 @@ def _extract_namespace(args: list[str]) -> str | None:
     was downgraded from an outright `[Protected]` refusal to an ordinary approval prompt. Same
     protected namespace, same intent, two characters of whitespace apart.
     """
-    return _flag_value(args, "-n", "--namespace")
+    return _flag_value(args, "-n", "--namespace", verb)
 
 
 def _targeted_namespaces(verb: str, args: list[str]) -> list[str]:
@@ -866,7 +926,7 @@ def _filter_namespace_output(verb: str, args: list[str], output: str) -> str:
         return output
 
     blocked = settings.kubectl_blocked_namespaces
-    out_format = _flag_value(args, "-o", "--output")
+    out_format = _flag_value(args, "-o", "--output", verb)
 
     if verb == "describe":
         return _filter_described_namespaces(output, blocked)
@@ -1054,7 +1114,7 @@ def _filter_all_namespaces_output(verb: str, args: list[str], output: str) -> st
         return output
 
     blocked = settings.kubectl_blocked_namespaces
-    out_format = _flag_value(args, "-o", "--output")
+    out_format = _flag_value(args, "-o", "--output", verb)
 
     if out_format == "name" or (out_format and "jsonpath" in out_format):
         return (
@@ -1181,7 +1241,7 @@ def _check_protected_access(verb: str, args: list[str], stdin: str | None = None
         return all_ns_err
 
     blocked = settings.kubectl_blocked_namespaces
-    candidates = [_extract_namespace(args), *_targeted_namespaces(verb, args)]
+    candidates = [_extract_namespace(args, verb), *_targeted_namespaces(verb, args)]
     candidates.extend(sorted(_manifest_namespaces(stdin)))
     for ns in candidates:
         # Case-folded on both sides: the blocklist is folded in `config.py`, and the value here
@@ -1594,28 +1654,58 @@ def run_kubectl(
             "or run 'kubeintellect kind-setup' to provision a local cluster."
         )
 
-    output = proc.stdout or proc.stderr or "(no output)"
-    logger.debug(f"run_kubectl: exit={proc.returncode} output_len={len(output)} cmd={cmd}")
-
-    # ── 5b. Error interpretation ──────────────────────────────────────────────
-    # Append a single-line hint when kubectl exits non-zero and the stderr
-    # matches a known pattern. Original error is preserved verbatim.
-    if proc.returncode != 0 and settings.KUBECTL_ERROR_HINTS_ENABLED:
-        output, pattern_name = kubectl_errors.annotate(output)
-        if pattern_name:
-            logger.info(
-                "kubectl_error_interpreted "
-                f"pattern={pattern_name} exit_code={proc.returncode} cmd={cmd!r}",
-                extra={"pattern": pattern_name, "exit_code": proc.returncode},
-            )
+    stdout, stderr = proc.stdout or "", proc.stderr or ""
+    # Whether *kubectl* printed anything, decided before the emulator runs: `_apply_pipes` turns
+    # an empty string into "(no matching lines)", and reporting that as output kubectl produced
+    # would be a claim about the cluster made by our own grep.
+    kubectl_printed = bool(stdout)
+    logger.debug(
+        f"run_kubectl: exit={proc.returncode} stdout_len={len(stdout)} "
+        f"stderr_len={len(stderr)} cmd={cmd}"
+    )
 
     # ── 6. Pipe emulation (grep) ─────────────────────────────────────────────
+    #
+    # Applies to STDOUT ONLY, which is what a real shell does — `kubectl … | grep x` never feeds
+    # kubectl's stderr to grep. This used to run over the merged stdout-or-stderr string, so a
+    # command that FAILED had its error grepped away: measured 2026-08-24, an RBAC `Forbidden`
+    # piped through `grep Running` returned `(no matching lines)` — byte-for-byte the same answer
+    # a successful listing with nothing running gives. The agent reads that as evidence about the
+    # cluster when it was never allowed to look, and the error hint added just above it (which
+    # correctly identified the denial) went with it.
     if pipe_segments:
-        output = _apply_pipes(output, pipe_segments)
+        stdout = _apply_pipes(stdout, pipe_segments)
 
     # ── 6b. Strip blocked namespaces from namespace listings ─────────────────
-    output = _filter_namespace_output(verb, args, output)
-    output = _filter_all_namespaces_output(verb, args, output)
+    # Listing filters parse a listing, so they see stdout only — never an error message.
+    stdout = _filter_namespace_output(verb, args, stdout)
+    stdout = _filter_all_namespaces_output(verb, args, stdout)
+
+    # ── 6c. Compose the answer ───────────────────────────────────────────────
+    #
+    # A non-zero exit is stated, not implied. `output = stdout or stderr` dropped stderr whenever
+    # stdout had anything at all, so a partial failure — `kubectl get pods -A` where one namespace
+    # is forbidden — returned a complete-looking listing with no sign a namespace was denied.
+    if proc.returncode != 0 and not _exit_is_an_answer(verb, args, proc.returncode):
+        detail = stderr.strip() or "(kubectl wrote nothing to stderr)"
+        # Append a single-line hint when the stderr matches a known pattern. The original error
+        # is preserved verbatim.
+        if settings.KUBECTL_ERROR_HINTS_ENABLED:
+            detail, pattern_name = kubectl_errors.annotate(detail)
+            if pattern_name:
+                logger.info(
+                    "kubectl_error_interpreted "
+                    f"pattern={pattern_name} exit_code={proc.returncode} cmd={cmd!r}",
+                    extra={"pattern": pattern_name, "exit_code": proc.returncode},
+                )
+        output = f"[kubectl exited {proc.returncode}] {detail}"
+        if kubectl_printed and stdout.strip():
+            output += (
+                f"\n\nkubectl also produced this output before/alongside the error — it may be "
+                f"partial, and absence from it is NOT evidence:\n{stdout}"
+            )
+    else:
+        output = stdout or stderr or "(no output)"
 
     # ── 7. Output cap ────────────────────────────────────────────────────────
     limit = 8_000

@@ -236,6 +236,21 @@ Every destructive or write operation hits four checks before executing.
 > refusal to an approval prompt they could simply approve. All five spellings are now equivalent.
 > See `tests/test_kubectl_namespace_flag_forms.py`.
 >
+> **Five was not all of them.** pflag also accepts a *combined shorthand group*, and a guard that
+> looks for an argument beginning with `-n` does not see one that begins with `-R`. Until
+> 2026-08-24 the whole family was invisible: `kubectl get pods -Rn kube-system`,
+> `kubectl exec -itn kube-system pod -- sh` and `kubectl logs -fn kube-system pod` all reached the
+> cluster, because the guard never saw a namespace to check — it did not decide `kube-system` was
+> allowed. Verified against kubectl v1.36.4 itself: `-Rwn` fails on the `w` alone, so the group is
+> decomposed left to right, and `-Rn` with nothing after it reports `flag needs an argument`, so
+> `-n` really does consume the next token. A group is now walked the way pflag walks it, stopping
+> at the first letter that takes a value — scanning the whole group would read the `n` in
+> `-ojson` as a namespace. The boolean/value split is measured from `kubectl <verb> --help` across
+> every subcommand rather than recalled, and `-f`/`-p` are the only letters whose answer depends
+> on the verb (`--follow`/`--previous` on `logs`, `--filename`/`--patch` everywhere else), so the
+> verb is threaded through instead of guessed. See
+> `tests/test_a_shorthand_group_is_still_the_flag.py`.
+>
 > And **whether the target is on the command line at all**. `kubectl apply -f -` names neither a
 > resource nor a namespace in argv — both live in the YAML on stdin, in `kind:` and
 > `metadata.namespace:`. Until 2026-08-20 the checks parsed only argv, so applying a Pod whose
@@ -534,6 +549,12 @@ Layer 4 — pipe emulation
   -A -B -C -m -e (long forms too). **Any other flag is named and refused** —
   it is never silently ignored. Verified byte-for-byte against the system
   grep in tests/test_pipe_grep_matches_real_grep.py.
+  The pipe applies to **stdout only**, exactly as a real shell does. Until 2026-08-24 it
+  ran over a merged stdout-or-stderr string, so a command that FAILED had its error
+  filtered away: an RBAC `Forbidden` piped through `grep Running` returned
+  `(no matching lines)` — the same answer a successful listing with nothing running
+  gives. The agent reads a tool result as observation, so "I was not allowed to look"
+  must never serialize to the same string as "I looked and found nothing".
 
 Layer 5 — YAML pre-validation
   stdin YAML is parsed with yaml.safe_load_all before being passed to kubectl.
@@ -550,7 +571,21 @@ Layer 6 — namespace output filter
   row belonging to a protected namespace is indistinguishable from any other.
   **Every filtered listing says so** — text formats gain a trailing
   `[Protected] N namespace(s) withheld … This listing is NOT the complete set.`, structured
-  formats gain a `withheldByPolicy` field inside the document.
+  formats gain a `withheldByPolicy` field inside the document. *Every* now includes
+  `GET /v1/namespaces`, which filters the same blocklist through a different code path: it
+  received the filter in the 2026-08-20 pass and not the announcement, so until 2026-08-24 it
+  answered a question the tool refused out loud by quietly returning a shorter list. `kq` read
+  that as a definite absence and told operators a protected namespace was *"not found in the
+  cluster"* — see [API reference](api-reference.md#get-v1namespaces).
+
+  ⚠️ **The announcement also has to reach the model.** `run_kubectl` returns the notice on the
+  listing's last line, and the coordinator trims tool output before it enters the LLM context by
+  keeping a header plus the first 30 rows. The last line is exactly what that cut removes, and
+  the notice matches no "important row" pattern — so until 2026-08-24 a filtered listing longer
+  than 30 rows reached the agent with the `[Protected] … withheld` sentence **deleted**, and the
+  same trim dropped up to 170 ordinary rows without saying so. The guarantee held for the tool's
+  return value and not for what the agent read. Policy lines are now lifted out of the trim and
+  re-attached, and dropped rows and lines are counted in the notice.
 
 Layer 7 — output cap
   Output is truncated at 8 000 characters regardless of what kubectl returns.
@@ -590,6 +625,13 @@ therefore applies the resource blocklist to its rendered output and the namespac
 to its `-n` flag, in all five spellings and in either order (`helm -n X list` as well as
 `helm list -n X`). `helm list -A` is filtered in table, JSON and YAML form, and an
 unparseable payload is replaced rather than returned unfiltered.
+
+The filters see **stdout only**. Until 2026-08-24 `run_helm` merged stderr into stdout before
+anything decided what the output was, so helm's routine `WARNING: Kubernetes configuration file
+is group-readable` became part of the document handed to `json.loads` — and a **successful**
+`helm list -A -o json` returned the same string as an unreachable cluster: *"[Protected] This
+release listing could not be parsed"*, with the release and the error both deleted. A filter
+parses a listing; showing it an error message makes the filter's own message the answer.
 
 The stripping runs on **every** `helm get`, not on an enumerated pair of subcommands. Until
 2026-08-20 it fired only when the subcommand parsed as `manifest` or `all`, and that parse read
@@ -909,11 +951,38 @@ it were a learned fact. The experimental Memory V5 upgrade defends this behind
   `user` field of `POST /v1/chat/completions` is free-form and **nothing keys a trust decision
   off it** — it identifies a caller for logging and recall scoping, it does not vouch for one.
 - **Tamper-evidence** — an append-only, per-cluster SHA-256 **hash chain** over memory-mutating
-  events (the same primitive as the flight recorder, §nearby); a silent edit, delete, or reorder
-  of learned memory is detectable via `verify_memory_chain`.
+  events (the same primitive as the flight recorder, §nearby). `verify_memory_chain` detects a
+  silent edit, a reorder, and a deletion, including the case a hash chain is structurally blind
+  to: **truncation**. Cutting the newest entries leaves a shorter chain in which every link
+  still verifies, so a `memory_chain_head` row records how far the chain got and a shorter chain
+  contradicts it; a later append continues *past* the head rather than filling the gap, so the
+  loss stays visible instead of healing on the next write. Re-anchoring after a deliberate purge
+  is therefore an explicit operator act (clear the cluster's audit rows *and* its head row).
+  It answers with **two** flags, not one: `valid` (*nothing contradicted these rows*) and
+  `verified` (*the check actually ran*). A chain whose rows or anchor could not be read is
+  `valid=True, verified=False` — **not** a tamper. Reporting an unreachable database as
+  tampering would be a false accusation about your own data, and an alarm that fires on
+  infrastructure failures is one operators learn to ignore. Read both flags; `valid` alone
+  cannot tell an intact chain from one nobody could check.
+  Two limits, stated plainly: this is tamper-*evidence*, not prevention — an attacker with full
+  database write can forge the head as well, and what the anchor removes is the tamper that
+  needs no second edit. And **nothing invokes the verifier on your behalf today**: there is no
+  endpoint, CLI command or scheduled check that calls it, so "detectable" currently means
+  "detectable by a query you run yourself".
 - **Tenant isolation** — Postgres Row-Level-Security policies are scaffolded (enabled with a
   transaction-scoped `SET LOCAL ki.cluster_id`), and a **right-to-be-forgotten** operation purges
   a subject's memory on request.
+  It answers with a `complete` flag, not only a row count, and you must branch on that flag. A
+  count of `0` is a genuine "this subject had nothing stored"; a purge that could not finish —
+  one relation unreadable, no database pool, or an entity named without a cluster — comes back
+  `complete=False` with a reason, and the rows it did delete are still reported. Until
+  2026-08-24 the operation returned only the counts, so a failed delete showed up as an
+  **absent key** and `{}` meant both "nothing was attempted" and "the first delete failed";
+  an entity purge with no `cluster_id` ran against the literal cluster named `''`, matched
+  nothing, and reported a well-formed receipt for an entity still in the graph. Erasure is the
+  one answer a subject cannot re-check, so it now has to be earned rather than assumed.
+  As with the chain verifier above, **nothing invokes it on your behalf today** — there is no
+  endpoint or CLI command that calls it.
 
 See [Memory](memory.md) and [Configuration](configuration.md) for the flags. This layer is
 opt-in and independent of the V2 controls above.

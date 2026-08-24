@@ -63,7 +63,7 @@ opt-in ones are called out. Defaults below are verified against
 | `CORTEX_V4_ENABLED` | `false` | The V4 explicit-node reasoning graph (triage→gather→synthesize→remember) with tiered models. | — | Medium — swaps the reasoning engine; opt-in preview (flips when `cluster_resolved` reaches V2 parity). |
 | `PREDICTIVE_DETECTION_ENABLED` | `false` | Anticipatory (trend) detection that warns before a slow-burn failure; still zero-token, capped at `A1`. | `PROMETHEUS_URL` | Low–Medium — never auto-fixes; fail-open. |
 | `NL_DETECTOR_AUTHORING_ENABLED` | `false` | Compile a plain-English failure into a **shadow** detector; `kq detector`. | Sensorium | Low — shadow detectors never reach the watchtower until a human promotes them. |
-| `POSTMORTEM_LLM_NARRATIVE` | `false` | Adds an LLM narrative on top of the deterministic postmortem timeline. | `POSTMORTEM_ENABLED` | Low — the only token-spending part; falls back to the deterministic timeline on failure. |
+| `POSTMORTEM_LLM_NARRATIVE` | `false` | Adds an LLM narrative on top of the deterministic postmortem timeline. | `POSTMORTEM_ENABLED` | Low — the only token-spending part; falls back to the deterministic timeline on failure, and says in the document that it did. |
 
 > **Anthropic note.** `LLM_PROVIDER=anthropic` is only wired through the V4 cortex —
 > it has no effect unless `CORTEX_V4_ENABLED=true`.

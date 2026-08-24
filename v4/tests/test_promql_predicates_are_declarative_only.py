@@ -62,7 +62,7 @@ class TestAPromqlOnlyDetectorIsRejected:
         assert errors and "never evaluated" in errors[0], errors
 
     def test_the_authoring_prompt_does_not_claim_it_fires(self):
-        src = (_APP / "detectors" / "authoring.py").read_text()
+        src = (_APP / "detectors" / "authoring.py").read_text(encoding="utf-8")
         assert "firing = non-empty result" not in src
         assert "NOT evaluated" in src
 
@@ -124,7 +124,7 @@ def test_no_code_path_evaluates_promql():
         rel = str(path.relative_to(_APP))
         if rel in allowed:
             continue
-        for n, line in enumerate(path.read_text().splitlines(), 1):
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if re.search(r"\bdet(ector)?\.promql\b|\bblock\.promql\b|\.promql\b", line):
                 readers.append(f"{rel}:{n}: {line.strip()}")
     assert readers == [], (

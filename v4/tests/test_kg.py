@@ -367,9 +367,19 @@ class TestFailureDiscipline:
     async def test_link_incident_swallows(self):
         assert await kg.link_incident("c1", "default", "web-1", "ep-1") is None
 
-    async def test_changes_swallows(self):
-        assert await kg.changes("c1", 0.0, 1.0) == []
+    async def test_changes_raises_instead_of_swallowing(self):
+        """The two READS in this class are the exception to its rule, since 2026-08-24.
 
-    async def test_recent_changes_block_swallows(self, mocker):
-        mocker.patch.object(kg, "changes", mocker.AsyncMock(side_effect=RuntimeError("x")))
-        assert await kg.recent_changes_block("c1") == ""
+        The writes above must swallow: a failed observation write cannot be allowed to kill a
+        turn, and nothing downstream reads its return value as a fact. `changes()` is read into
+        a prompt, where `[]` is already the model's evidence that the cluster was calm — so
+        swallowing here does not contain a failure, it converts one into a false statement.
+        """
+        with pytest.raises(kg.KGUnavailable):
+            await kg.changes("c1", 0.0, 1.0)
+
+    async def test_recent_changes_block_propagates(self, mocker):
+        mocker.patch.object(kg, "changes",
+                            mocker.AsyncMock(side_effect=kg.KGUnavailable("x")))
+        with pytest.raises(kg.KGUnavailable):
+            await kg.recent_changes_block("c1")

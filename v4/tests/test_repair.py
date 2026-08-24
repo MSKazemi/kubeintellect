@@ -32,18 +32,27 @@ class TestStripFences:
 class TestProposeFix:
     async def test_returns_corrected(self):
         out = await propose_fix(_ORIG, "runAsNonRoot must be true", llm=_LLM(_FIXED))
-        assert "runAsNonRoot: true" in out
+        assert "runAsNonRoot: true" in out.manifest
+        assert out.repaired is True
+        assert out.reason == ""
 
     async def test_strips_fences_from_reply(self):
         out = await propose_fix(_ORIG, "v", llm=_LLM(f"```yaml\n{_FIXED}```"))
-        assert out.startswith("apiVersion") and "runAsNonRoot: true" in out
+        assert out.manifest.startswith("apiVersion") and "runAsNonRoot: true" in out.manifest
+        assert out.repaired is True
 
     async def test_empty_reply_returns_original(self):
-        assert await propose_fix(_ORIG, "v", llm=_LLM("")) == _ORIG
+        out = await propose_fix(_ORIG, "v", llm=_LLM(""))
+        assert out.manifest == _ORIG
+        assert out.repaired is False and "empty response" in out.reason
 
     async def test_reply_without_kind_returns_original(self):
         # a reply that lost the manifest (e.g. prose) must not overwrite it
-        assert await propose_fix(_ORIG, "v", llm=_LLM("Sure! I fixed it for you.")) == _ORIG
+        out = await propose_fix(_ORIG, "v", llm=_LLM("Sure! I fixed it for you."))
+        assert out.manifest == _ORIG
+        assert out.repaired is False and "not a manifest" in out.reason
 
     async def test_exception_fails_safe(self):
-        assert await propose_fix(_ORIG, "v", llm=_Boom()) == _ORIG
+        out = await propose_fix(_ORIG, "v", llm=_Boom())
+        assert out.manifest == _ORIG
+        assert out.repaired is False and "raised" in out.reason

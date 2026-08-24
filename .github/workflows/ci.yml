@@ -43,8 +43,15 @@ jobs:
       - name: Sync dependencies
         run: uv sync
 
+      # Every tracked Python root, not just the two application packages. Until 2026-08-24 this
+      # step named only `app/` and `ki-protocol/`, so all 167 files under `tests/`, the whole
+      # `kube-q` CLI and every build script were unlinted — a contributor's new test file was
+      # never seen by the gate that tells them their PR is clean. Widening it cost 31 fixes.
       - name: ruff check
-        run: uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/
+        run: >-
+          uv run ruff check
+          packages/kubeintellect-server/app/ packages/ki-protocol/ packages/kube-q/
+          tests/ scripts/
 
   file-modes:
     name: File modes

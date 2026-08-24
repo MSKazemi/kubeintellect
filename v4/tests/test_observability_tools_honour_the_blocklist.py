@@ -32,6 +32,25 @@ from app.tools.prometheus_tool import query_prometheus, query_prometheus_range_r
 
 SECRET_LINE = 'level=info msg="authenticated" token=eyJhbGciOiJSUzI1NiJ9.SECRET'
 
+_LOKI_URL = "http://loki.invalid:3100"
+_PROM_URL = "http://prometheus.invalid:9090"
+
+
+@pytest.fixture(autouse=True)
+def _datasources_are_configured(monkeypatch):
+    """Configure both datasources here rather than inheriting the developer's `v4/.env`.
+
+    Both tools short-circuit on an unset URL and return "… is not configured", never touching
+    the blocklist. That turns this file into two different suites depending on whose machine it
+    runs on: with a URL set it measures the guarantee, without one the input-gate tests fail
+    outright and — worse — every `assert "SECRET" not in out` passes **because nothing ran**.
+    This file was committed while only the first environment existed, so it had never run
+    anywhere but a laptop carrying an untracked `v4/.env`. The URLs below are unroutable on
+    purpose: every request in this file is patched out, so a real connection is a bug.
+    """
+    monkeypatch.setattr(settings, "LOKI_URL", _LOKI_URL)
+    monkeypatch.setattr(settings, "PROMETHEUS_URL", _PROM_URL)
+
 
 def _fake_client(namespaces, kind="logs"):
     """A datasource that answers honestly: it labels results with the namespaces given."""
@@ -176,7 +195,8 @@ class TestNoOverBlocking:
 
         def node_metrics(url, params=None, **_kw):
             sent.append(params.get("query"))
-            r = MagicMock(); r.status_code = 200
+            r = MagicMock()
+            r.status_code = 200
             r.json.return_value = {"status": "success", "data": {
                 "resultType": "vector",
                 "result": [{"metric": {"node": "worker-1"}, "value": [1, "0.42"]}]}}
@@ -216,3 +236,28 @@ class TestOneDefinition:
             assert sent, "loki kept a hardcoded blocklist of its own"
             out, sent = _prom('up{namespace="vault-system"}')
             assert "[Protected]" in out and sent == []
+
+
+class TestAnUnconfiguredDatasourceCannotBeWhatMakesThesePass:
+    """The vacuity this file's fixture exists to rule out, pinned as its own case.
+
+    Without the fixture the negative assertions above — "the secret is not in the output" —
+    hold trivially, because the output is a configuration error message. A test that passes
+    when the code under test never executed is the failure mode this whole audit line is about.
+    """
+
+    def test_without_a_url_the_tool_never_reaches_the_blocklist(self, monkeypatch):
+        monkeypatch.setattr(settings, "LOKI_URL", "")
+
+        out, sent = _loki('{namespace="prod"}')
+
+        assert "not configured" in out
+        assert sent == [], "nothing should have been sent"
+        # and here is the trap, stated out loud: this passes, and proves nothing.
+        assert "SECRET" not in out
+
+    def test_with_the_url_the_same_call_actually_runs(self):
+        out, sent = _loki('{namespace="prod"}')
+
+        assert "not configured" not in out
+        assert sent == ['{namespace="prod"}'], "the query never reached the fake datasource"

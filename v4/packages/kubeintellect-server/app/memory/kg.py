@@ -476,12 +476,31 @@ async def link_incident(
 
 # ── Time-travel diff ──────────────────────────────────────────────────────────
 
+class KGUnavailable(RuntimeError):
+    """A graph read was attempted and could not be answered — distinct from "nothing matched".
+
+    The twin of `episodes.MemoryUnavailable`, and it exists for the same measured reason. A
+    failed `changes()` returned `[]`, `recent_changes_block` rendered that as `""`, and the
+    triage prompt simply omitted its "Recent cluster changes (last 15m)" section — byte for
+    byte what a genuinely calm cluster produces. "What changed in the last fifteen minutes" is
+    the first question of an incident, and a Postgres outage answered it with *nothing did*.
+
+    Deliberately narrower than the write path: `upsert_entity`/`open_edge`/`close_edge` and the
+    ingest helpers still swallow, because a failed observation write must never kill a turn.
+    A read that feeds the model is the opposite case — its silence is an assertion.
+    """
+
+
 async def changes(cluster_id: str, t1: float, t2: float) -> list[dict]:
     """Edges that opened or closed in (t1, t2], joined to entity identities.
 
     Each dict: {"change": "opened"|"closed", "at": <unix float>, "src":
     "Kind/ns/name", "rel": ..., "dst": "Kind/ns/name", "attrs": {...}}.
     An edge both opened and closed inside the window yields two rows.
+
+    Raises `KGUnavailable` if the query could not be answered. An empty list means the window
+    held no changes, and nothing else. No pool is a configuration state, not a failure, and
+    still returns `[]` — the same split `episodes.recall_episodes` makes.
     """
     if _pool is None:
         return []
@@ -521,7 +540,7 @@ async def changes(cluster_id: str, t1: float, t2: float) -> list[dict]:
         return out
     except Exception as exc:
         logger.warning(f"kg: changes failed: {exc}")
-        return []
+        raise KGUnavailable(f"the cluster change log could not be read: {exc}") from exc
 
 
 def _edge_identity(row) -> dict:
@@ -747,23 +766,20 @@ async def recent_changes_block(
     """Render changes() of the last N minutes as a compact prompt block.
 
     One line per change ("14:02:11 opened Pod/s/web-1 -runs_on-> Node//worker-2"),
-    capped at `limit` lines plus a "(+N more)" tail. Empty string when nothing
-    changed (or on any failure).
+    capped at `limit` lines plus a "(+N more)" tail. Empty string when nothing changed —
+    and *only* then. Propagates `KGUnavailable` when the window could not be read, because
+    the caller renders this into a prompt and "" is already the model's evidence of calm.
     """
-    try:
-        now = time.time()
-        rows = await changes(cluster_id, now - minutes * 60, now)
-        if not rows:
-            return ""
-        lines = [
-            f"{_ts(row['at']).strftime('%H:%M:%S')} {row['change']}"
-            f" {row['src']} -{row['rel']}-> {row['dst']}"
-            for row in rows[:limit]
-        ]
-        overflow = len(rows) - limit
-        if overflow > 0:
-            lines.append(f"(+{overflow} more)")
-        return "\n".join(lines)
-    except Exception as exc:
-        logger.warning(f"kg: recent_changes_block failed: {exc}")
+    now = time.time()
+    rows = await changes(cluster_id, now - minutes * 60, now)
+    if not rows:
         return ""
+    lines = [
+        f"{_ts(row['at']).strftime('%H:%M:%S')} {row['change']}"
+        f" {row['src']} -{row['rel']}-> {row['dst']}"
+        for row in rows[:limit]
+    ]
+    overflow = len(rows) - limit
+    if overflow > 0:
+        lines.append(f"(+{overflow} more)")
+    return "\n".join(lines)

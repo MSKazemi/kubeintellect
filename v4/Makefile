@@ -368,8 +368,8 @@ db-purge: ## Run reflexion retention (delete old rca_outcomes / unverified patte
 	  -d $${POSTGRES_DB:-kubeintellect} \
 	  -c "SELECT * FROM reflexion_purge($${RETAIN_OUTCOMES_DAYS:-90}, $${RETAIN_PATTERNS_DAYS:-30});"
 
-lint: ## Run ruff linter and format check
-	uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/
+lint: ## Run ruff linter (every tracked Python root, as CI does) and the format check
+	uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/ packages/kube-q/ tests/ scripts/
 	uv run ruff format --check packages/kubeintellect-server/app/ packages/ki-protocol/
 
 typecheck: ## Run mypy over the whole workspace (blocking CI gate — must stay at zero errors)

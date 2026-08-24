@@ -15,6 +15,16 @@ operator to look for a deleted namespace instead of at their kubeconfig. The cli
 distinguishes "could not determine" from "not present" and accepts the namespace in the first
 case — it just never saw the first case, because this endpoint always claimed success.
 An empty list now means exactly one thing: the cluster has no namespaces the caller may see.
+
+And **a short list said nothing about being short.** The 2026-08-20 pass added the filter here
+and the `withheld_note` vocabulary to `run_kubectl` on the same day, but only one of the two
+paths got both halves. Asked *"does the monitoring namespace exist?"*, this product answered
+three different ways: `kubectl get ns monitoring` was refused out loud with `[Protected]`,
+`kubectl get ns` returned a list ending *"This listing is NOT the complete set"*, and this
+endpoint returned `{"namespaces": ["default", "shop"]}` — silence. `kq` reads that silence as a
+definite absence and told the operator **"Namespace 'monitoring' not found in the cluster"**,
+which is false, and then pointed them at `list all ns`, the one path that would have told them
+the truth. The response now carries the same withheld marker a filtered `-o json` listing does.
 """
 from __future__ import annotations
 
@@ -26,12 +36,19 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.core.config import settings
+from app.tools.namespace_guard import withheld_sentence
 
 router = APIRouter()
 
 
 class NamespacesResponse(BaseModel):
     namespaces: list[str]
+    # Deliberately named for `namespace_guard.WITHHELD_KEY`, so a filtered listing carries the
+    # same marker here as inside `kubectl get ns -o json`. A count, not the names: the sentence
+    # says the listing is short without re-publishing what was taken out of it. Empty string
+    # means nothing was removed — which is a different fact from "the cluster has two
+    # namespaces", and the whole reason this field exists.
+    withheldByPolicy: str = ""
 
 
 @router.get("/namespaces", response_model=NamespacesResponse)
@@ -69,4 +86,9 @@ def list_namespaces() -> NamespacesResponse:
 
     names = proc.stdout.split() if proc.stdout.strip() else []
     blocked = settings.kubectl_blocked_namespaces
-    return NamespacesResponse(namespaces=[n for n in names if n.lower() not in blocked])
+    visible = [n for n in names if n.lower() not in blocked]
+    dropped = len(names) - len(visible)
+    return NamespacesResponse(
+        namespaces=visible,
+        withheldByPolicy=withheld_sentence(dropped, "namespace") if dropped else "",
+    )

@@ -70,7 +70,10 @@ async def main() -> int:
         await security.record_memory_audit(pool, cluster_id=CLUSTER, kind="episode_write",
                                             ref_id=f"e{i}", payload={"i": i})
     ok = await security.verify_memory_chain(pool, CLUSTER)
-    check("verify_memory_chain True over real audit rows", ok)
+    # Both halves: a verdict that says "valid" because nothing could be read would pass a
+    # check on `.valid` alone, which is precisely what this probe exists to rule out.
+    check("verify_memory_chain intact AND verified over real audit rows",
+          ok.valid and ok.verified)
 
     # Direct DB tamper → chain must break.
     await pool.execute(
@@ -78,7 +81,8 @@ async def main() -> int:
         "WHERE cluster_id=$1 AND seq=1", CLUSTER)
     security._audit_chains.pop(CLUSTER, None)  # drop cache so verify re-reads DB
     broke = await security.verify_memory_chain(pool, CLUSTER)
-    check("verify_memory_chain detects a direct DB tamper", broke is False)
+    check("verify_memory_chain detects a direct DB tamper",
+          broke.valid is False and broke.verified is True)
 
     await pool.close()
     print(f"\n==== {'ALL PASS' if not FAIL else 'FAILURES: ' + ', '.join(FAIL)} ====")

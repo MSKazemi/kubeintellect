@@ -145,6 +145,25 @@ that normalise cluster signals into `Observation` records and feed them to the d
 This replaced the per-query snapshot as the primary perception path (the snapshot survives as a
 chat-turn fallback).
 
+!!! note "Replayed history is not news"
+
+    A `kubectl --watch` connection replays recent event history the moment it opens, so
+    without a filter every reconnect would re-fire detectors on warnings that are minutes
+    old. `app/sensorium/k8s_watcher.py` drops any `Event` whose own timestamp predates the
+    watch epoch by more than 30 seconds.
+
+    An event the watcher **cannot** date — no `lastTimestamp`/`eventTime`/`creationTimestamp`,
+    or one it cannot parse — is processed anyway: refusing to act on a real incident because
+    of a timestamp quirk is the worse failure for a watchtower. That choice is never silent.
+    The server log carries one `k8s_watcher: … the event-staleness filter cannot run` warning
+    per distinct reason per connection, so "the filter passed this event" and "the filter did
+    not run" are always distinguishable.
+
+    Timestamps with no timezone suffix are read as UTC, which is what Kubernetes emits. Reading
+    them as host-local time instead shifted every age by the host's UTC offset — east of UTC
+    that dropped *current* events as stale, which is a missed detection rather than a cosmetic
+    error.
+
 **The left zone costs nothing.** `app/detectors/` is described in its own docstring as *"innate
 immunity — compiled, zero-token detection of known failures"* (ADR-006). Detectors evaluate
 compiled predicates — status regexes, event reason/message matching, instant PromQL — against
@@ -155,17 +174,33 @@ the obvious design, and it is both expensive and noisy.
 the line marked `finding` — everything left of it is free and always on; everything right of it
 costs tokens and happens rarely.
 
-**Two independent things gate a write.** `app/autonomy/` (ADR-003) caps what may happen at all:
+**What gates an autonomous write today.** `app/autonomy/` (ADR-003) caps what may happen at all:
 A0 observe → A1 investigate + report → A2 propose (HITL) → A3 auto-fix, allowlisted patterns
-only and rollback-armed, configured per cluster with per-namespace overrides. Then
-`app/tools/aci/mutating.py` stamps every proposed mutation with a **rollback class** and routes
-it through a single write-authority decision — composing the blast-radius/spend gate, the action
-class's statistically earned rung, and reversibility — which returns **auto**, **approve**, or
-**deny** *before anything executes*.
+only and rollback-armed, configured per cluster with per-namespace overrides. On the live A3
+path (`app/autonomy/watchtower.py`) a write must clear all three of them: the cluster's ladder
+level, an explicit `(playbook, namespace)` allowlist entry, and `auto_write_permitted()`, which
+denies outright on an engaged kill switch or a declared change freeze.
 
-The gate is enforced server-side at that chokepoint, not in the prompt. A prompt-level "please
-ask first" constraint is not a security boundary, and shipping one that pretends to be would be
-worse than shipping nothing.
+**Where that path is going.** `app/tools/aci/mutating.py` stamps a proposed mutation with a
+**rollback class** and composes one write-authority decision — the blast-radius/spend gate, the
+action class's earned rung, and reversibility — returning **auto**, **approve** or **deny**
+*before anything executes*, and dry-running the command server-side before an `auto` stands.
+That chokepoint is built and tested, but **it is not yet wired into the graph**: `earned_rung`
+still arrives as its `L2` default, and `promotion_outcomes` — the ADR-102 store that would earn
+it — has no production writer yet. It is the designed destination for A3, not a brake running
+in your cluster today.
+
+The decision function itself is built and tested, and its asymmetry runs one way only: a
+critical incident blocks promotion **and** forces demotion. That second half was missing —
+the CUSUM fast trip (2 postcondition failures in 24 h ⇒ −1 rung) skipped failures marked
+critical, and the two ADR triggers that exist for critical incidents are L4-scoped, so below
+L4 the worst failures were the only ones no fast trigger watched. Since nothing writes
+`promotion_outcomes` yet, the gap was latent rather than live; it is fixed regardless,
+because this is the code that will decide when to take authority away.
+
+Both are enforced server-side, in the write path rather than in the prompt. A prompt-level
+"please ask first" constraint is not a security boundary, and shipping one that pretends to be
+would be worse than shipping nothing.
 
 **Everything lands in the log.** `app/db/flight_recorder.py` (ADR-005) appends every typed event
 to a hash-chained decision log, chained per episode so after-the-fact tampering is detectable.

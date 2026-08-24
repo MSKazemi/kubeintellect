@@ -7,10 +7,16 @@ description: >-
 
 All KubeIntellect settings are environment variables. They can be set in:
 
+- Shell environment — **highest priority**, overrides every file
 - `~/.kubeintellect/.env` — written by `kubeintellect init`; used for pip installs
-- `.env` in the project directory — takes precedence, used for dev overrides
-- Helm `values.yaml` (in-cluster deploy) — maps to a Kubernetes Secret and ConfigMap
-- Shell environment — highest priority, overrides all files
+- `.env` in the project directory — **lowest priority**, used for dev overrides
+- Helm `values.yaml` (in-cluster deploy) — maps to a Kubernetes Secret and ConfigMap, which
+  reach the process as shell environment variables and therefore win
+
+`init`, `status`, `serve` and `db-init` all resolve configuration through the same loader, in
+that order, so what `kubeintellect status` reports is what the server runs on. A variable set in
+more than one place takes the value from the highest source listed above — in particular a repo
+`.env` can never override the admin keys in your `~/.kubeintellect/.env`.
 
 This reference covers the application's per-version `v4/.env` settings. A separate
 repo-**root** `.env` holds shared infrastructure config used by the root Makefile
@@ -211,6 +217,16 @@ KubeIntellect uses `kubectl` to interact with your cluster. `kubectl` must be in
 > (the namespace keeps the permissive default the override existed to tighten), and
 > `AUTONOMY_A3_ALLOWLIST`, where a dropped entry fails closed.
 >
+> **`ALLOWED_ORIGINS` is covered too, and it is the one that fails in both directions.**
+> Whitespace is now stripped, so the natural `http://a.example, http://b.example` works — until
+> 2026-08-24 the second entry kept its leading space, `CORSMiddleware` compares origins as exact
+> strings, and that origin was silently not allowed. What stripping cannot repair is reported: a
+> trailing slash and a missing scheme can never match a browser `Origin` header, and **`*` is
+> reported as a security problem, not a typo**. KubeIntellect sets `allow_credentials=True`, so
+> with `*` the server echoes the *calling* origin back and marks it credentialed — the browser
+> rule that refuses credentials against a wildcard is never reached. `*` here means any site a
+> logged-in operator visits may call this API with their session. List the origins you mean.
+>
 > **`AUTONOMY_NAMESPACE_LEVELS` does not take globs, and its neighbour does.** The lookup is an
 > exact match on the lowercased namespace name, so `prod-*=A0` is stored, matched by nothing, and
 > leaves every `prod-` namespace on the permissive default — while `AUTONOMY_A3_ALLOWLIST` in the
@@ -382,7 +398,7 @@ pip install 'kubeintellect[tracing]'
 | `LOG_LEVEL` | `INFO` | `DEBUG` / `INFO` / `WARNING` / `ERROR` |
 | `LOG_FORMAT` | `text` | `text` or `json` |
 | `DEBUG` | `false` | Enable FastAPI debug mode |
-| `ALLOWED_ORIGINS` | `http://localhost:3080` | CORS allowed origins (comma-separated) |
+| `ALLOWED_ORIGINS` | `http://localhost:3080` | CORS allowed origins (comma-separated; whitespace is stripped). **Do not use `*`** — CORS runs with credentials enabled, so a wildcard lets any site call this API with an operator's session. Unmatchable and wildcard entries are reported under `unenforceable_guard_config`. |
 
 ---
 
@@ -474,7 +490,7 @@ and the Anthropic model provider.
 | `MEMORY_KG_PPR` | `false` | **Memory V5 (experimental, ADR-014).** Multi-hop blast-radius: pulls a bounded ≤3-hop subgraph around seed entities via a recursive CTE, then ranks related entities with in-process Personalized PageRank (dependency-free). Off ⇒ `ppr_blast_radius()` returns empty. |
 | `MEMORY_WRITE_RECONCILE` | `false` | **Memory V5 (experimental, ADR-015).** Mem0-style write reconciliation for the extracted-fact path: ADD/UPDATE/RETRACT/NOOP against existing memory behind a salience gate (dedup + supersede). RETRACT sets `retracted_at` (never hard-deletes); defaults to ADD when confidence is low. Off ⇒ plain `open_edge`. |
 | `MEMORY_PROMOTION` | `false` | **Memory V5 (experimental, ADR-016).** The learning loop: the consolidation worker promotes verified, recurring episodes into `semantic_rules` (IF→THEN); rules that recur enough go `active` (prompt-injected) and are eligible to seed a detector *candidate* (human-review-gated). Off ⇒ no promotion. |
-| `MEMORY_IMPORTANCE` | `false` | **Memory V5 (experimental, ADR-017).** Importance/surprise-weighted retention: each episode write is scored for `importance` (incident severity) and `surprise` (KG-novelty proxy) on new `episodes.importance`/`surprise` columns; recall ranks **recency × importance × relevance** (importance affects *ranking only*, never retention/audit), and a surprise gate drops redundant *low-value* auto-writes (unverified + report-only near-duplicates). Off ⇒ flat relevance+recency recall, all writes kept. |
+| `MEMORY_IMPORTANCE` | `false` | **Memory V5 (experimental, ADR-017).** Importance/surprise-weighted retention: each episode write is scored for `importance` (incident severity) and `surprise` (KG-novelty proxy) on new `episodes.importance`/`surprise` columns; recall ranks **recency × importance × relevance** (importance affects *ranking only*, never retention/audit), and a surprise gate drops redundant *low-value* auto-writes (unverified + report-only near-duplicates). The novelty score needs the `pg_trgm` extension; where it cannot be computed the episode stores `surprise = NULL` (**not** `1.0`, which would claim the episode is maximally novel) and the gate does not fire — a failed score never blocks a write. Off ⇒ flat relevance+recency recall, all writes kept. |
 | `MEMORY_PROSPECTIVE` | `false` | **Memory V5 (experimental, ADR-017).** First-class prospective memory: after an autonomous fix the watchtower records a "re-check condition C at/after T" (did the fix hold?) in a new `prospective_memory` table; the consolidation scheduler claims due re-checks (atomic `FOR UPDATE SKIP LOCKED`), fires each through the autonomy ladder (A0 namespaces never fire), and records the outcome. Off ⇒ no re-checks. |
 | `MEMORY_SECURITY_HARDENING` | `false` | **Memory V5 (experimental, ADR-018).** Security-hardened write path against **MINJA query-only memory injection**: user-derived writes pass a write-admission guard of diverse, non-LLM validators — provenance/`trust` scoring, a persistent-instruction injection-signature check, a per-requester rate limiter, and a contradiction check vs high-confidence sensor facts; poisoned/low-trust writes are quarantined, and a `[0,1]` `trust` is stamped on each episode. Sensor-derived writes skip the guard; the guard fails *open*. Right-to-be-forgotten (`forget_subject`) is always available; RLS tenancy is scaffolded in `schema.sql` (enable with the `SET LOCAL ki.cluster_id` discipline). Off ⇒ all writes admitted. |
 | `MEMORY_WRITE_RATE_PER_MIN` | `30` | Max user-derived memory writes per requester per minute when `MEMORY_SECURITY_HARDENING` is on. |
@@ -507,7 +523,7 @@ and the Anthropic model provider.
 | Variable | Default | Description |
 |---|---|---|
 | `NL_DETECTOR_AUTHORING_ENABLED` | `false` | Compile a plain-English failure into a detect block and stage it as a **shadow** detector (observes only, never reaches the watchtower) until a human promotes it. `POST /v1/detectors`, `kq detector`. |
-| `DB_DETECTOR_REFRESH_SECONDS` | `120` | How often the engine reloads promoted (active) + shadow detectors from the database so promotions take effect without a restart. |
+| `DB_DETECTOR_REFRESH_SECONDS` | `120` | How often the engine reloads promoted (active) + shadow detectors from the database so promotions take effect without a restart. A refresh whose query fails keeps the detectors already loaded rather than reloading an empty set. |
 
 ### Watchtower & autonomy ladder
 

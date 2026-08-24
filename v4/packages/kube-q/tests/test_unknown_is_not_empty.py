@@ -67,7 +67,8 @@ class TestFetchNamespacesOnlyAnswersWhenItKnows:
     @pytest.mark.parametrize(
         ("label", "status", "body", "expected"),
         [
-            ("a real list",              200, {"namespaces": ["default", "prod"]}, ["default", "prod"]),
+            ("a real list",              200, {"namespaces": ["default", "prod"]},
+             ["default", "prod"]),
             ("a genuinely empty list",   200, {"namespaces": []},                  []),
             ("body missing the key",     200, {"detail": "oops"},                  None),
             ("key present but null",     200, {"namespaces": None},                None),

@@ -21,9 +21,9 @@ A `coordination.k8s.io/Lease` is the idiomatic answer and it is the wrong one *h
 reaches Kubernetes by shelling out to `kubectl`, so a Lease would mean a renewal loop built on
 subprocesses, a new RBAC grant, and a clock-skew-sensitive expiry to tune.
 
-Postgres is already a hard startup dependency (`init_audit_pool` exits the process when it is
-unreachable), and `pg_try_advisory_lock` is **session-scoped**: the lock lives exactly as long as
-the connection that took it. Kill the pod, sever the network, OOM the container — the backend
+Postgres is already this deployment's system of record — checkpoints, memory and the audit log
+all live in it — and `pg_try_advisory_lock` is **session-scoped**: the lock lives exactly as long
+as the connection that took it. Kill the pod, sever the network, OOM the container — the backend
 notices the connection is gone and the lock is released with no lease to expire and no TTL to
 mistune. There is no renewal loop to get wrong because there is no renewal.
 

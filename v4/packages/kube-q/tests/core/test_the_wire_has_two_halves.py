@@ -43,7 +43,8 @@ SAMPLES: dict[str, dict] = {
     "token":        dict(content="hello", session_id="s1"),
     "final":        dict(session_id="s1"),
     "hitl_request": dict(command="kubectl delete pod x", risk_level="high", session_id="s1"),
-    "plan":         dict(steps=[{"description": "check pods", "status": "pending"}], session_id="s1"),
+    "plan":         dict(steps=[{"description": "check pods", "status": "pending"}],
+                         session_id="s1"),
     "error":        dict(error="boom", session_id="s1"),
 }
 
@@ -110,7 +111,9 @@ class TestThePayloadArrives:
                        if k not in ("type", "ts", "session_id") and v not in (None, "", [], {})}
         assert interesting, f"{event_type}: sample carries nothing to check"
         missing = [k for k, v in interesting.items() if v not in got.values()]
-        assert not missing, f"{event_type}: {missing} never reached the client — sent {sent}, got {got}"
+        assert not missing, (
+            f"{event_type}: {missing} never reached the client — sent {sent}, got {got}"
+        )
 
     def test_a_tool_result_carries_its_output(self):
         got = parse_event(_on_the_wire("tool_result")).data

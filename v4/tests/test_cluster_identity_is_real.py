@@ -183,14 +183,14 @@ class TestTheChartLetsAnOperatorSetIt:
     def test_the_configmap_exposes_cluster_id(self):
         from pathlib import Path
         cm = (Path(__file__).resolve().parents[1] / "deploy" / "helm" / "kubeintellect"
-              / "templates" / "configmap.yaml").read_text()
+              / "templates" / "configmap.yaml").read_text(encoding="utf-8")
         assert "CLUSTER_ID:" in cm and ".Values.config.clusterId" in cm
 
     def test_values_yaml_documents_the_key(self):
         import yaml
         from pathlib import Path
         v = yaml.safe_load((Path(__file__).resolve().parents[1] / "deploy" / "helm"
-                            / "kubeintellect" / "values.yaml").read_text())
+                            / "kubeintellect" / "values.yaml").read_text(encoding="utf-8"))
         assert v["config"]["clusterId"] == ""
 
 
@@ -212,7 +212,7 @@ class TestTheSentinelIsAWildcardNotAnInertPlaceholder:
     def _memory_store(self) -> str:
         from pathlib import Path
         return (Path(__file__).resolve().parents[1] / "packages" / "kubeintellect-server" / "app"
-                / "db" / "memory_store.py").read_text()
+                / "db" / "memory_store.py").read_text(encoding="utf-8")
 
     def test_recall_reads_sentinel_rows_from_any_cluster(self):
         """Assert the SQL, not a comment about it — this is the mechanism, so pin it."""

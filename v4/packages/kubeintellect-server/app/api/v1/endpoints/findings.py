@@ -25,10 +25,12 @@ async def list_findings(
     engine = get_engine()
     state = perception_state(engine)
     if state.sensorium == DISABLED:
-        return {"sensorium": DISABLED, "streams": [], "queue": queue_stats(), "findings": []}
+        return {"sensorium": DISABLED, "sensorium_reason": state.sensorium_reason,
+                "streams": [], "queue": queue_stats(), "findings": []}
 
     return {
         "sensorium": state.sensorium,
+        "sensorium_reason": state.sensorium_reason,
         "detectors": state.detectors,
         "predictive": state.predictive,
         "predictive_detectors": state.predictive_detectors,

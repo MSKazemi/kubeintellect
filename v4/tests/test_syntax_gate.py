@@ -37,7 +37,7 @@ def test_tracked_tree_is_clean():
     # precisely the failure mode this file exists to rule out.
     assert len(paths) > 50, f"suspiciously few files scanned: {len(paths)}"
 
-    checked, failures = checker.check_paths(paths, str(_REPO_ROOT))
+    checked, failures, _skipped = checker.check_paths(paths, str(_REPO_ROOT))
     assert checked > 50
     assert failures == [], "SyntaxWarning(s) in tracked source:\n" + "\n".join(
         f"{p}: {detail}" for p, detail in failures
@@ -59,7 +59,7 @@ def test_invalid_escape_sequence_is_caught(tmp_path: Path):
     bad.write_text('import re\n_RE = re.compile("^[ \\t]*(?:[-*]|\\d+\\.?)\\s+(.+)$")\n')
 
     checker = _load_checker()
-    checked, failures = checker.check_paths([str(bad)])
+    checked, failures, _skipped = checker.check_paths([str(bad)])
 
     assert checked == 1
     assert len(failures) == 1
@@ -71,7 +71,7 @@ def test_clean_file_passes(tmp_path: Path):
     good.write_text('import re\n_RE = re.compile(r"^[ \\t]*(?:[-*]|\\d+\\.?)\\s+(.+)$")\n')
 
     checker = _load_checker()
-    checked, failures = checker.check_paths([str(good)])
+    checked, failures, _skipped = checker.check_paths([str(good)])
 
     assert (checked, failures) == (1, [])
 
@@ -90,3 +90,30 @@ def test_main_exit_codes(tmp_path: Path, capsys):
 
     # The failure has to name the file, or a red CI run is a scavenger hunt.
     assert "nope.py" in capsys.readouterr().err
+
+
+def test_a_scan_that_compiled_nothing_is_not_a_pass(tmp_path: Path, capsys, monkeypatch):
+    """Vacuity guard — the sibling of the same defect found in check-file-modes.sh.
+
+    The tracked-tree form used to print `syntax OK — 0 tracked Python files …` and
+    exit 0. The count was visible, but a zero beside the word OK still reads as a
+    pass, and a sparse or partial checkout reaches it.
+    """
+    checker = _load_checker()
+    monkeypatch.setattr(checker, "repo_root", lambda: str(tmp_path))
+    monkeypatch.setattr(checker, "tracked_python_files", lambda root=None: [])
+
+    assert checker.main([]) == 1
+    assert "nothing was compiled" in capsys.readouterr().err
+
+
+def test_an_explicit_file_list_is_still_the_callers_business(tmp_path: Path):
+    """`--` explicit paths keep the old contract: the caller chose the scope.
+
+    A hook that passes a list including a deleted path must not be turned red by
+    the guard above; only the tracked-tree form claims to have covered the tree.
+    """
+    checker = _load_checker()
+    missing = tmp_path / "gone.py"
+
+    assert checker.main([str(missing)]) == 0

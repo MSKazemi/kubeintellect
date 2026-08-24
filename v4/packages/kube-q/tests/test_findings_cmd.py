@@ -62,7 +62,12 @@ def test_findings_sensorium_disabled(monkeypatch, capsys):
         return_value=Response(200, json={"sensorium": "disabled", "findings": []})
     )
     assert findings_cmd.run([]) == 0
-    assert "disabled" in capsys.readouterr().out
+    # This payload carries no `sensorium_reason` — the shape a server older than the
+    # field sends. The command must still say the sensorium is not perceiving, and must
+    # not invent which of the four causes it was.
+    out = capsys.readouterr().out
+    assert "not perceiving" in out
+    assert "does not report why" in out
 
 
 def test_findings_usage():

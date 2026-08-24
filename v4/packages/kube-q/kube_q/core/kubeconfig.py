@@ -44,30 +44,56 @@ def _from_kubeconfig_file() -> list[str]:
     except OSError:
         return []
 
-    # Minimal YAML scan: look for a `contexts:` block and extract `- name: X` entries
-    # until indentation decreases. Not a full YAML parser, but handles the common case.
+    # Minimal YAML scan of the `contexts:` block. Not a full YAML parser, but it must handle the
+    # layout kubectl itself writes:
+    #
+    #     contexts:
+    #     - context:
+    #         cluster: kind-kubeintellect
+    #       name: kind-kubeintellect      <- the dash is on `context:`, not on `name:`
+    #
+    # This used to match only ``- name:``, the *other* valid ordering, so against a kubeconfig
+    # written by kubectl it returned no contexts at all — and this is the branch that runs when
+    # kubectl is absent, which is exactly when it is the only source there is. Key off the
+    # position of the item's keys instead of which key happens to carry the dash.
     names: list[str] = []
     in_contexts = False
-    base_indent: int | None = None
+    base_indent = 0
+    seq_indent: int | None = None
+    item_key_indent: int | None = None
     for raw in text.splitlines():
         line = raw.rstrip()
-        if not line.strip():
-            continue
         stripped = line.lstrip()
+        if not stripped or stripped.startswith("#"):
+            continue
         indent = len(line) - len(stripped)
+
         if stripped.startswith("contexts:"):
             in_contexts = True
             base_indent = indent
+            seq_indent = None
+            item_key_indent = None
             continue
-        if (
-            in_contexts
-            and base_indent is not None
-            and indent <= base_indent
-            and not stripped.startswith("-")
-        ):
-            # Left the contexts block
-            break
-        if in_contexts and stripped.startswith("- name:"):
+        if not in_contexts:
+            continue
+        if indent <= base_indent and not stripped.startswith("-"):
+            break  # a sibling key of `contexts:` — the block is over
+
+        if stripped.startswith("-"):
+            if seq_indent is None:
+                seq_indent = indent
+            if indent != seq_indent:
+                # A nested sequence — `extensions:` entries live inside a context and carry a
+                # `name:` of their own (`context_info`). They are not contexts.
+                continue
+            # A new entry. Its keys live one dash-width in, whichever one the dash carries.
+            item_key_indent = indent + 2
+            if stripped == "-":
+                continue
+            stripped = stripped[2:].lstrip()
+            indent = item_key_indent
+
+        if indent == item_key_indent and stripped.startswith("name:"):
             name = stripped.split(":", 1)[1].strip().strip("\"'")
             if name:
                 names.append(name)
