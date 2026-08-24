@@ -334,8 +334,7 @@ def run_helm(command: str) -> str:
     except Exception as exc:
         return f"[Error] Failed to run helm: {exc}"
 
-    output = (proc.stdout or "") + (proc.stderr or "")
-    output = output.strip()
+    stdout, stderr = proc.stdout or "", proc.stderr or ""
 
     # ── 4b. Strip what run_kubectl would never have returned ──────────────────
     # Every `helm get`, not an enumerated pair of subcommands. This read the subcommand as the
@@ -345,13 +344,40 @@ def run_helm(command: str) -> str:
     # manifests too and was never on the list at all. The stripper is a no-op on output that has
     # no protected `kind:` line, so there is nothing to gain from guessing which subcommand
     # produces one.
+    # STDOUT ONLY. Merging stderr in first made a routine `WARNING: Kubernetes configuration
+    # file is group-readable` part of the document handed to `json.loads`, so measured 2026-08-24
+    # a **successful** `helm list -A -o json` and an unreachable cluster returned the same string
+    # — "[Protected] This release listing could not be parsed" — with the release and the error
+    # both deleted. A filter parses a listing; it must never be shown an error message.
     if verb == "get":
-        output = _strip_blocked_kinds(output)
+        stdout = _strip_blocked_kinds(stdout)
     if verb == "list":
-        output = _filter_release_namespaces(output)
+        stdout = _filter_release_namespaces(stdout)
+    stdout, detail = stdout.strip(), stderr.strip()
 
-    if proc.returncode != 0 and not output:
-        output = f"helm exited with code {proc.returncode} (no output)"
+    # ── 4c. Compose the answer ────────────────────────────────────────────────
+    # `run_kubectl` says `[kubectl exited N]`; the exit code reached this answer only when helm
+    # printed nothing at all, so every other failure was returned as if it were the result.
+    if proc.returncode != 0:
+        output = f"[helm exited {proc.returncode}] " + (
+            detail or "(helm wrote nothing to stderr)"
+        )
+        # `run_kubectl` has to record whether kubectl printed anything *before* its pipe
+        # emulator runs, because `_apply_pipes("")` manufactures "(no matching lines)". Neither
+        # helm filter does that — both are the identity on input with nothing in it, which
+        # `test_a_helm_warning_is_not_a_parse_failure.py` pins so this stays true.
+        if stdout:
+            output += (
+                "\n\nhelm also produced this output before/alongside the error — it may be "
+                f"partial, and absence from it is NOT evidence:\n{stdout}"
+            )
+    else:
+        output = stdout or detail or "(no output)"
+        if stdout and detail:
+            output += (
+                f"\n\n[helm also wrote to stderr. helm exited 0, so this is a warning about "
+                f"the client, not part of the result:\n{detail}]"
+            )
 
     # ── 5. Output cap ─────────────────────────────────────────────────────────
     if len(output) > _OUTPUT_CAP:

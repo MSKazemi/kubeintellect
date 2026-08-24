@@ -98,6 +98,16 @@ def run(argv: list[str]) -> int:
         err.print(f"[red]Export failed:[/red] {explain(exc)}")
         return 1
 
+    # An unreadable decision log is not an empty one. Without this the next branch reports
+    # "no recorded events for episode X" — an absence claim — for an episode nobody looked up.
+    if report.get("recorder_available") is False:
+        err.print(
+            f"[red]The decision log is unavailable[/red] — {report.get('summary', '')}\n"
+            f"[dim]Nothing was exported. This is NOT a statement that episode "
+            f"'{episode_id}' has no records.[/dim]"
+        )
+        return 1
+
     # An episode with no recorded events yields a well-formed but empty postmortem.
     # Exporting that as though it were a report is how a fabricated-looking
     # artifact gets into a ticket — refuse instead.

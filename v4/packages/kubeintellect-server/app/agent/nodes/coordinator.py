@@ -19,6 +19,7 @@ from app.agent.state import AgentState, PlanStep
 from app.core.config import settings
 from app.core.llm import get_coordinator_llm
 from app.streaming.emitter import PlanEvent, StatusEvent, emit
+from app.tools.output_policy import POLICY_LINE_RE
 from app.tools.registry import ALL_TOOLS
 from app.utils.logger import get_logger
 
@@ -116,41 +117,90 @@ def _trim_session_messages(messages: list[BaseMessage]) -> tuple[list[BaseMessag
 
 _TOOL_OUTPUT_MAX_CHARS = 2_000
 _KUBECTL_TABLE_ROWS = 30
+_LOG_LINES_KEPT = 60
 _KUBECTL_KEEP_RE = re.compile(
     r"error|warning|failed|pending|oomkilled|crashloop|backoff|imagepull|containercreating",
     re.IGNORECASE,
 )
 
+# A line the *tool* added to say its own output is already incomplete — the withheld-namespace
+# sentence, a `[Protected]` refusal, a truncation marker it wrote itself. These are lifted out
+# before the row and line caps run and re-attached afterwards, because they sit at the END of a
+# listing, which is precisely where those caps cut. Losing one turns "3 namespaces were withheld"
+# back into a listing that reads as complete, undoing the guarantee `run_kubectl` exists to make.
+# Two markers, both reachable and neither a superset of the other: every `namespace_guard`
+# notice opens with `[Protected]`, and a tool that truncated its own output writes
+# `[truncated: N chars omitted …]` (see `kubectl_tool._cap_output`) with no `[Protected]` in it.
+# Shared with `cortex.graph._bound_tool_content`, which bounds the same tool results on the
+# other route — two copies of this predicate would drift, and silently.
+_POLICY_LINE_RE = POLICY_LINE_RE
+
+
+def _dropped_note(dropped: int, noun: str) -> str:
+    """Say that rows were dropped *here*, in the vocabulary the prompt block below names.
+
+    `_SYSTEM_PROMPT` instructs the model to raise a visible warning when tool output "contains a
+    truncation marker (text like `[truncated` or `chars omitted`)". The marker this function used
+    to emit said "chars trimmed", matching neither — an instruction and its trigger, four hundred
+    lines apart in one file, that did not agree on a string.
+    """
+    if dropped <= 0:
+        return ""
+    return (
+        f"\n[truncated: {dropped} {noun}(s) omitted from LLM context — this listing is NOT the "
+        f"complete set; narrow the query (-n, -l, --tail) to see the rest]"
+    )
+
 
 def _trim_tool_output(content: str) -> str:
+    """Shrink tool output to fit the model's context — and say what was taken out.
+
+    Until 2026-08-24 it said so only when the *remainder* still exceeded the char cap, which is
+    the uncommon case. Measured on a 200-pod `kubectl get pods`: the model received a 30-row
+    table, **170 rows gone, no marker of any kind** — and since `_KUBECTL_KEEP_RE` retains the
+    unhealthy rows, the ones dropped are the healthy ones, so "how many pods are Running?"
+    answered 30. A trimmed listing that reads as complete is the same defect the withheld-note
+    vocabulary was built to close, one layer further in: `run_kubectl` announced the short
+    listing correctly and this function deleted the announcement on the way to the model.
+    """
     if len(content) <= _TOOL_OUTPUT_MAX_CHARS:
         return content
 
     lines = content.splitlines(keepends=True)
+    policy = "".join(ln for ln in lines if _POLICY_LINE_RE.search(ln))
+    body = [ln for ln in lines if not _POLICY_LINE_RE.search(ln)]
 
-    if lines and "NAME" in lines[0].upper():
+    if body and "NAME" in body[0].upper():
         # kubectl table: header + first N rows + any important rows
-        header = lines[0]
+        header = body[0]
         kept: list[str] = []
-        row_count = 0
-        for line in lines[1:]:
+        row_count = dropped = 0
+        for line in body[1:]:
+            if not line.strip():
+                continue  # a separator, not a row — counting it would report 121 rows of 120
             if _KUBECTL_KEEP_RE.search(line):
                 kept.append(line)
             elif row_count < _KUBECTL_TABLE_ROWS:
                 kept.append(line)
                 row_count += 1
+            else:
+                dropped += 1
         trimmed = header + "".join(kept)
+        note = _dropped_note(dropped, "row")
     else:
-        # logs / describe / prometheus / loki: keep first 60 lines
-        trimmed = "".join(lines[:60])
+        # logs / describe / prometheus / loki: keep the first N lines
+        trimmed = "".join(body[:_LOG_LINES_KEPT])
+        note = _dropped_note(max(0, len(body) - _LOG_LINES_KEPT), "line")
 
     if len(trimmed) > _TOOL_OUTPUT_MAX_CHARS:
         omitted = len(trimmed) - _TOOL_OUTPUT_MAX_CHARS
-        trimmed = (
-            trimmed[:_TOOL_OUTPUT_MAX_CHARS]
-            + f"\n[+{omitted} chars trimmed from LLM context]"
-        )
-    return trimmed
+        trimmed = trimmed[:_TOOL_OUTPUT_MAX_CHARS]
+        # Two different losses, so two counts rather than one merged number: the caller can tell
+        # "I only see 30 of 200 rows" from "the last row I see is cut in half".
+        note += f"\n[truncated: {omitted} chars omitted from LLM context]"
+
+    # The tool's own notice goes last, exactly where it sat before the trim.
+    return trimmed + note + ("\n" + policy.strip() if policy.strip() else "")
 
 
 def _trim_tool_messages(messages: list[BaseMessage]) -> list[BaseMessage]:

@@ -139,18 +139,49 @@ def _pod_observation(doc: dict, cluster_id: str) -> Observation | None:
     )
 
 
+# Reasons the staleness filter could not run, warned once each per watch epoch. Without this
+# the filter fails open in silence: an event whose age is unknown skips the check entirely, and
+# skipping the check is exactly the condition the check exists to catch.
+_staleness_unchecked: set[str] = set()
+
+
+def _warn_staleness_unchecked(reason: str) -> None:
+    if reason in _staleness_unchecked:
+        return
+    _staleness_unchecked.add(reason)
+    logger.warning(
+        "k8s_watcher: %s — the event-staleness filter cannot run for these events, so replayed "
+        "history may fire detectors as if it were happening now. Further occurrences of this "
+        "reason are not repeated until the next (re)connect.",
+        reason,
+    )
+
+
 def _event_timestamp(obj: dict) -> float | None:
-    """Best-effort parse of an Event's last activity time (unix seconds)."""
+    """Best-effort parse of an Event's last activity time (unix seconds).
+
+    `None` means "we do not know how old this is", which the caller must not treat as "fresh"
+    without saying so — see `_event_observation`.
+    """
     raw = obj.get("lastTimestamp") or obj.get("eventTime") or obj.get(
         "metadata", {}
     ).get("creationTimestamp")
     if not raw:
+        _warn_staleness_unchecked("an Event carried no lastTimestamp, eventTime or creationTimestamp")
         return None
     try:
-        from datetime import datetime
-        return datetime.fromisoformat(str(raw)).timestamp()
+        from datetime import UTC, datetime
+        parsed = datetime.fromisoformat(str(raw))
     except ValueError:
+        _warn_staleness_unchecked(f"an Event timestamp could not be parsed (e.g. {str(raw)[:40]!r})")
         return None
+    if parsed.tzinfo is None:
+        # Kubernetes emits RFC3339 in UTC. `.timestamp()` on a naive datetime interprets it as
+        # LOCAL time, which shifts the age by the host's UTC offset — two hours on this machine,
+        # measured 2026-08-24. West of UTC that makes replayed history look current; east of it,
+        # a current event looks stale and is dropped, which is a missed detection.
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.timestamp()
 
 
 def _event_observation(doc: dict, cluster_id: str) -> Observation | None:
@@ -159,6 +190,9 @@ def _event_observation(doc: dict, cluster_id: str) -> Observation | None:
         return None
     # The watch replays recent event history on (re)connect — without this
     # filter, bootstrap-era warnings fire detectors minutes after the fact.
+    # Fail OPEN on an unknown age: dropping an event we merely cannot date would turn a
+    # timestamp quirk into a missed incident, which is the worse error for a watchtower. But
+    # `_event_timestamp` says so out loud, so "the filter is off" is never silent.
     ts = _event_timestamp(obj)
     if ts is not None and ts < _watch_epoch - _EVENT_STALENESS_GRACE:
         return None
@@ -358,6 +392,8 @@ async def start_watchers(
     global _watch_epoch
     import time
     _watch_epoch = time.time()
+    # A reconnect is a new replay window, so the once-per-reason warnings arm again.
+    _staleness_unchecked.clear()
     _streams.clear()
     reset_queue_stats()
     loop = asyncio.get_running_loop()

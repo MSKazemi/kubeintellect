@@ -89,6 +89,20 @@ What it does, in order:
 kubeintellect init
 ```
 
+**Exit code.** `init` exits **1** — printing `── Setup INCOMPLETE ──` and naming the
+settings — when the file it has just written cannot run KubeIntellect: no LLM key, an
+endpoint that is not an `https://` URL, a `DATABASE_URL` that is not a PostgreSQL DSN.
+It stops there rather than offering to start a server that would answer no question it
+is asked, or a login service that would start one every morning. The config file and
+your API key are still written, so a re-run picks up where you left off. Warnings — a
+missing kubeconfig before `kubeintellect kind-setup`, an unset admin key — do not fail
+the setup. This is the same `error`/`warn` classification
+[`kubeintellect status`](#kubeintellect-status) gates on, so the two commands cannot
+disagree about the same file.
+
+Until 2026-08-24 `init` printed `── Setup complete ──` four lines under its own
+`[error] OPENAI_API_KEY is not set`, and exited `0`.
+
 !!! tip "Database auto-detection"
     `init` (and `serve`) probe for PostgreSQL on `POSTGRES_HOST:POSTGRES_PORT`.
     If it is unreachable and Docker is available, you can start a managed
@@ -125,6 +139,21 @@ kubeintellect status
 Checks: config file, LLM provider + key, database (SQLite/PostgreSQL
 reachability), `kubectl` binary, kubeconfig + current context, auth keys per
 role, Prometheus / Loki / Grafana / Langfuse reachability, and the `kq` client.
+
+**Exit code.** `status` exits **1** if any row is `✗` or the configuration has an
+error-level issue, and **0** otherwise, so it can gate a script or a container
+healthcheck. A `-` row means *not configured* — a choice, not a fault — and never
+fails. When it exits 1 the last line names what is broken:
+
+```bash
+kubeintellect status && kubeintellect serve       # only starts on a green board
+
+$ kubeintellect status
+  ...
+  ✗  Not working: LLM, DB, kubeconfig
+$ echo $?
+1
+```
 
 ### `kubeintellect set KEY=VALUE …`
 
@@ -226,6 +255,11 @@ kq completion fish | source     # or: kq completion fish > ~/.config/fish/comple
 Then `kq <TAB>` lists the commands, `kq fi<TAB>` → `findings`, and
 `kq findings --<TAB>` → `--limit`.
 
+| Exit code | Meaning |
+|---|---|
+| `0` | The completion script was written to stdout — or, with no argument or `--help`, the usage was printed. |
+| `2` | Unsupported shell name. Nothing is written to stdout, which matters because the documented usage is `source <(kq completion bash)`: a shell that `source`s an empty stdout silently gets no completions rather than an error. |
+
 | Setting | Env var | Default |
 |---|---|---|
 | Server URL | `KUBE_Q_URL` | `https://api.kubeintellect.com` |
@@ -272,7 +306,10 @@ This is the primary way to persist your server URL and API key.
 | `kq config profile delete NAME` | Delete a profile. |
 
 Profiles let you keep per-cluster settings (a prod key, a staging URL) and are
-loaded after `~/.kube-q/.env` but before a directory-local `./.env`. Inside the
+loaded after `~/.kube-q/.env` but before a directory-local `./.env`. The full
+precedence, lowest to highest, is `~/.kube-q/.env` → the active profile →
+`./.env` → variables exported in your shell, and every layer really does
+override the one below it. Inside the
 REPL the same actions are available as `/config`, `/config set KEY=VAL`, and
 `/config reset [KEY]`.
 
@@ -281,6 +318,22 @@ kq config set url=http://localhost:8000
 kq config set api_key=ki-admin-xxx
 kq config show
 ```
+
+**Exit code.** `kq config show` exits **2** when any value fails validation, so it
+works as a pre-flight check (`kq config show || exit 1`) in an install script or CI.
+It used to print `⚠ Invalid values detected` and exit `0` — the printed answer and
+the exit code disagreeing, with only the latter read by a script. `2` is the same
+code the CLI already uses when a command loads config strictly and finds it invalid.
+
+Each validation error is printed in full: the offending value, an example of a valid
+one, and the env var to edit. Only the first line used to survive, which kept the
+complaint and dropped the remedy.
+
+| Exit code | Meaning |
+|---|---|
+| `0` | The operation succeeded. `reset` on a key that was not set, and `profile delete` on a profile that does not exist, are also `0` — the requested state is the state you have. |
+| `1` | The named thing was not where it had to be: `profile show`/`profile list` on a missing profile, `profile new` on a name already taken, or the underlying file could not be removed. Nothing was changed. |
+| `2` | Usage error, an unknown key, or a value that fails validation — including `show` finding an *existing* value invalid, as above. |
 
 ### `kq replay <session-id>`
 
@@ -296,10 +349,11 @@ kq replay demo-1          # session ID == the value shown by /id in the REPL
 
 | Exit code | Meaning |
 |---|---|
-| `0` | Replay rendered; chain **verified intact** and the episode is complete. |
-| `1` | No recorded episode with that ID, or the request failed. |
-| `3` | Replay rendered, but the hash chain is **broken** — records may have been tampered with. |
-| `4` | Replay rendered, but the chain was **not verified**: the server's integrity verdict never arrived. The records shown are unverified. |
+| `0` | Replay rendered; chain **verified intact** and the episode is complete. Also returned by `kq replay --help`. |
+| `2` | Usage error — `kq replay` takes exactly one session ID. |
+| `1` | No recorded episode with that ID, or the request failed. The server's own explanation is printed with it — this request is streamed, and until 2026-08-24 the unread body meant every server `detail` on this path was replaced by httpx's bare status line. |
+| `3` | Replay rendered, but the hash chain is **broken** — records may have been tampered with. Also returned *without* a rendering when the server answers `409`: the chain anchor proves the episode had records and none survive. That is total truncation, not a missing episode, and until 2026-08-24 it exited `1` alongside a mistyped ID. |
+| `4` | Replay rendered, but the chain was **not verified** — either the server's integrity verdict never arrived, or it arrived saying `chain_verified: false` because the server could not read this episode's chain anchor. Either way the records shown are unverified; until 2026-08-24 the second case exited `0` with a `✓ chain intact` line. |
 | `5` | Chain intact, but the episode is **incomplete** — the recorder lost events and recorded the loss (`recorder_gap`). |
 
 `4` exists because unverified is not the same as intact. If the verdict frame is missing or
@@ -318,7 +372,43 @@ List recent detector firings from the server
 ([`GET /v1/findings`](api-reference.md#get-v1findings)). Findings are produced
 without any LLM calls by the detector engine watching the cluster. Prints a
 table of fired-at time, playbook, namespace, object, and evidence; if the
-sensorium is disabled server-side, says so and exits `0`.
+sensorium is not perceiving server-side, says **which** of the four causes it is
+and exits `0`.
+
+**`sensorium: disabled` covers four unrelated situations, so the command prints the
+server's reason rather than the word.** `GET /v1/findings` returns
+`sensorium_reason`, one truthful sentence per cause, and the command renders it
+verbatim:
+
+| Server situation | What `kq findings` prints |
+|---|---|
+| `SENSORIUM_ENABLED=false` | *switched off (SENSORIUM_ENABLED=false) — no detector finding could have been produced* |
+| No compiled detectors loaded | *loaded no compiled detectors, so it did not start* |
+| The sensorium **failed to start** | *FAILED to start (…) — this replica has been perceiving nothing since, and this is an outage rather than a setting* |
+| Leader-election **standby** replica | *this replica is a leader-election standby and watches nothing by design … read its findings, not this replica's silence* |
+
+**A connected sensorium can still be losing observations.** The watch queue sheds the
+*oldest* observation when it overflows rather than applying backpressure to `kubectl` —
+blocking there would stall the watch and cause a reconnect storm plus a full relist, i.e.
+more load exactly when the system is already behind. That makes the loss silent at the
+point it happens, and `queue.shed_total` in
+[`GET /v1/findings`](api-reference.md#get-v1findings) the only record that it happened.
+When it is non-zero the command prints **Perception is lossy**, the number dropped and the
+queue high-water, and it prints it *above the table too* — shedding makes an empty list not
+an all-clear and a non-empty one not a complete list. A server that reports no `queue` at
+all is not accused of shedding; absent is not zero.
+
+Between them, `sensorium`, `predictive` and `queue.shed_total` are three independent ways
+to be blind while looking connected, and the green *No findings* line is reachable only
+when all three are clear.
+
+The last two are why the old single line had to go: it said *"Sensorium is disabled
+on this server"*, which for a crashed sensorium is false — it was never disabled —
+and for a standby replica points the operator at the one replica that is *supposed*
+to be silent. Against a server too old to send `sensorium_reason`, the command says
+it does not know rather than naming the likeliest cause. The exit code is `0` in
+every one of these cases; branch on `sensorium` / `sensorium_reason` in
+[`GET /v1/findings`](api-reference.md#get-v1findings) if a script needs to react.
 
 **It prints the green `No findings` line only when the sensorium is actually
 watching.** If no watch stream is connected — disabled, starting, reconnecting
@@ -343,6 +433,12 @@ kq findings               # last 100 findings
 kq findings --limit 20
 ```
 
+| Exit code | Meaning |
+|---|---|
+| `0` | The server answered. **Deliberately also `0` when nothing was watching** — a degraded sensorium, blind predictive detection and a dropped watch queue are all reported in the output, not in the status. The command cannot tell you the cluster is healthy, so it does not encode a health verdict here at all; a script that needs one must read the printed reason or `GET /v1/findings`. |
+| `1` | The request failed. No answer was received, which is not an empty answer. |
+| `2` | Usage error — `--limit` was not an integer, or an argument was not recognised. |
+
 ### `kq v5-status`
 
 Show the v5 trust-plane state ([`GET /v1/v5/status`](api-reference.md#get-v1v5status)):
@@ -359,11 +455,27 @@ in a red `set_but_unwired_flags` row instead, with `these settings have no effec
 absent when there is nothing to warn about. See
 [v5 experimental flags](v5-experimental-flags.md) for which flags are in that state and why.
 
+A third red row, `degraded_experimental_flags`, covers the case one level out: the flag **is**
+read by code, but the subsystem it lives in is not running, so it changes nothing anyway. Every
+`MEMORY_*` slice runs inside the memory hierarchy, so all of them appear here whenever the
+hierarchy is down — including when you turned a slice on and left `MEMORY_HIERARCHY_ENABLED`
+off, where there is no hierarchy for it to run inside. **These flags stay listed under
+`active_flags`**, because that list is rollout identity — which arm this pod was configured as —
+and must not flap when Postgres blips; the degraded row is the liveness answer. A `memory` row
+below it always shows the hierarchy's state, the reason, and how many sensorium observations
+were dropped — it is what makes an *empty* degraded list evidence rather than silence.
+
 A second red row, `unenforceable_guard_config`, does the same for the **guard** settings: a
 `KUBECTL_BLOCKED_NAMESPACES` entry that is not a legal namespace name, or an autonomy override
 the parser drops. Those settings are the outermost blast-radius control, and every parser for
 them discards silently — so an entry that can never match leaves you believing a namespace is
 protected when nothing enforces it.
+
+| Exit code | Meaning |
+|---|---|
+| `0` | The trust-plane state was read and printed. The red rows above are a report, not a failure: a kill switch that is engaged, or a flag that is set but unwired, still exits `0`. |
+| `1` | The request failed, so **no** state was read. An empty flag list you never received is not an empty flag list. |
+| `2` | Usage error — `kq v5-status` takes no arguments. |
 
 ### `kq digest [--hours N]`
 
@@ -380,11 +492,14 @@ kq digest --hours 8
 **It says *"Quiet watch"* only when the sources were readable and something was
 actually watching.** Otherwise it leads with `Digest INCOMPLETE … This is NOT a
 quiet watch:` and a block naming every source that could not answer — a disabled
-recorder, SQLite mode, a failed query, a disconnected watch stream, or blind
-predictive detection. It shares that last judgement with
-[`kq findings`](#kq-findings-limit-n), so the two commands cannot disagree about
-whether the same window was covered. Exit stays `0`; branch on `degraded` in the
-JSON form.
+recorder, SQLite mode, a failed query, a disconnected watch stream, blind
+predictive detection, or **a watch queue that dropped observations before any
+detector saw them**. It shares those last three judgements with
+[`kq findings`](#kq-findings-limit-n) — all of them come from one classifier, so the
+two commands cannot disagree about whether the same window was covered. That last
+reason is the one with no unhealthy field to point at: the stream is connected and
+Prometheus answers, and the events were discarded in between. Exit stays `0`; branch
+on `degraded` in the JSON form.
 
 | Flag | Default | Meaning |
 |---|---|---|
@@ -396,19 +511,51 @@ read it as an all-clear** and names each reason, instead of reporting a quiet
 watch. The command still exits `0`; branch on `degraded` in
 [`GET /v1/digest`](api-reference.md#get-v1digest) JSON if a script needs to react.
 
+| Exit code | Meaning |
+|---|---|
+| `0` | The digest was rendered — including an **incomplete** one. Completeness is reported in the body and in `degraded`, never in the status, so `kq digest && all-clear` is wrong by construction; read `degraded`. |
+| `1` | The fetch failed and nothing was rendered. |
+| `2` | Usage error — `--hours` was not a number, or an argument was not recognised. |
+
 ### `kq postmortem <session-id>`
 
 Render a grounded incident postmortem for one episode
 (`GET /v1/episodes/{id}/postmortem`): a seq-cited timeline reconstructed from the
 hash-chained flight recorder, what fired, what was investigated and tried, the
-outcome, and an **audit-chain verdict** (intact / broken). Every line cites the
-recorded event (`[#seq]`) it came from. An optional LLM narrative
+outcome, and an **audit-chain verdict**. Every line cites the recorded event
+(`[#seq]`) it came from. An optional LLM narrative
 (`POSTMORTEM_LLM_NARRATIVE=true`) prettifies the prose but is constrained to the
 recorded events and falls back to the deterministic timeline on any failure.
+
+**The verdict has three states, not two.** *Audit chain verified intact* and
+*AUDIT CHAIN BROKEN* both mean the records were read; a third banner, *AUDIT CHAIN NOT
+VERIFIED*, means nothing was read — the recorder was unreachable, or the episode has no
+recorded events — and is neither a statement that the records are intact nor that they
+were altered, with the reason printed underneath. Until 2026-08-24 those two cases
+printed the tamper warning, which is a false claim about records nobody read and trains
+the reader to ignore the banner that matters. A separate **RECORD INCOMPLETE** banner
+appears when the recorder lost events for the episode: intact, complete and verified are
+three different claims.
 
 ```bash
 kq postmortem demo-1
 ```
+
+The verdict is also the **exit code**, following the same convention as `kq replay` and
+`kq export` — all three render the same audit-chain verdict, so all three branch on it the
+same way. Until 2026-08-24 this command exited `0` in every case, including the tamper
+warning, so `kq postmortem X > report.md && attach-to-ticket` could not tell a
+tamper-evident report from a broken one. The rendered markdown is written either way; the
+code says what it is worth.
+
+| Exit code | Meaning |
+|---|---|
+| `0` | Audit chain verified intact and the episode complete. |
+| `1` | Fetch failed. |
+| `2` | Usage error. |
+| `3` | **Audit chain broken** — the events may have been altered or truncated. |
+| `4` | **Not verified** — nothing was read, so neither intact nor altered. Also what an older server, which does not send the verdict fields, is reported as. |
+| `5` | Unaltered but **incomplete** — the recorder lost events for this episode. |
 
 ### `kq export <session-id>`
 
@@ -470,7 +617,7 @@ kq detector reject <name>                                          # stop it fir
 | `0` | The operation succeeded — for `new`, the detector was staged in shadow. |
 | `1` | The request failed. |
 | `2` | Usage error. |
-| `3` | `new` only: the description was **rejected** and nothing was staged. |
+| `3` | The detector was **rejected on its merits** and nothing changed — `new`: the description would not compile into a stageable detector; `promote`/`reject`: the server answered `409` because the predicate can never match an observation. Distinct from `1` on purpose — `1` is worth retrying and `3` never is. |
 
 `3` matters when scripting. A description the compiler refuses comes back as a normal `200`
 response carrying `staged: false` and the errors — not an HTTP failure — so the exit code is the
@@ -499,6 +646,50 @@ kq preference list --user alice                 # per-operator (defaults to "def
 
 Backed by `/v1/preferences` (GET/PUT/DELETE). See [Memory Hierarchy](memory.md#operator-preferences).
 
+| Exit code | Meaning |
+|---|---|
+| `0` | The operation succeeded. `list` with nothing remembered is also `0` — it prints *No preferences remembered*, which is an answer, not a failure. |
+| `1` | The request failed. Distinguish it from the line above before concluding an operator has no preferences. |
+| `2` | Usage error — an unknown subcommand, or `set`/`forget` with the wrong number of arguments. |
+
+### `kq` plugins — add your own slash commands
+
+Drop a Python file into `~/.kube-q/plugins/` and the REPL picks it up at start-up. Each file
+calls `register()` as many times as it likes; every registered name becomes a slash command with
+tab-completion.
+
+```python
+# ~/.kube-q/plugins/hello.py
+from kube_q.plugins import register
+
+@register("/hello", help="Greet the current namespace")
+def hello(ctx):
+    ctx.print(f"hi from {ctx.state.current_namespace or 'no namespace'}")
+```
+
+| | |
+|---|---|
+| Directory | `~/.kube-q/plugins/`, or wherever `KUBE_Q_PLUGIN_DIR` points. |
+| Files loaded | Every `*.py` in that directory, in name order. Files starting with `_` are skipped. |
+| Command names | Must start with `/` and contain only letters, digits, `-` or `_`. Registering an existing name replaces its handler. |
+| List them | `/plugins` inside the REPL. |
+
+The handler receives a `PluginContext` with `args` (everything the user typed after the command),
+`state` (the live `SessionState` — conversation id, messages, current context and namespace),
+`cfg` (the `ReplConfig`), `console` (the Rich console) and `print(text)` as a shorthand for
+writing to it.
+
+!!! warning "Plugins are code you are choosing to run"
+    They execute in the `kq` process with full Python access — there is no sandbox. Install only
+    files you trust, exactly as you would a shell function in your `.bashrc`.
+
+A plugin that fails to import never stops the REPL from starting: the failure is printed at
+start-up and repeated by `/plugins`, with the exception type and message, and nothing the failed
+module registered before it crashed stays behind. A handler that raises while *running* is caught
+and reported too — the REPL keeps going.
+
+---
+
 !!! note "`kq` is a standalone project"
     The query client lives in its own package (`kube-q`) and is versioned
     independently. This page documents how KubeIntellect uses it; run
@@ -514,6 +705,8 @@ Backed by `/v1/preferences` (GET/PUT/DELETE). See [Memory Hierarchy](memory.md#o
 | `~/.kubeintellect/kubeintellect.db` | server (SQLite mode) | Local database. |
 | `~/.kubeintellect/server.log` | background launch | Server logs (non-systemd). |
 | `~/.kube-q/.env` | `kubeintellect init` | `kq` URL + API key. |
+| `~/.kube-q/plugins/*.py` | you | `kq` slash-command plugins (`KUBE_Q_PLUGIN_DIR` overrides). |
+| `~/.kube-q/kube-q.log` | `kq` | Client log (rotating, 5 MB × 3). |
 | `~/.config/systemd/user/kubeintellect.service` | `service install` | systemd unit. |
 
 ---

@@ -93,7 +93,9 @@ class TestYamlValidation:
         from app.tools.kubectl_tool import run_kubectl
         # patch interrupt so HITL doesn't fire, and subprocess.run so nothing executes
         with patch("app.tools.kubectl_tool.interrupt", return_value=True):
-            proc = MagicMock(); proc.stdout = "applied"; proc.stderr = ""
+            proc = MagicMock()
+            proc.stdout = "applied"
+            proc.stderr = ""
             with patch("subprocess.run", return_value=proc):
                 return run_kubectl.invoke({"command": "kubectl apply -f -", "stdin": stdin})
 
@@ -130,7 +132,9 @@ class TestRiskClassification:
         def fake_interrupt(value):
             captured.update(value)
             return True  # simulate approval
-        proc = MagicMock(); proc.stdout = "ok"; proc.stderr = ""
+        proc = MagicMock()
+        proc.stdout = "ok"
+        proc.stderr = ""
         with patch("app.tools.kubectl_tool.interrupt", side_effect=fake_interrupt):
             with patch("subprocess.run", return_value=proc):
                 run_kubectl.invoke({"command": command})
@@ -149,7 +153,9 @@ class TestRiskClassification:
 
     def test_dry_run_skips_hitl(self):
         """--dry-run commands must not trigger the interrupt."""
-        proc = MagicMock(); proc.stdout = "dry-run ok"; proc.stderr = ""
+        proc = MagicMock()
+        proc.stdout = "dry-run ok"
+        proc.stderr = ""
         with patch("subprocess.run", return_value=proc):
             with patch("app.tools.kubectl_tool.interrupt") as mock_intr:
                 from app.tools.kubectl_tool import run_kubectl
@@ -158,7 +164,9 @@ class TestRiskClassification:
 
     def test_read_command_skips_hitl(self):
         """Read-only verbs (get, list, describe) must never trigger interrupt."""
-        proc = MagicMock(); proc.stdout = "pod list"; proc.stderr = ""
+        proc = MagicMock()
+        proc.stdout = "pod list"
+        proc.stderr = ""
         with patch("subprocess.run", return_value=proc):
             with patch("app.tools.kubectl_tool.interrupt") as mock_intr:
                 from app.tools.kubectl_tool import run_kubectl
@@ -194,7 +202,9 @@ class TestAlwaysConfirm:
             captured.update(value)
             return True
 
-        proc = MagicMock(); proc.stdout = "ok"; proc.stderr = ""
+        proc = MagicMock()
+        proc.stdout = "ok"
+        proc.stderr = ""
         cfg = {"configurable": {"user_role": user_role, "hitl_bypass": hitl_bypass}}
         with patch("app.tools.kubectl_tool.interrupt", side_effect=fake_interrupt) as mock_intr:
             with patch("subprocess.run", return_value=proc):
@@ -274,7 +284,9 @@ class TestAlwaysConfirm:
     def test_readonly_blocked_before_always_confirm(self):
         """readonly is rejected at the role layer; HITL is never invoked."""
         from app.tools.kubectl_tool import run_kubectl
-        proc = MagicMock(); proc.stdout = ""; proc.stderr = ""
+        proc = MagicMock()
+        proc.stdout = ""
+        proc.stderr = ""
         cfg = {"configurable": {"user_role": "readonly", "hitl_bypass": True}}
         with patch("app.tools.kubectl_tool.interrupt") as mock_intr:
             with patch("subprocess.run", return_value=proc):
@@ -287,7 +299,9 @@ class TestAlwaysConfirm:
     def test_operator_blocked_on_delete_namespace(self):
         """operator can't run high-risk verbs at all (delete is _HIGH_RISK)."""
         from app.tools.kubectl_tool import run_kubectl
-        proc = MagicMock(); proc.stdout = ""; proc.stderr = ""
+        proc = MagicMock()
+        proc.stdout = ""
+        proc.stderr = ""
         cfg = {"configurable": {"user_role": "operator", "hitl_bypass": True}}
         with patch("app.tools.kubectl_tool.interrupt") as mock_intr:
             with patch("subprocess.run", return_value=proc):
@@ -306,7 +320,9 @@ class TestProtectedAccess:
     def _call(self, command, stdin=None):
         from app.tools.kubectl_tool import run_kubectl
         with patch("subprocess.run") as mock_run:
-            proc = MagicMock(); proc.stdout = "ok"; proc.stderr = ""
+            proc = MagicMock()
+            proc.stdout = "ok"
+            proc.stderr = ""
             mock_run.return_value = proc
             return run_kubectl.invoke({"command": command, "stdin": stdin})
 
@@ -362,7 +378,9 @@ class TestProtectedAccess:
     # ── Allowed commands still pass through ───────────────────────────────────
 
     def test_get_pods_in_default_is_allowed(self):
-        proc = MagicMock(); proc.stdout = "pod-list"; proc.stderr = ""
+        proc = MagicMock()
+        proc.stdout = "pod-list"
+        proc.stderr = ""
         with patch("subprocess.run", return_value=proc):
             from app.tools.kubectl_tool import run_kubectl
             result = run_kubectl.invoke({"command": "kubectl get pods -n default"})
@@ -370,7 +388,9 @@ class TestProtectedAccess:
         assert "pod-list" in result
 
     def test_get_deployments_in_production_is_allowed(self):
-        proc = MagicMock(); proc.stdout = "deploy-list"; proc.stderr = ""
+        proc = MagicMock()
+        proc.stdout = "deploy-list"
+        proc.stderr = ""
         with patch("subprocess.run", return_value=proc):
             from app.tools.kubectl_tool import run_kubectl
             result = run_kubectl.invoke({"command": "kubectl get deployments -n production"})
@@ -378,7 +398,9 @@ class TestProtectedAccess:
 
     def test_logs_do_not_trigger_blocklist(self):
         """kubectl logs has no resource-type argument — must not be blocked."""
-        proc = MagicMock(); proc.stdout = "log output"; proc.stderr = ""
+        proc = MagicMock()
+        proc.stdout = "log output"
+        proc.stderr = ""
         with patch("subprocess.run", return_value=proc):
             from app.tools.kubectl_tool import run_kubectl
             result = run_kubectl.invoke({"command": "kubectl logs my-pod -n kubeintellect"})
@@ -417,7 +439,9 @@ class TestProtectedAccess:
 class TestOutputCap:
     def test_long_output_is_truncated(self):
         big = "x" * 10_000
-        proc = MagicMock(); proc.stdout = big; proc.stderr = ""
+        proc = MagicMock()
+        proc.stdout = big
+        proc.stderr = ""
         with patch("subprocess.run", return_value=proc):
             from app.tools.kubectl_tool import run_kubectl
             result = run_kubectl.invoke({"command": "kubectl get pods"})

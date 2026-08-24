@@ -57,6 +57,12 @@ async def build_postmortem(episode_id: str) -> dict:
         "episode_id": episode_id,
         "generated_at": time.time(),
         "chain_valid": False,
+        # Whether the chain was CHECKED at all. `chain_valid: false` on its own cannot tell
+        # "the hashes disagree" from "there was nothing to hash" — and the markdown banner read
+        # it as the first, so an unreadable recorder and an episode with no events both printed
+        # "the recorded events may have been altered", which is a false statement about records
+        # nobody read. Same reason `kq replay` has a separate exit 4 for unverified.
+        "chain_verified": False,
         "timeline": [],
         "what_fired": [],
         "investigated": [],
@@ -70,13 +76,61 @@ async def build_postmortem(episode_id: str) -> dict:
         # the recorder is fire-and-forget and records its own losses as GAP_KIND rows.
         "events_lost": 0,
         "gaps": [],
+        "recorder_available": True,
+        # Best-effort enrichments that ERRORED. Both of them return None on failure and None is
+        # also their legitimate "there was nothing to add", so the rendered document was
+        # byte-identical whether the episode store had no row or refused to answer — measured
+        # 2026-08-24, under a ✅ "audit chain verified intact" banner. A missing section is a
+        # claim about the incident; a failed lookup is a claim about us.
+        "enrichment_failed": [],
     }
-    rows = await flight_recorder.fetch_episode(episode_id)
+    try:
+        rows = await flight_recorder.fetch_episode(episode_id)
+    except flight_recorder.RecorderUnavailable as exc:
+        # Kept as a returned postmortem rather than an error: the caller renders it, and a
+        # postmortem that says why it is empty is more use than a stack trace. But it must not
+        # share a sentence with the genuinely-empty case — "or recorder unavailable" made every
+        # reader guess which of the two they had.
+        pm["recorder_available"] = False
+        pm["summary"] = (
+            f"The flight recorder could not be read ({exc}). This is NOT the same as the "
+            f"episode having no events — nothing here should be read as an absence of activity."
+        )
+        return pm
+    # Verify BEFORE the empty-episode early return. An episode with an anchor but no surviving
+    # rows is not an empty episode, it is a *total* truncation — the most complete tamper there
+    # is — and the early return described it as "nothing was recorded here".
+    chain_verdict = await flight_recorder.verify_episode(episode_id, rows)
     if not rows:
-        pm["summary"] = "No recorded events for this episode (or recorder unavailable)."
+        if not chain_verdict.verified:
+            # The anchor could not be read, so "no events" and "every event removed" are
+            # indistinguishable from here. Reporting the first would be picking one.
+            pm["summary"] = (
+                "No events survive for this episode, and the recorder's chain anchor could "
+                "not be read — so this is NOT a statement that nothing was recorded. An "
+                "episode whose records were all removed looks exactly like this one."
+            )
+            return pm
+        if chain_verdict.valid:
+            # Genuinely empty. `chain_verified` stays False on purpose: nothing was read, so
+            # this is neither a statement that records are intact nor that they were altered.
+            # Setting it True here would print the ✅ banner over an episode with no events —
+            # the precise dilution the three-state banner above exists to prevent.
+            pm["summary"] = "No recorded events for this episode."
+            return pm
+        pm["chain_verified"] = True
+        pm["chain_valid"] = False
+        pm["summary"] = (
+            "No events survive for this episode, but the recorder's chain anchor says there "
+            "were some. Every event has been removed — this is NOT an episode in which "
+            "nothing happened."
+        )
         return pm
 
-    pm["chain_valid"] = flight_recorder.verify_chain(rows)
+    pm["chain_valid"] = chain_verdict.valid
+    # Not an unconditional True. Records were read, but the anchor read can fail on its own,
+    # and `chain_verified` is what suppresses the ✅ banner further down.
+    pm["chain_verified"] = chain_verdict.verified
     for row in rows:
         kind = row["kind"]
         p = _payload(row)
@@ -107,7 +161,11 @@ async def build_postmortem(episode_id: str) -> dict:
 
     # Root cause / outcome come from the L1 episode summary (the decision log
     # records *events*, not the final narrative). Best-effort, fail-open.
-    meta = await _fetch_episode_meta(episode_id)
+    try:
+        meta = await _fetch_episode_meta(episode_id)
+    except _EpisodeLookupFailed as exc:
+        meta = None
+        pm["enrichment_failed"].append(f"root cause / outcome (episode store: {exc})")
     if meta:
         if meta.get("root_cause"):
             pm["root_cause"] = str(meta["root_cause"])[:300]
@@ -122,12 +180,34 @@ async def build_postmortem(episode_id: str) -> dict:
         f"{len(pm['investigated'])} investigation step(s) · {len(pm['tried'])} mutation "
         f"point(s) · {len(pm['errors'])} error(s) · audit chain {chain}."
     )
-    pm["narrative"] = await synthesize_narrative(pm)
+    try:
+        pm["narrative"] = await synthesize_narrative(pm)
+    except _NarrativeFailed as exc:
+        pm["narrative"] = None
+        pm["enrichment_failed"].append(f"narrative ({exc})")
     return pm
 
 
+class _NarrativeFailed(RuntimeError):
+    """The narrative call errored. Distinct from the feature being off or the timeline empty."""
+
+
+class _EpisodeLookupFailed(RuntimeError):
+    """The episode store could not be read — as distinct from holding no row for this episode.
+
+    The first means the postmortem is missing a section it tried to fill; the second means the
+    investigation genuinely never reached a conclusion. Returning None for both made those the
+    same document.
+    """
+
+
 async def _fetch_episode_meta(episode_id: str) -> dict | None:
-    """Best-effort L1 episode lookup (summary/root_cause/outcome) by request_id."""
+    """L1 episode lookup (summary/root_cause/outcome) by request_id.
+
+    None means no pool or no matching row — both of which are real answers. A query that failed
+    raises `_EpisodeLookupFailed` instead, so the caller can say the section is missing rather
+    than let its absence read as "there was no root cause".
+    """
     pool = getattr(flight_recorder, "_pool", None)
     if pool is None:
         return None
@@ -137,17 +217,22 @@ async def _fetch_episode_meta(episode_id: str) -> dict | None:
             " WHERE request_id = $1 ORDER BY started_at DESC LIMIT 1",
             episode_id,
         )
-    except Exception:
-        return None
+    except Exception as exc:
+        logger.warning(f"postmortem: episode lookup failed for {episode_id}: {exc}")
+        raise _EpisodeLookupFailed(str(exc)) from exc
     return dict(row) if row else None
 
 
 async def synthesize_narrative(pm: dict) -> str | None:
     """One optional LLM call that narrates the timeline. Grounded + fail-open.
 
-    Constrained to the recorded events (passed as the deterministic markdown);
-    must cite seq numbers and invent nothing. Returns None when disabled or on
-    any failure, so the deterministic timeline always remains the fallback.
+    Constrained to the recorded events (passed as the deterministic markdown); must cite seq
+    numbers and invent nothing. The deterministic timeline is always the fallback, so a failure
+    here never costs the reader a fact.
+
+    None means the feature is off or there is nothing to narrate. A failure raises
+    `_NarrativeFailed` — an operator who switched `POSTMORTEM_LLM_NARRATIVE` on and gets no
+    narrative should not have to guess whether the flag took effect.
     """
     if not settings.POSTMORTEM_LLM_NARRATIVE:
         return None
@@ -171,15 +256,26 @@ async def synthesize_narrative(pm: dict) -> str | None:
         return text.strip() if isinstance(text, str) and text.strip() else None
     except Exception as exc:
         logger.warning(f"postmortem: narrative synthesis failed (using timeline only): {exc}")
-        return None
+        raise _NarrativeFailed(str(exc)) from exc
 
 
 def render_markdown(pm: dict) -> str:
     lines = [f"# Incident postmortem — `{pm['episode_id']}`", ""]
-    if pm["chain_valid"]:
+    # Three states, not two. A tamper warning is only worth printing if it is never printed
+    # when nothing was tampered with — a banner that also fires for an empty episode and for an
+    # unreadable recorder trains the reader to skip the one that matters.
+    if not pm.get("chain_verified", True):
+        lines.append(
+            "> ⚠️ **AUDIT CHAIN NOT VERIFIED** — no records were read, so this is neither a "
+            "statement that they are intact nor that they were altered. See the reason below."
+        )
+    elif pm["chain_valid"]:
         lines.append("> ✅ Audit chain verified intact — every event below is tamper-evident.")
     else:
-        lines.append("> ⚠️ **AUDIT CHAIN BROKEN** — the recorded events may have been altered.")
+        lines.append(
+            "> ⚠️ **AUDIT CHAIN BROKEN** — the recorded events may have been altered or "
+            "truncated. See the server log for which."
+        )
     if pm.get("events_lost"):
         # Intact and complete are different claims. Say the second one out loud, next to the
         # first, or the ✅ above reads as "this is the whole story" when it is not.
@@ -188,6 +284,15 @@ def render_markdown(pm: dict) -> str:
             f"> ⚠️ **RECORD INCOMPLETE** — {pm['events_lost']} event(s) were never written "
             f"({reasons or 'cause not recorded'}). Absence of an event below is not evidence "
             "it did not happen."
+        )
+    if pm.get("enrichment_failed"):
+        # Deliberately next to the chain banners: those describe the RECORDS, this describes the
+        # DOCUMENT. A ✅ above and a silently missing "Root cause" below is the combination this
+        # line exists to break up.
+        lines.append(
+            "> ⚠️ **POSTMORTEM INCOMPLETE** — could not read: "
+            + "; ".join(pm["enrichment_failed"])
+            + ". A section missing below is NOT evidence that it was empty."
         )
     lines += ["", pm.get("summary", ""), ""]
 

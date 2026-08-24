@@ -1,8 +1,15 @@
 """ACI mutating-verb chokepoint (v5 P3 Action/Trust plane).
 
-Every proposed cluster mutation is (1) stamped with a **rollback class** — how reversible it is —
+A proposed cluster mutation is (1) stamped with a **rollback class** — how reversible it is —
 and (2) routed through a single write-authority decision that composes the blast-radius/spend gate,
 the action class's statistically **earned rung**, and reversibility, BEFORE anything executes.
+
+⚠️ **Designed destination, not the live brake.** `decide_write`/`plan_mutation` have no production
+caller yet: the A3 path today goes through `autonomy.watchtower` (ladder + allowlist +
+`auto_write_permitted`). `earned_rung` therefore always arrives as its `L2` default, and the store
+that would earn it (`promotion_outcomes`, ADR-102) has no production writer either. Wiring this up
+must also update the write-gate paragraph in `docs/how-it-works.md` —
+`tests/test_the_write_gate_doc_matches_the_wiring.py` fails until it does.
 
 This module is the pure decision core (no cluster, no execution): `classify_rollback` maps a
 kubectl command to its ADR-008 rollback class, and `decide_write` returns auto / approve / deny.

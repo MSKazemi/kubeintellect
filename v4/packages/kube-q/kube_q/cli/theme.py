@@ -38,6 +38,7 @@ _ROLES: dict[str, str] = {
     "plan.active": "yellow",
     "plan.pending": "dim",
     "plan.skipped": "dim",
+    "plan.failed": "red",
     # The per-turn status footer
     "footer": "dim",
     "footer.key": "cyan",
@@ -63,6 +64,7 @@ def get_theme() -> Theme:
 PLAN_ICONS: dict[str, str] = {
     "done": "[plan.done]✓[/plan.done]",
     "skipped": "[plan.skipped]—[/plan.skipped]",
+    "failed": "[plan.failed]✗[/plan.failed]",
     "in_progress": "[plan.active]▸[/plan.active]",
     "pending": "[plan.pending]·[/plan.pending]",
 }

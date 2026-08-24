@@ -77,10 +77,10 @@ class TestTruncationIsNoLongerFree:
 
     async def test_cutting_the_newest_entries_is_detected(self, chain):
         await append(chain, n=5)
-        assert await security.verify_memory_chain(chain, "c1") is True
+        assert (await security.verify_memory_chain(chain, "c1")).valid is True
 
         chain.rows = chain.rows[:3]          # the attacker removes what they just did
-        assert await security.verify_memory_chain(chain, "c1") is False
+        assert (await security.verify_memory_chain(chain, "c1")).valid is False
 
     async def test_cutting_every_entry_is_detected(self, chain):
         """Deleting the whole table leaves a chain that is 'empty', which used to be
@@ -88,7 +88,7 @@ class TestTruncationIsNoLongerFree:
         await append(chain, n=3)
         chain.rows.clear()
 
-        assert await security.verify_memory_chain(chain, "c1") is False
+        assert (await security.verify_memory_chain(chain, "c1")).valid is False
 
     async def test_a_later_append_does_not_heal_it(self, chain):
         """The damaging half. Re-anchoring on the next legitimate write would erase the only
@@ -98,7 +98,7 @@ class TestTruncationIsNoLongerFree:
         security.reset_audit_chains()        # as a restart would
 
         await append(chain, n=1, kind="quarantine")
-        assert await security.verify_memory_chain(chain, "c1") is False
+        assert (await security.verify_memory_chain(chain, "c1")).valid is False
 
     async def test_the_gap_is_not_reused_so_the_evidence_persists(self, chain):
         """Concretely: the new entry continues *past* the head rather than filling the hole."""
@@ -114,8 +114,8 @@ class TestTruncationIsNoLongerFree:
         await append(chain, cluster="c2", n=3)
         chain.rows = [r for r in chain.rows if not (r["cluster_id"] == "c1" and r["seq"] > 0)]
 
-        assert await security.verify_memory_chain(chain, "c1") is False
-        assert await security.verify_memory_chain(chain, "c2") is True
+        assert (await security.verify_memory_chain(chain, "c1")).valid is False
+        assert (await security.verify_memory_chain(chain, "c2")).valid is True
 
 
 class TestTheOriginalDetectionStillHolds:
@@ -123,38 +123,38 @@ class TestTheOriginalDetectionStillHolds:
 
     async def test_an_intact_chain_still_verifies(self, chain):
         await append(chain, n=4)
-        assert await security.verify_memory_chain(chain, "c1") is True
+        assert (await security.verify_memory_chain(chain, "c1")).valid is True
 
     async def test_an_edited_entry_is_still_detected(self, chain):
         await append(chain, n=3)
         chain.rows[1]["kind"] = "forget"
-        assert await security.verify_memory_chain(chain, "c1") is False
+        assert (await security.verify_memory_chain(chain, "c1")).valid is False
 
     async def test_an_interior_deletion_is_still_detected(self, chain):
         await append(chain, n=4)
         del chain.rows[1]
-        assert await security.verify_memory_chain(chain, "c1") is False
+        assert (await security.verify_memory_chain(chain, "c1")).valid is False
 
     async def test_a_reorder_is_still_detected(self, chain):
         await append(chain, n=4)
         chain.rows[1], chain.rows[2] = chain.rows[2], chain.rows[1]
         for i, r in enumerate(chain.rows):
             r["seq"] = i                     # renumber, so only the links can betray it
-        assert await security.verify_memory_chain(chain, "c1") is False
+        assert (await security.verify_memory_chain(chain, "c1")).valid is False
 
 
 class TestTheAnchorDoesNotManufactureAlarms:
     """Tamper-evidence is worthless if operators learn to ignore it."""
 
     async def test_a_cluster_that_never_wrote_anything_is_intact(self, chain):
-        assert await security.verify_memory_chain(chain, "never-seen") is True
+        assert (await security.verify_memory_chain(chain, "never-seen")).valid is True
 
     async def test_a_chain_written_before_the_anchor_existed_is_not_accused(self, chain):
         """Upgrade case: rows exist, no head row. Nothing contradicts them."""
         await append(chain, n=3)
         chain.head.clear()
 
-        assert await security.verify_memory_chain(chain, "c1") is True
+        assert (await security.verify_memory_chain(chain, "c1")).valid is True
 
     async def test_a_head_write_lost_to_a_crash_is_not_a_tamper(self, chain):
         """The head is written after the row it describes. A crash between the two leaves the
@@ -162,7 +162,7 @@ class TestTheAnchorDoesNotManufactureAlarms:
         await append(chain, n=3)
         chain.head["c1"] = {"seq": 1, "hash": chain.rows[1]["hash"]}
 
-        assert await security.verify_memory_chain(chain, "c1") is True
+        assert (await security.verify_memory_chain(chain, "c1")).valid is True
 
     async def test_an_unreadable_head_falls_back_instead_of_crying_wolf(self, chain):
         """A missing table or a permissions error is an infrastructure problem. Reporting it
@@ -176,10 +176,10 @@ class TestTheAnchorDoesNotManufactureAlarms:
             return max(rows, key=lambda r: r["seq"]) if rows else None
 
         chain.fetchrow = boom                                    # type: ignore[assignment]
-        assert await security.verify_memory_chain(chain, "c1") is True
+        assert (await security.verify_memory_chain(chain, "c1")).valid is True
 
     async def test_no_pool_is_still_safe(self, chain):
-        assert await security.verify_memory_chain(None, "c1") is True
+        assert (await security.verify_memory_chain(None, "c1")).valid is True
 
 
 class TestTheAnchorIsActuallyMaintained:

@@ -24,6 +24,17 @@ most slices require it **and** their own flag. Inspect the live state with
     `[set but NOT WIRED, no effect: …]`. Until 2026-08-19 it was reported as *active*, which meant
     an operator could turn on a switch, read back that the feature was on, and be wrong.
 
+    **A wired flag can be just as inert.** `set_but_unwired_flags` answers "no code reads this".
+    It does not answer "the code reads it, and the subsystem it lives in is dead" — which is the
+    same outcome for the operator. Every `MEMORY_*` slice runs inside the memory hierarchy, so
+    while that hierarchy is not running none of them can act; until 2026-08-24 `/healthz` would
+    report `memory: {enabled: false, state: "unavailable"}` and list `MEMORY_HIERARCHY_ENABLED`
+    among the active flags **in the same response**. Those flags now also appear under
+    **`degraded_experimental_flags`** on both endpoints, with `memory.reason` saying why. They
+    stay in `active_flags` on purpose: that list is rollout identity, and a Postgres blip must not
+    make it flap. The commonest case needs no outage at all — turning on a memory slice while
+    `MEMORY_HIERARCHY_ENABLED` is `false` leaves it with no hierarchy to run inside.
+
     This covers **knobs as well as switches**. Until 2026-08-20 the report read only booleans, so
     the eleven `float`/`int` entries in the list — `KI_V5_AGENT_COST_RATE_CAP` and
     `KI_V5_SPEND_OUT_PRICE_PER_1K` among them — could not appear in it at *any* value, and the
@@ -35,6 +46,20 @@ most slices require it **and** their own flag. Inspect the live state with
     `tests/test_v5_flag_wiring.py` checks it against real `settings.<FLAG>` usage — so it can only
     shrink: wiring a flag without deleting its entry fails the suite, and so does adding a new
     unwired one.
+
+!!! note "A wired flag can also be wired to the wrong key (fixed 2026-08-24)"
+
+    `KI_V5_CHANGE_LEDGER` and `KI_V5_CHANGE_FIRST_RCA` are two halves of one feature: the ledger
+    records the mutating commands KubeIntellect applies, and change-first RCA reads them back as
+    the search prior. Both were wired, both reported active — and they keyed the same cluster
+    differently. The write fell back to the resolved cluster id; the read fell back to `""`, which
+    nothing is ever recorded under. So on any investigation whose state carries no cluster id —
+    which is every watchdog-dispatched one, `KI_V5_CHANGE_WATCHDOG`'s whole output — the change
+    was recorded and the prior came back empty, and an empty prior injects no block at all. The
+    prompt was byte-identical to one for a cluster where nothing had changed.
+
+    Both halves now resolve the id the same way, falling back to `get_cluster_id()`. If it cannot
+    resolve, both use the same `UNRESOLVED_CLUSTER_ID` sentinel — degraded, but still agreeing.
 
 | Flag | Default | Purpose |
 |---|---|---|

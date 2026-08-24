@@ -7,9 +7,13 @@ Usage:
   kq replay <episode_id>          # episode_id == session_id (see /id in the REPL)
 
 Exit codes:
-  0  rendered; chain intact and complete
+  0  rendered; chain intact and complete (also `kq replay --help`)
   1  no such episode, or the request failed
-  3  rendered; chain BROKEN — records may have been tampered with
+  2  usage error — exactly one episode ID is required. This block was printed to
+     explain a usage error long before it named the code that a usage error returns
+  3  rendered; chain BROKEN — records may have been tampered with. Also returned WITHOUT a
+     rendering when the server reports HTTP 409: the chain anchor says the episode had
+     records and none survive, which is total truncation rather than a missing episode
   4  rendered; chain NOT VERIFIED — the integrity verdict never arrived (fail-closed:
      unverified is not the same as intact, and must not be reported as success)
   5  rendered; chain intact but the episode is INCOMPLETE — the recorder lost events and
@@ -26,7 +30,13 @@ from rich.console import Console
 from rich.table import Table
 
 from kube_q.core.config import load_config
-from kube_q.core.transport import build_headers, explain, iter_sse, make_client
+from kube_q.core.transport import (
+    build_headers,
+    explain,
+    iter_sse,
+    make_client,
+    server_detail,
+)
 
 # `ki_protocol.record.GAP_KIND` — the recorder's own record of what it lost.
 _GAP_TYPE = GAP_KIND
@@ -40,6 +50,11 @@ def _summarise(event: dict) -> str:
     rendered a table of blank summaries for detector firings that had certainly fired.
     """
     return summarise_record(str(event.get("type", "")), event).replace("\n", " ")
+
+
+def _detail(response) -> str:
+    """The server's own explanation for an error response, or its status line."""
+    return server_detail(response) or f"HTTP {response.status_code}"
 
 
 def run(argv: list[str]) -> int:
@@ -57,9 +72,44 @@ def run(argv: list[str]) -> int:
     try:
         with make_client(None, timeout=cfg.timeout) as client:
             with client.stream("GET", url, headers=headers) as response:
+                if response.status_code == 503:
+                    # The audit trail could not be read. Saying "no recorded episode" here
+                    # would be the server's old 404 answer wearing a client disguise: an
+                    # absence claim about an episode nobody looked for.
+                    response.read()
+                    console.print(
+                        f"[red]The decision log is unavailable[/red] — "
+                        f"{_detail(response)}\n"
+                        f"[dim]This is NOT a statement that episode '{episode_id}' has no "
+                        f"records. Check that the flight recorder is enabled and its database "
+                        f"is reachable: [bold]kubeintellect status[/bold][/dim]"
+                    )
+                    return 1
                 if response.status_code == 404:
                     console.print(f"[red]No recorded episode '{episode_id}'.[/red]")
                     return 1
+                if response.status_code == 409:
+                    # The strongest tamper signal this system can produce, and the server
+                    # separates it from 404 on purpose: the chain anchor says the episode had
+                    # records and not one of them survives. Reporting that as exit 1 put it in
+                    # the same bucket as a typo in the episode id and a DNS failure, so the
+                    # documented `kq replay X; [ $? -eq 3 ]` tamper branch could never fire on
+                    # the one case where every record is gone.
+                    response.read()
+                    console.print(
+                        f"[red]✗ CHAIN BROKEN — every record has been removed[/red] — "
+                        f"{_detail(response)}\n"
+                        f"[dim]This is NOT the episode never existing; the chain anchor proves "
+                        f"records were written. Treat the audit trail as compromised.[/dim]"
+                    )
+                    return 3
+                if response.status_code >= 400:
+                    # `explain()` reads the server's `detail` out of the response body — and on a
+                    # STREAMED response the body has not been read, so `response.json()` raises
+                    # and it silently falls back to httpx's "Client error '409 Conflict' for url
+                    # …" line. Every carefully worded server explanation on this path was being
+                    # discarded for that one reason; the 503 branch above already reads first.
+                    response.read()
                 response.raise_for_status()
 
                 meta: dict | None = None
@@ -92,6 +142,19 @@ def run(argv: list[str]) -> int:
                         "[red]✗ chain NOT VERIFIED[/red] — the integrity verdict was missing from "
                         "the stream. The records above are unverified; do not treat this as proof "
                         "they are untampered."
+                    )
+                    return 4
+                if not meta.get("chain_verified", True):
+                    # The frame arrived and the server said, in it, that it could not check —
+                    # its chain anchor was unreadable. `chain_valid` is then "nothing
+                    # contradicted these records", which is not the same as verified, because
+                    # nothing could have contradicted them. Same exit code as a missing frame:
+                    # in both, the records above are unverified. Defaulting to True keeps an
+                    # older server, which does not send the field, reading as it did before.
+                    console.print(
+                        "[red]✗ chain NOT VERIFIED[/red] — the server could not read this "
+                        "episode's chain anchor, so truncation is undetectable. The records "
+                        "above are unverified; do not treat this as proof they are untampered."
                     )
                     return 4
                 verdict = (

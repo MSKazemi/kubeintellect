@@ -135,6 +135,36 @@ def parse_detect_block(playbook_name: str, raw: dict | None) -> DetectBlock | No
         )
     promql = tuple(str(q) for q in (raw.get("promql") or []))
 
+    def _cfg(entry: dict, key: str, default, cast, valid, why: str):
+        """One trend-predicate knob, distinguishing *absent* from *explicitly set to zero*.
+
+        `entry.get(key) or default` cannot tell those apart, and the consequences run opposite
+        ways. `min_r2: 0` deliberately disables the fit-quality gate (`engine.project_eta` does
+        `if r2 < min_r2`), so silently restoring 0.5 makes a detector quieter than its author
+        wrote it — a false negative nobody notices. The three interval knobs go the other way:
+        the engine turns 0 into a predicate that can never fire, which is the dead-detector trap
+        this module already refuses to ship for promql-only blocks. So zero is honoured where it
+        means something and rejected *out loud* where it means a no-op — never swapped in silence.
+        """
+        if key not in entry or entry[key] is None:
+            return default
+        try:
+            value = cast(entry[key])
+        except (TypeError, ValueError):
+            logger.warning(
+                "detector %r: %s=%r is not a number — using the default %r",
+                playbook_name, key, entry[key], default,
+            )
+            return default
+        if not valid(value):
+            logger.warning(
+                "detector %r: %s=%r is invalid (%s) — using the default %r instead. The "
+                "detector that loads is NOT the one that was written.",
+                playbook_name, key, value, why, default,
+            )
+            return default
+        return value
+
     trends = []
     for entry in raw.get("trend_predicates") or []:
         if not isinstance(entry, dict) or not entry.get("metric") or "threshold" not in entry:
@@ -143,11 +173,20 @@ def parse_detect_block(playbook_name: str, raw: dict | None) -> DetectBlock | No
             TrendPredicate(
                 metric=str(entry["metric"]),
                 threshold=float(entry["threshold"]),
-                window_minutes=int(entry.get("window_minutes") or 30),
-                projection_horizon_minutes=int(entry.get("projection_horizon_minutes") or 120),
-                fire_if_eta_within_minutes=int(entry.get("fire_if_eta_within_minutes") or 30),
+                window_minutes=_cfg(
+                    entry, "window_minutes", 30, int, lambda v: v > 0,
+                    "a window of zero minutes or less collects no samples to fit"),
+                projection_horizon_minutes=_cfg(
+                    entry, "projection_horizon_minutes", 120, int, lambda v: v > 0,
+                    "no projected ETA can fall inside a horizon of zero"),
+                fire_if_eta_within_minutes=_cfg(
+                    entry, "fire_if_eta_within_minutes", 30, int, lambda v: v > 0,
+                    "the engine already drops an ETA of zero or less, so this can never fire"),
                 direction=str(entry.get("direction") or "rising"),
-                min_r2=float(entry.get("min_r2") or 0.5),
+                # 0.0 is a real setting here: "fire regardless of fit quality".
+                min_r2=_cfg(
+                    entry, "min_r2", 0.5, float, lambda v: 0.0 <= v <= 1.0,
+                    "r² only ever falls in [0, 1]"),
                 object_label=entry.get("object_label"),
             )
         )
@@ -178,6 +217,10 @@ def parse_detect_block(playbook_name: str, raw: dict | None) -> DetectBlock | No
         playbook=playbook_name,
         watch_predicates=tuple(predicates),
         promql=promql,
-        debounce_seconds=int(raw.get("debounce_seconds") or 0),
+        # 0 is the documented default ("fires immediately"); negative would make the
+        # comparison in DetectorEngine always true, i.e. no debounce at all, silently.
+        debounce_seconds=_cfg(
+            raw, "debounce_seconds", 0, int, lambda v: v >= 0,
+            "a negative debounce disables debouncing entirely rather than shortening it"),
         trend_predicates=tuple(trends),
     )

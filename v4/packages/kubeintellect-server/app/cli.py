@@ -20,6 +20,7 @@ from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
+from typing import NamedTuple
 
 _CONFIG_DIR = Path.home() / ".kubeintellect"
 _CONFIG_FILE = _CONFIG_DIR / ".env"
@@ -431,6 +432,21 @@ spec:
 """
 
 
+def _run_quietly(cmd: list[str], timeout: int = 300) -> tuple[bool, str]:
+    """Run a command and say whether it worked — never raises, never prints.
+
+    ``subprocess.run(..., check=False)`` with the result thrown away is the shape that lets a
+    command print a success line for work that failed; every caller here needs the returncode,
+    and several also need what the tool said in order to be useful about it. A missing binary
+    or a hung call is a failure like any other, not a traceback out of a best-effort helper.
+    """
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, f"{cmd[0]}: {exc}"
+    return proc.returncode == 0, (proc.stderr or proc.stdout).strip()
+
+
 def _get_kind_node_ip() -> str:
     try:
         result = subprocess.run(
@@ -569,9 +585,14 @@ def _setup_demo_rca() -> None:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(_DEMO_RCA_MANIFEST)
             manifest_path = f.name
-        subprocess.run(["kubectl", "apply", "-f", manifest_path],
-                       check=False, capture_output=True)
+        applied, detail = _run_quietly(["kubectl", "apply", "-f", manifest_path])
         Path(manifest_path).unlink(missing_ok=True)
+        if not applied:
+            print(_warn("  ⚠  kubectl would not apply the RCA scenarios — none were created."))
+            if detail:
+                print(_dim(f"     kubectl: {detail}"))
+            print(_dim("     Run 'kubeintellect kind-setup' later to retry."))
+            return
 
         print(f"  {_ok('✓')}  5 RCA scenarios deployed to namespace 'demo-rca':\n")
         rows = [
@@ -622,9 +643,14 @@ def _setup_kind_with_samples() -> None:
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(_SAMPLE_MANIFEST)
         manifest_path = f.name
-    subprocess.run(["kubectl", "apply", "-f", manifest_path], check=False, capture_output=True)
+    applied, detail = _run_quietly(["kubectl", "apply", "-f", manifest_path])
     Path(manifest_path).unlink(missing_ok=True)
-    print(f"  {_ok('✓')}  Sample pods deployed. Try asking: 'list pods in demo namespace'")
+    if applied:
+        print(f"  {_ok('✓')}  Sample pods deployed. Try asking: 'list pods in demo namespace'")
+    else:
+        print(_warn("  ⚠  kubectl would not apply the sample workloads — namespace 'demo' is empty."))
+        if detail:
+            print(_dim(f"     kubectl: {detail}"))
 
 
 # ── systemd user service ──────────────────────────────────────────────────────
@@ -645,12 +671,29 @@ def _service_installed() -> bool:
     return _SERVICE_FILE.exists()
 
 
-def _install_service() -> None:
+class _ServiceInstall(NamedTuple):
+    """Whether systemd actually took the unit, and what it said if it did not."""
+    ok: bool
+    detail: str
+
+
+def _install_service() -> _ServiceInstall:
+    """Write the unit and ask systemd to enable it. Reports what happened; never raises.
+
+    Both systemctl calls used to run with `check=False, capture_output=True` — return code
+    discarded, stderr swallowed — and every caller then printed "Service installed — server will
+    start automatically on login." The most common failure is not exotic: over SSH with no login
+    session, `systemctl --user` answers "Failed to connect to bus" and enables nothing. The user
+    is told the server starts on login; it does not, and the message that said so is gone.
+    """
     kubeintellect_bin = subprocess.run(
         ["which", "kubeintellect"], capture_output=True, text=True,
     ).stdout.strip() or str(Path(sys.executable).parent / "kubeintellect")
 
     _SERVICE_DIR.mkdir(parents=True, exist_ok=True)
+    # `EnvironmentFile=-` — the leading dash makes a missing file non-fatal. Without it a
+    # `kubeintellect service install` run before `kubeintellect init` produces a unit that can
+    # never start ("Failed to load environment files"), and `serve` reads this same file itself.
     _SERVICE_FILE.write_text(f"""\
 [Unit]
 Description=KubeIntellect AI Server
@@ -660,31 +703,68 @@ After=network.target
 ExecStart={kubeintellect_bin} serve
 Restart=on-failure
 RestartSec=5
-EnvironmentFile={_CONFIG_FILE}
+EnvironmentFile=-{_CONFIG_FILE}
 
 [Install]
 WantedBy=default.target
 """)
-    subprocess.run(["systemctl", "--user", "daemon-reload"], check=False, capture_output=True)
-    subprocess.run(["systemctl", "--user", "enable", "--now", _SERVICE_NAME],
-                   check=False, capture_output=True)
+    for command in (
+        ["systemctl", "--user", "daemon-reload"],
+        ["systemctl", "--user", "enable", "--now", _SERVICE_NAME],
+    ):
+        try:
+            proc = subprocess.run(command, capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return _ServiceInstall(False, f"{' '.join(command)}: {exc}")
+        if proc.returncode != 0:
+            return _ServiceInstall(False, (proc.stderr or proc.stdout).strip())
+    return _ServiceInstall(True, "")
 
 
-def _uninstall_service() -> None:
-    subprocess.run(["systemctl", "--user", "disable", "--now", _SERVICE_NAME],
-                   check=False, capture_output=True)
+def _print_service_failure(result: _ServiceInstall) -> None:
+    """Say what failed, in systemd's own words, and what to do about it."""
+    print(_err("  ✗  The unit file was written, but systemd would not enable it."))
+    if result.detail:
+        print(_dim(f"     systemctl: {result.detail}"))
+    print(_dim(f"     unit: {_SERVICE_FILE}"))
+    print(_dim("     Over SSH this usually means there is no user session bus. Either run"))
+    print(_dim(f"       loginctl enable-linger {os.environ.get('USER', '$USER')}"))
+    print(_dim("     and retry, or skip the service and run: kubeintellect serve"))
+
+
+def _uninstall_service() -> _ServiceInstall:
+    """Remove the unit, reporting whether systemd actually stopped the service.
+
+    The unit file goes either way — leaving it behind after a refused ``disable`` would make a
+    later ``service install`` look like a no-op. But a refused ``disable`` means a server that
+    is *still running*, which the caller must not report as removed.
+    """
+    disabled, detail = _run_quietly(["systemctl", "--user", "disable", "--now", _SERVICE_NAME])
     _SERVICE_FILE.unlink(missing_ok=True)
-    subprocess.run(["systemctl", "--user", "daemon-reload"], check=False, capture_output=True)
+    reloaded, reload_detail = _run_quietly(["systemctl", "--user", "daemon-reload"])
+    if disabled and reloaded:
+        return _ServiceInstall(True, "")
+    return _ServiceInstall(False, detail or reload_detail)
 
 
 def cmd_service(args: argparse.Namespace) -> None:
     """Manage the kubeintellect background service."""
     action = args.action
     if action == "install":
-        _install_service()
+        result = _install_service()
+        if not result.ok:
+            _print_service_failure(result)
+            sys.exit(1)
         print(_ok("✓  Service installed — server will start automatically on login."))
     elif action == "uninstall":
-        _uninstall_service()
+        result = _uninstall_service()
+        if not result.ok:
+            print(_err("  ✗  The unit file was removed, but systemd would not disable the service."))
+            if result.detail:
+                print(_dim(f"     systemctl: {result.detail}"))
+            print(_dim("     A server started by the old unit may still be running. Check with:"))
+            print(_dim(f"       systemctl --user status {_SERVICE_NAME}"))
+            sys.exit(1)
         print(_ok("✓  Service removed."))
     elif action == "start":
         subprocess.run(["systemctl", "--user", "start", _SERVICE_NAME])
@@ -1027,6 +1107,33 @@ def cmd_init(_args: argparse.Namespace) -> None:
     else:
         print(f"  {_ok('✓')}  All required settings are present.\n")
 
+    # An `error` here means the file just written cannot run KubeIntellect: no LLM key,
+    # an endpoint that is not a URL, a DSN that is not a DSN. Printing "Setup complete"
+    # under that, and then offering to install a login service and open `kq`, is the
+    # wizard contradicting itself two lines apart — and `init && serve` proceeds, because
+    # the exit code said 0. `kubeintellect status` has classified the *same* issue list
+    # as an exit-1 failure since 2026-08-24; this reads the same classifier and must not
+    # disagree with it about the same file.
+    blocking = [issue for issue in issues if issue.level == "error"]
+    if blocking:
+        print(f"""
+  {_err('── Setup INCOMPLETE ─────────────────────────────────────────────────────')}
+  {_bold(str(len(blocking)))} setting(s) must be fixed before KubeIntellect can run:
+  {', '.join(_bold(issue.field) for issue in blocking)}
+
+  Your API key and config file were still written, so nothing is lost:
+  API key:     {_bold(user_key)}
+  Config file: {_CONFIG_FILE}
+
+  {_dim("Edit the file (or re-run 'kubeintellect init'), then check with:")}
+  {_dim('  kubeintellect status')}
+  {_err('─────────────────────────────────────────────────────────────────────────')}
+""")
+        # Deliberately not offering to start anything. A server with no usable LLM
+        # provider answers no question it is asked; a login service that starts it
+        # every morning makes that permanent.
+        sys.exit(1)
+
     print(f"""
   {_bold('── Setup complete ───────────────────────────────────────────────────────')}
   API key:     {_bold(user_key)}
@@ -1044,10 +1151,15 @@ def cmd_init(_args: argparse.Namespace) -> None:
         else:
             ans = input("  Install as background service? (server starts automatically on login) [Y/n]: ").strip().lower()
             if ans not in ("n", "no"):
-                _install_service()
-                print(f"  {_ok('✓')}  Service installed. After this, just open a terminal and run: kq\n")
-                _open_kq()
-                return
+                result = _install_service()
+                if result.ok:
+                    print(f"  {_ok('✓')}  Service installed. After this, just open a terminal and run: kq\n")
+                    _open_kq()
+                    return
+                # Falling through matters: the old code printed ✓ and opened kq against a
+                # server that was never started, having skipped the fallback below.
+                _print_service_failure(result)
+                print(_dim("     Starting the server for this session instead.\n"))
 
     # Fallback: start server in background for this session only ───────────────
     ans = input("  Start server and open kq now? [Y/n]: ").strip().lower()
@@ -1203,15 +1315,15 @@ def _ensure_database() -> None:
 
 def cmd_serve(args: argparse.Namespace) -> None:
     """Start the FastAPI server via uvicorn."""
+    _load_effective_config()
     if not _CONFIG_FILE.exists():
         print(_warn(f"\n  No config file found at {_CONFIG_FILE}"))
         print(f"  Run {_bold('kubeintellect init')} to create one.")
         print(_dim("  Continuing with environment variables and defaults...\n"))
-    else:
-        _load_dotenv(_CONFIG_FILE)
-        cfg: dict[str, str] = {}
-        _load_dotenv_dict(_CONFIG_FILE, cfg)
-        issues = _validate_config(cfg)
+    if _CONFIG_FILE.exists() or Path(".env").exists():
+        # Validate what the server will actually run on — the same effective config `status`
+        # reports, so a green board and a clean start mean the same thing.
+        issues = _validate_config(dict(os.environ))
         if issues:
             errors = [i for i in issues if i.level == "error"]
             print(f"\n  {_bold('Configuration issues')} (server will still attempt to start):\n")
@@ -1293,9 +1405,8 @@ def _db_error_hint(exc: Exception) -> str:
 
 def cmd_db_init(_args: argparse.Namespace) -> None:
     """Run the database schema against the configured PostgreSQL instance."""
-    if _CONFIG_FILE.exists():
-        _load_dotenv(_CONFIG_FILE)
-    else:
+    _load_effective_config()
+    if not _CONFIG_FILE.exists():
         print(_warn(f"\n  No config file at {_CONFIG_FILE} — using environment variables.\n"))
 
     if os.environ.get("USE_SQLITE", "").lower() == "true":
@@ -1338,39 +1449,66 @@ def cmd_db_init(_args: argparse.Namespace) -> None:
 
 def cmd_status(_args: argparse.Namespace) -> None:
     """Show current configuration and connectivity status."""
-    if _CONFIG_FILE.exists():
-        _load_dotenv(_CONFIG_FILE)
-    if Path(".env").exists():
-        _load_dotenv(Path(".env"))
+    _load_effective_config()
 
     ok_   = _ok("✓")
     fail_ = _err("✗")
     warn_ = _warn("-")
 
+    # Every ✗ is remembered so the *exit code* can say what the board says. `status` is
+    # documented as a "health dashboard" and is the obvious thing to put in a Makefile, a
+    # container healthcheck or `kubeintellect status && kubeintellect serve` — and until
+    # 2026-08-24 it exited 0 with an unreachable database, a dead API server and a missing LLM
+    # key on screen, so none of those uses could ever fail. A `-` row is not counted: it means
+    # "not configured", which is a choice, not a fault.
+    failures: list[str] = []
+
+    def _mark(healthy: bool, component: str) -> str:
+        if healthy:
+            return ok_
+        failures.append(component)
+        return fail_
+
     print(f"\n  {_bold('KubeIntellect status')}\n")
 
     # Config file
-    cfg_status = ok_ if _CONFIG_FILE.exists() else fail_
+    cfg_status = _mark(_CONFIG_FILE.exists(), "config file")
     cfg_note = "" if _CONFIG_FILE.exists() else f"  {_dim('→ run: kubeintellect init')}"
     print(f"  Config:    {cfg_status}  {_CONFIG_FILE}{cfg_note}")
 
     # LLM
+    #
+    # This row checks that the settings are *present*, and says so. It deliberately makes no
+    # request: the cheapest useful probe is still a network round trip to a paid endpoint, and
+    # `status` is run casually and often. What it must not do is what it did until 2026-08-24 —
+    # print a bare ✓ that an operator reads as "the model is usable" when a revoked key, a
+    # typo'd endpoint or a deployment name that does not exist all look identical from here.
+    # Those surface on the first incident, which is the worst possible moment to learn them.
+    _UNVERIFIED = "configured — not verified, no request is made"
     provider = os.environ.get("LLM_PROVIDER", "azure")
     if provider == "openai":
         model = os.environ.get("OPENAI_COORDINATOR_MODEL", "gpt-4o")
         has_key = bool(os.environ.get("OPENAI_API_KEY", "").strip())
-        llm_status = ok_ if has_key else fail_
-        note = "" if has_key else f"  {_dim('OPENAI_API_KEY missing — platform.openai.com/api-keys')}"
+        llm_status = _mark(has_key, "LLM")
+        note = (
+            f"  {_dim(_UNVERIFIED)}" if has_key
+            else f"  {_dim('OPENAI_API_KEY missing — platform.openai.com/api-keys')}"
+        )
         print(f"  LLM:       {llm_status}  openai / {model}{note}")
     else:
         model = os.environ.get("AZURE_COORDINATOR_DEPLOYMENT", "gpt-4o")
         has_key = bool(os.environ.get("AZURE_OPENAI_API_KEY", "").strip())
         has_ep  = bool(os.environ.get("AZURE_OPENAI_ENDPOINT",  "").strip())
-        llm_status = ok_ if (has_key and has_ep) else fail_
+        llm_status = _mark(has_key and has_ep, "LLM")
         missing = []
-        if not has_key: missing.append("AZURE_OPENAI_API_KEY")
-        if not has_ep:  missing.append("AZURE_OPENAI_ENDPOINT")
-        note = f"  {_dim('missing: ' + ', '.join(missing))}" if missing else ""
+        if not has_key:
+            missing.append("AZURE_OPENAI_API_KEY")
+        if not has_ep:
+            missing.append("AZURE_OPENAI_ENDPOINT")
+        note = (
+            f"  {_dim('missing: ' + ', '.join(missing))}" if missing
+            else f"  {_dim(_UNVERIFIED)}"
+        )
         print(f"  LLM:       {llm_status}  azure / {model}{note}")
 
     # Database
@@ -1386,7 +1524,7 @@ def cmd_status(_args: argparse.Namespace) -> None:
         db_reachable = _check_db(dsn)
         db_host = os.environ.get("POSTGRES_HOST", "localhost")
         db_name = os.environ.get("POSTGRES_DB",   "kubeintellect")
-        db_status = ok_ if db_reachable else fail_
+        db_status = _mark(db_reachable, "DB")
         db_note = (
             "" if db_reachable
             else f"  {_dim('unreachable — add USE_SQLITE=true to ' + str(_CONFIG_FILE) + ' for SQLite')}"
@@ -1395,19 +1533,29 @@ def cmd_status(_args: argparse.Namespace) -> None:
 
     # kubectl
     kubectl_found = subprocess.run(["which", "kubectl"], capture_output=True).returncode == 0
-    kubectl_status = ok_ if kubectl_found else fail_
+    kubectl_status = _mark(kubectl_found, "kubectl")
     kubectl_note = "" if kubectl_found else f"  {_dim('→ run: kubeintellect kind-setup')}"
     print(f"  kubectl:   {kubectl_status}  {'found' if kubectl_found else 'not found'}{kubectl_note}")
 
     # Kubeconfig
     kube_path = os.path.expanduser(os.environ.get("KUBECONFIG_PATH", "~/.kube/config"))
     kube_exists = Path(kube_path).exists()
-    kube_status = ok_ if kube_exists else fail_
     kube_context = _get_kube_context(kube_path) if kube_exists else ""
-    kube_note = (
-        f"  {_dim('context: ' + kube_context)}" if kube_context
-        else (f"  {_dim('file not found — set KUBECONFIG_PATH in ' + str(_CONFIG_FILE))}" if not kube_exists else "")
-    )
+    cluster_up = _cluster_reachable(kube_path) if kube_exists else None
+    ctx_note = f"  {_dim('context: ' + kube_context)}" if kube_context else ""
+    if not kube_exists:
+        kube_status = _mark(False, "kubeconfig")
+        kube_note = f"  {_dim('file not found — set KUBECONFIG_PATH in ' + str(_CONFIG_FILE))}"
+    elif cluster_up is True:
+        kube_status = ok_
+        kube_note = f"{ctx_note}  {_dim('API server reachable')}"
+    elif cluster_up is False:
+        # A kubeconfig on disk is not a cluster. Saying so is the whole point of this row.
+        kube_status = _mark(False, "cluster")
+        kube_note = f"{ctx_note}  {_warn('API server did not answer')}"
+    else:
+        kube_status = warn_
+        kube_note = f"{ctx_note}  {_dim('not verified — kubectl not found')}"
     print(f"  Kube:      {kube_status}  {kube_path}{kube_note}")
 
     # Auth — show each key so users can copy it for kq / KUBE_Q_API_KEY
@@ -1431,7 +1579,7 @@ def cmd_status(_args: argparse.Namespace) -> None:
     prom_url = os.environ.get("PROMETHEUS_URL", "").strip()
     if prom_url:
         prom_up = _http_ok(prom_url + "/-/healthy")
-        print(f"  Prometheus:{ok_ if prom_up else fail_}  {prom_url}  "
+        print(f"  Prometheus:{_mark(prom_up, 'Prometheus')}  {prom_url}  "
               f"{_dim('reachable') if prom_up else _warn('unreachable')}")
     else:
         print(f"  Prometheus:{warn_}  {_dim('not configured')}")
@@ -1440,7 +1588,7 @@ def cmd_status(_args: argparse.Namespace) -> None:
     loki_url = os.environ.get("LOKI_URL", "").strip()
     if loki_url:
         loki_up = _http_ok(loki_url + "/ready")
-        print(f"  Loki:      {ok_ if loki_up else fail_}  {loki_url}  "
+        print(f"  Loki:      {_mark(loki_up, 'Loki')}  {loki_url}  "
               f"{_dim('reachable') if loki_up else _warn('unreachable')}")
     else:
         print(f"  Loki:      {warn_}  {_dim('not configured')}")
@@ -1449,7 +1597,7 @@ def cmd_status(_args: argparse.Namespace) -> None:
     grafana_url = os.environ.get("GRAFANA_URL", "").strip()
     if grafana_url:
         grafana_up = _http_ok(grafana_url + "/api/health")
-        print(f"  Grafana:   {ok_ if grafana_up else fail_}  {grafana_url}  "
+        print(f"  Grafana:   {_mark(grafana_up, 'Grafana')}  {grafana_url}  "
               f"{_dim('reachable') if grafana_up else _warn('unreachable')}")
     else:
         print(f"  Grafana:   {warn_}  {_dim('not configured')}")
@@ -1459,7 +1607,7 @@ def cmd_status(_args: argparse.Namespace) -> None:
     if langfuse_enabled:
         lf_host = os.environ.get("LANGFUSE_HOST", "")
         lf_up = _http_ok(lf_host + "/api/public/health") if lf_host else False
-        print(f"  Langfuse:  {ok_ if lf_up else fail_}  {lf_host}  "
+        print(f"  Langfuse:  {_mark(lf_up, 'Langfuse')}  {lf_host}  "
               f"{_dim('reachable') if lf_up else _warn('unreachable')}")
     else:
         print(f"  Langfuse:  {warn_}  {_dim('disabled')}")
@@ -1473,15 +1621,37 @@ def cmd_status(_args: argparse.Namespace) -> None:
         print(f"  kube-q:    {warn_}  {_dim('not installed → pipx install kube-q')}")
 
     # Config issue summary
-    if _CONFIG_FILE.exists():
-        cfg: dict[str, str] = {}
-        _load_dotenv_dict(_CONFIG_FILE, cfg)
+    #
+    # Validate the *effective* configuration — the merge of the shell environment,
+    # ~/.kubeintellect/.env and ./.env, in that precedence, which is what every row above reads
+    # and what the server will see. `os.environ` already holds exactly that merge: this function
+    # loaded both files into it at the top, and `_load_dotenv` never overwrites a variable that
+    # is already set.
+    #
+    # Until 2026-08-24 this validated ~/.kubeintellect/.env *alone*, so the summary contradicted
+    # the rows printed three lines above it, in both directions: "[error] AZURE_OPENAI_API_KEY is
+    # not set" underneath an "LLM: ✓ configured" row when the key lived in ./.env, and — the
+    # dangerous one — "✓ No configuration issues found." underneath an "LLM: ✗ OPENAI_API_KEY
+    # missing" row when the shell overrode LLM_PROVIDER. This line is the one that answers
+    # "is anything wrong with my setup?", so it has to read what the program reads.
+    _local_env = Path(".env")
+    if _CONFIG_FILE.exists() or _local_env.exists():
+        cfg: dict[str, str] = dict(os.environ)
         issues = _validate_config(cfg)
         if issues:
             print(f"\n  {_warn('Configuration issues:')}\n")
             _print_issues(issues)
+            if any(issue.level == "error" for issue in issues):
+                failures.append("config")
         else:
             print(f"\n  {_ok('✓')}  No configuration issues found.")
+            print(f"  {_dim('checked the effective config: the environment, ' + str(_CONFIG_FILE) + ' and ./.env')}")
+
+    if failures:
+        print(f"\n  {_err('✗')}  Not working: {', '.join(dict.fromkeys(failures))}")
+        print(f"  {_dim('status exits 1 when any row is ✗, so it can gate a script or a healthcheck.')}")
+        print()
+        sys.exit(1)
     print()
 
 
@@ -1519,15 +1689,20 @@ def cmd_set(args: argparse.Namespace) -> None:
     for msg in changed:
         print(msg)
 
-    # Reload service if running so changes take effect immediately
-    svc_active = subprocess.run(
-        ["systemctl", "--user", "is-active", _SERVICE_NAME],
-        capture_output=True, text=True,
-    ).stdout.strip() == "active"
+    # Reload the service if it is running, so the values above take effect immediately. `set` is
+    # the only way most users change configuration, so this line is their only signal that the
+    # running server picked it up — it must not appear when the restart did not happen.
+    svc_active, _ = _run_quietly(["systemctl", "--user", "is-active", _SERVICE_NAME], timeout=30)
     if svc_active:
-        subprocess.run(["systemctl", "--user", "restart", _SERVICE_NAME],
-                       capture_output=True, check=False)
-        print(_dim("  → service restarted to apply changes"))
+        restarted, detail = _run_quietly(["systemctl", "--user", "restart", _SERVICE_NAME], timeout=60)
+        if restarted:
+            print(_dim("  → service restarted to apply changes"))
+        else:
+            print(_warn("  ⚠  The service is running but would not restart — it is still using"
+                        " the previous configuration."))
+            if detail:
+                print(_dim(f"     systemctl: {detail}"))
+            print(_dim(f"     Retry with: systemctl --user restart {_SERVICE_NAME}"))
 
 
 # ── tool installers ───────────────────────────────────────────────────────────
@@ -1701,6 +1876,32 @@ def _load_dotenv_dict(path: Path, target: dict) -> None:
             target[key] = value
 
 
+def _load_effective_config() -> None:
+    """Load the configuration every command runs on — one path, so they cannot disagree.
+
+    Precedence, highest first: variables already exported in the environment, then
+    ``~/.kubeintellect/.env``, then a directory-local ``./.env``. `_load_dotenv` never
+    overwrites a variable that is already set, so loading in that order *is* that precedence,
+    and it is the same order `cmd_init` uses to pre-fill the wizard.
+
+    Until 2026-08-24 only `status` read `./.env`; `serve` and `db-init` read the user file
+    alone. `docs/index.md` tells readers to `cp .env.example .env`, so the split was routine:
+    `status` printed "LLM ✓ configured", "Auth ✓ enabled" and "No configuration issues found"
+    while the server started in the same directory with no key and **open access** — a green
+    board over an unauthenticated server. A shared loader is the fix for the class, not a third
+    copy of the same four lines.
+
+    Nothing that works today changes value: real environment variables still win, which is what
+    Helm, Compose `env_file` and systemd inject. Only a variable that was unset everywhere else
+    can now be filled from `./.env`.
+    """
+    if _CONFIG_FILE.exists():
+        _load_dotenv(_CONFIG_FILE)
+    _local_env = Path(".env")
+    if _local_env.exists():
+        _load_dotenv(_local_env)
+
+
 def _load_dotenv(path: Path) -> None:
     """Minimal .env loader — sets env vars that are not already set."""
     for line in path.read_text().splitlines():
@@ -1740,6 +1941,30 @@ def _check_db(dsn: str) -> bool:
             return True
     except Exception:
         return False
+
+
+def _cluster_reachable(kube_path: str) -> bool | None:
+    """Does the API server named by *kube_path* actually answer? ``None`` when we cannot tell.
+
+    `status` probes the database with a real connection and every observability datasource over
+    HTTP — but the cluster, the one thing this product exists to operate, was reported green on
+    ``Path.exists()`` alone plus a context name read out of that same local file. An expired
+    credential, a stopped kind cluster, a VPN that is down: all printed ✓ next to `Kube:`.
+
+    The hard ``subprocess`` timeout is the real bound, not ``--request-timeout``: that flag
+    governs the API request, not the connection attempts in front of it, and a black-holed
+    endpoint will sit there long past it.
+    """
+    try:
+        result = subprocess.run(
+            ["kubectl", "--kubeconfig", kube_path, "version", "-o", "json", "--request-timeout=3s"],
+            capture_output=True, text=True, timeout=8,
+        )
+    except FileNotFoundError:
+        return None                      # no kubectl — the file check is all we can honestly report
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
 
 
 def _get_kube_context(kube_path: str) -> str:

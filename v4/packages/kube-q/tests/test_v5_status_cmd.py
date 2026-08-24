@@ -60,7 +60,8 @@ def test_v5_status_rejects_args(capsys):
 
 @respx.mock
 def test_v5_status_surfaces_a_setting_that_does_nothing(monkeypatch, capsys):
-    """The server excludes unwired flags from `active_flags`; the CLI must not let that read as silence.
+    """The server excludes unwired flags from `active_flags`; the CLI must not let that
+    read as silence.
 
     Without this row the operator turns on KI_V5_RIGHTSIZING, runs `kq v5-status`, sees
     "(none — v4 baseline)" and concludes the flag name was wrong — or worse, that it is on.
@@ -85,7 +86,7 @@ def test_v5_status_stays_quiet_when_there_is_nothing_to_warn_about(monkeypatch, 
 
 @respx.mock
 def test_v5_status_tolerates_an_older_server(monkeypatch, capsys):
-    """A kq newer than its server must not crash on the absent field — kq and the server ship apart."""
+    """A kq newer than its server must not crash on the absent field — they ship apart."""
     monkeypatch.setenv("KUBE_Q_URL", "http://test-server")
     assert "set_but_unwired_flags" not in _BODY
     respx.get("http://test-server/v1/v5/status").mock(return_value=Response(200, json=_BODY))

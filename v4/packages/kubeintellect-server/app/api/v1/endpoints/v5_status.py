@@ -15,8 +15,10 @@ from app.core.version import (
     active_experimental_flags,
     arm,
     code_version,
+    degraded_experimental_flags,
     set_but_unwired_flags,
 )
+from app.memory.service import memory_status
 
 router = APIRouter()
 
@@ -29,6 +31,12 @@ class V5Status(BaseModel):
     # flags the operator turned ON that no code reads — reported so a rollout is not
     # confirmed against a switch that does nothing (audited 2026-08-19)
     set_but_unwired_flags: list[str] = Field(default_factory=list)
+    # flags that ARE read by code but sit inside a subsystem that is not running — the same
+    # "you set it, nothing happened" outcome one level out (audited 2026-08-24)
+    degraded_experimental_flags: list[str] = Field(default_factory=list)
+    # the memory hierarchy's own state and reason. Every MEMORY_* slice runs inside it, so
+    # without this the flag list above says "active" and this surface cannot show the outage.
+    memory: dict = Field(default_factory=dict)
     # guard settings that parse cleanly and protect nothing — a blocked-namespace entry that
     # cannot match any namespace, or an autonomy override the parser drops (audited 2026-08-20)
     unenforceable_guard_config: list[str] = Field(default_factory=list)
@@ -46,6 +54,8 @@ async def v5_status():
         cortex_v5_enabled=settings.CORTEX_V5_ENABLED,
         active_flags=active_experimental_flags(),
         set_but_unwired_flags=set_but_unwired_flags(),
+        degraded_experimental_flags=degraded_experimental_flags(),
+        memory=memory_status(),
         unenforceable_guard_config=unenforceable_guard_config(),
         kill_switch_engaged=kill_switch_engaged(),
         change_freeze=change_freeze_active(),

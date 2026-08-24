@@ -119,7 +119,9 @@ keeps being recalled) and the retention arguments above. See
 ## Audit log
 
 Every API request is recorded fire-and-forget in `request_log` with the request
-id, session, user, role, path, status code, and duration. Query it for usage and
+id, session, user, role, path, status code, and duration — **provided the audit pool
+is up**; see [When nothing is being audited](#when-nothing-is-being-audited) below,
+because an empty table on its own does not tell you which. Query it for usage and
 review:
 
 ```sql
@@ -130,6 +132,34 @@ FROM request_log ORDER BY created_at DESC LIMIT 50;
 -- Who is using which role
 SELECT user_role, count(*) FROM request_log GROUP BY user_role;
 ```
+
+### When nothing is being audited
+
+There are two ways for `request_log` to stop receiving rows, and an empty table looks
+identical to a quiet server — so ask the process rather than the table:
+
+```bash
+curl -s localhost:8000/healthz | jq .audit
+# {"enabled": true,  "state": "ready",       "reason": "",             "dropped": 0}
+# {"enabled": false, "state": "sqlite",      "reason": "USE_SQLITE...", "dropped": 0}
+# {"enabled": false, "state": "unavailable", "reason": "Connect call failed ...", "dropped": 412}
+```
+
+| `state` | Meaning | Action |
+|---|---|---|
+| `ready` | Rows are being written. | — |
+| `sqlite` | `USE_SQLITE=true`: there is no Postgres to write to. Configuration, not a fault. | Switch to Postgres if you need an audit trail. |
+| `unavailable` | Postgres refused the connection. **This replica is auditing nothing.** | Fix connectivity — it reconnects on its own, see below. |
+
+`dropped` is the number of requests that went unrecorded since the process started. It is the
+fact that replaces "the table looks empty", and it does not reset on reconnect — so a non-zero
+`dropped` on a `ready` replica means there is a gap earlier in the log.
+
+**A failed connect is not permanent.** The pod being scheduled before Postgres accepts
+connections is the ordinary case during a rollout; the pool is retried from the write path at
+most once every 30 seconds, so the audit log starts on its own without a restart. The first
+dropped request and every hundredth after it log a warning, so the outage does not go silent
+once the startup log has scrolled away.
 
 The audit pool is disabled in SQLite mode. Every request also carries an
 `X-Request-ID` (generated if the client doesn't supply one) that ties API logs to

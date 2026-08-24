@@ -75,10 +75,15 @@ class TestANotWatchingSensoriumNeverReadsAsAllClear:
 
 
 class TestTheHonestStatesAreUnchanged:
-    def test_disabled_still_says_disabled(self, capsys):
+    def test_disabled_does_not_take_the_stream_listing_path(self, capsys):
+        """`disabled` means there is no engine at all, so there are no streams to blame.
+        The wording changed (it used to say "disabled on this server", which is false for a
+        failed start and for a standby replica) — what must not change is that this state
+        skips the per-stream outage rendering below."""
         rc, out = _run({"sensorium": "disabled", "streams": [], "findings": []}, capsys)
-        assert rc == 0 and "disabled on this server" in out
+        assert rc == 0 and "not perceiving" in out
         assert "not watching" not in out
+        assert "no watch streams have started yet" not in out
 
     def test_active_and_empty_still_gets_the_green_line(self, capsys):
         rc, out = _run({"sensorium": "active", "detectors": 20, "streams": [

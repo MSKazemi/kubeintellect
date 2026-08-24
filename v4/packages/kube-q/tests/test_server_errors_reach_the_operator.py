@@ -67,7 +67,11 @@ def test_a_409_reaches_the_operator_with_its_reason(server, capsys):
     server({"/v1/detectors/nl:dead/promote": (409, {"detail": _DETAIL_409})})
     from kube_q.cli import detector_cmd
 
-    assert detector_cmd.run(["promote", "nl:dead"]) == 1
+    # 3, not 1, since 2026-08-24: this file decides that the server's *reason* must reach the
+    # terminal, and the exit code was only whatever it happened to be when that was written.
+    # A 409 here means the detector can never fire — never worth a retry, so it must not share
+    # a code with "the store is down". See test_a_dead_detector_is_not_a_failed_request.py.
+    assert detector_cmd.run(["promote", "nl:dead"]) == 3
     out = capsys.readouterr().out
     assert "can never fire" in out.replace("\n", " ")
     assert "developer.mozilla.org" not in out

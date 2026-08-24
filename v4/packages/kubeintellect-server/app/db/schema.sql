@@ -417,6 +417,19 @@ CREATE TABLE IF NOT EXISTS memory_chain_head (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Flight-recorder chain head — the same anchor as `memory_chain_head`, for the same reason,
+-- on the chain that actually renders a tamper-evidence banner to a human. `verify_chain` over
+-- `decision_log` proves links; deleting the newest rows of an episode breaks no link, so the
+-- postmortem printed "✅ Audit chain verified intact" over a truncated incident record
+-- (measured 2026-08-24: 9 rows → delete 3 → still True). This row records how far each
+-- episode's chain got, so a shorter chain contradicts it.
+CREATE TABLE IF NOT EXISTS decision_log_head (
+    episode_id TEXT PRIMARY KEY,
+    seq        BIGINT NOT NULL,                   -- seq of the newest appended event
+    hash       TEXT   NOT NULL,                   -- its hash
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- ── v5 P5 Fleet memory exchange (ADR-105) ────────────────────────────────────
 -- Cross-cluster resolution sharing with STRICT tenant isolation enforced by the
 -- tenant-scoped query (a read never crosses tenants). Additive; idempotent.

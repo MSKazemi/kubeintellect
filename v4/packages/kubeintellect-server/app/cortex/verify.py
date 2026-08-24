@@ -56,7 +56,11 @@ class GoalVerdict:
 @dataclass(frozen=True)
 class RcaReview:
     supported: bool
-    confidence: float
+    # None ⇒ the reviewer produced no usable number: the field was absent, unparseable, or the
+    # reviewer never ran. Distinct from 0.0, which is the reviewer *stating* it has no confidence
+    # in the RCA at all — the loudest verdict it can return, and precisely the value the renderer
+    # used to suppress, because `if review.confidence:` is false for it.
+    confidence: float | None
     unsupported: list[str] = field(default_factory=list)
     errored: bool = False  # the reviewer failed and we failed open
 
@@ -119,28 +123,49 @@ async def review_rca(
         ])
         obj = _parse_json_object(reply.content if isinstance(reply.content, str) else "")
         if obj is None:
-            return RcaReview(supported=True, confidence=0.0, errored=True)
+            return RcaReview(supported=True, confidence=None, errored=True)
         unsupported = _clean_list(obj.get("unsupported"))
+        raw_confidence = obj.get("confidence")
         try:
-            confidence = max(0.0, min(1.0, float(obj.get("confidence", 0.0))))
+            # `"confidence": "high"` and a missing key are both "no number", NOT a stated zero.
+            confidence: float | None = (
+                None if raw_confidence is None else max(0.0, min(1.0, float(raw_confidence)))
+            )
         except (ValueError, TypeError):
-            confidence = 0.0
+            confidence = None
         # Trust the explicit list over the boolean: any unsupported item ⇒ not fully supported.
         supported = bool(obj.get("supported", True)) and not unsupported
         return RcaReview(supported=supported, confidence=confidence, unsupported=unsupported)
     except Exception as exc:
         logger.warning("verify.review_rca failed open: %s", exc)
-        return RcaReview(supported=True, confidence=0.0, errored=True)
+        return RcaReview(supported=True, confidence=None, errored=True)
 
 
 def render_review_note(review: RcaReview) -> str:
-    """Deterministic caveat block appended to the answer. Empty string when there is nothing
-    worth surfacing (supported, or the reviewer failed open)."""
-    if review.errored or (review.supported and not review.unsupported):
+    """Deterministic block appended to the answer. Three states, not two — because "the reviewer
+    checked this and was satisfied" and "the reviewer never ran" are different facts and used to
+    render the same empty string, which the user reads as the first one.
+
+    Empty string ONLY for a clean review. Failing open stays fail-open in the sense that matters —
+    the answer is neither blocked nor contradicted — but it stops being *silent*.
+    """
+    if review.errored:
+        return "\n".join([
+            "", "---",
+            "**⚠ Verification NOT PERFORMED.** The adversarial reviewer returned no usable "
+            "verdict, so nothing above was checked against the gathered evidence. This is the "
+            "absence of a finding, not a finding — treat this answer as unverified.",
+        ])
+    if review.supported and not review.unsupported:
         return ""
     lines = ["", "---", ("**⚠ Verification:** the adversarial reviewer flagged claims the gathered "
              "evidence does not fully support:")]
     lines.extend(f"- {item}" for item in review.unsupported)
-    if review.confidence:
+    # Stated unconditionally. Rendered only `if review.confidence:`, the line vanished for exactly
+    # 0.0 — the reviewer declaring no confidence in the RCA — so the caveat block was quietest at
+    # its own maximum alarm, and a missing number looked identical to a confident one.
+    if review.confidence is None:
+        lines.append("\n_The reviewer stated no confidence value._")
+    else:
         lines.append(f"\n_Reviewer confidence in the RCA: {review.confidence:.0%}._")
     return "\n".join(lines)

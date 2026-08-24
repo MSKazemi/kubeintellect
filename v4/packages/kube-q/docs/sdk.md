@@ -102,8 +102,41 @@ All backend events are modelled as a typed Pydantic discriminated union in `kube
 
 ---
 
+## Knowing whether the stream was complete
+
+A malformed or truncated SSE frame is counted, not raised — aborting an interactive answer on one
+bad frame would be worse than delivering a partial one. But a caller that must be fail-closed
+needs to know it happened, and the count is on the client after the stream ends:
+
+```python
+client = KubeQClient(url="http://localhost:8000")
+for event in client.stream("why are my pods failing?"):
+    ...
+
+stats = client.last_stream_stats
+if stats and not stats.lossless:
+    raise RuntimeError(
+        f"{stats.dropped_frames} frame(s) never reached me"
+        f"{' and the stream ended mid-frame' if stats.truncated_tail else ''}")
+```
+
+`last_stream_stats` is set before the first event is yielded, so it is readable even if you
+`break` out of the loop early — as the examples above do. A `WARNING` is also logged on
+`kube_q.core.client`; until 2026-08-24 that log line was the only record and it was emitted only
+when the loop ran to completion, so the documented `case FinalEvent(): break` pattern discarded
+it, and `last_stream_stats` did not exist at all.
+
+---
+
 ## Retry behaviour
 
-Both `KubeQClient` and `AsyncKubeQClient` apply automatic retries with exponential back-off for transient network errors (`httpx.TransportError`). The retry schedule is `[1s, 3s, 5s]` before giving up and raising.
+Both `KubeQClient` and `AsyncKubeQClient` apply automatic retries for transient network errors (`httpx.TransportError`), waiting `2s, 5s, 10s` between four attempts. `stream()` retries only while it has yielded **no** events — once any event has reached you, a transport error is raised rather than retried, because a retry would deliver part of the stream twice.
 
-Non-retryable errors (4xx, 5xx) are raised immediately.
+How the two entry points end differs, and the difference is deliberate:
+
+| | transport failure after every retry | HTTP 4xx / 5xx |
+|---|---|---|
+| `stream()` | raises the last `httpx.TransportError` | raises `httpx.HTTPStatusError` immediately |
+| `query()` | returns `{"text": "", …}` — see its docstring | logs a warning and returns `{"text": "", …}` |
+
+So a `stream()` that ends without raising means the server answered. Until 2026-08-24 that was true of `KubeQClient` only: `AsyncKubeQClient.stream` fell off the end of its retry loop, and a `return` from an async generator is a clean end-of-stream, so an unreachable server produced zero events and no exception. If you have code that treats an empty async stream as "nothing to report", it was reading a connection failure as an answer.
