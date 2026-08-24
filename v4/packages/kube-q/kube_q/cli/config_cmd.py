@@ -24,6 +24,7 @@ from kube_q.core.config import (
     CONFIG_DIR,
     PROFILES_DIR,
     Config,
+    config_sources,
     load_config,
     validate_config,
 )
@@ -75,21 +76,6 @@ def _write_env_file(path: Path, lines: list[str]) -> None:
     path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
 
 
-def _file_values(path: Path) -> dict[str, str]:
-    """Parse the env file into {KEY: VALUE}, ignoring comments / blanks."""
-    out: dict[str, str] = {}
-    for line in _read_env_file(path):
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        k, _, v = stripped.partition("=")
-        k = k.strip()
-        v = v.split("#")[0].strip().strip("\"'")
-        if k:
-            out[k] = v
-    return out
-
-
 def _set_key(path: Path, env_key: str, value: str) -> None:
     lines = [ln for ln in _read_env_file(path)
              if not ln.strip().startswith(f"{env_key}=")]
@@ -110,16 +96,18 @@ def _remove_key(path: Path, env_key: str) -> bool:
 # ── `kq config show` ──────────────────────────────────────────────────────────
 
 
-def _value_source(env_key: str, file_vals: dict[str, str]) -> str:
-    """Report where the current value came from: shell env / file / default."""
-    # Shell env wins — but _load_dotenv_file has already merged file values
-    # into os.environ. Distinguish by comparing against what's in the file.
-    env_val = os.environ.get(env_key)
-    if env_val is None:
-        return "default"
-    if env_key in file_vals and file_vals[env_key] == env_val:
-        return f"file ({ENV_FILE})"
-    return "shell env"
+def _value_source(env_key: str) -> str:
+    """Report where the current value came from: shell env / file / profile / default.
+
+    Read from the loader, which knows which layer won. Deriving it here by comparing the
+    environment against `~/.kube-q/.env` — as this did until 2026-08-24 — cannot see a profile or
+    a project-local `./.env` at all, so it reported both of those as "shell env" while the
+    documented column claims to name them.
+    """
+    source = config_sources().get(env_key)
+    if source:
+        return source
+    return "shell env" if env_key in os.environ else "default"
 
 
 def _mask(env_key: str, value: object) -> str:
@@ -135,8 +123,26 @@ def _mask(env_key: str, value: object) -> str:
     return s
 
 
+def _print_errors(errors: list[str]) -> None:
+    """Render config errors in full.
+
+    `validate_config` builds each message in three parts on purpose — its docstring promises
+    "the offending value, the matching env var (so the user knows what to edit), and what a
+    valid value looks like" — and the last two live on lines 2 and 3. Both call sites here used
+    to print `err.splitlines()[0]`, which kept the complaint and dropped the remedy: the user
+    saw `Invalid URL: 'not-a-url' — must start with http://` and never saw
+    `Fix: set KUBE_Q_URL in ~/.kube-q/.env`. `load_config(strict=True)` has always printed the
+    whole message; these two are now consistent with it.
+    """
+    for err in errors:
+        lines = err.splitlines()
+        console.print(f"  [red]•[/red] {lines[0]}")
+        for cont in lines[1:]:
+            if cont.strip():
+                console.print(f"    [dim]{cont.strip()}[/dim]")
+
+
 def cmd_show() -> int:
-    file_vals = _file_values(ENV_FILE)
     cfg = load_config(strict=False)
 
     table = Table(
@@ -150,7 +156,7 @@ def cmd_show() -> int:
         table.add_row(
             env_key,
             _mask(env_key, current),
-            _value_source(env_key, file_vals),
+            _value_source(env_key),
         )
 
     console.print(table)
@@ -159,8 +165,13 @@ def cmd_show() -> int:
     if errors:
         console.print()
         console.print("[red bold]⚠ Invalid values detected:[/red bold]")
-        for err in errors:
-            console.print(f"  [red]•[/red] {err.splitlines()[0]}")
+        _print_errors(errors)
+        # Exit non-zero. Printing "⚠ Invalid values detected" and then reporting success is the
+        # human-readable and the machine-readable answer disagreeing, and only one of them is
+        # read by `kq config show || …` in an install script or a CI pre-flight. 2 is the code
+        # `load_config(strict=True)` already uses for a configuration error, so a caller does
+        # not have to learn a second one.
+        return 2
     return 0
 
 
@@ -197,8 +208,7 @@ def cmd_set(assignment: str) -> int:
     ]
     if related:
         console.print("[red]Refusing to write — value would be invalid:[/red]")
-        for err in related:
-            console.print(f"  [red]•[/red] {err.splitlines()[0]}")
+        _print_errors(related)
         return 2
 
     _set_key(ENV_FILE, env_key, value)

@@ -177,22 +177,30 @@ class TestForgetSubject:
                 return "DELETE 2"
 
         pool = Pool()
-        counts = await security.forget_subject(
+        result = await security.forget_subject(
             pool, cluster_id="c1", user_id="alice", entity=("Pod", "web-1")
         )
-        assert counts == {"user_prefs": 2, "rca_outcomes": 2, "kg_entities": 2}
+        assert result.complete is True
+        assert result.counts == {"user_prefs": 2, "rca_outcomes": 2, "kg_entities": 2}
         assert any("DELETE FROM user_prefs" in s for s, _ in pool.sql)
         assert any("DELETE FROM kg_entities" in s for s, _ in pool.sql)
 
     async def test_no_pool_is_safe(self):
-        assert await security.forget_subject(None, user_id="x") == {}
+        result = await security.forget_subject(None, user_id="x")
+        assert result.counts == {}
+        # …and says so. An empty count dict used to be the same answer a successful
+        # forget-of-nothing gives, so "safe" was indistinguishable from "done".
+        assert result.complete is False
 
     async def test_never_raises(self):
         class Boom:
             async def execute(self, *a):
                 raise RuntimeError("db down")
 
-        assert await security.forget_subject(Boom(), user_id="x") == {}
+        result = await security.forget_subject(Boom(), user_id="x")
+        assert result.counts == {}
+        assert result.complete is False
+        assert "db down" in result.error
 
 
 class TestMemoryAuditChain:
@@ -243,14 +251,14 @@ class TestMemoryAuditChain:
         assert h1 and h2 and h1 != h2
         assert pool.rows[0]["seq"] == 0 and pool.rows[0]["prev_hash"] == ""
         assert pool.rows[1]["seq"] == 1 and pool.rows[1]["prev_hash"] == h1   # links to prior
-        assert await security.verify_memory_chain(pool, "c1") is True
+        assert (await security.verify_memory_chain(pool, "c1")).valid is True
 
     async def test_tamper_is_detected(self):
         pool = self.ChainPool()
         await security.record_memory_audit(pool, cluster_id="c1", kind="episode_write", ref_id="e1")
         await security.record_memory_audit(pool, cluster_id="c1", kind="episode_write", ref_id="e2")
         pool.rows[0]["kind"] = "forget"                                       # silent edit
-        assert await security.verify_memory_chain(pool, "c1") is False
+        assert (await security.verify_memory_chain(pool, "c1")).valid is False
 
     async def test_deletion_is_detected(self):
         pool = self.ChainPool()
@@ -258,7 +266,7 @@ class TestMemoryAuditChain:
         await security.record_memory_audit(pool, cluster_id="c1", kind="b", ref_id="e2")
         await security.record_memory_audit(pool, cluster_id="c1", kind="c", ref_id="e3")
         del pool.rows[1]                                                     # excise the middle row
-        assert await security.verify_memory_chain(pool, "c1") is False       # seq gap + broken link
+        assert (await security.verify_memory_chain(pool, "c1")).valid is False       # seq gap + broken link
 
     async def test_hash_edit_is_detected(self):
         pool = self.ChainPool()
@@ -266,7 +274,7 @@ class TestMemoryAuditChain:
         await security.record_memory_audit(pool, cluster_id="c1", kind="b", ref_id="e2")
         pool.rows[1]["ref_id"] = "tampered"                                  # edit payload's neighbor field
         pool.rows[1]["kind"] = "forget"                                      # change the chained content
-        assert await security.verify_memory_chain(pool, "c1") is False
+        assert (await security.verify_memory_chain(pool, "c1")).valid is False
 
     async def test_chains_are_per_cluster(self):
         pool = self.ChainPool()
@@ -275,15 +283,15 @@ class TestMemoryAuditChain:
         # each cluster starts its own chain at seq 0
         assert [r["seq"] for r in pool.rows if r["cluster_id"] == "c1"] == [0]
         assert [r["seq"] for r in pool.rows if r["cluster_id"] == "c2"] == [0]
-        assert await security.verify_memory_chain(pool, "c1")
-        assert await security.verify_memory_chain(pool, "c2")
+        assert (await security.verify_memory_chain(pool, "c1")).valid
+        assert (await security.verify_memory_chain(pool, "c2")).valid
 
     async def test_empty_chain_is_valid(self):
-        assert await security.verify_memory_chain(self.ChainPool(), "c1") is True
+        assert (await security.verify_memory_chain(self.ChainPool(), "c1")).valid is True
 
     async def test_no_pool_is_safe(self):
         assert await security.record_memory_audit(None, cluster_id="c1", kind="w") is None
-        assert await security.verify_memory_chain(None, "c1") is True
+        assert (await security.verify_memory_chain(None, "c1")).valid is True
 
     async def test_append_never_raises(self):
         class Boom:

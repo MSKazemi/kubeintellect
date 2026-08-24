@@ -59,7 +59,7 @@ uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/
 # 2. Types — the workspace is at ZERO errors; keep it there.
 uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q
 
-# 3. Server suite (3540 tests)
+# 3. Server suite (3588 tests)
 uv run python -m pytest tests/ -q
 
 # 4. kq CLI suite (468 tests)
@@ -76,6 +76,11 @@ make fix-modes            # corrects any violation in place
 # 6. Syntax — every tracked .py outside v1-v3 compiles with no SyntaxWarning.
 make check-syntax         # or: ./scripts/check-syntax-warnings.py
 ```
+
+Both report **what they examined**, not what exists: the mode gate reads one git index
+(`--git-dir DIR` points it at another) and the syntax gate compiles the tracked `*.py` it
+can read. Either one finding nothing to check now **fails** — a sparse or partial checkout
+used to produce a confident pass over zero files.
 
 If you create a file, do not mark it executable unless it is a script with a shebang. This
 gate exists because `ruff`'s EXE002 cannot run here (see the pin below), so nothing else
@@ -110,7 +115,7 @@ Two annotations are load-bearing and mypy *cannot* verify them — see "Safety i
 
 ### Known pre-existing debt — do not try to fix it in an unrelated PR
 
-- **`ruff format --check` is not a CI gate** and would reformat ~108 files. `make lint` in
+- **`ruff format --check` is not a CI gate** and would reformat **116** files. `make lint` in
   `v4/` *does* run it, so `make lint` fails on a clean checkout. Use the `ruff check` command
   above to predict CI, not `make lint`.
 - **`ruff` is pinned `<0.16`** on purpose — 0.16's default rules reported 438 findings, then

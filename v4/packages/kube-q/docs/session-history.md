@@ -123,8 +123,37 @@ Deletes the current session from local history. Server-side state (if any) is no
 |---|---|
 | Path | `~/.kube-q/history.db` |
 | Format | SQLite 3, WAL mode |
-| Schema version | v3 (auto-migrates from v1 and v2) |
+| Schema version | v4 (auto-migrates from v1, v2 and v3) |
 | What's stored | Session metadata, messages, token counts, FTS index |
 | What's NOT stored | Cluster credentials, API keys, server state |
 
 Schema migrations run automatically at startup — old databases from v1.0.0 are upgraded transparently.
+
+---
+
+## When the store cannot be read
+
+The history database is a **best-effort local mirror**: every read swallows SQLite errors so a
+broken cache can never crash the REPL or a query. That means a failed read returns nothing — and
+"nothing" is also what a fresh install returns.
+
+So an unreadable store now says so instead of reporting an empty history:
+
+```
+$ kq --list
+⚠ the local history store could not be read — this is not necessarily an empty history.
+  /home/you/.kube-q/history.db: list_sessions: file is not a database
+```
+
+The same line appears for `kq --search`, and in the REPL for `/list`, `/search`, `/branches` and
+the resume picker. A genuinely empty store still prints the plain `No sessions found.`
+
+Usual causes and the fix:
+
+| Cause | Fix |
+|---|---|
+| Corrupt or truncated `history.db` (killed mid-write, bad disk) | delete the file — it is a cache; the next run recreates it |
+| `~/.kube-q/` not writable, or a read-only home | fix the permissions, or set a writable `HOME` |
+| Disk full | free space; the file is normally a few MB |
+
+Nothing in the database is needed to talk to a cluster — deleting it loses transcripts only.

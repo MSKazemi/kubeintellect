@@ -50,7 +50,22 @@ def run(argv: list[str]) -> int:
 
     state = data.get("sensorium")
     if state == "disabled":
-        console.print("[yellow]Sensorium is disabled on this server.[/yellow]")
+        # `disabled` covers four unrelated situations — switched off, no compiled
+        # detectors, a FAILED start, and a leader-election standby. Printing "disabled"
+        # for all four states a cause as fact, and for the last two it is false: a
+        # crashed sensorium is an outage, and a standby replica is behaving correctly
+        # while another replica does the perceiving. The server sends the sentence that
+        # names which one; say that instead of guessing.
+        reason = data.get("sensorium_reason")
+        if reason:
+            console.print(f"[yellow]Sensorium is not perceiving[/yellow] — {reason}")
+        else:
+            # A server older than `sensorium_reason` cannot say which of the four it is,
+            # and neither can we. Say that, rather than picking the likeliest cause.
+            console.print(
+                "[yellow]Sensorium is not perceiving[/yellow] — this server does not "
+                "report why, so an empty result here does NOT mean the cluster is healthy."
+            )
         return 0
     if state != "active":
         # No watch stream is connected, so an empty list is "not watching", not
@@ -81,9 +96,35 @@ def run(argv: list[str]) -> int:
             f"  [yellow]•[/yellow] {data.get('predictive_error') or 'no reason recorded'}"
         )
 
+    # A third, independent way to be blind while looking connected: the watch stream is up and
+    # the queue behind it overflowed. `_enqueue` sheds the OLDEST observation rather than applying
+    # backpressure to `kubectl`, so the loss is silent by design at the point it happens and
+    # `shed_total` is the only record of it. A detector that would have fired on a dropped
+    # observation did not fire, which means an empty list is not an all-clear and a NON-empty one
+    # is not a complete list either — hence this prints above the table too, not only instead of it.
+    queue = data.get("queue") or {}
+    shed = int(queue.get("shed_total") or 0)
+    if shed:
+        console.print(
+            f"[red]Perception is lossy[/red] — the sensorium dropped {shed} observation(s) "
+            "before any detector saw them, so a finding that should have fired may be missing."
+        )
+        console.print(
+            f"  [yellow]•[/yellow] observation queue high-water "
+            f"{queue.get('high_water', 'not reported')}"
+        )
+
     findings = data.get("findings", [])
     if not findings:
-        if state == "active" and predictive != "blind":
+        # One line, composed from every caveat that holds. The green all-clear is the ONLY
+        # branch that claims nothing is wrong, so it must be unreachable whenever any of the
+        # three blindnesses is in play — that is the invariant, not the wording.
+        caveats = []
+        if predictive == "blind":
+            caveats.append("predictive detection is blind")
+        if shed:
+            caveats.append(f"{shed} observation(s) were dropped unseen")
+        if state == "active" and not caveats:
             console.print(
                 f"[green]No findings[/green] · {data.get('detectors', '?')} detectors watching"
             )
@@ -91,7 +132,7 @@ def run(argv: list[str]) -> int:
             # Watching, but half-blind — say what is and is not covered.
             console.print(
                 f"[yellow]No findings[/yellow] · {data.get('detectors', '?')} detectors watching, "
-                "but predictive detection is blind — this is not an all-clear."
+                f"but {' and '.join(caveats)} — this is not an all-clear."
             )
         return 0
 

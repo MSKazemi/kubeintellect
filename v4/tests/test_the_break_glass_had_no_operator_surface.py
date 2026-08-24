@@ -66,7 +66,7 @@ _BRAKE_RE = re.compile(r"kill|stop|freeze|brake|pause|halt", re.I)
 
 
 def _break_glass_section() -> str:
-    text = _AUTONOMY_DOC.read_text()
+    text = _AUTONOMY_DOC.read_text(encoding="utf-8")
     start = text.index("## Stopping the agent")
     rest = text[start + 3:]
     end = rest.index("\n## ") if "\n## " in rest else len(rest)
@@ -80,7 +80,7 @@ def _runtime_toggle_is_exposed() -> bool:
     again automatically, with no test to remember to unpick.
     """
     return any(
-        "engage_kill_switch" in p.read_text()
+        "engage_kill_switch" in p.read_text(encoding="utf-8")
         for p in _APP.rglob("*.py")
         if p.name != "budget.py"
     )
@@ -114,9 +114,9 @@ class TestThePageClaimsOnlyWhatExists:
 
     def test_the_recipe_names_the_deployment_the_chart_actually_creates(self):
         """`fullname` defaults to `.Chart.Name`, so the recipe is only right if it matches it."""
-        chart_name = re.search(r"^name:\s*(\S+)", (_CHART / "Chart.yaml").read_text(), re.M)
+        chart_name = re.search(r"^name:\s*(\S+)", (_CHART / "Chart.yaml").read_text(encoding="utf-8"), re.M)
         assert chart_name, "chart has no name"
-        helpers = (_CHART / "templates" / "_helpers.tpl").read_text()
+        helpers = (_CHART / "templates" / "_helpers.tpl").read_text(encoding="utf-8")
         assert "default .Chart.Name .Values.fullnameOverride" in helpers, (
             "the fullname helper changed — recheck the deployment name in the break-glass recipe"
         )
@@ -129,7 +129,7 @@ class TestThePageClaimsOnlyWhatExists:
 
     def test_the_module_docstring_records_the_missing_surface(self):
         """The same false claim lived in the code too, and that is where the next reader looks."""
-        src = (_APP / "autonomy" / "budget.py").read_text()
+        src = (_APP / "autonomy" / "budget.py").read_text(encoding="utf-8")
         head = src[:src.index('"""', 3) + 3]
         assert "no operator surface" in head, (
             "budget.py still describes the runtime toggle as an operator break-glass; nothing "
@@ -162,7 +162,7 @@ class TestTheSurfacesReallyAreAbsent:
         callers = sorted(
             p.relative_to(_APP).as_posix()
             for p in _APP.rglob("*.py")
-            if "engage_kill_switch" in p.read_text() and p.name != "budget.py"
+            if "engage_kill_switch" in p.read_text(encoding="utf-8") and p.name != "budget.py"
         )
         assert callers == [], (
             f"the toggle is now reachable from {callers} — update the break-glass page, the "
@@ -186,8 +186,8 @@ class TestTheSurfacesReallyAreAbsent:
         keys by name, and this test asserts that refusal — which is stronger than the old
         assertion, because it survives the next person adding a third escape hatch.
         """
-        templates = "\n".join(p.read_text() for p in (_CHART / "templates").glob("*.yaml"))
-        configmap = (_CHART / "templates" / "configmap.yaml").read_text()
+        templates = "\n".join(p.read_text(encoding="utf-8") for p in (_CHART / "templates").glob("*.yaml"))
+        configmap = (_CHART / "templates" / "configmap.yaml").read_text(encoding="utf-8")
 
         # Neither brake may be rendered as a ConfigMap key by any template.
         for brake in ("KI_V5_KILL_SWITCH", "KI_V5_CHANGE_FREEZE"):

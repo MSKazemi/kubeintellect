@@ -467,11 +467,23 @@ async def load_db_detectors(
 ) -> tuple[tuple[DetectBlock, ...], tuple[DetectBlock, ...]]:
     """Compile NL-authored / promoted detectors from the DB → (active, shadow).
 
-    Only rows whose `predicate` is a real detect block are compiled; fail-open
-    (no pool / query error → empty tuples).
+    Only rows whose `predicate` is a real detect block are compiled. No pool, or a query that
+    returns nothing, means exactly one thing: **there are no DB detectors**, and empty tuples
+    say so.
+
+    A query that FAILED means something else entirely, and raises `DetectorStoreUnavailable`
+    rather than returning empty tuples. It used to return them, and the only caller assigns the
+    result straight into the live engine — so a transient DNS blip silently unloaded every
+    promoted detector until the next successful refresh, measured 2026-08-24:
+
+        DB reachable, 3 promoted   engine.detectors = 23  (playbooks 20 + db 3)
+        next refresh, query raises engine.detectors = 20  (playbooks 20 + db 0)   ← disarmed
+
+    `_refresh_db_detectors` already had the correct handler for this; it was unreachable.
     """
     from app.detectors.models import parse_detect_block
     from app.detectors.predicate_shape import predicate_liveness_errors
+    from app.detectors.review import DetectorStoreUnavailable
     from app.memory import service
 
     pool = service._pool
@@ -485,23 +497,31 @@ async def load_db_detectors(
         )
     except Exception as exc:
         logger.warning(f"load_db_detectors: query failed: {exc}")
-        return (), ()
+        raise DetectorStoreUnavailable(f"detector store query failed: {exc}") from exc
     active: list[DetectBlock] = []
     shadow: list[DetectBlock] = []
+    # Four of the five ways a row is dropped below used to `continue` in complete silence, so a
+    # table full of malformed rows was indistinguishable from an empty table. Counted, then
+    # reported once — a per-row warning on every refresh would be its own kind of noise.
+    skipped: list[str] = []
     for r in rows:
         pred = r["predicate"]
         if isinstance(pred, str):
             try:
                 pred = json.loads(pred)
             except json.JSONDecodeError:
+                skipped.append(f"{r['name']}: predicate is not valid JSON")
                 continue
         if not _is_detect_block(pred):
+            skipped.append(f"{r['name']}: predicate is not a detect block")
             continue
         try:
             block = parse_detect_block(r["name"], pred)
-        except Exception:
+        except Exception as exc:
+            skipped.append(f"{r['name']}: predicate did not compile ({exc})")
             continue
         if block is None:
+            skipped.append(f"{r['name']}: predicate compiled to nothing")
             continue
         # Compiling is not the same as being able to fire. `validate_detect_block` gates the
         # authoring endpoint, but it is not the only way a row reaches this table —
@@ -518,4 +538,10 @@ async def load_db_detectors(
             )
             continue
         (active if r["status"] == "active" else shadow).append(block)
+    if skipped:
+        logger.warning(
+            f"load_db_detectors: {len(skipped)} of {len(rows)} stored detector(s) were not "
+            f"loaded — {'; '.join(skipped[:5])}"
+            + (f" (+{len(skipped) - 5} more)" if len(skipped) > 5 else "")
+        )
     return tuple(active), tuple(shadow)

@@ -16,12 +16,17 @@ KubeQClient async iterator is implemented (Phase 1 Step 8).
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, NamedTuple
 
 import httpx
 
 # ── Retry config ───────────────────────────────────────────────────────────────
 QUERY_RETRY_DELAYS = (2, 5, 10)  # seconds between attempts (3 total)
+
+# One source of truth for both health checks. `health()` is documented as a *fast* connectivity
+# check on both clients, and the async one used to run on the 120 s query timeout instead.
+HEALTH_TIMEOUT = 5.0
+HEALTH_PATH = "/healthz"
 
 # ── DNS error keywords ─────────────────────────────────────────────────────────
 _DNS_KEYWORDS = ("Name or service not known", "nodename nor servname", "getaddrinfo")
@@ -199,13 +204,46 @@ def iter_sse(response: httpx.Response, stats: SseStats | None = None) -> Any:
 
 # ── Health check ──────────────────────────────────────────────────────────────
 
+def health_status_reason(url: str, status_code: int, health_path: str) -> tuple[bool, str]:
+    """Classify a health-endpoint *status code* into (ok, reason).
+
+    Lives here, once, because there are two health checks — the sync `check_health` below and
+    `AsyncKubeQClient.health` — and until 2026-08-24 each carried its own copy of this and of
+    `health_failure_reason`. They had already drifted: the async copy reported a DNS failure as
+    "Connection refused — nothing is listening at …", which names the wrong cause and sends the
+    reader to check the port when the hostname is what does not resolve.
+    """
+    if status_code == 200:
+        return True, ""
+    if status_code == 401:
+        return False, "Authentication required — set KUBE_Q_API_KEY or pass --api-key"
+    return False, f"HTTP {status_code} from {url}{health_path}"
+
+
+def health_failure_reason(url: str, exc: BaseException, timeout: float) -> str:
+    """Classify a health-check *exception* into a reason. Counterpart of the above.
+
+    Distinct from `describe_error` on purpose: this wording tells the reader what to go and fix
+    (the hostname, the listening port, the timeout), and it names the timeout actually in force —
+    the message used to say "5 s" whatever the caller passed.
+    """
+    if isinstance(exc, httpx.ConnectError):
+        if any(k in str(exc) for k in _DNS_KEYWORDS):
+            host = url.split("//")[-1].split("/")[0]
+            return f"DNS resolution failed for '{host}' — check the hostname or /etc/hosts"
+        return f"Connection refused — nothing is listening at {url}"
+    if isinstance(exc, httpx.TimeoutException):
+        return f"Connection timed out — {url} did not respond within {timeout:g} s"
+    return f"Unexpected error: {exc}"
+
+
 def check_health(
     url: str,
     *,
     api_key: str | None = None,
     ca_cert: str | None = None,
-    timeout: float = 5.0,
-    health_path: str | None = "/healthz",
+    timeout: float = HEALTH_TIMEOUT,
+    health_path: str | None = HEALTH_PATH,
     auth_scheme: str = "bearer",
 ) -> tuple[bool, str]:
     """Check API reachability. Returns (ok, reason).
@@ -225,26 +263,77 @@ def check_health(
     try:
         with make_client(ca_cert, timeout=timeout) as client:
             r = client.get(f"{url}{health_path}", headers=headers)
-        if r.status_code == 200:
-            return True, ""
-        if r.status_code == 401:
-            return False, "Authentication required — set KUBE_Q_API_KEY or pass --api-key"
-        return False, f"HTTP {r.status_code} from {url}{health_path}"
-    except httpx.ConnectError as e:
-        msg = str(e)
-        if any(k in msg for k in _DNS_KEYWORDS):
-            host = url.split("//")[-1].split("/")[0]
-            return False, f"DNS resolution failed for '{host}' — check the hostname or /etc/hosts"
-        return False, f"Connection refused — nothing is listening at {url}"
-    except httpx.TimeoutException:
-        # Report the timeout actually in force; it is configurable (KUBE_Q_HEALTH_TIMEOUT), and
-        # this message used to say "5 s" whatever the caller passed.
-        return False, f"Connection timed out — {url} did not respond within {timeout:g} s"
-    except Exception as e:
-        return False, f"Unexpected error: {e}"
+        return health_status_reason(url, r.status_code, health_path)
+    except Exception as e:  # noqa: BLE001 — every failure is a health verdict, never a raise
+        return False, health_failure_reason(url, e, timeout)
 
 
 # ── Namespace fetch ───────────────────────────────────────────────────────────
+
+class NamespaceListing(NamedTuple):
+    """The namespaces the backend will show us, and whether that is all of them.
+
+    `names is None` means we could not find out. `complete is False` means the backend told us
+    it removed some — a protected namespace is still a namespace, and *absent from this list*
+    then stops being evidence that it does not exist. Keeping the two apart is the entire point:
+    the caller's only wrong move is to report a withheld namespace as missing.
+    """
+
+    names: list[str] | None
+    complete: bool = True
+
+
+def namespace_verdict(listing: "NamespaceListing", namespace: str) -> bool | None:
+    """Does `namespace` exist? `True`, `False`, or **`None` — could not be established.**
+
+    The third answer is the one that has to survive. A caller that collapses it into `False`
+    tells an operator a namespace does not exist when the truth is that we were not shown it:
+    the backend was unreachable, or it withheld the namespace by policy and said so. Only a
+    definite absence from a listing that claims to be whole is evidence of absence.
+    """
+    if listing.names is None:
+        return None
+    if namespace in listing.names:
+        return True
+    return False if listing.complete else None
+
+
+def fetch_namespace_listing(
+    url: str,
+    user_id: str,
+    *,
+    api_key: str | None = None,
+    ca_cert: str | None = None,
+    timeout: float = 3.0,
+) -> NamespaceListing:
+    """Fetch the namespaces the backend will show us, and whether the list is the whole set.
+
+    The backend filters `KUBECTL_BLOCKED_NAMESPACES` out of this listing and, since 2026-08-24,
+    says so in a `withheldByPolicy` field. Before that it removed them in silence, and this
+    client — which is careful enough to keep three states rather than two — had no way to reach
+    the third one, so `/ns monitoring` reported a namespace that exists as **not found**.
+    """
+    req_headers: dict[str, str] = {"X-User-ID": user_id}
+    if api_key:
+        req_headers["Authorization"] = f"Bearer {api_key}"
+    try:
+        with make_client(ca_cert, timeout=timeout) as client:
+            r = client.get(f"{url}/v1/namespaces", headers=req_headers)
+        if r.status_code == 200:
+            body = r.json()
+            names = body.get("namespaces")
+            # Only a real list is an answer. A 200 whose body we cannot read is "unknown", not
+            # "zero" — the caller treats an empty list as proof a namespace does not exist.
+            if not isinstance(names, list):
+                return NamespaceListing(None)
+            # An older backend has no such field, and its listing may well be short without
+            # saying so. Absent marker ⇒ assumed complete, which is what this client did before
+            # the field existed; the server it ships with always sends it.
+            return NamespaceListing(names, not str(body.get("withheldByPolicy") or ""))
+        return NamespaceListing(None)
+    except Exception:
+        return NamespaceListing(None)
+
 
 def fetch_namespaces(
     url: str,
@@ -254,28 +343,38 @@ def fetch_namespaces(
     ca_cert: str | None = None,
     timeout: float = 3.0,
 ) -> list[str] | None:
-    """Fetch the list of known namespaces from the backend.
+    """The namespaces the backend will show us, or None if we could not find out.
 
-    Returns the namespace list on success, or None if the backend is
-    unreachable / returns an unexpected response.
+    Kept as the name every caller already imports. A caller that must not confuse *withheld*
+    with *absent* wants :func:`fetch_namespace_listing` instead — this one cannot tell you.
     """
-    req_headers: dict[str, str] = {"X-User-ID": user_id}
-    if api_key:
-        req_headers["Authorization"] = f"Bearer {api_key}"
-    try:
-        with make_client(ca_cert, timeout=timeout) as client:
-            r = client.get(f"{url}/v1/namespaces", headers=req_headers)
-        if r.status_code == 200:
-            names = r.json().get("namespaces")
-            # Only a real list is an answer. A 200 whose body we cannot read is "unknown", not
-            # "zero" — the caller treats an empty list as proof a namespace does not exist.
-            return names if isinstance(names, list) else None
-        return None
-    except Exception:
-        return None
+    return fetch_namespace_listing(
+        url, user_id, api_key=api_key, ca_cert=ca_cert, timeout=timeout
+    ).names
 
 
 # ── Server-side error text ────────────────────────────────────────────────────
+
+def server_detail(response) -> str | None:
+    """The server's own `detail` for a response, normalised, or None if it said nothing.
+
+    One implementation, because there were two: `explain()` below read it out of an exception's
+    response and `replay_cmd._detail` read it out of a response directly, and only the first
+    knew that FastAPI sends validation errors as a *list* of dicts — so the other rendered a 422
+    as `[{'type': 'missing', ...}]`. Any command that inspects a status code before raising
+    needs this form; `explain()` is only reachable once something has raised.
+    """
+    try:
+        payload = response.json()
+    except Exception:  # noqa: BLE001 — a non-JSON error body is still an error body
+        return None
+    detail = payload.get("detail") if isinstance(payload, dict) else None
+    if isinstance(detail, list):                      # FastAPI validation errors
+        detail = "; ".join(
+            str(d.get("msg", d)) if isinstance(d, dict) else str(d) for d in detail
+        )
+    return detail if isinstance(detail, str) and detail.strip() else None
+
 
 def explain(exc: BaseException) -> str:
     """The server's own words for a failure, not just the status line.
@@ -288,15 +387,7 @@ def explain(exc: BaseException) -> str:
     response = getattr(exc, "response", None)
     if response is None:
         return str(exc)
-    try:
-        payload = response.json()
-    except Exception:
-        payload = None
-    detail = payload.get("detail") if isinstance(payload, dict) else None
-    if isinstance(detail, list):                      # FastAPI validation errors
-        detail = "; ".join(
-            str(d.get("msg", d)) if isinstance(d, dict) else str(d) for d in detail
-        )
-    if not isinstance(detail, str) or not detail.strip():
+    detail = server_detail(response)
+    if detail is None:
         return str(exc)
     return f"{detail} (HTTP {response.status_code})"

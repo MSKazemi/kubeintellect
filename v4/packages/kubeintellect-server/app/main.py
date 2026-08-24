@@ -70,18 +70,27 @@ async def lifespan(app: FastAPI):
     # duplicates perception rather than sharing it — two watch streams, two engines firing the
     # same finding, two watchtowers acting on it against a live cluster. See app/core/leader.py.
     async def _start_singleton_workers() -> None:
+        from app.detectors import service as _sensorium
         if not settings.SENSORIUM_ENABLED:
+            _sensorium.record_disabled_by_flag()
             return
-        from app.detectors.service import start_sensorium
         try:
-            await start_sensorium()
+            await _sensorium.start_sensorium()
         except Exception as exc:
+            # Swallowed on purpose — perception failing must never cost availability. But it is
+            # recorded, because a swallowed start is an outage and `/v1/findings` and the digest
+            # used to describe it as `SENSORIUM_ENABLED=false, or no compiled detectors loaded`.
+            _sensorium.record_start_failure(exc)
             logger.warning(f"sensorium failed to start (continuing without): {exc}")
 
     async def _stop_singleton_workers() -> None:
-        from app.detectors.service import stop_sensorium
+        from app.detectors import service as _sensorium
         try:
-            await stop_sensorium()
+            # Losing the lock is not a fault: this replica serves the API and another one
+            # watches. Saying so is the difference between "normal" and "nothing is monitored".
+            await _sensorium.stop_sensorium(
+                _sensorium.STANDBY, "another replica holds the singleton lock"
+            )
         except Exception as exc:
             logger.warning(f"sensorium failed to stop cleanly: {exc}")
 
@@ -219,7 +228,7 @@ app = FastAPI(
 # RequestLogging must wrap CORS so the request_id is set before CORS runs.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS.split(","),
+    allow_origins=settings.allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -169,7 +169,7 @@ class TestTheDocumentedFrameIsTheRealFrame:
         import re
         from pathlib import Path
 
-        doc = (Path(__file__).resolve().parents[1] / "docs" / "api-reference.md").read_text()
+        doc = (Path(__file__).resolve().parents[1] / "docs" / "api-reference.md").read_text(encoding="utf-8")
         marker = "**4. Approval request (HITL)**"
         assert marker in doc, "the HITL section was renamed; this gate must be re-pointed"
         block = re.search(r"```json\n(.*?)\n```", doc[doc.index(marker):], re.S)

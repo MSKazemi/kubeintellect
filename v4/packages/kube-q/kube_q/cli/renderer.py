@@ -317,7 +317,8 @@ def format_branches(branches: list[dict], current_id: str) -> None:
     from rich.table import Table
 
     if not branches:
-        console.print("[dim]No branches of this session.[/dim]")
+        if not print_store_failure():
+            console.print("[dim]No branches of this session.[/dim]")
         return
 
     table = Table(
@@ -342,12 +343,33 @@ def format_branches(branches: list[dict], current_id: str) -> None:
     console.print(table)
 
 
+def print_store_failure() -> bool:
+    """Print why the local history store could not be read. True if there was a failure.
+
+    An empty list from `kube_q.cli.store` means "nothing to show" *or* "the read failed" —
+    the module swallows every `sqlite3.Error` on purpose so a broken cache cannot crash the
+    REPL. Printing "No sessions found." over a corrupt `history.db` tells the user their
+    history is gone when it is only unreachable, so every empty result asks first.
+    """
+    from kube_q.cli import store
+
+    note = store.empty_result_note()
+    if not note:
+        return False
+    first, _, rest = note.partition("\n")
+    console.print(f"[yellow]⚠ {first}[/yellow]")
+    if rest:
+        console.print(f"  [dim]{rest}[/dim]")
+    return True
+
+
 def _print_sessions_table(sessions: list[dict]) -> None:
     """Render a Rich table of sessions."""
     from rich.table import Table
 
     if not sessions:
-        console.print("[dim]No sessions found.[/dim]")
+        if not print_store_failure():
+            console.print("[dim]No sessions found.[/dim]")
         return
 
     table = Table(

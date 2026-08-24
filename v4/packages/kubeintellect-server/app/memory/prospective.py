@@ -30,6 +30,7 @@ from typing import Any
 from app.autonomy.ladder import at_least, level_for_namespace
 from app.core.config import settings
 from app.memory import service
+from app.memory import pass_health
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -148,6 +149,7 @@ async def run_prospective_once() -> int:
         due = await pool.fetch(_SQL_CLAIM_DUE, _FIRE_BATCH)
     except Exception as exc:
         logger.warning(f"prospective: claim pass failed: {exc}")
+        pass_health.record_failure("prospective_fired", exc)
         return 0
 
     fired = 0

@@ -68,7 +68,22 @@ async def _hierarchy_context(state: AgentState) -> str:
         if theme_block:
             parts.append(theme_block)
 
-    changes = await kg.recent_changes_block(cluster_id, minutes=15, limit=12)
+    try:
+        changes = await kg.recent_changes_block(cluster_id, minutes=15, limit=12)
+    except kg.KGUnavailable as exc:
+        # Same rule as the episodes block above, for the question an incident asks first.
+        # An omitted "Recent cluster changes" section is not neutral — it is the shape a calm
+        # cluster makes, so a failed read used to reach the model as "nothing changed".
+        logger.warning(f"kg_changes_unavailable cluster={cluster_id}: {exc}")
+        changes = ""
+        memory_degraded = True
+        parts.append(
+            "## Recent changes unavailable\n"
+            "The cluster change log for the last 15 minutes could NOT be read — this is not the "
+            "same as nothing having changed. Do not state or assume the cluster was unchanged, "
+            "and do not rule out a recent change as the cause; say that recent changes could not "
+            "be checked."
+        )
     if changes:
         parts.append("## Recent cluster changes (last 15m)\n" + changes)
 

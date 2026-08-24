@@ -125,7 +125,7 @@ class TestTheWatchLoopRecordsWhatHappened:
 
     def test_stderr_is_captured_not_discarded(self):
         """The reason a watch failed is the whole explanation for zero findings."""
-        src = (__import__("pathlib").Path(k8s_watcher.__file__)).read_text()
+        src = (__import__("pathlib").Path(k8s_watcher.__file__)).read_text(encoding="utf-8")
         assert "stderr=asyncio.subprocess.DEVNULL" not in src
         assert "stderr=asyncio.subprocess.PIPE" in src
 

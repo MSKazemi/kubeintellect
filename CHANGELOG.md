@@ -12,6 +12,973 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Fixed
+
+- **The coordinator's tool-output trimmer dropped rows in silence, and deleted the `[Protected]`
+  notice attached one layer below.** `_trim_tool_output` announced a loss only when what remained
+  still exceeded the character cap. Measured on a 200-pod `kubectl get pods`, the model received
+  a 30-row table with no marker at all — and because the "keep" pattern retains unhealthy rows,
+  the dropped ones are the healthy ones, so "how many pods are Running?" answered 30. Worse, the
+  withheld-namespace sentence `run_kubectl` appends is the listing's *last* line and matches no
+  important-row pattern, so any filtered listing longer than 30 rows reached the agent with the
+  announcement removed: the guarantee held for the tool's return value and not for what the agent
+  read. Policy lines (`[Protected]`, a tool's own `[truncated` marker) are now lifted out of the
+  trim and re-attached, dropped rows and lines are counted, and the marker uses the vocabulary the
+  coordinator's own system prompt tells the model to watch for — it previously said "chars
+  trimmed", matching neither pattern that instruction names, four hundred lines up the same file.
+
+### Fixed
+
+- **`GET /v1/namespaces` removed protected namespaces without saying it had, and `kq` reported
+  them as missing.** The 2026-08-20 pass added the protected-namespace filter and the
+  "this listing is NOT the complete set" announcement on the same day; `run_kubectl` received
+  both, this endpoint received only the filter. So the product answered one question three ways —
+  `kubectl get ns monitoring` refused out loud, `kubectl get ns` returned a listing marked
+  incomplete, and `GET /v1/namespaces` returned `{"namespaces": ["default","shop"]}` in silence.
+  `kq` treats a definite absence as proof, so `/ns monitoring` printed *"Namespace 'monitoring'
+  not found in the cluster"* — false — and recommended `list all ns`, the one path that would
+  have contradicted it. The response now carries the shared `withheldByPolicy` marker (a count,
+  never the withheld names), and `kq` keeps *withheld* and *absent* apart: absence from a listing
+  that admits it is short is no longer treated as evidence.
+
+### Fixed
+
+- **Blocked-namespace guard: a combined shorthand group hid the namespace entirely.** kubectl
+  parses `-n kube-system`, `-nkube-system` and `-Rn kube-system` identically, but the flag reader
+  looked for an argument *beginning* with `-n`, so every spelling in the combined-group family was
+  invisible — `kubectl get pods -Rn kube-system`, `kubectl exec -itn kube-system pod -- sh` and
+  `kubectl logs -fn kube-system pod` all reached the cluster with the guard having seen no
+  namespace at all. Same class as the 2026-08-20 attached-shorthand fix, one form further out.
+  Groups are now walked the way pflag walks them — left to right, stopping at the first letter
+  that takes a value, so the `n` in `-ojson` is not misread as a namespace. The boolean/value
+  split is measured from `kubectl <verb> --help` across every subcommand; `-f` and `-p` are the
+  only letters whose meaning depends on the verb (boolean on `logs`, a value flag elsewhere), so
+  the verb is threaded through to the reader rather than guessed. The `-o` reader used by the
+  namespace-listing filters gained the same reach.
+
+### Fixed
+
+- **Flight recorder: three shapes escaped the payload redactor.** `_scrub_value` documented
+  "every string *anywhere* in a payload"; a string used as a **dict key**, anything nested past
+  the walk's depth bound, and a **set or frozenset** were all persisted verbatim into the
+  tamper-evident `decision_log` while `REFLEXION_REDACT_SECRETS` reported that secrets were being
+  scrubbed. The depth bound is the notable one: it exists so a self-referential payload cannot
+  hang the drain task, but returning the unscanned subtree made the cycle guard a redaction hole,
+  failing open in a module whose output is permanent — it now emits
+  `<redacted-unscannable-depth>` instead. Keys are redacted with a new, narrower
+  `redact_identifier`, since the full redactor maps the ordinary field names `token` and
+  `password` to the same drop marker and would have merged two fields of an audit record into
+  one; colliding secret keys are suffixed rather than merged. No call site produces any of the
+  three shapes today, so this was a latent fail-open rather than an observed leak.
+
+### Fixed
+
+- **`ALLOWED_ORIGINS` was the one comma-separated guard setting the guard audit did not audit,
+  and the only one that failed in both directions.** `main.py` passed
+  `ALLOWED_ORIGINS.split(",")` straight to `CORSMiddleware`, which compares origins as exact
+  strings, so the natural `http://a.example, http://b.example` produced a second entry with a
+  leading space that no browser `Origin` header matches — that origin was silently not allowed
+  and nothing said why. Whitespace is now stripped in a new `Settings.allowed_origins`, which can
+  only ever allow origins the operator explicitly wrote. What stripping cannot repair is now
+  reported through `unenforceable_guard_config` (startup log, `GET /v1/v5/status`,
+  `kq v5-status`): a trailing slash, a missing scheme, a value that yields no usable origin —
+  and `*`, which is reported as a security problem rather than a typo. CORS is configured with
+  `allow_credentials=True`, so with a wildcard the server echoes the *calling* origin back and
+  marks it credentialed; the browser rule that refuses credentials against a wildcard is never
+  reached, and any site a logged-in operator visits can call the API with their session. Nothing
+  is refused or silently rewritten — same posture as the rest of the guard audit.
+
+### Fixed
+
+- **`/healthz` had no field for the one subsystem whose job is watching.** The response already
+  carried `leader`, `audit`, `memory` and `recorder` — each added because an empty table is
+  indistinguishable from a quiet cluster — but nothing about perception. A sensorium that raised
+  on the way up produced `status: "ok"` with no mention of it, while the cause was already
+  recorded one call away in `sensorium_absence()` and reachable only from `/v1/findings` and the
+  digest, which you consult once you already suspect a problem. `/healthz` now carries a
+  `sensorium` block reporting the precise absence state (`disabled_by_flag`, `no_detectors`,
+  `start_failed`, `standby`, `stopped`) so an outage is distinguishable from a leader-election
+  standby, where a peer holds the singleton lock and is watching. `watching` is reported
+  separately from `enabled`: the detector engine exists whether or not any `kubectl --watch`
+  stream is connected, and the watch loop returns permanently when kubectl is missing, so
+  `enabled: true, watching: false` is a real and durable state. A failure reading stream health
+  is reported in the block rather than raised — a liveness probe that 500s restarts the pod.
+
+### Fixed
+
+- **Right-to-be-forgotten reported a completed purge for data it had not deleted.**
+  `memory/security.forget_subject` (R8.4) returned a bare per-table row-count dict, in which a
+  failed delete left no trace but an *absent key* and `{}` meant both "no database pool" and "the
+  first delete failed". An entity purge called without a `cluster_id` was worse: `kg_entities`
+  rows all carry a real cluster, so the delete ran against the literal cluster named `''`, matched
+  nothing, and returned `{'kg_entities': 0}` — a well-formed receipt for an entity still in the
+  graph. The same `''` was a deliberate cross-cluster wildcard eleven lines above, where
+  `user_id` still bounds it, and a literal key below, where nothing does. It now returns a
+  `ForgetResult(counts, complete, error)`: `complete` is only ever `True` when every requested
+  delete ran, an entity purge without a cluster is refused rather than widened or guessed, and a
+  request naming no subject is not reported as a completed forget. Fail-open control flow is
+  unchanged — one dead relation still does not abort the call — but the caller is now told the
+  purge was partial. Not flag-gated, and no code path calls it yet.
+
+### Fixed
+
+- **Change-first RCA read the change ledger under a key nothing was ever written to.** The two
+  halves of the feature in `cortex/graph.py` resolved the cluster id differently: the ledger append
+  fell back to `get_cluster_id()`, the prompt prior fell back to `""`. Any investigation whose state
+  carries no cluster id — which is every watchdog-dispatched one (`sensorium/watchdog_dispatch.py`
+  builds `cluster_id: ""`) — recorded the change and then read back nothing, and an empty prior
+  renders as no block at all, so the prompt was indistinguishable from one for a cluster where
+  nothing had changed. Both halves now resolve the id the same way, and an unresolvable cluster
+  lands on the shared `UNRESOLVED_CLUSTER_ID` sentinel on both sides rather than on two different
+  values. Behind `CORTEX_V5_ENABLED` + `KI_V5_CHANGE_LEDGER` / `KI_V5_CHANGE_FIRST_RCA`, all
+  default-off experimental, so no default configuration was affected.
+
+### Fixed
+- a **failed cluster-change read reached the model as "nothing changed"** — in the one block whose
+  job is to stop it ruling out a recent change. `kg.changes()` swallowed every exception and
+  returned `[]`, `recent_changes_block` rendered that as `""`, and `_hierarchy_context` renders `""`
+  by omitting the whole `## Recent cluster changes (last 15m)` section — which is byte for byte what
+  a genuinely calm cluster produces. Measured 2026-08-24 at the layer that actually fails: a dead
+  pool, a calm cluster and a KG that was never started all produced `block=''`, the last with no
+  warning at all. "What changed in the last fifteen minutes" is the first question of an incident.
+  Four lines above in the same function, the **episodes** half has appended an explicit
+  `## Memory unavailable` block since pass 46, saying *"this is not the same as there being none"* —
+  the argument was already written down for the sibling lookup. `kg.changes()` now raises the new
+  `KGUnavailable` (twin of `episodes.MemoryUnavailable`), `recent_changes_block` propagates it, and
+  the node injects `## Recent changes unavailable`, which tells the model not to rule out a recent
+  change as the cause, and sets `degraded=true`. A calm cluster still injects nothing. **The graph
+  write path is unchanged** — `upsert_entity`/`open_edge`/`close_edge` and the ingest helpers still
+  swallow, because a failed observation write must never kill a turn and nothing reads its result as
+  a fact. A KG with no pool is still `[]`: a configuration state, not a failed query.
+
+- 🔐 the memory audit chain reported **an unreachable database as tampering**.
+  `verify_memory_chain` returned a `bool` documented as *"True iff the chain is intact"*, and it
+  gave a database failure two opposite verdicts: a failed row fetch returned `False` — the value
+  that means TAMPERED — while a failed anchor read and a missing pool both returned `True`, the
+  value that means intact. A tamper detector that cries tamper whenever its own Postgres is
+  unreachable makes a false accusation about the operator's own data, and the cost is not the one
+  wrong answer but that operators learn to ignore the alarm, which takes the real one with it. The
+  sibling test file already owned that rule for the anchor path (*"tamper-evidence is worthless if
+  operators learn to ignore it"*); the fetch path in the same function had the opposite reflex. A
+  fourth state escaped as an exception: a `memory_chain_head` row this build cannot parse raised
+  `ValueError` out of a bare `int(head["seq"])`, where every other failure produced a verdict.
+  `verify_memory_chain` now returns the `ChainVerdict(valid, verified)` the flight recorder already
+  uses for the same question — one vocabulary, both chains — an unparseable anchor returns a verdict
+  instead of raising, and `docs/security.md` documents that both flags must be read. A **missing**
+  anchor stays verified: the read ran and there is nothing to contradict (a chain written before the
+  anchor existed).
+
+- a **novelty score that never ran** was stored as the strongest novelty claim the module makes.
+  `episodes.surprise` is a KG-novelty proxy in `[0,1]` where **`1.0` means nothing similar has ever
+  been seen**, and `_surprise_novelty` returned `1.0` from all three paths where it measured nothing:
+  the `similarity()` query raising, no pool, and empty episode text. On a database without the
+  `pg_trgm` extension the query raises for *every* write, so the column fills with a maximum no
+  measurement produced — while the same write logs `surprise scoring failed`. One row, two
+  contradictory statements, and the row is the audit record. The column is a **nullable** `REAL`
+  whose NULL already means "not scored" (every pre-P6 row, and every write with `MEMORY_IMPORTANCE`
+  off), so the third state needed no new vocabulary. `_surprise_novelty` now returns `float | None`,
+  the write stores `NULL`, and the warning names what was stored. **Fail-open is unchanged** — the
+  gate reads `surprise is not None` first, so a failed score still never drops a write; it just no
+  longer claims a measurement happened. A genuinely empty table still scores a real `1.0`: that is a
+  query that ran and found nothing similar.
+
+- an audit chain **nobody could check** was reported as a chain that checked out. `verify_episode`
+  returned a `bool`, and every path where the `decision_log_head` anchor could not be consulted —
+  the read raised, the head row was unparseable, there was no pool — returned the same `True` an
+  agreeing anchor returns. In the middle case the recorder logged *"truncation of this episode is
+  NOT currently detectable"* and the same call handed its caller the value that renders
+  `✓ chain intact`: `kq replay` exited `0`, and the postmortem printed its `✅ Audit chain verified
+  intact` banner. The third state was already spoken everywhere else — `kq replay` has owned exit
+  `4` for an unverified chain, and the postmortem payload has carried `chain_verified` beside
+  `chain_valid` — only the function producing the verdict could not say it. `verify_episode` now
+  returns `ChainVerdict(valid, verified)`; `replay_meta` carries `chain_verified`; `kq replay`
+  exits `4` on it (absent ⇒ `true`, so older servers read as before); and an episode with no
+  records whose anchor could not be read answers `503` rather than `404` (never existed) or `409`
+  (every record removed), neither of which is known. A **missing** anchor stays verified: the read
+  ran and found nothing to contradict the records.
+
+### Fixed
+- `kubeintellect init` printed `── Setup complete ──` four lines below its own
+  `[error] OPENAI_API_KEY: LLM_PROVIDER=openai but OPENAI_API_KEY is not set`, offered to
+  install a systemd service that would start the server on every login, and exited `0`.
+  Pressing Enter at the key prompt — the most likely thing a first-time user without a key
+  to hand does — produced exactly that. `kubeintellect status` had classified the same issue
+  list, from the same `_validate_config`, as an exit-1 failure since earlier the same day:
+  one classifier, two consumers, and the one that *wrote* the file was the optimistic one.
+  `init` now prints `── Setup INCOMPLETE ──`, names the blocking settings, points at
+  `kubeintellect status`, starts nothing, and exits `1`. The config file and API key are
+  still written so a re-run resumes. Warnings — a missing kubeconfig before `kind-setup`, an
+  unset admin key — remain warnings and still complete the setup.
+
+### Fixed
+- the exit-code tables in `docs/cli-reference.md` were unverified prose. They are the
+  machine-readable half of the CLI contract — what a script branches on — and `kq replay`
+  documented five codes while returning six: the sixth, `2` for a usage error, hid inside
+  `return 0 if asked_for_help else 2`, one statement yielding two codes. Six commands
+  (`completion`, `config`, `digest`, `findings`, `preference`, `v5-status`) had no table at
+  all while returning `1` and `2`. `kq replay`'s own usage text — printed *because* of a
+  usage error — never named the code a usage error returns. All are now documented, and
+  `scripts/check_doc_claims.py` (`make docs-check`) reads each command's real return set
+  out of the AST, following helper returns, and fails when a table or a usage text
+  disagrees, omits a non-zero code, or lists one the command cannot produce. Anything it
+  cannot resolve is an error rather than a silent skip.
+
+### Fixed
+- `kq detector promote` exited `1` — "the request failed", the code a script retries — when the
+  server answered `409`, which it uses only to refuse promoting a detector whose predicate can
+  never match anything. That verdict is never worth retrying; it now exits `3`, the code the
+  command already uses for a rejection on the merits, with the server's reason. `404` names the
+  missing detector instead of blaming the command, and the two copies of "read the server's
+  `detail`" were merged into one that handles FastAPI's validation-error list form.
+
+### Fixed
+- `GET /v1/detectors/{name}/shadow-findings` answered `200` with an empty `findings` list for a
+  sensorium that was not running at all, for a detector this process had never loaded, and for a
+  detector that ran and stayed quiet — and that count is what a reviewer promotes or rejects the
+  candidate on. It now answers `503` when there is no engine, in a body that refuses to claim the
+  detector fired nothing, and reports `watching` plus the firing ring's `capacity`/`saturated` so
+  the count is not mistaken for a total. `kq detector shadow` surfaces both caveats.
+  `list_detectors`, two functions above, had drawn exactly this line already.
+
+### Fixed
+- `GET /v1/events/replay/{session_id}` answered three different states with one identical
+  response — HTTP 200 and a lone `data: [DONE]`: a session this process never saw, a session
+  that genuinely emitted nothing, and a session whose in-memory history was lost to a restart or
+  belongs to another replica. Since the endpoint is advertised for "UIs that reconnect", the
+  third case rendered a real investigation as an empty one. It now answers `404` when the process
+  holds no history, in a body that explicitly refuses to claim the session never ran and points
+  at the durable `/v1/episodes/{id}/replay`; and the stream is prefixed with a `replay_meta`
+  frame carrying `records` and `durable: false`, so a genuinely empty session says `records: 0`.
+
+### Fixed
+- an SDK caller that broke out of `stream()` early — the pattern the SDK docs themselves show —
+  destroyed the only record that the stream had dropped frames: the loss warning was emitted on
+  the line after the loop, which a `break` never reaches. It is now emitted from a `finally`, and
+  the loss counters are exposed as `client.last_stream_stats` so a fail-closed caller can inspect
+  them, which `SseStats` had always claimed was possible but never was outside the CLI.
+
+### Fixed
+- the async SDK's `health()` reported a hostname that does not resolve as "Connection refused —
+  nothing is listening at …", naming the wrong cause and sending the reader to check the port
+  rather than the hostname; the sync `health()` had the right answer, and a test for it, the
+  whole time. Its timeout message also omitted the duration in force, and the "fast connectivity
+  check" ran on the 120 s query timeout instead of 5 s. Both checks now share one classifier.
+
+### Fixed
+- `AsyncKubeQClient.stream` returned normally with zero events when the server could not be
+  reached at all — a `return` from an async generator is a clean end of stream, so a connection
+  failure was indistinguishable from a successful empty answer. The sync client raised, and the
+  SDK docs promised both would; the async half now re-raises the last transport error. The
+  "Retry behaviour" section of the SDK docs also named a retry schedule the code has never used
+  and described `query()`'s error handling as `stream()`'s; both corrected and test-pinned.
+
+### Fixed
+- `kq replay` exited `1` — the code for "no such episode, or the request failed" — when the
+  server reported HTTP 409, which it uses only for total truncation: the chain anchor proves the
+  episode had records and none survive. The strongest tamper signal the system can emit was
+  indistinguishable from a typo'd ID, and the documented `[ $? -eq 3 ]` tamper branch could not
+  fire on it. It now exits `3`. Because the request is streamed, the response body was also
+  never read, so `explain()` discarded every server `detail` on this path in favour of httpx's
+  status line; the body is now read before `raise_for_status()`.
+
+### Fixed
+- the morning digest reported *"Quiet watch: no findings in the last 24h."* over a window in
+  which the sensorium's watch queue had dropped observations. `app.detectors.perception` exists
+  so that `kq findings` and `kq digest` cannot answer differently about the same window — its
+  docstring says "the classification lives here once, and both surfaces read it" — but the
+  shedding rule had been added to `kq findings` alone, so the classifier still returned no gaps
+  for a connected-but-lossy sensorium. The queue is now part of `PerceptionState`, and
+  `perception_gaps` reports the dropped count and queue high-water, so the digest degrades for
+  the same reason and with the same numbers the findings surface prints.
+
+### Fixed
+- `scripts/check-file-modes.sh` reported the tracked paths it had skipped only when it had
+  nothing else to say. The `note: N tracked path(s) were skipped` line lived inside the
+  all-clear branch, so a run that found violations printed `checked N file(s)` with no hint that
+  others were never examined, and `--fix` printed `fixed: …` and exited 0 while those paths
+  stayed unknowable — a completion claim over an incomplete examination. The note is now hoisted
+  above every verdict the script can reach, so a branch added later cannot omit it.
+
+### Fixed
+- `scripts/check-syntax-warnings.py` reported `syntax OK` over files it never opened. Any path
+  it cannot read is skipped — correctly, since a pre-commit hook that passes a just-deleted path
+  must not be turned red — but the skip was silent, so `check-syntax-warnings.py a.py b.py c.py`
+  with two missing files printed `syntax OK — 1 file(s)` and exit 0, and with *all* files missing
+  printed `syntax OK — 0 file(s)`: the vacuity guard added for the tracked-tree form reads
+  `if not argv and checked == 0`, so it was switched off for exactly the input mode a CI hook
+  uses. The exit code is unchanged (a settled contract); the gate now lists every skipped path on
+  stderr, carries `(N of M skipped)` in its verdict line, and never prints the word OK over a scan
+  that compiled nothing.
+
+### Fixed
+- `kq findings` printed the green `No findings` all-clear while the sensorium was dropping
+  observations. The watch queue sheds the oldest observation on overflow by design, making the
+  loss silent at the point it happens; `queue.shed_total` in `GET /v1/findings` is the only
+  record of it and nothing read the field. The command now reports **Perception is lossy** with
+  the dropped count and queue high-water — above the findings table as well, since shedding
+  makes a non-empty list incomplete too — and the all-clear is now reachable only when the
+  stream is connected, Prometheus is queryable *and* nothing was shed.
+
+### Fixed
+- `kq postmortem` rendered the audit-chain tamper warning and still exited `0`, while
+  `kq replay` and `kq export` map the same verdict to exit 3/4/5. The cause was server-side:
+  `format=markdown` returned only the rendered prose, so the verdict reached the caller as one
+  of four English banners. The response now carries `chain_valid`, `chain_verified`,
+  `events_lost`, `gaps` and `enrichment_failed` alongside the markdown (additive; `format=json`
+  unchanged), and the command follows the documented exit-code convention. An older server that
+  sends no verdict fields is reported as exit 4, not 0.
+
+### Fixed
+- **`kq config show` reported success over a config it had just called invalid.** The command
+  printed `⚠ Invalid values detected:` and returned **0** — the human-readable answer and the
+  machine-readable one disagreeing, and `kq config show || exit 1` in an install script or a CI
+  pre-flight only reads the second. Its sibling `config set` already returned 2 for a bad key, and
+  `load_config(strict=True)` already exits 2 on exactly these errors, so `show` was the odd one
+  out; it now exits 2 as well, and a valid config still exits 0. Second defect in the same code:
+  both `config show` and `config set` rendered `err.splitlines()[0]`. `validate_config` builds
+  each message in three parts on purpose — its docstring promises "the offending value, the
+  matching env var (so the user knows what to edit), and what a valid value looks like" — and the
+  last two sit on lines 2 and 3, so the user saw `Invalid URL: 'not-a-url' — must start with
+  http://` and never `Fix: set KUBE_Q_URL in ~/.kube-q/.env`. Both now print the whole message.
+- **The autonomy demotion path treated a critical failure as *less* serious than an ordinary
+  one.** `cusum_trip` in `app/autonomy/promotion_stats.py` implements ADR §4.4's fast trigger —
+  2 postcondition failures within 24 h ⇒ demote one rung — but counted
+  `not e.success and not e.critical`, excluding exactly the failures the two severity triggers
+  exist for. Those two triggers (Sev-1/2 two-rung drop, M4 rule) are L4-scoped by the ADR's own
+  wording, so below L4 nothing fast was watching, and the hysteresis band cannot cover the gap:
+  a class with an earned record keeps its last-50 LCB above `θ − 0.05` through exactly two
+  failures, which is why the trip exists. Measured 2026-08-24 on an L3 class with 48 clean runs
+  and then two failures 12 h apart: as ordinary failures they tripped CUSUM and the class dropped
+  to L2; with `critical=True` on the same two events the answer was `no demotion trigger` and the
+  class kept its rung. The asymmetry now runs one way only — a critical event blocks promotion
+  (`M4 > 0`) **and** forces demotion — and a property test asserts at every rung that making the
+  same failures critical can never produce a better outcome. Two related fixes: the CUSUM reason
+  now names critical involvement, so the audit trail cannot record a routine trip where a Sev-1
+  occurred; and a `sev_attributed`/`m4_at_l4` signal reported below L4 no longer returns
+  `no demotion trigger` — the rung is still unchanged, because the ADR scopes those triggers to
+  L4, but the decision says the signal was received and not applicable rather than reporting a
+  quiet class. **Latent, not live:** nothing writes `promotion_outcomes` yet, so this code does
+  not currently govern any cluster; it is the function that will decide when to take authority
+  away.
+- **A capped memory section read to the model as the operator's complete state.** The pinned
+  context in `app/db/memory_store.py` is assembled from four bounded queries — 8 operator
+  preferences, 5 failure patterns, 3 session notes, 3 past RCA outcomes — so the block stays
+  inside its ~500-token budget. The bounds are deliberate; the silence about them was the defect.
+  Measured 2026-08-24 with 12 explicit preferences stored: the prompt carried 8, under a header
+  reading `## Operator Preferences (remembered)`, and `NEVER drain node-07, it hosts the license
+  server` was one of the four dropped with no marker of any kind. Read literally — the only way a
+  model can read it — that block states the instruction does not exist. This module already
+  refuses the same mistake one axis over (`_partial_failure_notice` exists because *"a missing
+  section must not read as an empty one"*); a capped section must not read as a complete one for
+  the same reason. Each section now queries one row past its cap: the extra row coming back is
+  proof more exist and the section closes with a line saying so, and it not coming back is proof
+  they do not and the section stays silent — one query, not two, which is also why the notice
+  never states a count nobody measured. Separately, a stored remediation cut to 160 characters for
+  the same budget is now marked `…[fix truncated, not the whole command]`; a `kubectl` command cut
+  mid-flag reads as a complete command otherwise.
+- **An event the watcher could not date bypassed the staleness filter, silently.**
+  `app/sensorium/k8s_watcher.py` drops replayed `Event` history so a reconnect does not re-fire
+  detectors on minutes-old warnings, but `_event_timestamp` returns `None` both for an event with
+  no timestamp and for one whose timestamp it cannot parse, and the call site skipped the
+  comparison entirely on `None`. Measured 2026-08-24: a 45-minute-old `OOMKilling` with no
+  `lastTimestamp`, and the same event with an RFC1123 timestamp, both fired a detector as if they
+  had just happened. Failing open is kept — refusing a real incident over a formatting quirk is
+  the worse error for a watchtower — but it is no longer silent: one `k8s_watcher: … the
+  event-staleness filter cannot run` warning per distinct reason per connection, re-armed on
+  every (re)connect, so "the filter passed this event" and "the filter did not run" are now
+  distinguishable in the log. Second defect in the same function, and a missed detection rather
+  than a cosmetic one: a timestamp with no timezone suffix parsed to a naive `datetime`, whose
+  `.timestamp()` reads it as **local** time. On a CEST host a real `OOMKilling` from 10 minutes
+  ago was dated 110 minutes old and dropped by a watch that had been connected for 20 minutes.
+  Naive timestamps are now dated as UTC, which is what Kubernetes emits.
+- **A detector tuning knob set to `0` was read as "not set".** Every trend-predicate knob in
+  `parse_detect_block` was read as `entry.get(key) or default`, which cannot distinguish an absent
+  key from an explicit zero. Measured 2026-08-24: a hand-authored predicate with
+  `window_minutes: 0, projection_horizon_minutes: 0, fire_if_eta_within_minutes: 0, min_r2: 0`
+  loaded as `30 / 120 / 30 / 0.5` — every value replaced, with nothing logged. The two cases pull
+  opposite ways, so a single rule does not cover them. `min_r2: 0` is a **real setting**: the
+  projection gates on `r2 < min_r2`, so zero deliberately disables the fit-quality check, and
+  restoring `0.5` makes the detector quieter than its author wrote it — a false negative, the
+  failure nobody notices. It is now honoured silently. The three interval knobs at zero instead
+  produce a predicate the engine can never fire — a zero window fits no samples, and an ETA of
+  zero or less is dropped before the `fire_if_eta_within_minutes` test — which is the same
+  dead-detector trap this module already refuses to ship for promql-only blocks; those now fall
+  back **with a warning** naming the field, the authored value, the specific reason it cannot
+  work, and that the detector which loaded is not the one that was written. `debounce_seconds`
+  keeps `0` (the documented "fire immediately") and refuses a negative value, which would disable
+  debouncing rather than shorten it. A non-numeric value and an out-of-range `min_r2` also warn
+  instead of failing silently; an absent key and an explicit `null` still take the default
+  quietly. A corpus guard asserts all 24 authored knob values across the 20 shipped playbook
+  detect blocks parse to exactly what the YAML says. 21 new tests, 9/9 mutants killed.
+- **A container with no memory limit was reported as "within healthy bands".** `rightsizing.recommend()`
+  computed `peak / limit if limit else 0.0`. A missing limit is not a ratio of zero — and zero is the
+  most reassuring value on that scale, below every threshold the function tests. So an **unbounded**
+  container, the highest-risk memory configuration there is, fell through every branch into the
+  all-clear; the only thing stopping it also being advised to *shrink* was an unexplained `0 < ratio`
+  guard, which is why the bug presented as silence rather than a wrong action. Measured 2026-08-24,
+  three distinct states returned the identical sentence at the identical confidence (`is_noop=True`,
+  `0.5`): no limit with a 900 MB peak; no limit and no observation; a limit with no observation.
+  `ratio` is now `None` rather than `0.0` when there is no limit, and an unbounded container with an
+  observed peak yields `set_memory_limit` sized at ~1.25× peak with a rationale naming that it can
+  evict its node. A container with no peak observation is not assessed at all: it says so, and carries
+  confidence `0.0` rather than the `0.5` that used to assert a considered judgement of no change. The
+  `Recommendation` dataclass gained `assessed`, because `is_noop` alone cannot tell "judged and
+  healthy" from "never observed" and a no-op reads as an all-clear. An OOMKill with no limit now says
+  *set* rather than *raise*. The over-provisioned boundary is unchanged. **Note:** `recommend()` has
+  no production caller yet (v5 P4 groundwork, `KI_V5_RIGHTSIZING` default-off), so this was a latent
+  defect rather than one users were seeing. 16 new tests, 9/9 mutants killed.
+- **A plan step whose tool calls all failed was ticked green.** `gather_tools` advanced the
+  investigation plan with `model_copy(update={"status": "done"})` unconditionally, once the tool
+  batch returned. But `_run_one` deliberately converts a tool exception into an ordinary
+  `ToolMessage` ("Tool error: …") so the model can read and react to it, and an unrecognised tool
+  name into "Unknown tool: …" — both return normally. So the batch returning was the entire test,
+  and it returns identically whether every tool worked or every tool failed. `kq` renders `done`
+  as a green `✓`. Measured 2026-08-24: a two-call batch where one tool raised `connection refused`
+  and the other did not exist produced `status='done'` on the step "Check pod events" — the
+  investigation looked like it was progressing while it gathered nothing at all. `PlanStep.status`
+  gained a `failed` state (`✗`, red, defined in both the coloured and neutral themes), used when
+  every call in the batch failed; a partly-successful batch stays `done` because it did gather
+  evidence. Either way the failures are now named in a server-side warning with the tool and the
+  reason. The cursor still advances on failure — a plan that stops advancing hangs the live view —
+  and an empty batch does not invent a failure. 14 new tests, 9/9 mutants killed.
+- **Deleting an episode's newest events left a chain that verified as intact.** The flight
+  recorder's `verify_chain` recomputes `prev_hash`/`seq` links, which catches an edit, a reorder
+  and an interior delete. It cannot catch a **truncation**: remove the last rows and what remains
+  is a shorter, perfectly valid chain. Measured 2026-08-24 — a 9-event episode with its newest 3
+  events deleted still verified, and `render_markdown` printed `✅ Audit chain verified intact —
+  every event below is tamper-evident` over the shortened record; the controls (front truncation,
+  edited payload, reorder) all correctly failed, so the verifier was sound and the *question* was
+  too narrow. The codebase had already named this exact hole and closed it one module over —
+  `memory_chain_head` exists so a shorter memory-audit chain contradicts its anchor — but the
+  chain that renders a banner to a human had no anchor at all. Added `decision_log_head`, written
+  alongside the events on every successful flush (in its own `try`, so a head that fails to write
+  can never turn into a lost batch). `verify_episode()` is now the full verdict — links **and**
+  anchor — and both callers use it: the postmortem banner and `GET /v1/episodes/{id}/replay`.
+  Three further consequences: an append after a truncation continues past the head rather than
+  the surviving tail, so it cannot heal the hole and erase the evidence; an episode with an anchor
+  but no surviving rows is reported as *"every event has been removed"* instead of *"no recorded
+  events"*; and that episode's replay answers **409** rather than the `404` that would launder a
+  total truncation into "this never existed". A genuinely empty episode, an episode older than
+  the anchor, an unreadable head and a head whose row cannot be parsed are all still reported as
+  untampered — the last two with a warning naming that truncation is currently undetectable.
+  20 new tests, 10/10 mutants killed.
+- **The adversarial reviewer was handed a silently truncated world.** `_gathered_evidence` in
+  `cortex/graph.py` concatenates this turn's tool and fan-out output and ended in a bare `[:8000]`.
+  That text is the reviewer's *entire* input — it sees the claim and this, and is asked which
+  statements the evidence does not support, under a standing instruction to treat "not found"
+  conclusions with suspicion. A silent slice therefore does not merely lose evidence, it
+  manufactures the reviewer's grounds for objecting. Measured 2026-08-24 on a six-read gather of
+  8,749 characters: the decisive `Reason: OOMKilled / Limits: memory 128Mi` lines fell **749
+  characters past the cut**, and what the reviewer received ended mid-row at `web-022   1/1` — a
+  partial line that reads as a complete one. Nothing in the text said any of it was missing, so the
+  same fix that made a dead reviewer announce itself could still be undone by an over-budget
+  gather. The cut is now line-aligned — unless the nearest line break would waste more than half
+  the budget, in which case the character cut stands — and carries an explicit marker naming how
+  many of how many characters were dropped, in the same terms `run_kubectl` already uses for
+  partial tool output: absence of a fact from that text is not evidence that it was not observed.
+  Under-budget evidence is returned untouched. Rider on the same class: the stored-detector skip
+  summary added yesterday capped its detail at `skipped[:5]` without saying so, and now appends
+  `(+N more)`. `_bound_tool_content` is deliberately unchanged — its silent chop is a documented
+  v4 default with a never-silent v5 alternative behind a flag, and switching the default is an
+  owner call. 16 new tests, 9/9 mutants killed.
+- **A postmortem that could not read a section rendered exactly like one that had nothing to
+  say.** `build_postmortem` enriches the deterministic timeline from two best-effort sources, and
+  both returned `None` on failure — the same `None` that legitimately means "nothing to add".
+  `_fetch_episode_meta` supplies **root cause and outcome** from the L1 episode store and returned
+  `None` both for "no row for this episode" (the investigation never concluded — a finding about
+  the incident) and for "the query raised" (a revoked grant — a fact about us); the renderer prints
+  the section under `if pm["root_cause"]:`, so both silently omitted it. `synthesize_narrative` did
+  the same across "feature off", "nothing to narrate" and "the model call failed". Measured
+  2026-08-24 against a `fetchrow` that raises, with "no row" as the control: the two documents were
+  **byte-identical at 528 bytes**, both carrying `✅ Audit chain verified intact`. That banner is a
+  claim about the records; it sat above a document silently missing the section a reader opens a
+  postmortem for. Both enrichments now raise on failure, `build_postmortem` records what could not
+  be read, and `render_markdown` prints a **POSTMORTEM INCOMPLETE** banner immediately below the
+  chain verdict naming each one — the same three-state treatment the chain and gap banners already
+  had. A missing episode row and a disabled narrative are not failures and print nothing. The
+  timeline, the chain verdict and every recorded fact are unaffected. 16 new tests, 9/9 mutants
+  killed.
+- **A failed detector read disarmed the live watchtower.** `load_db_detectors` documented itself
+  as *"fail-open (no pool / query error → empty tuples)"*, which is right for a read — but its only
+  caller does not read, it **assigns**: `_engine.detectors = tuple(load_detectors()) + active`. So
+  the empty tuple a failed query returned silently replaced every promoted detector in the running
+  engine. Measured 2026-08-24 on the refresh loop: 3 promoted detectors loaded (23 total), the next
+  refresh's query raises, engine drops to 20 — disarmed until the DB came back
+  `DB_DETECTOR_REFRESH_SECONDS` later. Nothing reported the consequence, because the refresh's own
+  summary was gated on `if active or shadow:` — false for exactly the case where coverage had just
+  been removed. The correct handler already existed in `_refresh_db_detectors` (`except …: return`,
+  which keeps the loaded set) and was unreachable; `load_db_detectors` now raises
+  `DetectorStoreUnavailable` — the exception this subsystem already had for this distinction,
+  previously applied only to the read path — so a failed refresh keeps what is loaded and says what
+  it kept. An empty result from a *successful* query still applies, because that is a human
+  demoting detectors. Two further fixes ride along: a counts change is now logged **including a
+  drop to zero**, and the four ways a stored row was discarded in complete silence (unparseable
+  JSON, not a detect block, would not compile, compiled to nothing) are counted and named, so a
+  table of malformed rows is no longer indistinguishable from an empty table. 17 new tests, 9/9
+  mutants killed.
+- **A memory-consolidation worker in which every pass failed reported exactly what an idle one
+  reports.** Each of the eight passes fails safe to a `0` counter — correct — but `0` is also what
+  a pass returns when it ran and found nothing to do, so the dict `run_consolidation_once` returns
+  (documented "for tests/digest") could not tell the two apart. Measured 2026-08-24 against a pool
+  whose every statement raises, with a healthy-but-idle pool as the control: both produced
+  `{"backfilled": 0, "stale_edges_closed": 0, "detector_candidates": 0, "prefs_inferred": 0,
+  "prefs_forgotten": 0}` — byte-identical. The passes do each log their own `WARNING`, so this was
+  never a silent outage in the log; it was a silent outage in the machine-readable result. And
+  because the worker's summary line was gated on `if any(stats.values())`, the one line that could
+  have said *the pass completed, here is what it did* fired for neither state, leaving an operator
+  to correlate five `WARNING`s from three loggers every 600 seconds. A new `app.memory.pass_health`
+  register is written from each guard; the worker now sets `failed_passes` in the counters and logs
+  `consolidation_pass INCOMPLETE — N of M passes failed [...]` at `WARNING`, naming each pass and
+  its reason. The failure discipline is unchanged — a pass that raises still never stops the loop —
+  and a genuinely idle pass still logs nothing. 25 new tests, 11/11 mutants killed.
+- **A dead RCA reviewer and an approving one produced the same answer.** With
+  `KI_V5_VERIFY_LADDER` on, `render_review_note` returned the empty string when the adversarial
+  reviewer had `errored=True`, and `cortex/graph.py` appends the note only when it is non-empty —
+  so a reviewer that timed out, crashed or replied in prose left the user's answer **byte-identical
+  to a verified one**. The only signal that verification happened was the absence of a caveat,
+  which is also what a total instrument outage looks like. Failing open is the documented and
+  correct behaviour; failing *silent* was not part of it. A third state now renders
+  **"⚠ Verification NOT PERFORMED … treat this answer as unverified"**, which states a fact about
+  the reviewer without contradicting the answer. Second defect, same block: the confidence line was
+  gated on `if review.confidence:`, so it vanished for exactly **0.0** — the reviewer declaring no
+  confidence in the RCA at all — leaving the caveat quietest at its own maximum alarm, and `0.0`
+  doubled as the fallback for an absent or unparseable field. `confidence` is now `float | None`
+  and is always stated. 23 new tests, 9/9 mutants killed. Also repairs the *Workflow nodes* table
+  in `docs/agent-behaviors.md`, which an earlier entry in this release had split in two.
+- **The responder brief displayed its confidence only when the number was reassuring.**
+  `render_brief` gated the line on `if brief.confidence:`, so a brief rating itself **0.05**
+  printed *"RCA confidence: 5%"* while one rating itself **0.0** — the least confident it can be —
+  printed nothing at all: the only brief carrying no caveat was the worst one. The same truthiness
+  test collapsed three states into that silence (the model said zero, omitted the field, or
+  answered `"high"`). This is text appended to the investigation answer an on-call responder reads
+  (`cortex/graph.py`, behind `KI_V5_ESCALATION_BRIEFS`), so a signal that reached the dataclass and
+  not the markdown had not been delivered. `confidence` is now `float | None` — absent and zero are
+  different answers — and a confidence is always stated, including when there is none to state.
+  Two corrections ride along: the line was labelled *RCA confidence* when the value is the brief
+  writer's confidence in the plan it just wrote, and `fell_back` existed on the dataclass but
+  nothing rendered it, so a fallback brief was visually identical to a real one. The heading now
+  says **FALLBACK**. 17 new tests, 11/11 mutants killed.
+- **A security auto-repair that never ran reported "no change to propose".** `propose_fix` fails
+  safe by returning the ORIGINAL manifest — correct — but that was the *whole* answer, so a repair
+  that failed was byte-identical to one that found nothing to change. Measured 2026-08-24 end to
+  end: an LLM exception, an empty response and a refusal in prose all reached `open_pr` as
+  *"no change to propose (fix is a no-op)"*, the sentence a compliant manifest earns, while the
+  misconfig stood untouched. `propose_fix` now returns a `RepairProposal(manifest, repaired,
+  reason)`, the reason travels with the `FixPR`, and `open_pr` says *"no fix was produced, so the
+  violation is UNRESOLVED — … This is NOT a statement that the manifest complies."*
+- **The same path opened a pull request for a missing newline.** `_strip_fences` ends in `.strip()`,
+  so a model that **echoed the manifest back** — its way of saying nothing needs changing — came
+  back one trailing newline shorter than it went in. That is a real diff (one line removed, the
+  same line added), `is_noop` was `False`, and `open_pr` pushed a branch and opened a PR titled as
+  a security fix whose entire content was the newline. `unified_diff` now normalises trailing
+  newlines on both sides; trailing *content* still diffs. Across both fixes, five repair outcomes
+  that previously produced two PRs and one indistinguishable message now produce one PR and four
+  distinct messages. 14 new tests, 11/11 mutants killed.
+- **`rolled_back` was reported for four rollbacks that never happened.** `execute_transactional`
+  issued the rollback command and discarded its result. Measured 2026-08-24: a rollback refused by
+  KubeIntellect (`[Protected] …`), rejected by the API server (`[kubectl exited 1] Error from
+  server (Forbidden) …`), never delivered (`The connection to the server … was refused`), or
+  simply silent (`(no output)`) **all** returned `rolled_back` — four ways to leave the cluster in
+  exactly the half-applied state this executor exists to prevent, while telling the caller and the
+  audit trail that it had been restored. That is the one status a trust plane must be able to
+  believe, because it is what says no operator needs to look. The rollback result is now read
+  through the same classifier as the apply, with the apply side's own vocabulary mirrored:
+  `rollback_refused`, `rollback_failed`, and `rollback_unconfirmed` for silence — nothing said it
+  failed, but nothing said it ran. `rolled_back` is now only returned when the rollback is
+  confirmed. 15 new tests, 9/9 mutants killed.
+- **A complete `kubectl diff`, and an authoritative `can-i: no`, were reported as failures.**
+  Second consequence of stating a non-zero exit (see the two entries below): `kubectl diff` exits
+  **1 when it finds differences** — 0 means none, >1 means the tool failed — and `kubectl auth
+  can-i` exits **1 when the answer is `no`**. Both are documented and both are the ordinary
+  outcome. Measured 2026-08-24: a real diff came back as `[kubectl exited 1] (kubectl wrote
+  nothing to stderr)` with the diff itself demoted into the block that says *"it may be partial,
+  and absence from it is NOT evidence"*, and the ACI `diff_change` verb returned that as
+  `ok=True`. `can-i` was left asymmetric — a clean `yes` against a `no` the agent had been warned
+  about — which is unusable for reasoning about its own permissions. Both verbs now return the
+  plain result; every other verb, and any exit code above the documented one, is still reported as
+  a failure. 24 new tests, 8/8 mutants killed.
+- **A regression introduced the same day: every `kubectl` failure classified as a normal result.**
+  `run_kubectl` was changed on 2026-08-24 to state a non-zero exit (`[kubectl exited 1] Error from
+  server (Forbidden): …`), which is strictly more information — but `aci/kubectl_output.py`
+  classifies on **line prefixes**, and the new marker sits in front of kubectl's own line.
+  Measured by driving the real tool: an RBAC `Forbidden`, a refused API server and a bad local
+  path all returned `classify_output() == "ok"` with `reached_cluster() == True`, and the health
+  oracle answered *"deployment 'web' not found in 'prod'"* about a namespace it never read — the
+  exact verdict `postcondition.py` was written on 2026-08-20 to stop it giving. `execute_transactional`
+  reads that `met=False` as a failed mitigation and **rolls back**, so an instrument outage would
+  have become a live mutation. The classifier now recognises the marker as the authoritative
+  failure signal, and strips it before the reachability check so a server *rejection* is still
+  distinguished from never reaching the server. Every ACI test built its input by hand, which is
+  how the tool and its classifier were free to drift; the new suite drives `run_kubectl` itself.
+  21 new tests, 9/10 mutants killed (the tenth proven equivalent — `re.match` is anchored with or
+  without `^`, verified over 336 constructed lines).
+- **A successful `helm list` and an unreachable cluster returned the same string.** `run_helm`
+  merged `stdout + stderr` before anything decided what the output was, so helm's routine
+  `WARNING: Kubernetes configuration file is group-readable` — printed whenever `~/.kube/config`
+  is group-readable, which is the common case — became part of the document handed to
+  `json.loads`. Measured 2026-08-24 against a fake `helm` on `PATH`: a `helm list -A -o json`
+  that **succeeded** and listed one release, and one that failed with
+  `Error: Kubernetes cluster unreachable`, both returned *"[Protected] This release listing could
+  not be parsed, so releases in protected namespaces could not be removed from it."* — the
+  release deleted, the error deleted, and *protection* named as the cause of neither. Separately,
+  `proc.returncode` reached the answer only when helm printed nothing at all, so every other
+  failure was returned as though it were the result. stdout and stderr are now kept apart: the
+  namespace and protected-kind filters see stdout only, a non-zero exit returns
+  `[helm exited N] <stderr>` (matching `run_kubectl`), output printed before an error is labelled
+  *"absence from it is NOT evidence"*, and a zero-exit stderr warning is appended in a block that
+  says it is a warning about the client. 25 new tests, 12/12 mutants killed.
+- **`kubectl` failed and the agent was told the cluster was empty.** Two independent paths in
+  `run_kubectl` turned a failure into an answer, both measured 2026-08-24 by driving
+  `subprocess.run`. (1) The pipe emulator ran over a merged `stdout or stderr` string, so an RBAC
+  `Forbidden` piped through `grep Running` returned `(no matching lines)` — **byte-for-byte the
+  same string** a successful listing with nothing running produces, and the error hint the module
+  had just attached ("Insufficient RBAC permissions") was filtered away with it. A real shell never
+  pipes stderr, so this was not even faithful emulation. (2) `stdout or stderr` keeps stdout
+  whenever it has anything, so `kubectl get pods -A` with one namespace forbidden returned a
+  complete-looking listing with no sign a namespace had been denied. Both land on the evidence path
+  the grounded-diagnosis claim rests on — the model reads a tool result as observation. The pipe
+  and the blocked-namespace filters now see stdout only; a non-zero exit is stated outright
+  (`[kubectl exited N]`, and `(kubectl wrote nothing to stderr)` when there is no message); and a
+  partial listing is returned alongside the error, marked as possibly partial. The success path is
+  byte-for-byte unchanged.
+- **The postmortem raised a tamper alarm over records nobody had read.** `chain_valid` is a
+  `bool` carrying three outcomes, and `render_markdown` read `false` as "the hashes disagree".
+  Measured 2026-08-24 on both paths that never verify anything — a recorder that could not be
+  reached, and an episode with no recorded events — each printed *"**AUDIT CHAIN BROKEN** — the
+  recorded events may have been altered"*. On the unreadable path that also contradicted the same
+  postmortem's own summary line, which says the recorder could not be read. A tamper warning is
+  only worth printing if it never fires when nothing was tampered with, so the false one was
+  costing the real one its meaning. The postmortem now carries `chain_verified`, and the markdown
+  render has a third banner — **AUDIT CHAIN NOT VERIFIED** — with the reason underneath; this is
+  the same distinction `kq replay` already draws with its exit code `4`. `chain_valid` keeps its
+  type and its existing meaning, and the **RECORD INCOMPLETE** banner is unchanged: intact,
+  complete and verified are three separate claims.
+- **A flag can be ON, wired, and doing nothing — and only half of that was reported.**
+  `set_but_unwired_flags` answers "the operator set a switch no code reads". It does not answer the
+  case one level out: the code *does* read the flag, but the subsystem it lives in is dead.
+  Measured 2026-08-24 with `MEMORY_HIERARCHY_ENABLED=true` and the hierarchy unable to reach
+  Postgres — `/healthz` returned `memory: {enabled: false, state: "unavailable"}` and
+  `experimental_flags: ["MEMORY_HIERARCHY_ENABLED"]` **in the same response**, and `/v1/v5/status`,
+  whose docstring promises "which v5 slices are active", reported the flag active and carried no
+  way to see the outage at all. Every `MEMORY_*` slice runs inside that hierarchy, so up to ten
+  flags could read as active while none could act — and the commonest case needs no outage at all:
+  turning a slice on while `MEMORY_HIERARCHY_ENABLED` is `false` leaves it with no hierarchy to run
+  inside. Both endpoints now carry `degraded_experimental_flags`, and `/v1/v5/status` carries the
+  `memory` state and reason it previously could not show. The flags deliberately **stay** in
+  `active_flags` / `experimental_flags`: that list is rollout identity — which arm the pod was
+  configured as — and a Postgres blip must not make it flap.
+- **The CLI half of the same lie: `kq findings` printed one word for all four absences.**
+  The server-side fix below gave `GET /v1/findings` a `sensorium_reason` field, but `kq findings`
+  — the interface `docs/cli-reference.md` tells operators to use — still read only the coarse
+  `sensorium` value and printed *"Sensorium is disabled on this server."* Feeding it the four real
+  sentences produced **one** distinct output, so the classification existed and reached nobody. The
+  command now prints the server's sentence, and says it does not know when talking to a server that
+  predates the field. Exit codes and every other `sensorium` state are unchanged.
+- **`sensorium: disabled` named two causes as fact, for four unrelated situations.** Four paths
+  end at "no detector engine on this replica", and `perception_gaps` described every one of them
+  with the same sentence — *"the sensorium is not running (SENSORIUM_ENABLED=false, or no
+  compiled detectors loaded)"*. Driving each real path and reading the output produced that
+  identical string four times, and for two of the four it is **false**: a `start_sensorium` that
+  **raised** (the lifespan catches every exception and logs one `WARNING`, correctly, so that
+  perception failing never costs availability) was reported to the operator as a configuration
+  choice rather than the outage it is; and a **leader-election standby**, which serves the API
+  normally and watches nothing by design, was described with two causes that were both untrue —
+  so in a two-replica deployment half of all `/v1/findings` responses and every digest built on a
+  standby made a healthy cluster read as an unmonitored one. Each path that can leave the engine
+  absent now records which one it was; `PerceptionState` carries `sensorium_reason`, empty while
+  perceiving; a failed start says it is an outage and carries the exception message; a standby
+  says another replica is perceiving and points at it; and `GET /v1/findings` returns the field on
+  both of its branches. The coarse `sensorium` values are unchanged, so existing clients and
+  `kq findings` are unaffected.
+- **The flight recorder's own invariant did not cover its largest loss mode.** The module's
+  stated guarantee — *"every loss is carried forward and written **into the chain** as a
+  `recorder_gap` record on the next successful flush"* — is what makes the tamper-evidence claim
+  meaningful, because *intact* and *complete* are different properties. But that machinery hangs
+  entirely off a flush, and `init_recorder` gave up after one failed connect: no pool, no queue,
+  no drain task, no retry. `record()` then began `if _queue is None: return`, so a recorder that
+  never started dropped every event with no marker, no counter and no way back, for the life of
+  the process. Measured with the mid-flight loss as the control: three events against a
+  never-started recorder left `_pending_gaps` empty, where the same loss mid-flight leaves
+  `{'ep': (1, reason)}`. Nothing reported it either — `/healthz` carried `audit` and `memory` but
+  no recorder field, and the module exported no status accessor; the read path was already honest
+  (`fetch_episode` raises `RecorderUnavailable`) but only for someone who already suspected it and
+  asked about a specific episode. The pool is now retried every 30 seconds and reconnecting
+  finishes startup properly; a loss with no queue is carried exactly like a failed flush, so the
+  outage is written into the chain once recording resumes, before the events that followed it;
+  the per-episode gap ledger is bounded with the overflow still counted; and `recorder_status()`
+  — `ready` / `flag` / `sqlite` / `unavailable`, with the reason and `lost_while_down` — is
+  reported on `/healthz`. Configuration-off states carry nothing (there is no chain to be honest
+  about) and skipped token frames are not losses.
+- **A server whose memory never started looked like a cluster where nothing had happened.**
+  `init_memory` caught every connection error, logged one `WARNING`, set `_pool = None` and
+  returned — **before starting any background task**, so nothing was left running that could try
+  again. A pod scheduled before Postgres accepts connections (the ordinary rollout case) then ran
+  for its whole life with no episodes, no knowledge graph, no consolidation, no preference
+  learning, no promotion and no prospective recheck, and only a restart could recover it.
+  Measured against a refused connect, with the healthy case as the control: `memory_active()`
+  `False` vs `True`, background tasks **0 vs 3**, observation queue `None` vs a live queue — and
+  every sensorium observation discarded by a silent `return`. Neither `/healthz` nor `/v5/status`
+  carried any memory field, so an empty knowledge graph was indistinguishable from a quiet
+  cluster. The pool is now retried every 30 seconds by a reconnect loop that completes startup
+  properly when Postgres arrives (the previous code could not, because the wiring lived inline in
+  `init_memory`); `memory_status()` reports `ready` / `flag` / `sqlite` / `unavailable` with the
+  reason and a count of discarded observations — including the full-queue drop, which used to be
+  a bare `pass`; and `/healthz` carries it next to `leader` and `audit`. The first discarded
+  observation and every thousandth after it warn. `/healthz` still checks nothing and still
+  answers `200` while memory is down — a pod with no memory is degraded, not wedged.
+- **A server that audited nothing reported that it was fine.** `init_audit_pool` caught every
+  connection error, logged one `WARNING`, and left `_pool = None` — with no retry, so the pod
+  being scheduled before Postgres accepts connections (the ordinary case during a rollout)
+  disabled the audit log for the whole life of the process, and only a restart could fix it.
+  Measured with a refused connect: three admin requests dropped with no exception and no second
+  log line; `/healthz` answered `status: "ok"` with no field about the audit log at all;
+  `request_log` was empty, which is indistinguishable from a server that took no traffic; and
+  the module exported no accessor to ask with. Meanwhile `docs/operations.md` said *"Every API
+  request is recorded fire-and-forget in `request_log`"*, and `app/core/leader.py` justified the
+  advisory-lock design on the premise that *"`init_audit_pool` exits the process when [Postgres]
+  is unreachable"* — it never did, which also made `main.py`'s `sys.exit(1)` around it
+  unreachable. The pool is now retried from the write path (throttled to 30s, off the request
+  path), so a startup race heals itself; `audit_status()` reports `ready` / `sqlite` /
+  `unavailable` with the reason and a count of unrecorded requests; `/healthz` carries it next
+  to `leader`; and the first dropped request and every hundredth after it warn, so the outage
+  does not go silent once the startup log has scrolled away. `/healthz` still checks nothing and
+  still answers `200` while the audit log is down — an unaudited pod is degraded, not wedged.
+  The false claim in `leader.py` is corrected and the two disable paths are documented.
+- **"The flight recorder is off" was answered as "that episode does not exist".** `fetch_episode`
+  returned `[]` for three unrelated states — the episode genuinely has no rows, the recorder was
+  never started, and the query failed — and `GET /v1/episodes/{id}/replay` turned all three into
+  `404 no recorded episode '<id>'`, the one answer that is a positive claim about the world.
+  Measured with the recorder's pool unset, a real episode id came back 404, and `kq replay`
+  rendered it as *"No recorded episode"* with exit 1. On the audit surface that is the most
+  expensive wrong answer available: an operator asking for the decision log of the incident they
+  are living through is told it was never recorded. `fetch_episode` now raises
+  `RecorderUnavailable` for the two unreadable states, the endpoint answers **503** with a detail
+  saying it is *not* a statement about the episode, the grounded postmortem carries
+  `recorder_available` and stops sharing one sentence (*"No recorded events for this episode (or
+  recorder unavailable)"*) with the genuinely-empty case, and `kq replay` / `kq export` no longer
+  restate either as an absence. A `404` for an episode that truly has no rows is unchanged.
+- **One failing memory section read as that section being empty.** `load_memory_context`
+  already raised `MemoryStoreUnavailable` for a total outage — because `""` means both "nothing
+  stored" and "could not look", and `memory_loader` turns that into a block telling the model
+  *"this is not the same as there being none"*. Four section loaders defeated it one level in:
+  each wrapped its own query in `try/except: return []`, two silently and two at `logger.debug`,
+  which a default deployment never emits. Reproduced with a `user_prefs` query raising
+  `column "confidence" does not exist` (a half-applied migration) and the other three sections
+  healthy: the coordinator received a context that reads as complete, with no notice, no
+  exception and nothing above INFO in the log — so the operator's stored preferences, which is
+  where "never restart pods in prod" lives, were simply absent. Sections are now loaded
+  individually so one bad query still costs only itself, but any that fails is logged at
+  `WARNING` and named in a `## Memory partially unavailable` block, placed **first** so the
+  context budget cannot truncate it away. A section with no rows is still not a failure.
+- **An unreadable `kq` history store was rendered as an empty one.** `kube_q.cli.store` swallows
+  every `sqlite3.Error` by design — a broken local cache must not crash the REPL — but each read
+  then returns `[]`, which is also what a fresh install returns. Measured against a
+  `~/.kube-q/history.db` holding one line of text, `kq --list` printed *"No sessions found."* and
+  exited 0, with nothing on stderr: the `_logger.warning` meant to say otherwise goes to a logger
+  with no stderr handler outside `--debug`. A user with a hundred sessions was told they had none,
+  and never learned that deleting one file would bring them all back. The store now records why
+  the last operation failed (cleared on every new one, so a stale error can never be printed beside
+  a healthy empty result), and every empty-result surface asks first — `kq --list`, `kq --search`,
+  and the REPL's `/list`, `/search`, `/branches` and resume picker. A genuinely empty store still
+  prints the plain line. `docs/session-history.md` documents the message, the causes and the fix,
+  and its schema-version row is corrected from v3 to the v4 the code has been writing.
+- **`kubeintellect status` always exited 0, however red the board was.** It is documented as a
+  "Health dashboard for every component" and is the obvious thing to put in a Makefile, a
+  container healthcheck or `kubeintellect status && kubeintellect serve` — but measured in a
+  clean HOME it printed four `✗` rows (missing config file, no LLM key, unreachable PostgreSQL,
+  missing kubeconfig) and still returned success, so none of those uses could ever fail. It now
+  exits **1** when any row is `✗` or the configuration has an error-level issue, and names what
+  is broken on the last line. A `-` row means *not configured* — a choice, not a fault — and
+  never fails, so nobody running without Prometheus goes red for it.
+- **`kq` could not read the kubeconfig kubectl writes.** The fallback context scan — used when
+  `kubectl` is absent, so the only source there is — matched only the `- name:` ordering, while
+  kubectl writes `- context:` with `name:` on the next line. A file with two contexts parsed as
+  zero: no `/context` tab-completion and "No kubectl contexts found (is kubectl installed and is
+  `~/.kube/config` valid?)" for a kubeconfig that was perfectly valid. The scan now keys off an
+  entry's key positions rather than which key carries the dash, and still refuses `users:` names
+  and the `name:` inside a nested `extensions:` entry.
+- **`kq`'s `/plugins` told you to install plugins you had already installed.** It read only the
+  registry, so a plugins directory full of files that had all failed to import produced *"No
+  plugins loaded. Drop Python files into `~/.kube-q/plugins/`…"*. It now reports the failures with
+  their reasons whether or not anything loaded. The `kq` plugin system is also documented for the
+  first time in `docs/cli-reference.md` — directory, load order, the `register()` contract,
+  `PluginContext`, the trust warning and the failure behaviour.
+- **A `kq` plugin that failed to import was silent, and a half-loaded one still advertised its
+  commands.** `load_plugins` claimed its errors were "printed as a dim warning"; the `kube_q`
+  logger has no stderr handler outside `--debug`, so with start-up logging configured a broken
+  plugin produced empty stdout *and* empty stderr — the file was indistinguishable from one never
+  installed. Worse, `register` runs at import time, so a module that registered a command and
+  then raised left that command listed by `/plugins`, offered by tab-completion and dispatchable
+  while the banner said the plugin had not loaded. Failures now reach the screen via `plugins.load_failures()`, and a failed module's
+  registrations are rolled back and its entry removed from `sys.modules`.
+- **`kq` ignored profiles and project-local `.env` files.** `load_config` documents four
+  layers — `~/.kube-q/.env`, then the active profile, then `./.env`, then the shell — but the
+  loader copied each file straight into `os.environ` and skipped any key already present, so the
+  *first* file read won. A profile and a directory-local `./.env` were therefore silent no-ops for
+  every key `~/.kube-q/.env` already set, which is exactly what `kq config set` writes there
+  (`url`, `api_key`, `context`): `kq config profile` could not repoint a configured client at
+  another cluster. `kq config show`'s **Source** column had the matching half — it derived the
+  source by comparing the environment against `~/.kube-q/.env`, which cannot see a profile or a
+  local `.env`, and labelled both "shell env" while `docs/cli-reference.md` promises the column
+  names them. The layers are now merged explicitly, a shell export still outranks every file, and
+  the column reports the layer that actually won.
+- **Four commands printed a `✓` for a subprocess whose result they never read.**
+  `subprocess.run(..., check=False)` with the result discarded is silent by construction: the
+  command fails, Python runs the next line, and the next line was the success message.
+  `kubeintellect kind-setup` printed a five-row table of RCA scenarios kubectl had refused to
+  create and "Sample pods deployed" over an empty `demo` namespace; `service uninstall` printed
+  "Service removed" while the server was still running; and `kubeintellect set` printed
+  "service restarted to apply changes" for a restart systemd never performed — the only signal a
+  user gets that changed configuration reached the running server. All four now check the return
+  code and print what the tool actually said. A new AST guard
+  (`tests/test_no_unchecked_subprocess_success.py`) fails the suite on any new discarded result
+  in `app/` unless it is listed with the reason it is safe; the eight that remain are
+  fire-and-forget setup steps and the `service start|stop|status|logs` pass-throughs.
+- **`kubeintellect service install` reported a service systemd had refused.** Both `systemctl`
+  calls ran with the return code discarded and stderr swallowed, then the caller printed
+  "Service installed — server will start automatically on login" unconditionally. Over SSH with
+  no login session `systemctl --user` answers `Failed to connect to bus` and enables nothing. The
+  `init` wizard was worse: it printed the same ✓, opened `kq` and returned, skipping the fallback
+  that starts a server for the session — so a first run ended at a `kq` prompt with nothing behind
+  it. The installer now reports what systemd actually did, in systemd's words, with the remedy,
+  and exits non-zero; the wizard falls through to the fallback instead of returning. The unit also
+  uses `EnvironmentFile=-`, so running `service install` before `init` no longer produces a unit
+  that cannot start.
+- **Four shipped playbooks could not run their own first investigation step.** The Helm chart's
+  read-only role granted no access to `resourcequotas`, `horizontalpodautoscalers`,
+  `storageclasses`, `apiservices` or the webhook configurations — all named directly by the
+  `QuotaExceeded`, `HPANotScaling`, `PvcPending` and `WebhookAdmissionRejected` playbooks. Each
+  returned `Error from server (Forbidden)` during the incident the playbook exists for, while
+  `helm install` succeeded, `kubeintellect status` reported a reachable cluster and the playbook
+  count said 23. The six grants are added, and a new test derives the required permissions from
+  the playbooks so a new playbook cannot ship a step the role would refuse. Secrets remain
+  deliberately ungranted, named as an exception with the reason: `get` on a Secret returns its
+  values and RBAC has no key-only read.
+- **The FAQ understated the product by five playbooks.** `docs/faq.md` — the "why not just use
+  ChatGPT?" page — said **18 deterministic playbooks** while the library had reached 23. The
+  doc-claims gate could not see it: it checks an enumerated list of `(doc, regex)` pairs, and
+  neither `faq.md` nor `examples.md` appeared in it. Both are now in the table so `make docs-fix`
+  heals them, and a new population-wide check walks every tracked doc instead of a list, so a
+  count claim written in any doc is verified from the moment it is written. `docs/changelog.md` is
+  excluded by name: a changelog records what was true at a release and must not be rewritten.
+- **The Helm chart accepted a shutdown configuration it documents as broken.** `drainSeconds` is
+  spent inside `terminationGracePeriodSeconds`, so `--set drainSeconds=60` against the default 45s
+  grace rendered a pod that Kubernetes SIGKILLs 15 seconds before it finishes draining — silently
+  reintroducing the dropped requests the preStop hook exists to prevent, with no error anywhere and
+  a symptom (a few lost requests per rolling update) that nobody traces back to a values file. The
+  chart now fails to render below the 15-second floor the shutdown-contract tests already required,
+  naming the value to set. That rule previously held only for values files committed to the
+  repository, never for `--set` or a private values file — which is how the knob is actually tuned.
+- **`kubeintellect status` reported a configuration the server did not run on.** `status` read
+  `~/.kubeintellect/.env` *and* a directory-local `./.env`; `serve` and `db-init` read only the
+  first, although `docs/configuration.md` has always documented `./.env` as a config source and
+  `docs/index.md` tells readers to `cp .env.example .env`. In one directory, at one moment, the
+  board said `LLM ✓ configured`, `Auth ✓ enabled` and `No configuration issues found` while the
+  server started with no API key and **open access**. All four commands now resolve configuration
+  through one loader, so the board and the runtime cannot disagree. Precedence is unchanged and
+  now documented correctly: shell environment, then `~/.kubeintellect/.env`, then `./.env` — a
+  repo `.env` can never override the admin keys in your user config.
+- `kubeintellect status` now validates the **effective** configuration — the merge of the shell
+  environment, `~/.kubeintellect/.env` and `./.env`, which is what the rows above it and the server
+  itself read. It previously validated `~/.kubeintellect/.env` alone, so the closing summary could
+  contradict the board printed three lines above it: reporting a key as missing when it lives in
+  `./.env`, or printing "No configuration issues found" over a row that had just failed because the
+  shell overrode `LLM_PROVIDER`. The all-clear now also names the sources it checked.
+- **The `LLM:` row on the status board meant "these environment variables are non-empty".** It
+  printed a bare ✓ that an operator reads as *the model is usable*, while a revoked key, an endpoint
+  with a typo and a deployment name that does not exist are all indistinguishable from a working
+  configuration at that point — and each surfaces on the first incident. The row keeps its ✓, which
+  is honest about what was measured, and now says `configured — not verified, no request is made`.
+  A live credential check is deliberately not added here: the cheapest useful probe is a round trip
+  to a paid endpoint and `status` is run casually and often, so that is a product decision rather
+  than a repair.
+- **`kubeintellect status` reported a cluster it had never contacted.** Every other row on that
+  board is measured — the database with a real `psycopg.connect`, Prometheus, Loki, Grafana and
+  Langfuse each over HTTP — but `Kube:` was green on `Path.exists()` alone, decorated with a context
+  name read out of that same local file. An expired credential, a stopped kind cluster or a VPN that
+  is down all printed ✓ to an operator asking "can it see my cluster?" before an incident. The row
+  now probes the API server and has three states, because two cannot express it: **reachable**,
+  **did not answer**, and **not verified** when there is no `kubectl` to ask with — the last of which
+  is deliberately not ✓. The bound is a hard `subprocess` timeout, not `--request-timeout`, which
+  governs the API request rather than the connection attempts in front of it.
+- **The CI lint job had never read most of the tree.** The `ruff check` step named exactly two
+  paths — `packages/kubeintellect-server/app/` and `packages/ki-protocol/` — so all 167 files under
+  `v4/tests/`, the whole `kube-q` CLI and every build script were invisible to it: a contributor
+  adding a test file got a green lint job that had not opened their file. Measured across the blind
+  spot: **31 findings** (25 `E702` semicolon statements, 5 `E501`, 1 deliberate late import now
+  annotated with its reason). All fixed — the two semicolon rewrites verified by AST equality, not
+  by eye — and the step, plus `make lint`, now covers **392 of 392** tracked Python files under
+  `v4/`. A new gate asserts coverage rather than a fixed list, so a new package fails until the step
+  is widened, and `make lint` is held to the same paths as CI.
+- **A promotion outcome source that failed was indistinguishable from one with no data.**
+  `promotion_engine.outcomes_for` swallowed every exception and returned `[]` with no log line
+  anywhere, so a broken store read exactly like an action class that has not run in shadow yet —
+  and the decision that follows reports `hold` because *"n 0 < n_min 20"*, which reads as *not
+  enough evidence* rather than *the evidence could not be read*. ADR-102 is **fast down, slow up**,
+  so the direction that suffers is demotion: a class whose shadow agreement had collapsed would be
+  held at its current rung indefinitely by a read failure nobody could see. `read_outcomes()` now
+  returns the timeline **and** whether the source answered, and logs the failure with the action
+  class; `outcomes_for` keeps its signature and still never raises.
+- **`AGENTS.md` sized the `ruff format` gap at `~108` files when it was 116** — an ungated number
+  in the file whose own policy is that derived numbers are gated, sitting in the "known pre-existing
+  debt" section contributors read to decide what they may ignore. `check_doc_claims.py` now derives
+  it, so `make docs-fix` heals it like every other measured claim, and it is counted over the files
+  **git tracks** rather than by walking the directory — a stray unformatted file in someone's
+  working copy must not move a number published in a doc.
+- **`how-it-works.md` named a security boundary that is not in the write path.** It told readers
+  that every proposed mutation is routed through the single write-authority decision in
+  `app/tools/aci/mutating.py` — *"the gate is enforced server-side at that chokepoint"* — composing
+  *"the action class's statistically earned rung"*. Measured against the AST: `decide_write` and
+  `plan_mutation` have **no production caller**, `earned_rung` always arrives as its `L2` default,
+  and `promotion_outcomes` — the ADR-102 store that would earn it — is created by the schema and by
+  the chart but **written by nothing** outside its own tests. (A text scan says otherwise:
+  `app/memory/prospective.py` defines an unrelated `record_outcome`.) The live A3 brake is
+  `autonomy.watchtower`, composing the ADR-003 ladder, the `(playbook, namespace)` allowlist and
+  `auto_write_permitted()`, which denies on an engaged kill switch or a declared change freeze —
+  so the paragraph now describes that, and marks the ACI chokepoint as the designed destination it
+  is. Pinned as an **equivalence**: wiring the chokepoint up fails the new gate exactly as loudly
+  as un-wiring it, and names the paragraph to update.
+- **The gated test count published in `AGENTS.md` was a property of the machine, not of the
+  repository.** `scripts/check_doc_claims.py` derived it by collecting whatever `v4/tests/` held on
+  disk, and `test_db_init_reports_failure.py` parametrized its psql sweep over `docs/**/*.md` the
+  same way. This tree carries `docs/evaluation.md` and `tests/test_evaluation_runner.py`, which
+  `.git/info/exclude` deliberately keeps out of the public repository, so every `make docs-fix` wrote
+  a number no clone could reproduce — and `tests/test_doc_claims.py` then failed for a contributor on
+  a file they had never touched. Any file not yet `git add`ed moved it too: measured, three stray
+  test functions and one stray markdown file shifted the published figure by four. Both now read the
+  set of files the repository actually carries, and fall back to everything on disk — never to
+  nothing — where that cannot be determined. Measured in a clone-like checkout: the claim was
+  unreproducible before, and both trees now collect **3568**.
+- **Two test files could only ever pass on the machine that wrote them.**
+  `test_observability_tools_honour_the_blocklist.py` (33 tests) read `LOKI_URL` / `PROMETHEUS_URL`
+  from whatever `v4/.env` the developer happened to have; no workflow sets either, so in a clean
+  checkout both tools short-circuit with *"… is not configured"* — the input-gate assertions fail
+  outright and, worse, every `assert "SECRET" not in out` passes **because nothing ran**. The file
+  now configures its own unroutable datasources, and pins that vacuity as an explicit case.
+  `test_the_other_maps_match_the_territory.py` asserted against `v4/CLAUDE.md`, which is tracked
+  only in the private tree: four `FileNotFoundError`s anywhere else. That one class is now guarded
+  by an existence check, and a companion test fails if a second conditional ever appears — counted
+  from the AST, since a substring count of `skipif` also matches its own assertion.
+  Measured in a checkout without either file: 31 failures before, 0 after.
+- **42 text-mode reads across 10 test files named no encoding**, which the platform default
+  decides — not UTF-8 on Windows or under the C locale (#136/#156).
+- **Both repo-root CI gates could report a clean tree having examined nothing.**
+  `scripts/check-file-modes.sh` printed *"file modes OK — every tracked file outside v1-v3 is
+  executable if and only if it has a shebang"*, which is a claim about the tree; what it measures
+  is one git index, skipping in silence every tracked path that is not a regular file in the
+  current checkout. A sparse or partial checkout therefore produced that same confident line over
+  **zero** files, and exited 0. Both gates now state how many files they actually examined, count
+  and report the paths they had to skip, and **fail** when that count is zero.
+  `check-file-modes.sh` also takes `--git-dir DIR`, so the invariant can be pointed at another
+  index — and its `--fix` hint now names the index that was checked rather than the default one.
+  Neither gate had a test driving it before this; both do now.
+- **The memory audit chain could not see its own tail being cut off.** `security.md` promised that
+  a silent edit, delete or reorder of learned memory is detectable; measured against the real append
+  path, deleting the *newest* entries verified as intact, and the next legitimate append continued
+  from the surviving tail so the loss became invisible permanently — which is exactly the deletion an
+  attacker would make. A `memory_chain_head` row now anchors how far the chain got, a shorter chain
+  contradicts it, and an append after a truncation continues past the head instead of filling the gap.
+  It remains tamper-evidence, not prevention, and the documentation now says so — along with the fact
+  that no endpoint, command or scheduled check invokes the verifier today.
 - **Every knowledge-graph edge claimed a provenance it could not resolve.** `kg_edges.source_kind`
   is `NOT NULL DEFAULT 'observation'` and is the sole input to the memory write-admission trust
   score, where `observation` scores 1.0 — yet every edge the sensorium ingest path wrote carried

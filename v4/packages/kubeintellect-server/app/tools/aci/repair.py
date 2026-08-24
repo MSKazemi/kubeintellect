@@ -6,9 +6,18 @@ the PR mechanics stay pure/deterministic and this stays the one token-spending p
 
 Fails SAFE: on any error or an empty/echoed response, returns the ORIGINAL manifest unchanged, so
 the downstream fix-PR is a no-op (nothing is proposed) rather than a corrupted manifest.
+
+Failing safe is not the same as **reporting** safely. Returning the original was the whole answer,
+so a repair that never ran was byte-identical to a repair that found nothing to change — and
+measured 2026-08-24 an LLM exception, an empty response and a refusal in prose all reached
+`open_pr` as *"no change to propose"*, the sentence a compliant manifest earns. On a security
+misconfig path that reads as "nothing to do" when the violation is untouched. Hence
+`RepairProposal.repaired`.
 """
 
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -36,9 +45,21 @@ def _strip_fences(text: str) -> str:
     return t.strip()
 
 
+@dataclass(frozen=True)
+class RepairProposal:
+    """What the repair step produced, and whether it produced anything at all."""
+
+    manifest: str
+    # False ⇒ nothing was proposed and the violation still stands. The manifest above is then the
+    # ORIGINAL, and an empty diff downstream is a statement about *this step*, not about the
+    # manifest's compliance.
+    repaired: bool
+    reason: str = ""
+
+
 async def propose_fix(
     manifest: str, violation: str, *, llm: BaseChatModel | None = None,
-) -> str:
+) -> RepairProposal:
     """Propose a corrected manifest for ``violation``. Returns the ORIGINAL on any failure."""
     try:
         if llm is None:
@@ -50,9 +71,14 @@ async def propose_fix(
         ])
         fixed = _strip_fences(reply.content if isinstance(reply.content, str) else "")
         # Guard: never return empty or something that lost the manifest's kind.
-        if not fixed or "kind:" not in fixed:
-            return manifest
-        return fixed
+        if not fixed:
+            return RepairProposal(manifest, False, "the model returned an empty response")
+        if "kind:" not in fixed:
+            return RepairProposal(
+                manifest, False,
+                "the model's reply was not a manifest (no `kind:` line) — it was most likely prose",
+            )
+        return RepairProposal(fixed, True)
     except Exception as exc:
         logger.warning("repair.propose_fix failed safe (no change): %s", exc)
-        return manifest
+        return RepairProposal(manifest, False, f"the repair call raised: {exc}")

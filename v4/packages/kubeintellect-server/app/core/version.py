@@ -143,6 +143,38 @@ def _set_knobs() -> set[str]:
     return knobs
 
 
+def degraded_experimental_flags() -> list[str]:
+    """ON, wired flags whose subsystem is **not running right now**.
+
+    :func:`set_but_unwired_flags` catches a flag no code reads. This catches the next case out:
+    a flag the code *does* read, inside a subsystem that is dead. Both end at the same place —
+    the operator set a switch, the product answered that a slice is on, and nothing changed —
+    but only the first was reported. Measured 2026-08-24 with ``MEMORY_HIERARCHY_ENABLED=true``
+    and the hierarchy unable to reach Postgres: ``/healthz`` returned
+    ``memory: {enabled: false, state: "unavailable"}`` and
+    ``experimental_flags: ["MEMORY_HIERARCHY_ENABLED"]`` **in the same response**, and
+    ``/v5/status`` — the surface whose docstring promises "which v5 slices are active" — reported
+    the flag active with no way to see the outage at all.
+
+    Every ``MEMORY_*`` slice lives inside the hierarchy (``app/memory/*``, plus the two readers in
+    ``autonomy/watchtower.py`` and ``agent/nodes/memory_loader.py``), so when the hierarchy is not
+    ``ready`` none of them can act — including the case where the operator turned a slice on and
+    left ``MEMORY_HIERARCHY_ENABLED`` off, where there is no hierarchy to run inside.
+
+    These flags stay in :func:`active_experimental_flags`. That list is *rollout identity* — which
+    arm this pod was configured as — and a Postgres blip must not make it flap; an unwired flag is
+    excluded there because it can never do anything, which is not true here: the hierarchy retries
+    every 30 s and recovers. ``starting`` counts as degraded on purpose. It is transient and clears
+    itself, and reporting a slice as working before it is up is the exact statement being removed.
+    """
+    from app.memory.service import memory_status
+
+    if memory_status()["state"] == "ready":
+        return []
+    return sorted(f for f in _on_booleans() - UNWIRED_EXPERIMENTAL_FLAGS
+                  if f.startswith("MEMORY_"))
+
+
 def set_but_unwired_flags() -> list[str]:
     """Settings the operator changed that no code reads — i.e. settings that did nothing.
 
@@ -171,6 +203,7 @@ def version_info() -> dict[str, object]:
         "semver": code_version(),
         "experimental_flags": active_experimental_flags(),
         "set_but_unwired_flags": set_but_unwired_flags(),
+        "degraded_experimental_flags": degraded_experimental_flags(),
     }
 
 

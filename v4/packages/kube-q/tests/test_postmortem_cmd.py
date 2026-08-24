@@ -22,7 +22,12 @@ def test_postmortem_renders_markdown(monkeypatch, capsys):
     route = respx.get("http://test-server/v1/episodes/ep-1/postmortem").mock(
         return_value=Response(
             200,
-            json={"markdown": "# Incident postmortem — `ep-1`\n\n> Audit chain verified intact"},
+            # A current server sends the verdict as data alongside the prose. Without those
+            # fields the command exits 4 by design — an absent verdict is not a passing one —
+            # and that case is asserted in
+            # tests/test_postmortem_exit_code_matches_its_own_verdict.py.
+            json={"markdown": "# Incident postmortem — `ep-1`\n\n> Audit chain verified intact",
+                  "chain_valid": True, "chain_verified": True, "events_lost": 0, "gaps": []},
         )
     )
     assert postmortem_cmd.run(["ep-1"]) == 0

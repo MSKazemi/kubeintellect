@@ -35,6 +35,12 @@ class Recommendation:
     cpu_limit_millicores: int = 0                        # 0 ⇒ leave unchanged
     rationale: list[str] = field(default_factory=list)
     confidence: float = 0.0
+    # Whether the signals were sufficient to judge at all. `is_noop` cannot tell "assessed and
+    # healthy" from "we have no observation of this container" — and before 2026-08-24 both
+    # rendered the identical sentence at the identical confidence, as did a container with no
+    # memory limit whatsoever. A recommender whose silence is ambiguous is worse than one that
+    # says nothing: `is_noop` reads as an all-clear.
+    assessed: bool = True
 
     @property
     def is_noop(self) -> bool:
@@ -49,19 +55,42 @@ def recommend(usage: Usage) -> Recommendation:
     cpu_limit = 0
     conf = 0.5
 
-    ratio = (usage.peak_memory_bytes / usage.memory_limit_bytes) if usage.memory_limit_bytes else 0.0
+    # An absent limit is not a ratio of zero — it is the absence of a ratio, and zero is the
+    # single most reassuring value the scale has. `None` keeps the two apart.
+    ratio = (usage.peak_memory_bytes / usage.memory_limit_bytes) if usage.memory_limit_bytes else None
+    # Likewise a peak of zero is "we never observed this container", not "it used nothing".
+    observed = usage.peak_memory_bytes > 0
 
     if usage.oom_count > 0:
         mem_limit = int(usage.peak_memory_bytes * _HEADROOM)
-        actions.append("increase_memory")
-        rationale.append(f"{usage.oom_count} OOMKill(s) observed; raise memory limit to ~{_HEADROOM:g}x peak")
+        actions.append("increase_memory" if usage.memory_limit_bytes else "set_memory_limit")
+        verb = "raise" if usage.memory_limit_bytes else "set"
+        rationale.append(f"{usage.oom_count} OOMKill(s) observed; {verb} memory limit to ~{_HEADROOM:g}x peak")
         conf = 0.9
+    elif not observed:
+        rationale.append(
+            "no peak-memory observation for this container — nothing here is a statement "
+            "about whether its limits are right"
+            + ("" if usage.memory_limit_bytes else ", and it has no memory limit set")
+        )
+    elif ratio is None:
+        # Unbounded, with a peak to size against. This is the highest-risk memory configuration
+        # there is — one leak evicts every pod on the node — and it used to land in the
+        # "within healthy bands" bucket because 0.0 is below every threshold.
+        mem_limit = int(usage.peak_memory_bytes * _HEADROOM)
+        actions.append("set_memory_limit")
+        rationale.append(
+            f"no memory limit is set; the container is unbounded and can evict its node. "
+            f"Observed peak {usage.peak_memory_bytes} B — set a limit at ~{_HEADROOM:g}x peak"
+        )
+        conf = 0.7
     elif ratio >= _MEM_HIGH:
         mem_limit = int(usage.peak_memory_bytes * _HEADROOM)
         actions.append("increase_memory")
         rationale.append(f"peak/limit {ratio:.0%} ≥ {_MEM_HIGH:.0%}; under-provisioned, bump before OOM")
         conf = 0.75
-    elif 0 < ratio <= _MEM_LOW:
+    elif ratio <= _MEM_LOW:
+        # `observed` guarantees peak > 0 and this branch guarantees a limit, so ratio > 0.
         mem_limit = int(usage.peak_memory_bytes * _HEADROOM)
         actions.append("decrease_memory")
         rationale.append(f"peak/limit {ratio:.0%} ≤ {_MEM_LOW:.0%}; over-provisioned, rightsize down")
@@ -74,9 +103,19 @@ def recommend(usage: Usage) -> Recommendation:
         rationale.append(f"CPU throttled {usage.cpu_throttle_pct:.0%} of periods; raise the CPU limit")
         conf = max(conf, 0.8)
 
+    # "Assessed" is a claim about the evidence, not about the verdict. Acting proves we had
+    # enough; so does an in-band ratio. Nothing else does.
+    assessed = bool(actions) or (observed and ratio is not None)
+
     if not actions:
-        rationale.append("usage within healthy bands; no resize warranted")
-        conf = 0.5
+        if assessed:
+            rationale.append("usage within healthy bands; no resize warranted")
+            conf = 0.5
+        else:
+            # Deliberately NOT 0.5. The old value said "a considered judgement of no change";
+            # there was no judgement, because there was nothing to judge.
+            conf = 0.0
 
     return Recommendation(actions=actions, memory_limit_bytes=mem_limit,
-                          cpu_limit_millicores=cpu_limit, rationale=rationale, confidence=conf)
+                          cpu_limit_millicores=cpu_limit, rationale=rationale,
+                          confidence=conf, assessed=assessed)

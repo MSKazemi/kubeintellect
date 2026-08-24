@@ -41,7 +41,10 @@ class AgentFinding(BaseModel):
 class PlanStep(BaseModel):
     """One step in a coordinator investigation plan."""
     description: str
-    status: Literal["pending", "in_progress", "done", "skipped"] = "pending"
+    # "failed" exists because "done" was set unconditionally once a tool batch returned, and
+    # `_run_one` turns every tool exception into an ordinary ToolMessage — so a step whose
+    # every tool errored rendered a green ✓ in the live plan. Measured 2026-08-24.
+    status: Literal["pending", "in_progress", "done", "skipped", "failed"] = "pending"
 
 
 # ── Synthesizer structured output ─────────────────────────────────────────────

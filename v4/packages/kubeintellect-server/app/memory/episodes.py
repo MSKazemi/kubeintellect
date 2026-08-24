@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.core.config import settings
+from app.memory import pass_health
 from app.utils.logger import get_logger
 from app.utils.redact import redact_secrets
 
@@ -138,7 +139,10 @@ async def write_episode(
             surprise = await _surprise_novelty(
                 cluster_id, red_summary + " " + (red_root or "")
             )
-            if surprise < _SURPRISE_FLOOR and _is_low_value(verified, outcome):
+            # `surprise is None` means the score never ran. Fail open — a gate that fires on
+            # an unmeasured value would drop writes on the strength of a check that failed.
+            if (surprise is not None and surprise < _SURPRISE_FLOOR
+                    and _is_low_value(verified, outcome)):
                 logger.info(
                     f"episodes: surprise-gate dropped low-value redundant write "
                     f"(surprise={surprise:.3f} cluster={cluster_id})"
@@ -199,14 +203,30 @@ _SQL_SURPRISE = """
 """
 
 
-async def _surprise_novelty(cluster_id: str, text: str) -> float:
+async def _surprise_novelty(cluster_id: str, text: str) -> float | None:
+    """Novelty in [0,1], or ``None`` when it could not be measured.
+
+    ``None`` is not a hedge — it is the answer the column already has a value for. A scored
+    ``1.0`` means *nothing similar has ever been seen*, the strongest novelty claim this module
+    makes, and returning it when the query never ran wrote that claim into `episodes.surprise`
+    on every write. On a database without `pg_trgm` the `similarity()` call raises for every
+    episode, so the whole table fills with a maximum that no measurement produced — and the
+    column is nullable precisely so "not scored" has somewhere to go (pre-P6 rows are NULL).
+
+    Callers must treat ``None`` as *the gate cannot fire*, which is the same fail-open
+    behaviour the fabricated ``1.0`` produced. Nothing is blocked by a failed score; the
+    difference is only that the record no longer claims one happened.
+    """
     if _pool is None or not text.strip():
-        return 1.0
+        return None
     try:
         row = await _pool.fetchrow(_SQL_SURPRISE, text[:500], cluster_id)
     except Exception as exc:
-        logger.warning(f"episodes: surprise scoring failed: {exc}")
-        return 1.0  # fail open — never let scoring block a write
+        logger.warning(
+            f"episodes: surprise scoring failed: {exc} — this episode's novelty is NOT "
+            f"measured and is stored as NULL, not as fully novel"
+        )
+        return None  # fail open — never let scoring block a write
     top = float(row["top"]) if row and row["top"] is not None else 0.0
     return max(0.0, min(1.0, 1.0 - top))
 
@@ -413,6 +433,7 @@ async def backfill_from_rca_outcomes(cluster_id_default: str = "unknown") -> int
         return count
     except Exception as exc:
         logger.warning(f"episodes: backfill failed: {exc}")
+        pass_health.record_failure("backfilled", exc)
         return 0
 
 

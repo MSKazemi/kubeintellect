@@ -202,12 +202,31 @@ curl -N http://localhost:8000/v1/chat/completions \
 
 Replay the stored event history for a session as an SSE stream — useful for UIs
 that reconnect or render a past investigation. Returns the same `ki_event` /
-content frames the live stream produced.
+content frames the live stream produced, behind a meta frame:
+
+```text
+data: {"type":"replay_meta","session_id":"demo-1","records":42,"durable":false}
+```
 
 ```bash
 curl -N http://localhost:8000/v1/events/replay/demo-1 \
   -H "Authorization: Bearer $KUBE_Q_API_KEY"
 ```
+
+`durable: false` is the important field. This history lives in **this process's memory**: it
+does not survive a restart and is not shared between replicas. So a `404` here means only that
+*this pod* has nothing for that session — never that the session did not run or produced
+nothing — and the response body says so. A session that genuinely emitted nothing answers `200`
+with `records: 0`, which is a different answer on purpose.
+
+| Status | Meaning |
+|---|---|
+| `200` | This process has a history for the session. `records` may be `0`. |
+| `404` | This process has no history for it. Not a statement about the session. |
+
+For an answer that survives restarts and replicas, read
+[`GET /v1/episodes/{episode_id}/replay`](#get-v1episodesepisode_idreplay) instead — episode IDs
+equal session IDs.
 
 ---
 
@@ -222,7 +241,7 @@ The response is an SSE stream. The **first frame is a meta record**, followed
 by each recorded event payload in sequence order, then `[DONE]`:
 
 ```text
-data: {"type":"replay_meta","episode_id":"demo-1","records":42,"chain_valid":true}
+data: {"type":"replay_meta","episode_id":"demo-1","records":42,"chain_valid":true,"chain_verified":true}
 data: {…recorded event payload…}
 …
 data: [DONE]
@@ -233,7 +252,23 @@ data: [DONE]
 | `type` | Always `"replay_meta"`. |
 | `episode_id` | The requested episode/session ID. |
 | `records` | Number of recorded events that follow. |
-| `chain_valid` | `true` if the hash chain verifies end-to-end; `false` means stored records may have been tampered with. |
+| `chain_valid` | `true` if nothing contradicted the stored records; `false` means they may have been tampered with. |
+| `chain_verified` | `false` when the check could not be performed — the `decision_log_head` anchor could not be read or parsed. `chain_valid` is then *"nothing contradicted these records"*, which is not evidence, because nothing could have. Absent on servers older than 2026-08-24; read it as `true`. |
+
+**Read both.** Until 2026-08-24 a failed anchor read returned the same `chain_valid: true` an
+agreeing anchor returns, so `kq replay` printed `✓ chain intact` and exited `0` for an episode
+the server had just logged as *"truncation … NOT currently detectable"*. `kq replay` now exits
+`4` on `chain_verified: false`, the code it already owned for an unverified chain. A **missing**
+anchor is not that state: the read succeeded and there was nothing to contradict the records
+(an episode written before the anchor existed), so it stays `chain_verified: true`.
+
+`chain_valid` covers both an alteration and a **truncation**: the hash links are recomputed
+and the surviving chain is compared with the episode's `decision_log_head` anchor, so deleting
+the newest records is caught rather than leaving a shorter valid chain. An episode whose
+records are all gone but whose anchor survives returns **`409`** — `404` would report a total
+truncation as an episode that never existed. An episode with no records whose anchor could not
+be read returns **`503`**: absence and total truncation are indistinguishable from there, and
+both `404` and `409` would state one of them as fact.
 
 `chain_valid: true` means **nothing stored was altered**. It does not mean the
 episode is complete: the recorder is fire-and-forget, so an outage loses events
@@ -241,7 +276,16 @@ that were never stored. Losses appear in the stream as `recorder_gap` payloads
 carrying `dropped` and `reason` — see
 [flight recorder](flight-recorder.md#tamper-evidence).
 
-Returns `404` when no episode with that ID has been recorded.
+Returns `404` when no episode with that ID has been recorded, and `503` when the
+decision log could not be read at all — the recorder is not running, or its
+database is unreachable. The two are kept apart deliberately: `404` is a positive
+claim that the episode does not exist, and answering it for an outage tells an
+operator mid-incident that the trail they are looking for was never recorded.
+The `503` body says so explicitly:
+
+```json
+{"detail": "the flight recorder is not running — no decision log to read — this is not the same as episode 'demo-1' having no records"}
+```
 
 ```bash
 curl -N http://localhost:8000/v1/episodes/demo-1/replay \
@@ -273,6 +317,7 @@ Response:
 ```json
 {
   "sensorium": "active",
+  "sensorium_reason": "",
   "detectors": 20,
   "predictive": "active",
   "predictive_detectors": 3,
@@ -304,10 +349,26 @@ while at least one `kubectl --watch` stream is connected:
 | Value | Meaning |
 |---|---|
 | `active` | at least one watch stream is connected — an empty `findings` list means the cluster is quiet |
-| `disabled` | the detector engine is off (`SENSORIUM_ENABLED=false`); the `detectors` count is omitted |
+| `disabled` | there is no detector engine on this replica; **read `sensorium_reason`** — four unrelated situations land here and only one of them is a setting |
 | `starting` | no watch stream has started yet |
 | `reconnecting` | every stream is down and retrying (backoff caps at 60s) |
 | `stopped` | every stream gave up permanently and will not reconnect — e.g. kubectl is missing on the server |
+
+`sensorium_reason` is empty while perceiving and, when `sensorium` is `disabled`, says which
+of four things happened. Until 2026-08-24 all four produced the single sentence *"the sensorium
+is not running (SENSORIUM_ENABLED=false, or no compiled detectors loaded)"*, which for the last
+two below was simply untrue:
+
+| Situation | What it means |
+|---|---|
+| switched off | `SENSORIUM_ENABLED=false`. A configuration choice. |
+| no compiled detectors | nothing was loaded to watch with, so the engine never started. |
+| **failed to start** | it tried and raised (the message is included). This is an **outage** — the server logs one `WARNING` at startup and continues serving, so this field is how you find it afterwards. |
+| **leader-election standby** | this replica lost the singleton lock and watches nothing **by design**; another replica is perceiving. Read its findings, not this replica's silence. See `leader` on [`GET /healthz`](#get-healthz). |
+
+The same answer is on [`GET /healthz`](#get-healthz) as the `sensorium` block, which is where
+to look first — this endpoint tells you about perception once you are already asking about
+findings, and the health probe tells you before you think to.
 
 `streams` carries one entry per watch stream with `connected`, `stopped`,
 `consecutive_failures` and `last_error` (kubectl's own stderr, e.g. an RBAC
@@ -363,6 +424,8 @@ Response:
   "cortex_v5_enabled": false,
   "active_flags": [],
   "set_but_unwired_flags": [],
+  "degraded_experimental_flags": [],
+  "memory": {"enabled": true, "state": "ready", "reason": "", "observations_dropped": 0},
   "unenforceable_guard_config": [],
   "kill_switch_engaged": false,
   "change_freeze": false,
@@ -375,7 +438,9 @@ Response:
 | `arm` | Architecture generation (`KI_VERSION`). |
 | `version` | Package SemVer — distinguishes v4 / v4.1 / v4.2. |
 | `set_but_unwired_flags` | Flags you turned **on** that no code reads — they change nothing. Normally `[]`. A name here means the setting had no effect, so do not treat it as confirmation that a slice is live; see [v5 experimental flags](v5-experimental-flags.md). |
-| `unenforceable_guard_config` | Guard settings you configured that **cannot match anything** — a `KUBECTL_BLOCKED_NAMESPACES` entry that is not a legal namespace name (a glob, a slash), or an `AUTONOMY_NAMESPACE_LEVELS` / `AUTONOMY_A3_ALLOWLIST` entry the parser drops. Normally `[]`. A name here means the protection you configured is **not in force**; see [security](security.md#how-the-kubectl-blocklist-works). |
+| `degraded_experimental_flags` | Flags you turned **on** that code *does* read, but whose subsystem is **not running** — so they change nothing anyway. Every `MEMORY_*` slice runs inside the memory hierarchy, so all of them appear here while it is down, including when you turned a slice on and left `MEMORY_HIERARCHY_ENABLED` off. They stay listed in `active_flags`: that list is rollout *identity* — how this pod was configured — and must not flap when Postgres blips. Normally `[]`. |
+| `memory` | The memory hierarchy's own state and reason, identical to the field on [`/healthz`](#get-healthz). Read it for **why** the flags above are degraded. |
+| `unenforceable_guard_config` | Guard settings you configured that **cannot match anything** — a `KUBECTL_BLOCKED_NAMESPACES` entry that is not a legal namespace name (a glob, a slash), or an `AUTONOMY_NAMESPACE_LEVELS` / `AUTONOMY_A3_ALLOWLIST` entry the parser drops. Also covers `ALLOWED_ORIGINS`, where an unmatchable entry (trailing slash, missing scheme) is silently not allowed and **`*` is reported as a security problem** — CORS runs with credentials enabled, so a wildcard lets any site call this API with an operator's session. Normally `[]`. A name here means the protection you configured is **not in force**; see [security](security.md#how-the-kubectl-blocklist-works). |
 | `cortex_v5_enabled` | The master v5 switch. |
 | `active_flags` | The `KI_V5_*` experimental toggles currently on (empty ⇒ v4 baseline). |
 | `kill_switch_engaged` | `true` ⇒ all autonomous writes are denied (fail-closed). Binds regardless of `KI_V5_BLAST_RADIUS_BUDGET` — see [stopping the agent](autonomy.md#stopping-the-agent-break-glass). |
@@ -461,10 +526,10 @@ endpoint with `format=markdown`.
 
 A grounded incident postmortem for one episode, reconstructed from the
 hash-chained flight recorder (ADR-011). The deterministic timeline cites every
-event's sequence number (`[#seq]`); a `chain_valid` field reports whether the
-audit chain verified intact, and `events_lost` / `gaps` report whether the
-recorder lost any events for this episode — intact and complete are different
-claims. Requires `POSTMORTEM_ENABLED` (default on).
+event's sequence number (`[#seq]`); `chain_valid` and `chain_verified` report the
+audit-chain verdict, and `events_lost` / `gaps` report whether the recorder lost
+any events for this episode — intact and complete are different claims. Requires
+`POSTMORTEM_ENABLED` (default on).
 
 | Query param | Default | Meaning |
 |---|---|---|
@@ -474,6 +539,7 @@ claims. Requires `POSTMORTEM_ENABLED` (default on).
 {
   "episode_id": "auto-fnd-abc",
   "chain_valid": true,
+  "chain_verified": true,
   "timeline": [{"seq": 0, "at": 1765500000.0, "kind": "finding", "summary": "…"}],
   "what_fired": [], "investigated": [], "tried": [], "worked": [],
   "root_cause": "…", "follow_ups": [], "narrative": null,
@@ -482,6 +548,16 @@ claims. Requires `POSTMORTEM_ENABLED` (default on).
   "summary": "… audit chain intact."
 }
 ```
+
+**`chain_valid` alone cannot tell "the hashes disagree" from "there was nothing to
+hash".** `chain_verified` says whether the chain was checked at all, and it is `false`
+in exactly two cases: the recorder could not be read (`recorder_available: false`), and
+the episode has no recorded events. In both the markdown render carries an **AUDIT CHAIN
+NOT VERIFIED** banner instead of the tamper warning — a postmortem over records nobody
+read is neither a statement that they are intact nor that they were altered. This is the
+same distinction [`kq replay`](cli-reference.md#kq-replay-session-id) draws with its exit
+code `4`. `chain_valid` keeps its existing meaning and type: `true` only when the chain
+was checked and verified.
 
 `events_lost` is the total number of events the recorder could not write for
 this episode, and `gaps` lists each one as `{"seq", "dropped", "reason"}`. When
@@ -539,8 +615,24 @@ populating a namespace picker. Protected namespaces
 
 ```bash
 curl http://localhost:8000/v1/namespaces -H "Authorization: Bearer $KUBE_Q_API_KEY"
-# → {"namespaces": ["default","demo","demo-rca","prod", …]}
+# → {"namespaces": ["default","demo","demo-rca","prod", …], "withheldByPolicy": ""}
 ```
+
+**`withheldByPolicy` says whether the list is the whole list.** It is empty when nothing was
+removed, and otherwise carries the same sentence a filtered `kubectl get ns -o json` puts in its
+own `withheldByPolicy` field — a count, never the withheld names:
+
+```json
+{"namespaces": ["default", "shop"],
+ "withheldByPolicy": "[Protected] 2 namespace(s) withheld — they belong to a namespace in KUBECTL_BLOCKED_NAMESPACES. This listing is NOT the complete set."}
+```
+
+Until 2026-08-24 the filtering happened in silence, so this endpoint and `run_kubectl` gave
+different answers to the same question — `kubectl get ns monitoring` was refused out loud, and
+`GET /v1/namespaces` simply omitted it. `kq` read the omission as proof and told operators
+*"Namespace 'monitoring' not found in the cluster"*. **A namespace missing from this list is not
+necessarily absent: check `withheldByPolicy` first.** When it is non-empty, absence from
+`namespaces` is not evidence of anything.
 
 **`503` when the cluster cannot be listed** — an unreachable API server, expired credentials, an
 RBAC denial, a missing `kubectl`, or a timeout. The `detail` carries the first line of kubectl's
@@ -615,12 +707,62 @@ cluster-wide restart loop. Use `/readyz` for routing decisions.
 
 ```bash
 curl http://localhost:8000/healthz
-# → {"status":"ok","arm":"v4","version":"2.0.2","experimental_flags":[],"set_but_unwired_flags":[]}
+# → {"status":"ok","arm":"v4","version":"2.0.2","experimental_flags":[],
+#    "set_but_unwired_flags":[],"degraded_experimental_flags":[],
+#    "leader":{...},"sensorium":{"enabled":true,"state":"running","watching":true,
+#    "reason":""},"audit":{"enabled":true,"state":"ready",
+#    "reason":"","dropped":0},"memory":{"enabled":true,"state":"ready","reason":"",
+#    "observations_dropped":0},"recorder":{"enabled":true,"state":"ready","reason":"",
+#    "lost_while_down":0}}
 ```
 
 `experimental_flags` lists the default-off toggles actually in force. `set_but_unwired_flags`
 lists toggles you set that **no code reads** — it is normally empty, and a non-empty value means
 that setting did nothing (see [v5 experimental flags](v5-experimental-flags.md)).
+
+`degraded_experimental_flags` answers the case one step out: the flag *is* read by code, but the
+subsystem it lives in is not running, so it changes nothing anyway. Every `MEMORY_*` slice runs
+inside the memory hierarchy, so all of them appear here whenever `memory.state` is not `ready` —
+including the case where you turned a slice on and left `MEMORY_HIERARCHY_ENABLED` off, where
+there is no hierarchy for it to run inside. **These flags stay listed in `experimental_flags`.**
+That list is rollout identity — which arm this pod was configured as — and a Postgres blip must
+not make it flap; `degraded_experimental_flags` is the liveness answer, and `memory.reason` says
+why. `state: "starting"` counts as degraded and clears itself once startup finishes.
+
+`audit` reports whether API requests are reaching `request_log`, and `dropped` counts the
+requests that went unrecorded since this process started. `enabled: false` with
+`state: "unavailable"` means this replica is auditing **nothing** — see
+[Operations → Audit log](operations.md#audit-log). `state: "sqlite"` is configuration, not a
+fault. Note this is reported state, not a probe: `/healthz` still checks nothing on the request
+path, and stays `200` while the audit log is down — an unaudited pod is degraded, not wedged.
+
+`memory` reports whether the memory hierarchy (L1 episodes, L2 knowledge graph, consolidation)
+is running, and `observations_dropped` counts the sensorium observations discarded since start.
+`enabled: false` with `state: "unavailable"` means this replica is recording **nothing** — see
+[Memory → When the hierarchy is not running](memory.md#when-the-hierarchy-is-not-running).
+`state: "flag"` and `state: "sqlite"` are configuration, not faults. Like `audit`, this is
+reported state rather than a probe, and `/healthz` stays `200` while it is down.
+
+`sensorium` reports whether anything is actually **watching** the cluster, and it is the field
+to alert on — the three blocks around it describe what gets *written down*, while this one
+describes whether there is anything to write down at all. Until 2026-08-24 it was absent: a
+sensorium that raised on the way up produced a `/healthz` of `status: "ok"` with no field
+mentioning perception, and the reason was reachable only from `/v1/findings` and the digest,
+which you consult once you already suspect a problem.
+
+Read `watching`, not only `enabled`. They are separate on purpose: the detector engine exists
+whether or not any `kubectl --watch` stream is connected, and the watch loop returns permanently
+when `kubectl` is missing — so `enabled: true, watching: false` is a real and durable state, and
+its `reason` says so. `state` carries the precise cause when nothing is watching:
+`disabled_by_flag` and `standby` are configuration (on a leader-election standby a **peer** holds
+the singleton lock and is watching, so the cluster is covered); `no_detectors`, `start_failed`
+and `stopped` are not. Like the blocks above, this is reported state rather than a probe, and
+`/healthz` stays `200` while perception is down — a blind pod is degraded, not wedged.
+
+`recorder` reports whether the tamper-evident decision log is being written, and
+`lost_while_down` counts events that were never persisted because it was not running — those
+same events are written into the chain as `recorder_gap` records once recording resumes. See
+[Flight recorder → When the recorder is not running](flight-recorder.md#when-the-recorder-is-not-running).
 
 ```bash
 ```

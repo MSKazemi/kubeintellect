@@ -67,7 +67,12 @@ The chart ships closed by default, and the two controls are independent:
 
 - **RBAC** (`rbac.*`) decides what the agent's ServiceAccount *can* do.
   `createClusterReadOnly` is on; `createClusterOps` (delete/patch/scale),
-  `allowExec` (pods/exec) and `clusterAdmin` are all **off**.
+  `allowExec` (pods/exec) and `clusterAdmin` are all **off**. The read-only
+  grants are not hand-maintained: `tests/test_rbac_covers_the_playbooks.py`
+  derives them from what the shipped playbooks actually read, so a playbook
+  cannot ship a step the role would answer with `Forbidden`. **Secrets are
+  deliberately excluded** — `get` on a Secret returns its values, and RBAC
+  cannot grant key-only read.
 - **Human-in-the-loop** gates every mutating action at request time, regardless
   of RBAC. Three API-key tiers: `adminApiKeys` (high + medium risk),
   `operatorApiKeys` (medium only — delete/drain blocked), `readonlyApiKeys`
@@ -85,7 +90,7 @@ ServiceAccounts, or touch `kube-system`.
 | `image.tag` | `""` | Empty means the chart's `appVersion`. Pin only to run a different image. |
 | `replicaCount` | `1` | Server replicas. |
 | `drainSeconds` | `5` | preStop sleep that drains a rolling update. This, not the readiness probe, is what stops requests being dropped — see `app/core/readiness.py`. `0` disables it. |
-| `terminationGracePeriodSeconds` | `45` | Total shutdown budget. Must stay comfortably above `drainSeconds`. |
+| `terminationGracePeriodSeconds` | `45` | Total shutdown budget. **Must be at least `drainSeconds` + 15**, and the chart refuses to render otherwise: the preStop sleep is spent inside this budget, so a smaller value means Kubernetes SIGKILLs the pod mid-drain and drops exactly the in-flight requests the hook exists to protect. The remaining 15s is for those requests and for closing the Postgres pools. |
 | `service.type` / `service.port` | `ClusterIP` / `8000` | How the API is exposed. |
 | `ingress.enabled` | `false` | Ingress with `ingress.className`, `hosts`, `tls`. |
 | `config.prometheusUrl` / `config.lokiUrl` | `""` | Enables metric and log questions. Empty still allows kubectl-based work. |

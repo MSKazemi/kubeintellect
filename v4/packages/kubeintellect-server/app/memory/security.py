@@ -30,8 +30,12 @@ import re
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
+from typing import NamedTuple
 
 from app.core.config import settings
+# The same verdict type the flight recorder uses. One vocabulary for one question — a chain
+# nobody could check is not a chain that checked out, on either chain.
+from app.db.flight_recorder import ChainVerdict
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -149,10 +153,40 @@ async def set_tenant_context(conn, cluster_id: str) -> None:
 
 # ── Right to be forgotten (R8.4) — always available, not flag-gated ──────────────
 _SQL_FORGET_USER_PREFS = "DELETE FROM user_prefs WHERE user_id = $1"
+# `$2 = ''` is a DELIBERATE wildcard here: a user-scoped purge across every cluster. It is safe
+# because `user_id = $1` already bounds it to one subject. `_SQL_FORGET_ENTITY` below has no such
+# clause and no second bound — there `''` is a literal cluster name, matching nothing, and a
+# wildcard would purge an entity name out of every tenant at once. See `forget_subject`.
 _SQL_FORGET_RCA = "DELETE FROM rca_outcomes WHERE user_id = $1 AND ($2 = '' OR cluster_id = $2)"
 _SQL_FORGET_ENTITY = (
     "DELETE FROM kg_entities WHERE cluster_id = $1 AND kind = $2 AND name = $3"
 )  # edges cascade via ON DELETE CASCADE
+
+
+class ForgetResult(NamedTuple):
+    """What a right-to-be-forgotten request actually did — the counts *and* whether it finished.
+
+    Why this is not a bare `dict[str, int]` (2026-08-24). The counts alone gave four different
+    situations the same shape, and the one a compliance caller most needs to tell apart —
+    *purged* versus *not purged, and nobody said so* — was among them:
+
+        every delete ran         {'user_prefs': 3, 'rca_outcomes': 0}
+        the 2nd delete failed    {'user_prefs': 3}            ← RCA history survives, silently
+        the 1st delete failed    {}                           ← nothing was deleted at all
+        no pool at all           {}                           ← nothing was even attempted
+
+    A missing key was the only trace of a failed delete, and `{}` covered two opposite states.
+    That is the wrong way round for this operation in particular: an over-report of deletion is
+    the one error a subject cannot detect and the operator cannot undo, because the answer
+    "your data is gone" is acted on and never re-checked.
+
+    `complete` is the flag to branch on. `counts` is a per-table deleted-row count for the
+    deletes that ran, and stays useful for reporting; `error` says what stopped the rest.
+    """
+
+    counts: dict[str, int]
+    complete: bool
+    error: str = ""
 
 
 async def forget_subject(
@@ -161,13 +195,30 @@ async def forget_subject(
     cluster_id: str = "",
     user_id: str | None = None,
     entity: tuple[str, str] | None = None,
-) -> dict[str, int]:
+) -> ForgetResult:
     """Remove a subject's memory (R8.4). ``user_id`` purges that user's preferences + RCA
-    history; ``entity=(kind, name)`` purges that KG entity (its edges cascade). Returns a
-    per-table deleted-row count. Never raises — a partial forget is logged, not fatal."""
+    history (across every cluster unless ``cluster_id`` narrows it); ``entity=(kind, name)``
+    purges that KG entity from ``cluster_id`` (its edges cascade).
+
+    Never raises. A partial or refused forget comes back as ``complete=False`` with a reason —
+    it is not signalled by an absent key, and never by a zero count.
+    """
     counts: dict[str, int] = {}
     if pool is None:
-        return counts
+        # No store was asked. Not "nothing to forget" — the two used to look identical.
+        return ForgetResult(counts, False, "no database pool")
+    if not user_id and entity is None:
+        # A request that names no subject. Reporting this as a completed forget is the same
+        # error class the rest of this function was fixed for — the caller asked nothing and
+        # would be told it was done.
+        return ForgetResult(counts, False, "no subject given (need user_id and/or entity)")
+    if entity is not None and not cluster_id:
+        # `kg_entities.cluster_id` is NOT NULL and every row carries a real cluster, so this
+        # would have deleted `WHERE cluster_id = ''` — nothing — and reported `{'kg_entities': 0}`,
+        # which reads as a completed purge of an entity that is still there. Refusing beats
+        # guessing: resolving the cluster for the caller would risk purging the wrong tenant's
+        # entity, and that is not recoverable.
+        return ForgetResult(counts, False, "entity forget requires an explicit cluster_id")
     try:
         if user_id:
             counts["user_prefs"] = _n(await pool.execute(_SQL_FORGET_USER_PREFS, user_id))
@@ -181,8 +232,13 @@ async def forget_subject(
             )
         logger.info(f"security: forget_subject removed {counts} (cluster={cluster_id})")
     except Exception as exc:
-        logger.warning(f"security: forget_subject failed: {exc}")
-    return counts
+        # Fail open on the *control flow* — one dead table must not abort the rest — but say so.
+        logger.warning(
+            f"security: forget_subject INCOMPLETE after {counts}: {exc} — the subject's memory "
+            f"is NOT fully purged; do not report this request as satisfied"
+        )
+        return ForgetResult(counts, False, str(exc))
+    return ForgetResult(counts, True)
 
 
 def _n(result) -> int:
@@ -269,7 +325,7 @@ async def _audit_state(pool, cluster_id: str) -> tuple[int, str]:
     except Exception as exc:
         logger.warning(f"security: memory-chain head read failed: {exc}")
         head = None
-    if False:  # MUTANT
+    if head is not None and int(head["seq"]) + 1 > seq:
         logger.warning(
             f"security: memory chain for {cluster_id!r} resumes at seq={seq} but its head "
             f"records seq={head['seq']} — entries were removed; continuing past the head so "
@@ -280,8 +336,8 @@ async def _audit_state(pool, cluster_id: str) -> tuple[int, str]:
     return seq, last
 
 
-async def verify_memory_chain(pool, cluster_id: str) -> bool:
-    """True iff the cluster's memory audit chain is intact (no silent edit/delete/reorder).
+async def verify_memory_chain(pool, cluster_id: str) -> ChainVerdict:
+    """The tamper verdict for a cluster's memory audit chain: *valid* **and** *verified*.
 
     Reuses the flight-recorder verifier for links, then checks the chain against the
     persisted head. The link check alone cannot see a **truncation**: deleting the newest
@@ -294,14 +350,29 @@ async def verify_memory_chain(pool, cluster_id: str) -> bool:
 
     An empty chain with no head is trivially valid (nothing has been recorded yet). An empty
     chain **with** a head is a total truncation, and is reported as broken.
+
+    Why this is not a `bool` (2026-08-24). ``valid`` answers *did anything contradict these
+    rows*, and it has to carry a third case it cannot hold: **nobody looked**. Measured before
+    this change, one function gave a database failure two opposite verdicts — a failed row
+    fetch returned `False`, the value that means TAMPERED, so an unreachable Postgres was a
+    tamper alarm about the operator's own data; while a failed head read and a missing pool
+    both returned `True`, the value that means intact. ``verified`` is the state neither could
+    hold. Mirrors `flight_recorder.verify_episode`, which owns the same doctrine for the chain
+    the postmortem renders.
     """
     if pool is None:
-        return True
+        # Nothing to ask. Not an accusation, and not a check either.
+        return ChainVerdict(True, False)
     try:
         rows = await pool.fetch(_SQL_AUDIT_ROWS, cluster_id)
     except Exception as exc:
-        logger.warning(f"security: memory-chain verify fetch failed: {exc}")
-        return False
+        # NOT False. A tamper detector that cries tamper whenever its own database is
+        # unreachable teaches operators to ignore it, which costs the real alarm its meaning.
+        logger.warning(
+            f"security: memory-chain verify fetch failed: {exc} — this chain is NOT verified; "
+            f"that is not the same as tampered"
+        )
+        return ChainVerdict(True, False)
     from app.db import flight_recorder as _fr
 
     adapted = [
@@ -310,44 +381,57 @@ async def verify_memory_chain(pool, cluster_id: str) -> bool:
         for r in rows
     ]
     if not _fr.verify_chain(adapted):
-        return False
-    return await _head_agrees(pool, cluster_id, adapted)
+        # A performed check with a positive finding: the rows recompute to a different hash
+        # than they carry. Nothing about the anchor changes that.
+        return ChainVerdict(False, True)
+    return await _head_verdict(pool, cluster_id, adapted)
 
 
-async def _head_agrees(pool, cluster_id: str, rows: list[dict]) -> bool:
+async def _head_verdict(pool, cluster_id: str, rows: list[dict]) -> ChainVerdict:
     """Compare the chain's last entry with the persisted head. Missing head → nothing to
-    contradict (a chain written before this anchor existed, or none written yet)."""
+    contradict (a chain written before this anchor existed, or none written yet), and that is
+    a check that ran — deliberately not the same as the head read failing."""
     try:
         head = await pool.fetchrow(_SQL_HEAD_READ, cluster_id)
     except Exception as exc:
         # A head we cannot read is not evidence of tampering — say so and keep the link
         # verdict, rather than turning a schema or permissions problem into a false alarm.
         logger.warning(f"security: memory-chain head read failed: {exc}")
-        return True
+        return ChainVerdict(True, False)
     if head is None:
-        return True
+        return ChainVerdict(True, True)
+    try:
+        head_seq, head_hash = int(head["seq"]), str(head["hash"])
+    except (KeyError, TypeError, ValueError) as exc:
+        # Schema drift or a partial migration. This used to escape as a ValueError from the
+        # bare int(), so the caller got an exception where every other failure got a verdict.
+        logger.warning(
+            f"security: memory chain head for {cluster_id!r} is present but unreadable "
+            f"({exc!r}) — truncation of this chain is NOT currently detectable"
+        )
+        return ChainVerdict(True, False)
     if not rows:
         logger.warning(
             f"security: memory chain for {cluster_id!r} is empty but its head records "
-            f"seq={head['seq']} — every entry has been removed"
+            f"seq={head_seq} — every entry has been removed"
         )
-        return False
+        return ChainVerdict(False, True)
     last = rows[-1]
-    if int(last["seq"]) < int(head["seq"]):
+    if int(last["seq"]) < head_seq:
         logger.warning(
             f"security: memory chain for {cluster_id!r} ends at seq={last['seq']} but its "
-            f"head records seq={head['seq']} — newest entries have been removed"
+            f"head records seq={head_seq} — newest entries have been removed"
         )
-        return False
+        return ChainVerdict(False, True)
     # seq beyond the head means rows exist that the head never saw: a crash between the two
     # writes, or an append that bypassed this module. Not truncation, still worth saying.
-    if int(last["seq"]) > int(head["seq"]):
+    if int(last["seq"]) > head_seq:
         logger.warning(
             f"security: memory chain for {cluster_id!r} is ahead of its head "
-            f"({last['seq']} > {head['seq']}) — head write lost, or an append bypassed it"
+            f"({last['seq']} > {head_seq}) — head write lost, or an append bypassed it"
         )
-        return True
-    return str(last["hash"]) == str(head["hash"])
+        return ChainVerdict(True, True)
+    return ChainVerdict(str(last["hash"]) == head_hash, True)
 
 
 def _compute_audit_hash(prev_hash: str, cluster_id: str, seq: int, kind: str, payload: dict) -> str:

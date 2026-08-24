@@ -53,10 +53,31 @@ chain as a `recorder_gap` record the moment writes recover.
 ```
 
 That marker is chained like any other row, so it cannot be removed without
-breaking verification. `kq replay` exits **5** on an episode that contains one,
+breaking verification. It covers **every** way an event fails to reach the
+table, including the recorder never having started: if the pod loses the
+startup race with Postgres, each `record()` is carried as a pending gap and the
+whole outage is written into the chain once the pool comes up (see [When the
+recorder is not running](#when-the-recorder-is-not-running)). `kq replay` exits **5** on an episode that contains one,
 `kq export` does the same, and `kq postmortem` prints a **RECORD INCOMPLETE**
 banner next to the ✅ chain verdict. Read a gap as: *nothing here was altered,
 but this is not the whole sequence.*
+
+A third banner covers what the *document* could not fetch, as opposed to what the *records*
+lost. A postmortem enriches the deterministic timeline from two best-effort sources — root cause
+and outcome from the L1 episode store, and the optional LLM narrative — and both used to return
+"nothing" whether they had nothing to add or had failed. A revoked grant on `episodes` therefore
+produced a postmortem with no **Root cause** section, byte-identical to one where the
+investigation genuinely never concluded, under a ✅ *audit chain verified intact* banner. When an
+enrichment fails, the document now says so next to the chain verdict:
+
+```text
+> ✅ Audit chain verified intact — every event below is tamper-evident.
+> ⚠️ **POSTMORTEM INCOMPLETE** — could not read: root cause / outcome (episode store: permission
+  denied for relation episodes). A section missing below is NOT evidence that it was empty.
+```
+
+An episode with no row, and a narrative that is simply switched off, are not failures and print
+nothing — the banner is only worth reading if it never fires when nothing went wrong.
 
 A lost batch also never leaves a hole in the `seq` numbering. It used to: the
 in-process chain head advanced before the insert was known to have succeeded,
@@ -67,6 +88,30 @@ on the record devalues the verdict that matters.
 Token frames (one per LLM token) are deliberately not recorded — they would
 bloat the table by orders of magnitude with no audit value. The final answer
 text is recorded as a normal event.
+
+### The link check alone cannot see a truncation
+
+A hash chain catches an edit, a reorder and an interior delete, because each one breaks a
+link. Deleting an episode's **newest** rows breaks nothing — what remains is a shorter,
+perfectly valid chain. Measured 2026-08-24: a 9-event episode with its last 3 events deleted
+still verified, and the postmortem printed *"✅ Audit chain verified intact"* over it.
+
+Each episode's chain is therefore anchored in `decision_log_head`, written alongside the
+events on every successful flush, exactly as `memory_chain_head` anchors the memory audit
+chain. A chain shorter than its anchor contradicts it. Three consequences:
+
+- **`verify_chain()` is the link check only.** Anything that shows a human a tamper verdict
+  calls `verify_episode()`, which is the link check *and* the anchor.
+- **An append after a truncation continues past the head**, not past the surviving tail — a
+  re-anchoring append would close over the hole and destroy the only evidence it existed.
+- **An episode with an anchor but no surviving rows is not an empty episode.** The postmortem
+  says every event has been removed, and `GET /v1/episodes/{id}/replay` answers **409**, not
+  the `404` that would launder a total truncation into "this never existed".
+
+It remains tamper-**evidence**, not prevention: an attacker with full database write can forge
+the anchor too. What it removes is the free tamper — the one that needs no second edit. A head
+that cannot be read, or an episode older than the anchor, is never reported as tampering.
+
 
 ---
 
@@ -104,7 +149,7 @@ the two views of one episode describe it identically. Every recorded kind has a 
 | Code | Meaning |
 |---|---|
 | `0` | Replay succeeded, chain intact |
-| `1` | Episode not found (or the request failed) |
+| `1` | Episode not found, the decision log is **unavailable**, or the request failed |
 | `2` | Usage error |
 | `3` | Replay succeeded but the **chain is broken** — records may have been tampered with |
 | `4` | Replay rendered but the integrity verdict never arrived — **unverified**, which is not the same as intact |
@@ -113,6 +158,21 @@ the two views of one episode describe it identically. Every recorded kind has a 
 Exit codes `3`, `4` and `5` are the ones to alert on in scripts, and they are
 three different problems: `3` the record may have been altered, `4` nothing
 checked it, `5` the record is genuine but has holes in it.
+
+Exit `1` covers two states that read very differently on screen. *"No recorded
+episode 'X'"* is a claim about that episode. *"The decision log is unavailable"*
+is a claim about the recorder, and explicitly says it is **not** a statement that
+the episode has no records — the audit trail was never consulted:
+
+```text
+$ kq replay 3f9c…
+The decision log is unavailable — the flight recorder is not running — no decision log to read
+This is NOT a statement that episode '3f9c…' has no records. Check that the flight
+recorder is enabled and its database is reachable: kubeintellect status
+```
+
+`kq export` makes the same distinction: exit `4` means the episode has no events,
+while an unreadable recorder exits `1` and exports nothing.
 
 ### `GET /v1/episodes/{episode_id}/replay`
 
@@ -131,7 +191,10 @@ data: {"type": "status", "phase": "analyzing", …}
 data: [DONE]
 ```
 
-Returns `404` when no records exist for the episode. Unlike
+Returns `404` when no records exist for the episode, and `503` when the log could
+not be read at all (recorder not running, or its database unreachable). Keeping
+those apart is the whole point: a `404` asserts the episode does not exist, which
+is the most expensive wrong answer an audit surface can give. Unlike
 `/v1/events/replay/{session_id}` (in-memory, lost on restart), this replay is
 durable — it survives server restarts and redeployments.
 
@@ -224,6 +287,36 @@ is missing on Postgres, run `kubeintellect db-init`. The
 rather than as a quiet watch — an empty digest and an unrecorded one are
 different answers.
 
+### When the recorder is not running
+
+Recording needs Postgres, and the API pod is routinely scheduled before Postgres
+accepts connections. That is not fatal: the pool is retried every 30 seconds,
+and reconnecting completes startup properly (queue + drain task), so a rollout
+race costs no restart and no permanently unrecorded process.
+
+Ask the process which state it is in — an episode with no rows and a recorder
+that never ran give the same `404` shape only to someone who already suspected
+it:
+
+```bash
+curl -s localhost:8000/healthz | jq .recorder
+# {"enabled": true,  "state": "ready",       "reason": "",  "lost_while_down": 0}
+# {"enabled": false, "state": "unavailable", "reason": "Connect call failed ...", "lost_while_down": 77}
+```
+
+| `state` | Meaning |
+|---|---|
+| `ready` | Decisions are being recorded. |
+| `flag` | `FLIGHT_RECORDER_ENABLED=false`. Configuration, not a fault. |
+| `sqlite` | `USE_SQLITE=true`; recording needs Postgres. Configuration, not a fault. |
+| `unavailable` | Postgres refused the connection. **Nothing is being recorded**; a reconnect loop is retrying and the loss is being carried. |
+
+`lost_while_down` counts events that were never persisted because the recorder
+was not running. Those same events become `recorder_gap` rows on the first
+successful flush, so the replay of an affected episode states its own hole.
+Configuration-off states carry nothing — there is no chain to be honest about —
+and skipped kinds (token frames) are not losses.
+
 **Fire-and-forget guarantee.** `record()` never blocks and never raises:
 events go onto an in-process queue and a background task batches them into
 Postgres. A recorder outage (DB down, table missing, queue full) **degrades
@@ -234,7 +327,30 @@ a `recorder_gap` row in the chain (see [Tamper evidence](#tamper-evidence)), so
 a replay states what it lost instead of reading as a complete record.
 
 Redaction of recorded payloads follows the same flag as reflexion:
-`REFLEXION_REDACT_SECRETS` (default `True`).
+`REFLEXION_REDACT_SECRETS` (default `True`). With the flag on, every string in the payload is
+redacted **wherever it sits** — a value, a list element, a string used as a **dict key**, or a
+member of a **set**. Past the walk's depth bound of 6 levels the remaining subtree is replaced by
+`<redacted-unscannable-depth>` and not emitted.
+
+!!! warning "A depth bound is also a redaction bound (fixed 2026-08-24)"
+
+    The bound exists so a self-referential payload cannot hang the drain task. Until 2026-08-24
+    it hit that bound and returned the unscanned subtree **verbatim**, so the same line that
+    stopped a cycle also stopped the redaction — in a module whose output is persisted
+    permanently, that is failing in the one direction it must not. Dict keys and sets were never
+    walked at all; a set then reached the column as `str(the_set)` via `json.dumps(default=str)`.
+
+    No call site produced any of those three shapes — all six build payloads of depth ≤ 3 out of
+    fixed field names — so this was a latent fail-open, not an observed leak. It is listed here
+    because a hygiene gate whose reach depends on the shape of the caller's dict is not a gate,
+    which is the same reason the one-level walk was fixed in 2026-08-20.
+
+    Keys use the narrower `redact_identifier`. The full redactor drops any line that *looks*
+    secret, and `redact_secrets("token")` and `redact_secrets("password")` both return
+    `# <redacted-line>` — redacting keys with it would rename two ordinary field names to the
+    same string and silently merge two fields of a tamper-evident record into one. When two
+    genuinely secret keys do redact to the same marker they are suffixed (`…#2`) rather than
+    merged, because losing a field in order to hide something in it is the wrong trade.
 
 ---
 

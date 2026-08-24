@@ -223,6 +223,16 @@ make fix-modes      # corrects any violation in place, then re-check
 make check-syntax   # every tracked .py compiles with no SyntaxWarning
 ```
 
+Each prints how many files it actually examined, and a run that examines nothing fails
+rather than passing. Both also state their own shortfall rather than leaving you to spot a
+suspiciously low count. The syntax gate lists every path it could not open on stderr and
+carries `(N of M skipped, see above)` in its verdict line; the mode gate prints
+`note: N tracked path(s) were skipped` above **every** verdict it can reach — the clean one,
+the violation report, and `--fix`. Skipping is not an error — a hook that passes a
+just-deleted path is doing the right thing, so the exit code is unaffected — but a count is
+only a coverage claim when the denominator is stated beside it, and that is as true of a run
+that found violations as of one that did not.
+
 Both exist to cover blind spots the main gates structurally cannot see. `ruff` is pinned
 `<0.16` here, and `EXE002` ("executable file with no shebang") only became a default rule in
 0.16 — so the lint gate cannot see a stray `+x` bit at all. That blind spot is how 94 library

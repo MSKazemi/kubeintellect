@@ -1,3 +1,21 @@
+{{- /*
+  The shutdown budget has to hold for values the user supplies, not only for the values files
+  this chart ships. `tests/test_chart_shutdown_contract.py` asserts grace - drain >= 15 across
+  every `values*.yaml` in git — but a `--set drainSeconds=60` or a private `-f my-values.yaml`
+  is not in git, and until 2026-08-24 `helm install` rendered it happily: a 60s preStop sleep
+  inside a 45s grace period, SIGKILLed 15s before the drain ends, silently reintroducing the
+  dropped requests the hook exists to prevent. The symptom is a few lost requests per rolling
+  update with no error anywhere, which is not a thing anyone traces back to a values file.
+
+  Failing here is the same mechanism `configmap.yaml` uses for the safety brakes. The 15s floor
+  is the repository's existing rule, not a new one — in-flight requests and the Postgres pool
+  shutdown are spent in what is left after the sleep.
+*/ -}}
+{{- $drain := int (.Values.drainSeconds | default 0) }}
+{{- $grace := int (.Values.terminationGracePeriodSeconds | default 45) }}
+{{- if and (gt $drain 0) (lt (sub $grace $drain) 15) }}
+{{-   fail (printf "terminationGracePeriodSeconds (%d) leaves only %ds after the %ds preStop drain. The sleep is spent inside the grace budget, so Kubernetes SIGKILLs the pod mid-drain and the in-flight requests the hook exists to protect are dropped anyway. Set terminationGracePeriodSeconds to at least %d, or lower drainSeconds. Chart defaults: drainSeconds=5, terminationGracePeriodSeconds=45." $grace (sub $grace $drain) $drain (add $drain 15)) }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

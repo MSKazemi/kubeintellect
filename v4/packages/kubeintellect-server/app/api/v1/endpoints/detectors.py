@@ -102,9 +102,43 @@ async def demote_detector(name: str, request: Request):
 
 @router.get("/detectors/{name}/shadow-findings")
 async def shadow_findings(name: str):
+    """What a shadow detector has fired — and what that count is worth.
+
+    This number is the promote/reject decision, so an empty one has to say which kind of empty
+    it is. Until 2026-08-24 it did not: a sensorium that is not running, a detector this process
+    never loaded, and a detector that ran quietly all answered `200` with `findings: []`, and
+    `kq detector shadow <name>` rendered all three as "0 shadow firing(s)" — a reviewer reading
+    "quiet, no false positives" off a detector that was never evaluated.
+
+    The 503 follows `list_detectors` above, which already draws this line: "'I cannot answer'
+    and 'the answer is nothing' are different."
+    """
     _require_enabled()
     engine = get_engine()
     if engine is None:
-        return {"sensorium": "disabled", "findings": []}
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"the detector engine is not running in this process, so no shadow detector has "
+                f"been evaluated. This is NOT the same as '{name}' having fired nothing, and it "
+                f"is not a basis for promoting or rejecting it."
+            ),
+        )
     found = [f.to_dict() for f in engine.shadow_findings if f.playbook == name]
-    return {"name": name, "findings": found}
+    ring = engine.shadow_findings
+    return {
+        "name": name,
+        # False also covers "the DB was unreachable at the last refresh", which `load_db_detectors`
+        # documents as silently disarming stored detectors — so this says "not loaded here", never
+        # "no such detector".
+        "watching": any(d.playbook == name for d in engine.shadow_detectors),
+        "findings": found,
+        # The ring is fixed-size and in-memory: it is emptied by a restart and, once saturated,
+        # drops the OLDEST firing per new one. Either way `findings` is a floor, not a total.
+        "buffer": {
+            "held": len(ring),
+            "capacity": ring.maxlen,
+            "saturated": ring.maxlen is not None and len(ring) >= ring.maxlen,
+        },
+        "durable": False,
+    }

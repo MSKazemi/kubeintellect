@@ -196,8 +196,20 @@ class DemotionDecision:
 def cusum_trip(events: list[Event], *, fails: int = CUSUM_FAILS,
                window_days: float = CUSUM_WINDOW_DAYS) -> bool:
     """True iff ``fails`` postcondition failures fall within any ``window_days`` window.
-    Checked on raw events (not the rolling window) — the ADR's "don't wait for the window"."""
-    fail_ts = sorted(e.ts_days for e in events if not e.success and not e.critical)
+    Checked on raw events (not the rolling window) — the ADR's "don't wait for the window".
+
+    EVERY failure counts, including one that also caused a critical incident. This used to read
+    ``not e.success and not e.critical``, which made the worst failures the only ones the fast
+    trigger could not see. Measured 2026-08-24 on an L3 class with 48 clean runs and then two
+    failures 12 h apart: as ordinary failures they tripped CUSUM and the class dropped to L2; with
+    ``critical=True`` on the same two events the answer was *"no demotion trigger"* and the class
+    stayed at L3. The severity triggers that would have caught them (§4.4 rows 1 and 4) are
+    L4-scoped by the ADR's own wording, so below L4 nothing else was watching — and hysteresis
+    cannot help, because a class with an earned record keeps its last-50 LCB above θ − 0.05
+    through exactly two failures. Promotion already treats a critical as disqualifying
+    (``M4 > 0``); demotion must not treat it as exculpatory.
+    """
+    fail_ts = sorted(e.ts_days for e in events if not e.success)
     if len(fail_ts) < fails:
         return False
     for i in range(len(fail_ts) - fails + 1):
@@ -238,9 +250,24 @@ def evaluate_demotion(
                                 stale=True)
     win = _window(events, now_days)
     if cusum_trip(win):
+        # The action is −1 either way; the reason still has to say what happened, or the audit
+        # trail records a routine trip where a critical incident occurred.
+        sev = " (at least one caused a critical incident)" if any(
+            e.critical and not e.success for e in win) else ""
         return DemotionDecision(True, current_rung, _demote_to(current_rung, 1),
-                                "CUSUM: 2 postcondition failures within 24 h")
+                                f"CUSUM: {CUSUM_FAILS} postcondition failures within 24 h{sev}")
     if hysteresis_breach(win, theta):
         return DemotionDecision(True, current_rung, _demote_to(current_rung, 1),
                                 f"hysteresis: last-{HYSTERESIS_LAST_N} LCB < θ − {HYSTERESIS_BAND}")
+    if sev_attributed or m4_at_l4:
+        # The 2-rung drop and the M4 rule are L4-scoped in ADR §4.4, so neither applies here and
+        # this function must not invent a policy the ADR does not state. What it must not do is
+        # discard the caller's severity signal in silence: "no demotion trigger" would report a
+        # quiet class while a Sev-1 was attributed to it.
+        which = " and ".join(
+            n for n, on in (("Sev-1/2 attribution", sev_attributed), ("M4 critical", m4_at_l4)) if on)
+        return DemotionDecision(
+            False, current_rung, current_rung,
+            f"{which} reported at {current_rung}, where ADR §4.4 scopes that trigger to L4; no "
+            f"other trigger fired — this is NOT a clean class, escalate for manual review")
     return DemotionDecision(False, current_rung, current_rung, "no demotion trigger")

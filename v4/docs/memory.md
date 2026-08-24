@@ -68,6 +68,61 @@ records `degraded=true`. Returning an empty result for both made a database
 outage look identical to a cluster with no history — in the prompt, and in the
 `episodes=0` log line. A genuine empty recall still injects nothing at all.
 
+The **recent-changes** half of the same block follows the same rule. "What changed
+in the last 15 minutes" is the first question of an incident, and an omitted
+`## Recent cluster changes` section is exactly the shape a calm cluster makes — so
+a failed graph read used to reach the model as *nothing changed*. A failed read now
+injects **`## Recent changes unavailable`**, which explicitly tells the model not to
+rule out a recent change as the cause, and sets `degraded=true`. A cluster that
+genuinely changed nothing still injects nothing. Graph **writes** are unaffected:
+a failed observation write is still swallowed, because nothing downstream reads its
+result as a fact.
+
+The same rule applies **per section**. The pinned context is assembled from four
+independent queries — operator preferences, failure hints, session notes, past
+RCA — and one of them failing costs only that section, never the other three. But
+it is never silent: the prompt then opens with a **`## Memory partially
+unavailable`** block naming exactly what could not be read, e.g.
+
+```
+## Memory partially unavailable
+Stored operator preferences could NOT be read — this is not the same as there
+being none. Do not assume the user has no preferences or that this issue has no
+precedent; say that part of the stored history could not be checked.
+```
+
+and the failure is logged at `WARNING` with the section name. The notice is
+placed first so the context budget can never truncate it away. A section that
+simply has no rows — the normal state for a new user — is not a failure and says
+nothing.
+
+The third variant of the same rule is **capping**. Each section is bounded so the
+whole block stays inside its ~500-token budget — 8 preferences, 5 failure
+patterns, 3 session notes, 3 past RCA outcomes — and the bound is deliberate.
+What was wrong was leaving it unsaid: measured on an operator with 12 explicit
+preferences, the prompt carried 8 under a header reading *"(remembered)"*, and
+`NEVER drain node-07, it hosts the license server` was among the four dropped.
+Read literally — the only way a model can read it — that block says the
+instruction does not exist.
+
+Each section now queries **one row past its cap**. Getting that row back is proof
+more exist, so the section closes with a line saying so; not getting it is proof
+they do not, and the section stays silent. That is one query rather than two, and
+it is why the notice never states a number nobody counted:
+
+```
+## Operator Preferences (remembered)
+  ops-01: never restart pods in prod without approval
+  … (7 more)
+  … MORE operator preferences are stored than the ones listed above and are NOT
+  shown here (oldest/lowest-ranked omitted for space). Absence from this list is
+  NOT evidence that none exists — ask, or say you only checked the most relevant.
+```
+
+A stored remediation is cut to 160 characters for the same budget reason, and is
+now marked `…[fix truncated, not the whole command]` when it is. A `kubectl`
+command cut mid-flag reads as a complete command otherwise.
+
 ---
 
 ## Operator preferences
@@ -102,6 +157,58 @@ hierarchy healthy — all passes are deterministic, no LLM calls:
 | **Stale-edge cleanup** | Closes graph edges whose pod hasn't been observed for 24 h (catches watcher downtime; normal deletes close edges live) | Every pass |
 | **Detector-candidate proposals** | Verified, recurring failure patterns (occurrence ≥ 2, confidence ≥ 0.9) whose playbooks carry compiled `detect:` blocks become candidate rows in the `detectors` table — **human review required before activation**; nothing self-activates | Every pass |
 
+Each pass is guarded independently, so one that fails never stops the loop or the passes after
+it. Every pass also returns a counter, and a **failed pass fails safe to `0`** — which is the same
+number a pass returns when it ran and found nothing to do. Until 2026-08-24 that was the whole
+report: a subsystem in which every statement was failing (schema drift after a migration, a
+revoked grant) returned counters byte-identical to a healthy idle cluster, and the worker's own
+summary line was suppressed for both.
+
+The worker now reports the two apart. A pass that completes with work done logs at `INFO`; a pass
+in which anything failed logs at `WARNING`, names each failed pass and its reason, and sets
+`failed_passes` in the returned counters:
+
+```text
+consolidation_pass {"stale_edges_closed": 7, "detector_candidates": 1, "failed_passes": 0}
+consolidation_pass INCOMPLETE — 2 of 5 passes failed [prefs_inferred: permission denied for
+  relation episodes; backfilled: relation "kg_edges" does not exist] · counters {...}
+```
+
+A genuinely idle pass still logs nothing — at one pass every 10 minutes, a heartbeat for "there
+was nothing to do" is noise, and `/healthz` already answers whether the worker is running at all.
+
+---
+
+## When the hierarchy is not running
+
+The hierarchy needs Postgres, and the API pod is routinely scheduled before Postgres accepts
+connections. That is not fatal — the pool is retried every 30 seconds until it comes up, and
+reconnecting completes startup properly (L1, L2, the observation drain and the consolidation
+worker all start then), so a rollout race costs no restart.
+
+While it is down, **nothing is recorded**: no episodes, no knowledge-graph edges, no
+consolidation, no preference learning. An empty knowledge graph looks exactly like a cluster in
+which nothing has happened, so ask the process rather than the tables:
+
+```bash
+curl -s localhost:8000/healthz | jq .memory
+# {"enabled": true,  "state": "ready",       "reason": "",              "observations_dropped": 0}
+# {"enabled": false, "state": "unavailable", "reason": "Connect call failed ...", "observations_dropped": 8123}
+```
+
+| `state` | Meaning |
+|---|---|
+| `ready` | L1, L2 and consolidation are running. |
+| `flag` | `MEMORY_HIERARCHY_ENABLED=false`. Configuration, not a fault. |
+| `sqlite` | `USE_SQLITE=true`; the hierarchy needs Postgres. Configuration, not a fault. |
+| `unavailable` | Postgres refused the connection. **Nothing is being recorded**; a reconnect loop is retrying. |
+
+`observations_dropped` counts sensorium observations discarded since the process started —
+those that arrived with no queue to receive them, and those dropped because the queue was full.
+It does not reset on reconnect, so a non-zero value on a `ready` replica means there is a gap
+earlier in the graph. The first discarded observation and every thousandth after it log a
+warning, so the outage does not go silent once the startup log has scrolled away.
+
 ---
 
 ## Configuration & compatibility
@@ -114,7 +221,7 @@ hierarchy healthy — all passes are deterministic, no LLM calls:
 | `MEMORY_KG_PPR` | `False` | *Experimental (Memory V5).* Multi-hop **blast-radius**: rank the entities most related to an incident via a bounded subgraph + in-process Personalized PageRank. |
 | `MEMORY_WRITE_RECONCILE` | `False` | *Experimental (Memory V5).* Reconcile writes (ADD/UPDATE/**retract**/NOOP) behind a salience gate so the graph stays compact and contradictions supersede instead of piling up. |
 | `MEMORY_PROMOTION` | `False` | *Experimental (Memory V5).* Close the **learning loop**: turn verified, recurring incidents into reusable `semantic_rules` (IF→THEN), injected into the prompt and eligible to seed a human-reviewed detector. |
-| `MEMORY_IMPORTANCE` | `False` | *Experimental (Memory V5).* Weight retention by **importance** (incident severity) and **surprise** (KG-novelty): recall ranks recency × importance × relevance (ranking only — nothing is ever deleted), and a surprise gate skips redundant low-value writes so noise doesn't accrete. |
+| `MEMORY_IMPORTANCE` | `False` | *Experimental (Memory V5).* Weight retention by **importance** (incident severity) and **surprise** (KG-novelty): recall ranks recency × importance × relevance (ranking only — nothing is ever deleted), and a surprise gate skips redundant low-value writes so noise doesn't accrete. Novelty needs `pg_trgm`; an episode whose novelty could not be scored stores `NULL`, never `1.0`, and is never gated on the score that failed. |
 | `MEMORY_PROSPECTIVE` | `False` | *Experimental (Memory V5).* **Remember to act later**: after an autonomous fix the watchtower schedules a "did the fix hold?" re-check; the consolidation scheduler fires due re-checks through the autonomy ladder and records the outcome. |
 | `MEMORY_SECURITY_HARDENING` | `False` | *Experimental (Memory V5).* **Defend the memory**: a write-admission guard (diverse, non-LLM validators — provenance trust, injection-signature, rate limit, contradiction) quarantines **MINJA query-only poisoning** before it is learned; provenance `trust` is stamped on each episode. Right-to-be-forgotten + RLS tenant scaffolding included. |
 | `MEMORY_SUMMARY_TREE` | `False` | *Experimental (Memory V5).* **Zoom out**: build RAPTOR/GraphRAG-style theme summaries over episode clusters so the agent answers "what keeps failing in X?" without scanning every incident. Regeneration is tied to KG change-rate, not a clock. |

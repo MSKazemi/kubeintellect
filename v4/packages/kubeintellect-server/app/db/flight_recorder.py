@@ -39,6 +39,15 @@ Those are two different failures and they must not be conflated:
   carried forward and written **into the chain** as a ``recorder_gap`` record
   on the next successful flush. The marker is chained like any other row, so it
   cannot be removed without breaking verification.
+* That invariant used to have one hole, and it was the largest loss mode of all:
+  a recorder that **never started**. ``init_recorder`` gave up after one failed
+  connect, so there was no queue, no drain and no flush — and the entire gap
+  ledger hung off a flush. Every event was dropped by a bare ``return`` with no
+  marker, no counter and no retry, for the life of the process. Measured: three
+  events recorded against a never-started recorder left ``_pending_gaps`` empty,
+  where the same loss mid-flight leaves ``{'ep': (1, reason)}``. The pool is now
+  retried, and a loss with no queue is carried exactly like a failed flush, so
+  the outage is written into the chain once recording resumes.
 
 Proven against a real Postgres (2026-08-20): before this, an outage followed by
 a process restart produced six rows, seq 0-5, ``chain_valid=True`` — with three
@@ -49,13 +58,13 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from typing import Any
+from typing import Any, NamedTuple
 
 import asyncpg
 
 from app.core.config import settings
 from app.utils.logger import get_logger
-from app.utils.redact import redact_secrets
+from app.utils.redact import redact_identifier, redact_secrets
 
 logger = get_logger(__name__)
 
@@ -70,6 +79,7 @@ _MAX_FIELD_CHARS = 1500
 _pool: asyncpg.Pool | None = None
 _queue: asyncio.Queue | None = None
 _drain_task: asyncio.Task | None = None
+_reconnect_task: asyncio.Task | None = None
 # Per-episode chain state: episode_id -> (next_seq, last_hash).
 _chains: dict[str, tuple[int, str]] = {}
 # Unwritten loss, carried until it can be recorded: episode_id -> (events_lost, first_reason).
@@ -81,6 +91,36 @@ GAP_KIND = "recorder_gap"
 
 _BATCH_MAX = 50
 _FLUSH_INTERVAL = 0.5  # seconds
+
+# "starting" until init runs; "flag"/"sqlite" when recording is off by configuration;
+# "ready" once the pool and drain task are live; "unavailable" while Postgres refuses us.
+_state: str = "starting"
+_reason: str = ""
+#: Events lost while the recorder was not running, in total. `_pending_gaps` holds the same
+#: loss per episode so it can be written *into* the chain; this is the number an operator asks
+#: for, and it survives the flush that clears them.
+_lost_while_down: int = 0
+#: Ceiling on how many distinct episodes carry an unwritten gap. A long outage must not turn
+#: the gap ledger into an unbounded leak; overflow is still counted in `_lost_while_down`.
+_MAX_TRACKED_EPISODES = 1000
+
+#: Seconds between reconnect attempts while the pool is down.
+_RETRY_INTERVAL_S = 30.0
+
+
+def recorder_status() -> dict:
+    """Shape reported on ``/healthz``. An operator must be able to see that nothing is recorded.
+
+    ``lost_while_down`` is the count of events that were never persisted because the recorder
+    was not running. It is the answer to "is this episode's replay the whole story?" *before*
+    anyone asks for a specific episode.
+    """
+    return {
+        "enabled": _state == "ready",
+        "state": _state,
+        "reason": _reason,
+        "lost_while_down": _lost_while_down,
+    }
 
 
 # ── Hash chain ────────────────────────────────────────────────────────────────
@@ -99,8 +139,22 @@ def compute_hash(prev_hash: str, episode_id: str, seq: int, kind: str, payload: 
     return hashlib.sha256(body.encode()).hexdigest()
 
 
+_SQL_HEAD_UPSERT = """
+    INSERT INTO decision_log_head (episode_id, seq, hash, updated_at)
+    VALUES ($1, $2, $3, now())
+    ON CONFLICT (episode_id) DO UPDATE SET seq = $2, hash = $3, updated_at = now()
+"""
+_SQL_HEAD_READ = "SELECT seq, hash FROM decision_log_head WHERE episode_id = $1"
+
+
 def verify_chain(rows: list[dict]) -> bool:
-    """Recompute the hash chain over rows (ordered by seq). True iff intact."""
+    """Recompute the hash chain over rows (ordered by seq). True iff every link verifies.
+
+    **This is the link check only, and it cannot see a truncation.** Deleting an episode's
+    newest rows leaves a shorter chain in which every link still verifies — measured
+    2026-08-24, not assumed. Callers that present a tamper verdict to a human must also call
+    `head_agrees`, which compares the surviving chain against the persisted anchor.
+    """
     prev = ""
     expected_seq = 0
     for row in rows:
@@ -116,6 +170,107 @@ def verify_chain(rows: list[dict]) -> bool:
     return True
 
 
+class ChainVerdict(NamedTuple):
+    """A tamper verdict with the third state the booleans could not hold.
+
+    ``valid`` answers *did anything contradict the records* — a broken link, or an anchor that
+    remembers events these rows do not have. ``verified`` answers *was the question actually
+    asked*. They are separate because the anchor read can fail — a permissions error, a partial
+    migration, a head row this build cannot parse — and until 2026-08-24 all three of those
+    returned the same ``True`` an intact chain returns. This module logged
+    "truncation of this episode is NOT currently detectable" and handed its caller the value
+    that renders ``✓ chain intact``.
+
+    ``valid`` keeps its meaning when ``verified`` is False: nothing contradicted the records —
+    but nothing could have, so it is not evidence. Both renderers already own a three-state
+    vocabulary for this (`kq replay` exit ``4``, the postmortem banner's `chain_verified`);
+    only the function producing the verdict did not.
+    """
+
+    valid: bool
+    verified: bool
+
+
+async def head_verdict(pool, episode_id: str, rows: list[dict]) -> ChainVerdict:
+    """Compare an episode's surviving chain against its persisted head.
+
+    Mirrors `app.memory.security._head_agrees` — the same anchor, for the same reason, on the
+    chain that renders a banner to a human.
+
+    A **missing** head is `verified`: the anchor was read, and there is none to contradict
+    these rows (an episode written before this anchor existed). That is a performed check with
+    a benign answer, and it is deliberately not the same as the head read *failing*.
+    """
+    if pool is None:
+        # No store to ask. The link check still ran, but truncation is undetectable without
+        # the anchor, so this is not a verification.
+        return ChainVerdict(True, False)
+    try:
+        head = await pool.fetchrow(_SQL_HEAD_READ, episode_id)
+    except Exception as exc:
+        logger.warning(f"flight_recorder: chain head read failed for {episode_id!r}: {exc}")
+        return ChainVerdict(True, False)
+    if head is None:
+        return ChainVerdict(True, True)
+    try:
+        head_seq, head_hash = int(head["seq"]), str(head["hash"])
+    except (KeyError, TypeError, ValueError) as exc:
+        # Schema drift, a partial migration, a row we cannot interpret. Same doctrine as an
+        # unreadable head: not evidence of tampering — but never silent, because a verifier
+        # that quietly answers "intact" whenever it fails to parse its own anchor is the exact
+        # failure this anchor exists to prevent.
+        logger.warning(
+            f"flight_recorder: chain head for {episode_id!r} is present but unreadable "
+            f"({exc!r}) — truncation of this episode is NOT currently detectable"
+        )
+        return ChainVerdict(True, False)
+    if not rows:
+        logger.warning(
+            f"flight_recorder: episode {episode_id!r} has no events but its head records "
+            f"seq={head_seq} — every event has been removed"
+        )
+        return ChainVerdict(False, True)
+    last = rows[-1]
+    if int(last["seq"]) < head_seq:
+        logger.warning(
+            f"flight_recorder: episode {episode_id!r} ends at seq={last['seq']} but its head "
+            f"records seq={head_seq} — newest events have been removed"
+        )
+        return ChainVerdict(False, True)
+    if int(last["seq"]) > head_seq:
+        # Rows the head never saw: a crash between the two writes, or an append that bypassed
+        # this module. Not truncation — do not cry tamper, but do not stay silent either.
+        logger.warning(
+            f"flight_recorder: episode {episode_id!r} is ahead of its head "
+            f"({last['seq']} > {head_seq}) — head write lost, or an append bypassed it"
+        )
+        return ChainVerdict(True, True)
+    return ChainVerdict(str(last["hash"]) == head_hash, True)
+
+
+async def head_agrees(pool, episode_id: str, rows: list[dict]) -> bool:
+    """The boolean face of :func:`head_verdict` — *did anything contradict these rows*.
+
+    Kept for callers that genuinely want two states. It cannot tell a verified agreement from
+    an anchor nobody could read, so nothing that renders a verdict to a human should use it.
+    """
+    return (await head_verdict(pool, episode_id, rows)).valid
+
+
+async def verify_episode(episode_id: str, rows: list[dict]) -> ChainVerdict:
+    """The full tamper verdict for one episode: links **and** the truncation anchor.
+
+    `verify_chain` alone answers a narrower question than every caller was asking it. Anything
+    that renders a verdict should call this — and must render ``verified`` as well as
+    ``valid``, because a chain nobody could check is not a chain that checked out.
+    """
+    if not verify_chain(rows):
+        # A link mismatch is a performed check with a positive finding: the records recompute
+        # to a different hash than they carry. Nothing about the anchor changes that.
+        return ChainVerdict(False, True)
+    return await head_verdict(_pool, episode_id, rows)
+
+
 # ── Payload hygiene ───────────────────────────────────────────────────────────
 
 # How deep `_scrub` will walk. Recorded payloads are shallow; the bound exists so a
@@ -123,20 +278,70 @@ def verify_chain(rows: list[dict]) -> bool:
 _MAX_SCRUB_DEPTH = 6
 
 
+# What replaces a subtree the walk refuses to descend into. A depth bound that returns the
+# subtree *unredacted* is a bound that fails open, which is the direction this module must
+# never fail in — the payload is persisted, and permanently.
+_TOO_DEEP = "<redacted-unscannable-depth>"
+
+
+def _scrub_key(key: Any, seen: set) -> Any:
+    """Redact a dict key, keeping distinct keys distinct.
+
+    Two different keys can redact to the same string — two bearer tokens both become
+    `<redacted-token>` — and a dict comprehension would then silently drop one of them. Losing a
+    field from a tamper-evident record to *hide* something in it is the wrong trade, so a
+    collision is disambiguated rather than merged.
+    """
+    if not isinstance(key, str):
+        return key
+    scrubbed = redact_identifier(key)
+    if scrubbed == key:
+        return key
+    candidate, n = scrubbed, 1
+    while candidate in seen:
+        n += 1
+        candidate = f"{scrubbed}#{n}"
+    seen.add(candidate)
+    return candidate
+
+
 def _scrub_value(value: Any, cap: int | None, depth: int = 0) -> Any:
-    """Redact every string *anywhere* in a payload, not only the ones at the top."""
+    """Redact every string *anywhere* in a payload, not only the ones at the top.
+
+    "Anywhere" is meant literally, and until 2026-08-24 it was not. Three shapes passed through
+    verbatim into the persisted record while the flag said secrets were being scrubbed:
+
+    * **a dict key** — `{"attributes": {"kubectl … --token=AKIA…": "ok"}}` kept the token at any
+      depth, because only values were walked;
+    * **anything nested past the depth bound** — at 8 levels the whole remaining subtree was
+      returned untouched, so the bound that exists to stop a cycle also stopped the redaction;
+    * **a set or frozenset** — no branch matched it, and `json.dumps(..., default=str)` then
+      wrote `str(the_set)` — the secret — straight into the column.
+
+    Keys use `redact_identifier`, not `redact_secrets`: the latter turns the ordinary field
+    names `token` and `password` into the *same* drop marker, which would merge two fields of an
+    audit record into one.
+    """
     if isinstance(value, str):
         return redact_secrets(value, max_chars=cap) if value else value
     if depth >= _MAX_SCRUB_DEPTH:
-        return value
+        # Not `return value`. Anything still nested here has never been looked at.
+        return _TOO_DEEP if isinstance(value, (dict, list, tuple, set, frozenset)) else value
     if isinstance(value, dict):
         # Nested strings are redacted but NOT re-capped: `_MAX_FIELD_CHARS` is this module's
         # limit on one payload *field*, and a nested string arrives already capped by whoever
         # produced it (a `rollback_point` pre-state at 4000 chars, say). Shrinking it here
         # would quietly cost a capture its restorability to enforce a limit nothing asked for.
-        return {k: _scrub_value(v, None, depth + 1) for k, v in value.items()}
+        seen: set = set()
+        return {_scrub_key(k, seen): _scrub_value(v, None, depth + 1) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         return [_scrub_value(v, None, depth + 1) for v in value]
+    if isinstance(value, (set, frozenset)):
+        # Serialised by `default=str` downstream, so an unscrubbed set reaches the column as
+        # its repr. Sorted so the same set does not produce two different chain hashes.
+        return sorted(
+            (_scrub_value(v, None, depth + 1) for v in value), key=str
+        )
     return value
 
 
@@ -155,20 +360,37 @@ def _scrub(payload: dict[str, Any]) -> dict[str, Any]:
     """
     if not settings.REFLEXION_REDACT_SECRETS:
         return payload
-    return {k: _scrub_value(v, _MAX_FIELD_CHARS) for k, v in payload.items()}
+    # The top-level keys go through `_scrub_key` for the same reason the nested ones do. They
+    # are usually this module's own field names (`attributes`, `steps`, `rollback_point`), which
+    # `redact_identifier` leaves untouched — but `record()` takes a caller's dict, and "usually"
+    # is not a property the redaction gate may depend on.
+    seen: set = set()
+    return {_scrub_key(k, seen): _scrub_value(v, _MAX_FIELD_CHARS) for k, v in payload.items()}
 
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 async def init_recorder() -> None:
-    """Create the pool and start the drain task. Failure disables recording."""
-    global _pool, _queue, _drain_task
+    """Create the pool and start the drain task. A failed connect retries; it does not give up."""
+    global _state, _reason, _reconnect_task
     if not settings.FLIGHT_RECORDER_ENABLED:
+        _state, _reason = "flag", "FLIGHT_RECORDER_ENABLED=false"
         logger.info("flight_recorder: disabled by flag")
         return
     if settings.USE_SQLITE:
+        _state, _reason = "sqlite", "USE_SQLITE=true — recording needs Postgres"
         logger.info("flight_recorder: SQLite mode — recording disabled")
         return
+    if await _try_connect():
+        return
+    # Not final: keep one task alive whose only job is to try again. Until it succeeds every
+    # `record()` is carried as a pending gap, so the outage lands *in* the chain afterwards.
+    _reconnect_task = asyncio.get_running_loop().create_task(_reconnect_loop())
+
+
+async def _try_connect() -> bool:
+    """One connect attempt; on success the queue and drain task start. Never raises."""
+    global _pool, _queue, _drain_task, _state, _reason
     try:
         _pool = await asyncpg.create_pool(
             settings.POSTGRES_DSN,
@@ -177,16 +399,45 @@ async def init_recorder() -> None:
             command_timeout=5,
         )
     except Exception as exc:
-        logger.warning(f"flight_recorder: could not connect — recording disabled ({exc})")
         _pool = None
-        return
+        _state, _reason = "unavailable", str(exc)
+        logger.warning(
+            f"flight_recorder: could not connect — nothing is being recorded; retrying every "
+            f"{_RETRY_INTERVAL_S:.0f}s ({exc})"
+        )
+        return False
     _queue = asyncio.Queue()
     _drain_task = asyncio.get_running_loop().create_task(_drain())
+    _state, _reason = "ready", ""
     logger.info("flight_recorder: ready")
+    return True
+
+
+async def _reconnect_loop() -> None:
+    """Retry until Postgres accepts us, then stop. A rollout race must not cost a restart."""
+    while True:
+        try:
+            await asyncio.sleep(_RETRY_INTERVAL_S)
+            if await _try_connect():
+                if _lost_while_down:
+                    logger.warning(
+                        f"flight_recorder: recovered; {_lost_while_down} event(s) were lost "
+                        f"while it was down and are written into the chain as "
+                        f"{GAP_KIND!r} record(s)"
+                    )
+                return
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:      # the retry loop itself must never die
+            logger.warning(f"flight_recorder: reconnect attempt failed: {exc}")
 
 
 async def close_recorder() -> None:
-    global _pool, _queue, _drain_task
+    global _pool, _queue, _drain_task, _reconnect_task, _state, _reason
+    _state, _reason = "starting", ""
+    if _reconnect_task:
+        _reconnect_task.cancel()
+        _reconnect_task = None
     if _drain_task:
         await _flush(_collect_pending())
         _drain_task.cancel()
@@ -203,12 +454,36 @@ async def close_recorder() -> None:
 
 def record(episode_id: str, kind: str, payload: dict[str, Any]) -> None:
     """Queue one record. Non-blocking, never raises. Token frames are skipped."""
-    if _queue is None or kind in _SKIP_KINDS:
+    if kind in _SKIP_KINDS:
+        return
+    if _queue is None:
+        # The recorder is not running. Off by flag or in SQLite mode there is no chain to be
+        # honest about, so there is nothing to carry. But a *failed* recorder losing events is
+        # exactly the case this module's invariant exists for — "every loss is carried forward
+        # and written into the chain" — and it used to be the one loss mode that produced no
+        # evidence at all, because the whole gap ledger hung off a flush that never happened.
+        if _state == "unavailable":
+            _note_loss(episode_id, kind, payload, _reason or "the recorder was not running")
         return
     try:
         _queue.put_nowait((episode_id, kind, payload))
-    except Exception:
-        pass  # full/closed queue — drop rather than block the request path
+    except Exception as exc:
+        # Dropping rather than blocking the request path is correct; dropping *silently* is
+        # not — this bypasses the flush, so it is the same hole one level down.
+        _note_loss(episode_id, kind, payload, _drop_reason(exc))
+
+
+def _note_loss(episode_id: str, kind: str, payload: dict[str, Any], reason: str) -> None:
+    """Carry an event that never reached the queue, so the next successful flush writes it
+    into the chain as a gap. Bounded: overflow is counted but not tracked per episode."""
+    global _lost_while_down
+    _lost_while_down += 1
+    if episode_id in _pending_gaps or len(_pending_gaps) < _MAX_TRACKED_EPISODES:
+        _carry_loss([(episode_id, kind, payload)], reason)
+    if _lost_while_down == 1 or _lost_while_down % 1000 == 0:
+        logger.warning(
+            f"flight_recorder: {_lost_while_down} event(s) not recorded — {_state}: {_reason}"
+        )
 
 
 def _collect_pending() -> list[tuple[str, str, dict]]:
@@ -243,6 +518,22 @@ async def _chain_state(episode_id: str) -> tuple[int, str]:
         )
         if row:
             next_seq, last_hash = row["seq"] + 1, row["hash"]
+        # If the head is ahead of the surviving rows, events were removed since the last
+        # append. Continue *past* the head rather than reusing consumed numbers: re-anchoring
+        # would heal the chain and erase the only evidence the truncation ever happened.
+        # Same remedy, same reasoning as app/memory/security.py::_audit_state.
+        try:
+            head = await _pool.fetchrow(_SQL_HEAD_READ, episode_id)
+        except Exception as exc:
+            logger.warning(f"flight_recorder: chain head read failed for {episode_id!r}: {exc}")
+            head = None
+        if head is not None and int(head["seq"]) + 1 > next_seq:
+            logger.warning(
+                f"flight_recorder: episode {episode_id!r} resumes at seq={next_seq} but its "
+                f"head records seq={head['seq']} — events were removed; continuing past the "
+                f"head so the gap stays visible to verify_chain"
+            )
+            next_seq = int(head["seq"]) + 1
     _chains[episode_id] = (next_seq, last_hash)
     return next_seq, last_hash
 
@@ -323,6 +614,24 @@ async def _flush(items: list[tuple[str, str, dict]]) -> None:
             """,
             rows,
         )
+        # Anchor each episode's newest row. Separate try: the events are already durable, and
+        # a head we failed to write must never turn into a lost batch. A lagging head reads as
+        # "ahead of its head" on verify, which warns and does NOT cry tamper.
+        try:
+            heads: dict[str, tuple[int, str]] = {}
+            for r in rows:
+                episode_id, seq, digest = r[0], r[1], r[5]
+                if episode_id not in heads or seq > heads[episode_id][0]:
+                    heads[episode_id] = (seq, digest)
+            await _pool.executemany(
+                _SQL_HEAD_UPSERT, [(eid, seq, h) for eid, (seq, h) in heads.items()]
+            )
+        except Exception as exc:
+            logger.warning(
+                f"flight_recorder: chain-head anchor write failed for {len(heads)} episode(s) "
+                f"({exc}); the events themselves are persisted, but a truncation of them would "
+                f"not be detectable until the next successful flush re-anchors"
+            )
     except Exception as exc:
         reason = _drop_reason(exc)
         _carry_loss(batch, reason)
@@ -363,10 +672,30 @@ async def _drain() -> None:
 
 # ── Read path (replay) ────────────────────────────────────────────────────────
 
+class RecorderUnavailable(RuntimeError):
+    """The decision log could not be read — not the same as an episode having no rows.
+
+    `fetch_episode` returned `[]` for three unrelated states: the episode really has no rows,
+    the recorder was never started (`_pool is None`), and the query failed. The API turned all
+    three into `404 no recorded episode '<id>'` — the one answer that is a positive claim about
+    the world. An operator asking for the audit trail of an incident they are living through was
+    told the episode does not exist, when the truth was that the recorder was off.
+
+    Sibling of `memory_store.MemoryStoreUnavailable` and `episodes.MemoryUnavailable`: the
+    unreadable case gets its own exception so a caller cannot render it as absence by accident.
+    """
+
+
 async def fetch_episode(episode_id: str) -> list[dict]:
-    """Return all decision_log rows for an episode, ordered by seq."""
+    """Return all decision_log rows for an episode, ordered by seq.
+
+    Raises `RecorderUnavailable` if the log could not be read at all. An empty list means the
+    episode has no recorded rows, and nothing else.
+    """
     if _pool is None:
-        return []
+        raise RecorderUnavailable(
+            "the flight recorder is not running — no decision log to read"
+        )
     try:
         records = await _pool.fetch(
             "SELECT episode_id, seq, kind, payload, prev_hash, hash, created_at"
@@ -375,5 +704,5 @@ async def fetch_episode(episode_id: str) -> list[dict]:
         )
     except Exception as exc:
         logger.warning(f"flight_recorder: fetch failed: {exc}")
-        return []
+        raise RecorderUnavailable(f"the decision log could not be read: {exc}") from exc
     return [dict(r) for r in records]

@@ -131,6 +131,7 @@ from kube_q.cli.renderer import (
     _print_sessions_table,
     console,
     format_search_results,
+    print_store_failure,
     set_custom_logo,
     set_custom_tagline,
     set_output_plain,
@@ -538,7 +539,7 @@ def main() -> None:
         results = _search_sessions(args.search, limit=20)
         if results:
             format_search_results(results)
-        else:
+        elif not print_store_failure():
             console.print(f"[dim]No sessions matched '{args.search}'.[/dim]")
         return
 

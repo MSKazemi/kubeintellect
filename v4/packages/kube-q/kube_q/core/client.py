@@ -44,12 +44,16 @@ import httpx
 
 from kube_q.core.events import Event, parse_event
 from kube_q.core.transport import (
+    HEALTH_PATH,
+    HEALTH_TIMEOUT,
     QUERY_RETRY_DELAYS,
     SseStats,
     build_headers,
     build_payload,
     check_health,
     describe_error,
+    health_failure_reason,
+    health_status_reason,
     iter_sse,
     make_client,
 )
@@ -88,13 +92,19 @@ class KubeQClient:
         self.ca_cert = ca_cert
         self.timeout = timeout
         self.model = model
+        # What the most recent `stream()` lost, or None if it has not run. `SseStats` says a
+        # caller that must be fail-closed "inspects this and refuses" — true of the CLI, which
+        # owns its own SseStats, and never true of the SDK, where `stats` was a local nobody
+        # could reach. Set before the first yield so a caller that breaks early can still read it.
+        self.last_stream_stats: SseStats | None = None
 
     # ── Health ────────────────────────────────────────────────────────────────
 
     def health(self) -> tuple[bool, str]:
         """Return (ok, reason). Fast connectivity check."""
         return check_health(
-            self.url, api_key=self.api_key, ca_cert=self.ca_cert, timeout=5.0
+            self.url, api_key=self.api_key, ca_cert=self.ca_cert,
+            timeout=HEALTH_TIMEOUT, health_path=HEALTH_PATH,
         )
 
     # ── Non-streaming query ───────────────────────────────────────────────────
@@ -200,11 +210,20 @@ class KubeQClient:
                     ) as resp:
                         resp.raise_for_status()
                         stats = SseStats()
-                        for raw in iter_sse(resp, stats):
-                            for event in _parse_sse_events(raw):
-                                yielded_any = True
-                                yield event
-                        _warn_if_lossy(stats)
+                        self.last_stream_stats = stats
+                        try:
+                            for raw in iter_sse(resp, stats):
+                                for event in _parse_sse_events(raw):
+                                    yielded_any = True
+                                    yield event
+                        finally:
+                        # `finally`, not a trailing call: the documented usage in
+                        # `docs/sdk.md` and in this class's own docstring is
+                        # `case FinalEvent(): break`, and a break closes the generator at the
+                        # `yield` — so the trailing call ran on a full drain and on nothing else.
+                        # A stream that dropped a frame before the final event left no record
+                        # anywhere, for exactly the pattern the docs tell people to write.
+                            _warn_if_lossy(stats)
                     return  # clean end of stream
                 except httpx.TransportError as exc:
                     if yielded_any:
@@ -249,6 +268,7 @@ class AsyncKubeQClient:
         self.ca_cert = ca_cert
         self.timeout = timeout
         self.model = model
+        self.last_stream_stats: SseStats | None = None
 
     def _make_async_client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(
@@ -259,24 +279,27 @@ class AsyncKubeQClient:
     # ── Health ────────────────────────────────────────────────────────────────
 
     async def health(self) -> tuple[bool, str]:
-        """Return (ok, reason). Fast connectivity check."""
+        """Return (ok, reason). Fast connectivity check.
+
+        Shares its two classifiers with the sync `KubeQClient.health` rather than re-deciding.
+        This method used to hand-roll them, and had drifted on all three points: a DNS failure
+        was reported as "Connection refused — nothing is listening at …" (the wrong cause, and
+        the wrong thing to go and fix); the timeout message dropped the duration that the sync
+        side had been corrected to include; and "fast" ran on `self.timeout`, the *query*
+        timeout, which defaults to 120 s against the sync side's 5 s.
+        """
         headers: dict[str, str] = {}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
+        timeout = HEALTH_TIMEOUT
         try:
-            async with self._make_async_client() as client:
-                r = await client.get(f"{self.url}/healthz", headers=headers)
-            if r.status_code == 200:
-                return True, ""
-            if r.status_code == 401:
-                return False, "Authentication required — set KUBE_Q_API_KEY or pass --api-key"
-            return False, f"HTTP {r.status_code} from {self.url}/healthz"
-        except httpx.ConnectError as e:
-            return False, f"Connection refused — nothing is listening at {self.url}: {e}"
-        except httpx.TimeoutException:
-            return False, f"Connection timed out — {self.url} did not respond"
-        except Exception as e:
-            return False, f"Unexpected error: {e}"
+            async with httpx.AsyncClient(
+                timeout=timeout, verify=self.ca_cert if self.ca_cert else True
+            ) as client:
+                r = await client.get(f"{self.url}{HEALTH_PATH}", headers=headers)
+            return health_status_reason(self.url, r.status_code, HEALTH_PATH)
+        except Exception as e:  # noqa: BLE001 — every failure is a health verdict, never a raise
+            return False, health_failure_reason(self.url, e, timeout)
 
     # ── Non-streaming query ───────────────────────────────────────────────────
 
@@ -358,6 +381,14 @@ class AsyncKubeQClient:
         payload = build_payload(messages, user, True, self.model)
         headers = build_headers(self.api_key, sid, rid, accept="text/event-stream")
 
+        # Carried out of the loop for the same reason the sync `stream` carries it: an async
+        # generator that falls off the end of its retry loop **returns**, and a return from an
+        # async generator is a clean end-of-stream. The caller's `async for` would then complete
+        # with zero events and no exception — the server never answered, and the SDK reported
+        # that as "the server answered, and had nothing to say". Measured 2026-08-24 against a
+        # refused connection: sync raised `ConnectError`, async yielded 0 events silently, and
+        # `docs/sdk.md` claimed both "give up and raise".
+        last_exc: httpx.TransportError | None = None
         async with self._make_async_client() as client:
             for attempt in range(len(QUERY_RETRY_DELAYS) + 1):
                 yielded_any = False
@@ -370,19 +401,25 @@ class AsyncKubeQClient:
                     ) as resp:
                         resp.raise_for_status()
                         stats = SseStats()
-                        async for raw in _aiter_sse(resp, stats):
-                            for event in _parse_sse_events(raw):
-                                yielded_any = True
-                                yield event
-                        _warn_if_lossy(stats)
+                        self.last_stream_stats = stats
+                        try:
+                            async for raw in _aiter_sse(resp, stats):
+                                for event in _parse_sse_events(raw):
+                                    yielded_any = True
+                                    yield event
+                        finally:
+                            _warn_if_lossy(stats)  # see the sync twin: a `break` closes us here
                     return  # clean end of stream
                 except httpx.TransportError as exc:
                     if yielded_any:
-                        raise
+                        raise  # partial stream: can't retry without duplicate delivery
+                    last_exc = exc
                     reason = describe_error(self.url, exc)
                     _logger.warning("async stream attempt %d failed: %s", attempt, reason)
                     if attempt < len(QUERY_RETRY_DELAYS):
                         await asyncio.sleep(QUERY_RETRY_DELAYS[attempt])
+        if last_exc is not None:
+            raise last_exc
 
 
 # ── Shared SSE helpers ────────────────────────────────────────────────────────

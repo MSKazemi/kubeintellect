@@ -176,22 +176,37 @@ class TestReplayEndpoint:
         from app.main import app
         from httpx import ASGITransport, AsyncClient
 
+        # No rows AND no readable anchor is a 503, not a 404 — the two are indistinguishable
+        # from there. This test is about the unknown episode, so give it an anchor read that
+        # ran and found nothing.
+        mocker.patch.object(fr, "_pool", _NullPool())
         mocker.patch("app.api.v1.endpoints.episodes.fetch_episode", return_value=[])
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
             response = await client.get("/v1/episodes/nope/replay")
         assert response.status_code == 404
 
 
+class _NullPool:
+    """Answers every lookup with "asked, and there is nothing"."""
+
+    async def fetchrow(self, _sql, *_args):
+        return None
+
+
 class TestDrainFlush:
     async def test_flush_builds_contiguous_chain_across_batches(self, mocker):
         inserted: list[tuple] = []
+        heads: list[tuple] = []
 
         class FakePool:
-            async def executemany(self, _sql, rows):
-                inserted.extend(rows)
+            async def executemany(self, sql, rows):
+                # _flush now issues two statements: the event insert and the chain-head
+                # anchor. A fake that lumped them together fed 3-tuples into the row
+                # assertions below, so it has to tell them apart.
+                (heads if "decision_log_head" in sql else inserted).extend(rows)
 
             async def fetchrow(self, _sql, _eid):
-                return None  # no prior rows — genesis chain
+                return None  # no prior rows, and no prior head — genesis chain
 
         mocker.patch.object(fr, "_pool", FakePool())
         fr._chains.clear()
@@ -211,3 +226,6 @@ class TestDrainFlush:
         ]
         assert [r["seq"] for r in rows] == [0, 1]
         assert fr.verify_chain(rows) is True
+        # The anchor that makes a truncation of those rows detectable is written with them.
+        assert [h[0] for h in heads] == ["ep-x", "ep-x"]
+        assert heads[-1][1] == 1 and heads[-1][2] == rows[-1]["hash"]

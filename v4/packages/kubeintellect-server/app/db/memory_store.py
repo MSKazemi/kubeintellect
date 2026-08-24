@@ -43,14 +43,29 @@ async def load_memory_context(user_id: str, session_id: str) -> str:
         return ""   # memory store requires PostgreSQL; silently skip in SQLite mode
 
     parts: list[str] = []
+    failed: list[str] = []
 
     try:
         conn = await _get_conn()
         try:
-            parts += await _load_user_prefs(conn, user_id)
-            parts += await _load_failure_hints(conn)
-            parts += await _load_session_notes(conn, session_id)
-            parts += await _load_past_rca(conn, user_id)
+            for label, load in (
+                ("operator preferences", lambda: _load_user_prefs(conn, user_id)),
+                ("failure hints", lambda: _load_failure_hints(conn)),
+                ("session notes", lambda: _load_session_notes(conn, session_id)),
+                ("past RCA", lambda: _load_past_rca(conn, user_id)),
+            ):
+                # Per-section, so one failing query does not cost the other three — but never
+                # silently. Each loader used to swallow its own exception and return `[]`, so a
+                # query error in exactly one section produced a context that reads as complete:
+                # `MemoryStoreUnavailable` was not raised, nothing above INFO was logged, and the
+                # model was left to conclude the user has no stored preferences. The whole point
+                # of that exception is "could not load ≠ has none"; a partial failure defeats it
+                # exactly as well as a total one.
+                try:
+                    parts += await load()
+                except Exception as exc:      # noqa: BLE001 — any failure is still a failure
+                    logger.warning(f"memory_store: section {label!r} failed — {exc}")
+                    failed.append(label)
         finally:
             await conn.close()
     except Exception as exc:
@@ -58,9 +73,56 @@ async def load_memory_context(user_id: str, session_id: str) -> str:
         raise MemoryStoreUnavailable(f"pinned memory context unavailable: {exc}") from exc
 
     combined = "\n\n".join(p for p in parts if p.strip())
+    if failed:
+        # Prepended, not appended: the tail is what `_MAX_CONTEXT_CHARS` removes, and a notice
+        # the model never sees is the same as no notice at all.
+        notice = _partial_failure_notice(failed)
+        combined = f"{notice}\n\n{combined}" if combined else notice
     if len(combined) > _MAX_CONTEXT_CHARS:
         combined = combined[:_MAX_CONTEXT_CHARS] + "\n... [context truncated]"
     return combined
+
+
+def _partial_failure_notice(failed: list[str]) -> str:
+    """Name the memory that could not be read, in the same terms `memory_loader` uses for a
+    total failure — a missing section must not read as an empty one."""
+    return (
+        "## Memory partially unavailable\n"
+        f"Stored {', '.join(failed)} could NOT be read — this is not the same as there being "
+        "none. Do not assume the user has no preferences or that this issue has no precedent; "
+        "say that part of the stored history could not be checked."
+    )
+
+
+# ── Section caps ──────────────────────────────────────────────────────────────
+# Every loader below caps its rows so the whole block stays inside the ~500-token budget. The
+# cap is correct; presenting the result as the operator's COMPLETE remembered state is not.
+# Measured 2026-08-24: an operator with 12 explicit preferences got 8 in the prompt, and
+# "NEVER drain node-07, it hosts the license server" was one of the 4 dropped — silently, under
+# a header reading "(remembered)". The model's only honest reading of that block is "these are
+# the preferences", so a cap without a notice makes it infer an instruction does not exist.
+#
+# This module already refuses the same mistake one axis over: `_partial_failure_notice` exists
+# because "a missing section must not read as an empty one". A capped section must not read as
+# a complete one, for exactly the same reason.
+#
+# Each loader asks for `cap + 1` rows and renders `cap`. Getting the extra row back is proof
+# that more exist; not getting it is proof that they do not. That is one query, not two, and it
+# is why the notice never claims a count it did not measure.
+
+
+def _split_capped(rows: list, cap: int) -> tuple[list, bool]:
+    """Return the rows to render and whether the query proved more exist beyond them."""
+    return list(rows[:cap]), len(rows) > cap
+
+
+def _more_notice(noun: str) -> str:
+    """One line, appended to a section whose query proved it is showing a subset."""
+    return (
+        f"  … MORE {noun} are stored than the ones listed above and are NOT shown here "
+        f"(oldest/lowest-ranked omitted for space). Absence from this list is NOT evidence "
+        f"that none exists — ask, or say you only checked the most relevant."
+    )
 
 
 async def _load_user_prefs(conn: asyncpg.Connection, user_id: str) -> list[str]:
@@ -73,35 +135,35 @@ async def _load_user_prefs(conn: asyncpg.Connection, user_id: str) -> list[str]:
     """
     if not settings.PREFERENCE_MEMORY_ENABLED:
         return []
-    try:
-        decay_days = max(1, int(settings.PREFERENCE_DECAY_DAYS))
-        min_conf = float(settings.PREFERENCE_MIN_CONFIDENCE)
-        rows = await conn.fetch(
-            f"""
-            SELECT key, value, source, confidence
-            FROM user_prefs
-            WHERE user_id = $1
-              AND (
-                source = 'explicit'
-                OR (confidence >= $2
-                    AND last_seen_at > now() - INTERVAL '{decay_days} days')
-              )
-            ORDER BY (source = 'explicit') DESC, confidence DESC, key
-            LIMIT 8
-            """,
-            user_id, min_conf,
-        )
-        if not rows:
-            return []
-        lines = []
-        for r in rows:
-            if r["source"] == "inferred":
-                lines.append(f"  {r['key']}: {r['value']}  (inferred, confidence {float(r['confidence']):.0%})")
-            else:
-                lines.append(f"  {r['key']}: {r['value']}")
-        return ["## Operator Preferences (remembered)\n" + "\n".join(lines)]
-    except Exception:
+    decay_days = max(1, int(settings.PREFERENCE_DECAY_DAYS))
+    min_conf = float(settings.PREFERENCE_MIN_CONFIDENCE)
+    rows = await conn.fetch(
+        f"""
+        SELECT key, value, source, confidence
+        FROM user_prefs
+        WHERE user_id = $1
+          AND (
+            source = 'explicit'
+            OR (confidence >= $2
+                AND last_seen_at > now() - INTERVAL '{decay_days} days')
+          )
+        ORDER BY (source = 'explicit') DESC, confidence DESC, key
+        LIMIT 9
+        """,
+        user_id, min_conf,
+    )
+    if not rows:
         return []
+    rows, more = _split_capped(rows, 8)
+    lines = []
+    for r in rows:
+        if r["source"] == "inferred":
+            lines.append(f"  {r['key']}: {r['value']}  (inferred, confidence {float(r['confidence']):.0%})")
+        else:
+            lines.append(f"  {r['key']}: {r['value']}")
+    if more:
+        lines.append(_more_notice("operator preferences"))
+    return ["## Operator Preferences (remembered)\n" + "\n".join(lines)]
 
 
 async def _load_failure_hints(conn: asyncpg.Connection) -> list[str]:
@@ -110,53 +172,52 @@ async def _load_failure_hints(conn: asyncpg.Connection) -> list[str]:
     Filters by current cluster_id (R1) and decay window (R6) so patterns from
     other clusters and stale patterns don't pollute the prompt.
     """
-    try:
-        from app.cluster_id import get_cluster_id
-        cluster_id = get_cluster_id()
-        decay_days = max(1, int(settings.REFLEXION_PATTERN_DECAY_DAYS))
-        rows = await conn.fetch(
-            f"""
-            SELECT pattern_name, description, recommended_fix, occurrence_count
-            FROM failure_patterns
-            WHERE confidence >= 0.9
-              AND occurrence_count >= 2
-              AND demoted = FALSE
-              AND cluster_id IN ($1, 'unknown')
-              AND last_seen_at > now() - INTERVAL '{decay_days} days'
-            ORDER BY occurrence_count DESC, last_seen_at DESC
-            LIMIT 5
-            """,
-            cluster_id,
-        )
-        if not rows:
-            return []
-        logger.info(
-            f"failure_hints_loaded count={len(rows)}",
-            extra={"hint_count": len(rows), "cluster_id": cluster_id},
-        )
-        items = "\n".join(
-            f"  - [{r['pattern_name']}] (seen {r['occurrence_count']}×) {r['description']}\n"
-            f"    → Fix: {r['recommended_fix']}"
-            for r in rows
-        )
-        return [f"## Known Failure Patterns (this cluster)\n{items}"]
-    except Exception as exc:
-        logger.debug(f"_load_failure_hints: {exc}")
+    from app.cluster_id import get_cluster_id
+    cluster_id = get_cluster_id()
+    decay_days = max(1, int(settings.REFLEXION_PATTERN_DECAY_DAYS))
+    rows = await conn.fetch(
+        f"""
+        SELECT pattern_name, description, recommended_fix, occurrence_count
+        FROM failure_patterns
+        WHERE confidence >= 0.9
+          AND occurrence_count >= 2
+          AND demoted = FALSE
+          AND cluster_id IN ($1, 'unknown')
+          AND last_seen_at > now() - INTERVAL '{decay_days} days'
+        ORDER BY occurrence_count DESC, last_seen_at DESC
+        LIMIT 6
+        """,
+        cluster_id,
+    )
+    if not rows:
         return []
+    rows, more = _split_capped(rows, 5)
+    logger.info(
+        f"failure_hints_loaded count={len(rows)}",
+        extra={"hint_count": len(rows), "cluster_id": cluster_id},
+    )
+    items = "\n".join(
+        f"  - [{r['pattern_name']}] (seen {r['occurrence_count']}×) {r['description']}\n"
+        f"    → Fix: {r['recommended_fix']}"
+        for r in rows
+    )
+    if more:
+        items += "\n" + _more_notice("known failure patterns for this cluster")
+    return [f"## Known Failure Patterns (this cluster)\n{items}"]
 
 
 async def _load_session_notes(conn: asyncpg.Connection, session_id: str) -> list[str]:
-    try:
-        rows = await conn.fetch(
-            "SELECT note FROM session_notes WHERE session_id = $1 ORDER BY created_at DESC LIMIT 3",
-            session_id,
-        )
-        if not rows:
-            return []
-        notes = "\n".join(f"  - {r['note']}" for r in rows)
-        return [f"## Session Notes\n{notes}"]
-    except Exception:
+    rows = await conn.fetch(
+        "SELECT note FROM session_notes WHERE session_id = $1 ORDER BY created_at DESC LIMIT 4",
+        session_id,
+    )
+    if not rows:
         return []
+    rows, more = _split_capped(rows, 3)
+    notes = "\n".join(f"  - {r['note']}" for r in rows)
+    if more:
+        notes += "\n" + _more_notice("notes from this session")
+    return [f"## Session Notes\n{notes}"]
 
 
 async def _load_past_rca(conn: asyncpg.Connection, user_id: str) -> list[str]:
@@ -166,35 +227,39 @@ async def _load_past_rca(conn: asyncpg.Connection, user_id: str) -> list[str]:
     from their dev-kind sessions. Only verified-resolved rows count to keep
     the hint signal high.
     """
-    try:
-        from app.cluster_id import get_cluster_id
-        cluster_id = get_cluster_id()
-        rows = await conn.fetch(
-            """
-            SELECT root_cause, recommended_fix, namespace,
-                   created_at::date as date, verified_resolved
-            FROM rca_outcomes
-            WHERE user_id = $1
-              AND cluster_id IN ($2, 'unknown')
-              AND verified_resolved IS NOT FALSE
-            ORDER BY verified_resolved DESC NULLS LAST, created_at DESC
-            LIMIT 3
-            """,
-            user_id, cluster_id,
-        )
-        if not rows:
-            return []
-        lines: list[str] = []
-        for r in rows:
-            ns = f" ns={r['namespace']}" if r["namespace"] else ""
-            ok = "✓" if r["verified_resolved"] else "?"
-            # Truncate stored fix for the injection — full row stays in DB.
-            fix_preview = (r["recommended_fix"] or "")[:160]
-            lines.append(f"  - [{r['date']}{ns} {ok}] {r['root_cause']}\n    → {fix_preview}")
-        return ["## Recent RCA History (this cluster)\n" + "\n".join(lines)]
-    except Exception as exc:
-        logger.debug(f"_load_past_rca: {exc}")
+    from app.cluster_id import get_cluster_id
+    cluster_id = get_cluster_id()
+    rows = await conn.fetch(
+        """
+        SELECT root_cause, recommended_fix, namespace,
+               created_at::date as date, verified_resolved
+        FROM rca_outcomes
+        WHERE user_id = $1
+          AND cluster_id IN ($2, 'unknown')
+          AND verified_resolved IS NOT FALSE
+        ORDER BY verified_resolved DESC NULLS LAST, created_at DESC
+        LIMIT 4
+        """,
+        user_id, cluster_id,
+    )
+    if not rows:
         return []
+    rows, more = _split_capped(rows, 3)
+    lines: list[str] = []
+    for r in rows:
+        ns = f" ns={r['namespace']}" if r["namespace"] else ""
+        ok = "✓" if r["verified_resolved"] else "?"
+        # Truncate the stored fix for the injection — the full row stays in the DB. Say so when
+        # it happens: a remediation cut mid-command reads as a complete command, and the model
+        # has no way to tell 160 characters of a fix from all of it.
+        full_fix = r["recommended_fix"] or ""
+        fix_preview = full_fix[:160]
+        if len(full_fix) > 160:
+            fix_preview += " …[fix truncated, not the whole command]"
+        lines.append(f"  - [{r['date']}{ns} {ok}] {r['root_cause']}\n    → {fix_preview}")
+    if more:
+        lines.append(_more_notice("past RCA outcomes for this cluster"))
+    return ["## Recent RCA History (this cluster)\n" + "\n".join(lines)]
 
 
 # ── Outcome recorder (self-improvement loop) ─────────────────────────────────

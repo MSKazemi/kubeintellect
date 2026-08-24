@@ -207,11 +207,14 @@ All tools live in `app/tools/`. Registered in `app/tools/registry.py` as `ALL_TO
 - **Resource block**: `KUBECTL_BLOCKED_RESOURCES` env var (default: secret, serviceaccount)
 - **HITL gate**: destructive commands trigger `interrupt()` → `HITLRequired` → pauses graph → resumes via `Command(resume=bool)`
 
+- **A non-zero exit that is an *answer* is not reported as a failure.** `kubectl diff` exits 1 when it finds differences and `kubectl auth can-i` exits 1 when the answer is `no`; both return the plain result. Every other verb, and any higher exit code, is still reported as `[kubectl exited N]`.
+
 ### `run_helm`
 
 - Read-only Helm inspection: `list`, `get`, `status`, `history`, `env`, `version`, `show`, `search`.
 - Write verbs (`install`, `upgrade`, `rollback`, `uninstall`, `repo`, …) are blocked — KubeIntellect never mutates releases through Helm.
 - Every `helm get` has protected kinds stripped from its output — `manifest`, `all` and `hooks` all render the release's own `kind: Secret` objects with their base64 `data:` intact.
+- **stdout and stderr stay separate.** A non-zero exit is returned as `[helm exited N] <stderr>`, and anything helm printed before the error is appended under an explicit "absence from it is NOT evidence" caveat. On a zero exit, a stderr warning is appended in a labelled block instead of being mixed into the result.
 - Output is capped at 6,000 characters.
 
 ### `query_prometheus`
@@ -317,6 +320,16 @@ Strategy:
 - kubectl table output (has `NAME` column): header + first 30 rows + any rows matching `error|warning|failed|pending|oomkilled|crashloop|backoff|imagepull|containercreating`
 - logs / describe / prometheus / loki: first 60 lines
 - Hard cap: 2,000 chars per message
+- **Whatever it removed, it says so**, in the vocabulary `_COORDINATOR_SYSTEM` tells the model to
+  watch for: `[truncated: N row(s) omitted from LLM context — this listing is NOT the complete
+  set …]`. Rows and characters are counted separately — "I see 30 of 200 rows" and "my last row
+  is cut in half" are different losses.
+- **Policy lines are lifted out of the trim and re-attached.** A line carrying `[Protected]` or a
+  tool's own `[truncated` marker sits at the *end* of a listing, which is exactly where the row
+  cap cuts, and matches no "important row" pattern. Until 2026-08-24 the trimmer therefore
+  deleted the withheld-namespace notice that `run_kubectl` had just attached, and dropped up to
+  170 ordinary rows in silence — the model was handed a short table that read as complete, and
+  since the retained rows are the *unhealthy* ones, "how many pods are Running?" answered 30.
 
 ---
 

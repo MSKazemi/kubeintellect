@@ -13,6 +13,8 @@ a kubectl failure and a Deployment named `error-budget-exporter`.
 
 from __future__ import annotations
 
+import re
+
 REFUSED = "refused"  # KubeIntellect blocked it — nothing was sent to the cluster
 FAILED = "failed"  # kubectl (or the local tooling) reported an error
 OK = "ok"  # nothing says otherwise; the caller's own oracle decides from here
@@ -44,6 +46,17 @@ _FAILURE_PREFIXES = (
     "unable to connect to the server",
 )
 
+# The tool layer's own exit-code marker: `[kubectl exited 1] Error from server (Forbidden): …`,
+# and the identical shape `run_helm` emits. This is the **strongest** signal in the string — an
+# exit code, not prose — but it is written in front of kubectl's own line, so every prefix below
+# stopped matching the moment it was introduced. Measured 2026-08-24 by driving the real
+# `run_kubectl`: an RBAC `Forbidden`, a refused API server and a bad local path all classified
+# `ok` with `reached_cluster() == True`, and `deployment_ready` answered "deployment 'web' not
+# found in 'prod'" about a namespace it never read — the exact verdict this module was written
+# on 2026-08-20 to stop it giving. Nothing caught it because every test here builds the string
+# by hand; `test_the_classifier_reads_what_run_kubectl_actually_returns.py` now drives the tool.
+_EXIT_MARKER_RE = re.compile(r"^\[(?:kubectl|helm) exited -?\d+\]\s*")
+
 # run_kubectl's own placeholder when a command produced neither stdout nor stderr. It is not an
 # observation of anything, so it must never be parsed as one.
 NO_OUTPUT = "(no output)"
@@ -70,6 +83,10 @@ def classify_output(output: str) -> str:
         line = raw.strip().lower()
         if not line:
             continue
+        if _EXIT_MARKER_RE.match(line):
+            # The tool layer read the exit code and said so. Nothing in the prose after it can
+            # be a better authority than that.
+            return FAILED
         if line.startswith(_REFUSAL_PREFIXES):
             return REFUSED
         if line.startswith(_FAILURE_PREFIXES):
@@ -88,7 +105,11 @@ def reached_cluster(output: str) -> bool:
     if not text or text == NO_OUTPUT:
         return False
     for raw in text.splitlines():
-        line = raw.strip().lower()
+        # The marker is stripped rather than matched: a non-zero exit says the command failed,
+        # not that it never arrived. `[kubectl exited 1] Error from server (Forbidden)` **did**
+        # reach the API server — the server is what rejected it — while the same marker in front
+        # of `The connection to the server … was refused` means it never left the client.
+        line = _EXIT_MARKER_RE.sub("", raw.strip().lower(), count=1)
         if not line:
             continue
         if line.startswith(_REFUSAL_PREFIXES) or line.startswith(_UNREACHABLE_PREFIXES):
