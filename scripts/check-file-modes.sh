@@ -119,6 +119,18 @@ absent=0          # tracked here, but not present in this checkout, so unknowabl
 # `git ls-files -s` reports the mode recorded in the INDEX, which is what CI and
 # every clone actually sees. Reading the filesystem instead would give a
 # different answer on checkouts where core.fileMode is false.
+#
+# In this tree that is not a hypothetical: the private index is read with
+# core.fileMode = false, deliberately. 5,931 tracked files are 0755 on disk —
+# markdown, YAML, JSON, the lot — from a mode-preserving copy long ago, so the
+# working tree's modes carry no information at all. Turning fileMode on would
+# stage a 5,931-file mode change and destroy the very signal this gate reads.
+#
+# The consequence to know: with fileMode off, `git add` cannot pick up a new
+# script's +x bit from the filesystem, so every newly tracked script lands 100644
+# no matter how it looks in `ls -l`. `--fix` stages the bit explicitly, which is
+# why running this gate — not chmod — is what actually makes a script runnable
+# for anyone who clones or exports the tree.
 while read -r mode _ _ path; do
   case "$path" in ''|*$'\n'*) continue ;; esac
   [[ "$path" =~ $FROZEN_RE ]] && continue
