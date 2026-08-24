@@ -78,8 +78,15 @@ if [ -n "$GIT_DIR_ARG" ]; then
   INDEX_LABEL="the index of $GIT_DIR_ARG"
 fi
 
-# Frozen generations — see SCOPE above.
-FROZEN_RE='^v[123]/'
+# Frozen trees — see SCOPE above.
+#
+# `_archives/` and `evaluation_legacy/` are here for the same reason v1-v3 are:
+# they are closed to change, nothing in CI or in a campaign executes them, and
+# rewriting several hundred file modes across preserved campaign history would
+# be churn against an immutable record. They are excluded by scope, not by
+# oversight — which is the distinction that matters when this gate is pointed at
+# an index that contains them.
+FROZEN_RE='^(v[123]|_archives|evaluation_legacy)/'
 
 # Escape hatch: paths allowed to be executable WITHOUT a shebang. Intended for
 # genuine binaries (a compiled helper, a self-extracting archive). Add a comment
