@@ -46,8 +46,14 @@ def test_bound_summary_over_budget_truncates_with_marker():
     text = "x" * (SUMMARY_MAX_CHARS + 500)
     out, truncated = bound_summary(text)
     assert truncated is True
-    assert len(out) <= SUMMARY_MAX_CHARS + 80  # marker allowance
-    assert "truncated" in out
+    # The budget applies to the summary; the marker is the cost of saying so. Measured against
+    # the marker this build actually emits rather than a fixed allowance — the marker carries a
+    # count now, so its length varies with the number, and an "80 chars ought to do" bound fails
+    # on a wider one for no reason connected to the budget.
+    marker = out.splitlines()[-1]
+    body = "\n".join(out.splitlines()[:-1])
+    assert len(body) <= SUMMARY_MAX_CHARS
+    assert "[truncated" in marker and "chars omitted" in marker
 
 
 def test_finalize_result_enforces_allowlist_and_bounds():

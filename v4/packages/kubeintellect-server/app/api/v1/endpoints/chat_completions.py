@@ -27,6 +27,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.agent.workflow import run_session
+from app.core.usage import start_request_meter
 from app.api.v1.auth import get_user_role
 from app.db.audit import log_request as _audit_log
 from app.streaming.emitter import PROTOCOL_VERSION, prepare_session
@@ -227,6 +228,11 @@ async def _stream(
     yield f"data: {json.dumps({'protocol_version': PROTOCOL_VERSION, 'object': 'stream.start', 'session_id': session_id})}\n\n"
 
     # ── Start workflow as background task ─────────────────────────────────────
+    # The meter is bound BEFORE create_task, deliberately. `asyncio.create_task` copies the
+    # current context, so a meter bound after this line would be invisible to the workflow and
+    # every request would report zero. Binding first means the task inherits this same mutable
+    # meter and its mutations are visible here when the stream ends.
+    meter = start_request_meter()
     task = asyncio.create_task(
         run_session(user_message, session_id, user_id, user_role, auto_approve=auto_approve)
     )
@@ -242,7 +248,11 @@ async def _stream(
             if chunk:
                 yield chunk
 
-        # Normal completion
+        # Normal completion. Usage goes out before the terminator so a client that stops at
+        # `finish_reason` still sees it — and it is emitted even when every count is zero,
+        # because "the model was called 40 times and reported no tokens" is an instrumentation
+        # gap the caller needs to be able to tell apart from a cheap request.
+        yield _make_ki_event_chunk(completion_id, {"type": "usage", **meter.as_dict()})
         yield _make_chunk(completion_id, "", finish_reason="stop")
         yield _done_chunk()
 

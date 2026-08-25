@@ -11,6 +11,242 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- **A local-LLM judge now records the machine it ran on.** `rescore_ollama.py` writes
+  `judge/provenance-<tag>.json` next to each re-scoring: CPU model, core count, AVX-512 flags,
+  Ollama version, model digest, size and quantization, and the pinned sampling. Everything read
+  locally is prefixed `client_`, and the inference host is recorded only when stated
+  (`RESCORE_INFERENCE_HOST`) — because a tunnelled Ollama answers on `127.0.0.1`, so the script's
+  own CPU may not be the CPU that ran inference, and a confidently wrong answer to "which machine
+  produced this?" is worse than an absent one. This
+  exists because the host turns out to be part of the result (see *Fixed*, below), and
+  `scores_<tag>.json` carries scenarios and nothing else — so the machine behind an existing
+  cross-family table is unrecoverable from the artefact. It lands in the `judge/` subdirectory
+  and never as a key inside the scores mapping: both alternatives recreate the phantom-scenario
+  defect, since every `*.json` beside a run's records and every key in the scores dict is read
+  as a scenario. Provenance never raises — an unreachable Ollama degrades to a partial record
+  rather than failing the run it describes.
+
+- **`/healthz` reports what memory *did*, not only that its pool is up.** `.memory` now carries
+  `recall_attempts`, `recall_hits`, `recall_failures`, `episodes_written`, a `symptoms` list and a
+  single `healthy` boolean. `enabled: true, healthy: false` is the connected-but-doing-nothing
+  case, which was previously indistinguishable from a healthy server on a quiet cluster — an
+  evaluation lane once ran nine hours reporting `state: "ready"` while nothing was ever written or
+  recalled, and nothing in the response was false. A cold store is not a fault (symptoms stay
+  silent for the first ten attempts) and memory switched off by flag reports `healthy: true`.
+  `healthy` deliberately does **not** move the top-level `status`: `/healthz` is liveness, and
+  failing it because memory is cold would turn a degraded subsystem into a crash loop. Alert on
+  `.memory.healthy`, restart on `.status`.
+- **The stream reports what a request cost.** A new `usage` `ki_event` carries `prompt_tokens`,
+  `completion_tokens`, `total_tokens` and `llm_calls`, summed across every model call a turn makes
+  — triage, the coordinator loop, the subagent fan-out, verification — and emitted immediately
+  before the `finish_reason` terminator so a client that stops reading there still sees it.
+  Previously the server surfaced usage nowhere at all. `llm_calls` is what makes a zero
+  interpretable: `0` means no model was called, while a positive count with `total_tokens: 0`
+  means the provider reported nothing, which is an instrumentation gap rather than a free turn.
+  Reported whether or not Langfuse tracing is enabled.
+
+### Fixed
+
+- **A judge's stated total is no longer taken as the score.** The rubric is eight dimensions of
+  1–5, so the total is defined by the dimensions rather than observed — but both judges returned
+  their own arithmetic and both code paths trusted it. Measured over every score in the tree: the
+  primary judge disagreed with its own dimensions in **0 of 1761** records; the local robustness
+  judge in **494 of 665 (74%)**, mean −3.35, and one verdict read `44/40` against a 40-point
+  maximum. `normalize_verdict()` is now the single implementation and recomputes the total,
+  clamps each dimension, and derives pass/fail from the threshold. It changes no stored primary
+  total and corrects five stored `result` fields where the judge scored at or above the threshold
+  and still wrote "fail". A judge *error* record is exempt — a judge that could not be reached did
+  not score 8/40, it did not score.
+- **A fault-probe timeout no longer reads as a missing fault.** `runner._wait_for_fault` greps
+  `kubectl get pods` for pod-phase keywords, every one of which is a failure phase, so a fault
+  that leaves pods `Running` is outside what it can observe — four scenarios time out
+  deterministically while the fault is demonstrably present. The timeout branch now separates
+  `unobservable` (pods healthy; a limit of the probe) from `no_pods` (the one timeout worth
+  investigating), and the observation, including the keyword list that defines the blind spot,
+  is stored on the record instead of printed and discarded.
+- **Run metadata names the code that ran, or says why it cannot.** `_write_metadata` shelled
+  `git rev-parse HEAD` and fell back to `"unknown"` on any exception, which fired for every run
+  on a VM with no `.git`. The correct commit was already in `provenance/manifest.json` in the
+  same directory, resolved by `_harness_block` — one run directory, two provenance files
+  disagreeing, and the one every reader opens held the wrong one. Metadata now asks that same
+  resolver and records `git_commit_source`; an unresolvable commit reads `"unavailable"` with the
+  reason, never `"unknown"`, which reads like a value.
+
+- **"Temperature 0 and a fixed seed" does not make a local judge reproducible, and the docstring
+  said it did.** `rescore_ollama.py` claimed "Reproducible by anyone with the same Ollama model
+  pulled." Measured on the nine-scenario calibration set: the same `gemma3:12b` (digest
+  `f4031aab637d`), the same Ollama `0.32.15`, the same seed and temperature, and **both hosts
+  running fully on CPU** (`size_vram: 0` on each, so no GPU confound) — yet **5 of 9 scenarios
+  scored differently across two machines**, mean |Δ| 2.11, max **8 points out of 40**. A second
+  run on the *same* host reproduced all **9/9** exactly. The hosts differ only in SIMD path and
+  thread count (an i7-1370P without AVX-512 at 20 threads versus an EPYC 9V74 with `avx512_vnni`
+  at 16); threaded matmul reduces partial sums in a hardware-dependent order, floating-point
+  addition is not associative, and greedy decoding turns a near-tie into a different token. The
+  docstring now states the measurement and directs readers to regenerate tables from the archived
+  `scores_<tag>.json` rather than by re-judging. The submitted paper needs no correction: its
+  appendix already describes this judge as deterministically *configured* rather than provably
+  bit-exact, and names backend and kernel scheduling among the residual sources.
+- **A cost report wrote a file nobody asked for, into a directory this repo does not have.**
+  `evaluation/cost.py` declared `--output` with `default="paper/tables/cost.md"` — the canonical
+  trees are `papers/` (plural) and `evaluation/runs/**/_analysis/`. Every defaulted invocation
+  silently created an untracked `paper/` at the repo root holding a second, divergent copy of a
+  table that already existed somewhere canonical, and nothing warned, because writing an
+  unrequested file is indistinguishable from success. `./ship` stages with `add -A` on both gits,
+  so a stray root directory was one careless invocation from being committed. The table now always
+  goes to stdout and a file is written only when `--output` is given.
+
+- **A test suite that could reach a live judge, and only passed because none was running.**
+  `evaluation/test_judge_model_axis_refusals.py` proved the completeness gate had let a design
+  through by watching the robustness judge's pre-flight abort — an abort that happened only
+  because no Ollama server was up. Once one was running locally the same test stopped proving
+  anything and started *judging*: 10 arm-repeats x 27 synthetic scenarios against a real 12B
+  model, for minutes, competing with the campaign's own judge validation for that server, and
+  the processes outlived the pytest run that spawned them. The tests now point the judge at a
+  closed port, so the abort is the same on every machine: the file went from 127s and failing
+  to **7.3s and green**.
+- **The judging gate counted answers, not the records the judges read.**
+  `judge_model_axis.sh` required 27 `*_response.txt` per arm-repeat but never checked for the
+  27 `<scenario>.json` records that `score_run` and `rescore_ollama` actually score. An
+  arm-repeat that lost its records passed the gate, both judges wrote a scores file reporting
+  "0 scenarios" and exited 0, and only `analyze_h2.py` objected — at the end, with the credit
+  and the hours already spent, which is the exact outcome the gate exists to prevent.
+
+- **`evaluation/check_fault_confirmation.py`** — tells a fault-probe blind spot apart from a
+  missing fault. `_wait_for_fault` matches pod-phase keywords only, so four of the 27 scenarios
+  can never be confirmed and log `timeout — proceeding.` in every arm; the line reads as an
+  absent fault and is not one. The checker classifies each scenario (confirmed / sporadic /
+  blind spot) and fails only on an *empty observation* — never confirmed **and** no substantive
+  answer in any arm, the one case that carries no evidence in either direction.
+
+- **A test module narrowed the blocklist for the whole pytest process, and eight security cases
+  silently stopped existing.** `evaluation/test_autonomy_containment.py` pinned its policy with
+  `os.environ.setdefault(...)` at *module scope* — under a comment saying it made the test
+  env-independent, which it achieved by making every later module depend on it instead. Because
+  `v4/tests/test_the_snapshot_is_not_a_second_cluster.py` parametrised over
+  `settings.kubectl_blocked_namespaces`, the narrowed list *deleted* its cases rather than failing
+  them: every case proving `cert-manager`, `ingress-nginx`, `kube-public` and `kube-node-lease` are
+  refused at the funnel and absent from the prompt simply was not collected. Nothing turned red;
+  the suite reported green having tested less of the product. The only visible symptom was the
+  doc-claims gate reporting a suite-count drift nobody had caused (4551 vs 4543), which reads as a
+  stale number rather than as missing coverage. The blocklist cases now parametrise over the
+  *shipped* default read from the `Settings` field, a fixture pins the guard to that same set, and
+  a new test asserts the collected node ids are identical under a deliberately narrowed
+  `KUBECTL_BLOCKED_NAMESPACES`. `setdefault` had not even delivered what it promised: where the
+  variable was already set, the ambient value won.
+
+- **A rate-limited judge scored as a bad answer.** `evaluation/judge.py` turned any transport
+  exception into `{"total": 0, "result": "error"}` with no retry, so a single HTTP 429 removed
+  that scenario from `scores.json`, which in turn made `analyze_h2.py` refuse the whole arm for
+  being short. Judging 270 scenarios serially against a 5,000 TPM deployment, that made *which
+  model reached the primary analysis* a function of when the quota happened to run out. The
+  transport now retries a transient failure (429, 5xx, timeout, connection reset) up to six times
+  with jittered exponential backoff, honouring a server `Retry-After` when one is sent, and a
+  deterministic failure (HTTP 400, content filter, unknown deployment) still fails on the first
+  attempt rather than six. A judge error also records *why* it failed instead of the bare string
+  `judge failed`. Retrying changes no measurement — the rubric, prompt and model are identical on
+  attempt 4 and attempt 1.
+- **A cost row named the directory, not the arm.** `evaluation/cost.py` labelled each row with
+  `run_dir.name`, which is the literal string `results` for every lane that nests its output — the
+  model-axis lane writes `runs/model-axis/<arm>-r<n>/results/`, so five arms produced five rows all
+  called `results` and no dollar figure could be attributed to a model. The arms differ in unit
+  price by 20x. The label now comes from the run's own `metadata.json["tag"]`, falling back to the
+  arm directory when the leaf is generic.
+- **The cross-family judge is now required to demonstrate discrimination before it is used.**
+  `evaluation/validate_robustness_judge.py` scores a candidate on nine calibration scenarios drawn
+  from an archived run and adopts it only if its totals span at least 8 points, separate the
+  known-good from the known-bad group by at least 4 points, and leave headroom (at most 3 of 9
+  perfect). A second judge that scores everything 40/40 agrees with nothing and disagrees with
+  nothing, so it cannot serve as a control; candidates are tried in a fixed order and, if none
+  passes, the robustness analysis is reported as not performed rather than quietly skipped.
+- **An unreachable cross-family judge was recorded as a judge that scored zero.**
+  `rescore_ollama.py`'s `_call_ollama` returned `""` after exhausting its retries; the parser
+  turned that into `{}` and the normaliser into every dimension `0`, `total: 0`, `result: "fail"`
+  — a transport timeout written into `scores_<tag>.json` as the judge's considered opinion that
+  the answer was worthless, then averaged into the arm's mean. A 12B judge takes ~71 s per
+  scenario on CPU and the timeout was 180 s, so this would have pulled down whichever arm happened
+  to be judged while the host was slow. It now raises, the scenario is **excluded** rather than
+  scored, the reason is written to `judge/errors-<tag>.json` (a subdirectory, so it cannot become
+  a phantom scenario), an unparseable reply is treated the same way, and a run that comes up short
+  exits 3 instead of reporting a complete-looking mean. Default timeout raised to 900 s
+  (`RESCORE_TIMEOUT_S`).
+- **The cross-family judge could run on the host it was measuring.** `rescore_ollama.py` serves a
+  12B model on CPU, which takes every core of the evaluation VM, while the runs it scores recorded
+  `latency_s` on that same VM. Starting a re-score during a campaign lane took the 1-minute load
+  average from 0.44 to 9.6 on 16 cores. It now refuses to start while `run_model_axis_lane.sh`,
+  `run_rca_lift_lane.sh` or `run_campaign.sh` is alive on the host, naming the process it found;
+  `--allow-concurrent-lane` overrides it for runs whose latency is being discarded anyway.
+  The guard distinguishes a lane being **run** from a command that merely names one: a
+  `pgrep -f` substring match also catches an editor open on the lane script, a `less` on its
+  log, and the guard's own command line, and a guard nobody can satisfy is one that gets
+  routinely overridden. The lane script must be `argv[0]`, or `argv[1..]` of a shell.
+- **A second judge's scores file was loaded as an evaluation scenario.** `evaluation/compare.py`'s
+  `load_run` skipped exactly `metadata.json` and `scores.json`, so the cross-family re-scoring
+  written by `rescore_ollama.py` as `scores_<tag>.json` was globbed in as a scenario record with
+  `aggregate_score` 0.0, `latency_ms` 0 and 0 tool calls — present only in run directories that had
+  been re-scored, which made it a bias rather than noise. Judge means, pass rates, resolution rates
+  and token means are provably unaffected (each drops the record through a `None`/`> 0` guard);
+  latency and tool-call means were biased low by 1.3–1.6% on the arms that had a second judge and
+  0% on the one that did not. Now skips every `scores*.json`.
+- **The v4 test suite was red, and its result depended on an untracked file.**
+  `compute_rqb_table`'s pass-rate assertion had been left on a strict `> 28` after the function was
+  corrected to `>= 28` (`judge.PASS_THRESHOLD`), and on a bare token mean after that cell grew its
+  own denominator. Separately, `evaluation/runner.py` calls `load_dotenv()` at import time, so
+  importing one test module loaded the developer's repo-root `.env` into `os.environ` for the rest
+  of the process — green on CI, which has no `.env`, and red on any machine that does. Test
+  environments are now snapshotted per test.
+- **The importance-ranked recall query could never run.** `_SQL_RECALL_TRGM_IMP` sorted by
+  `sim * <weight>` where `sim` is a SELECT-list alias, which PostgreSQL rejects inside a larger
+  expression, so the query raised `column "sim" does not exist` on **every** call. It is the query
+  used when `MEMORY_IMPORTANCE` is on and `MEMORY_HYBRID_RETRIEVAL` is off. The non-hybrid error
+  path then returned `[]`, so a query the database could not parse reached the model as an
+  *absence of prior incidents*; it now raises `MemoryUnavailable`, matching the hybrid path.
+
+- **"Do not retry an unavailable tool" had nothing to key on in six of its eight cases.** The
+  cortex gather prompt has instructed the model since V4 to stop calling a tool that "replies that
+  it is not configured or unavailable". Driving every such reply: only the two "the URL is unset"
+  messages contained either word. A missing `kubectl`/`helm` binary, a refused Prometheus or Loki
+  connection, and an unreachable cluster carried neither — the three cases where a retry provably
+  cannot succeed. All of them now append a shared `[unavailable]` marker that the prompt names
+  explicitly and that `POLICY_LINE_RE` protects from the downstream trims, while answerable
+  failures (a missing pod, an RBAC denial) deliberately keep it off, since a differently shaped
+  command can still get at those.
+- **kubectl's most common cluster-down message matched no error pattern.** "The connection to the
+  server 127.0.0.1:6443 was refused - did you specify the right host or port?" puts four words
+  between "connection" and "refused", so the `apiserver_unreachable` pattern missed it: a cluster
+  that was simply down produced no interpreter hint and no classification at all.
+
+### Fixed
+
+- **Two truncation markers used words no prompt named, and the cortex prompts named none at all.**
+  The coordinator instructs the model to warn when tool output contains `[truncated` or
+  `chars omitted`. Driving every shortening site over its cap and measuring what it really emitted:
+  `run_kubectl` and `query_loki` conformed, `run_helm` wrote `[... N chars truncated]` and the
+  cortex subagent summary bound wrote `…[summary truncated …]` — matching neither string, and
+  therefore also unrecognised as policy lines the downstream trims must preserve. The cortex
+  gather and synthesis tiers, meanwhile, carried no instruction about truncated output whatsoever.
+  Marker text, instruction, and the patterns they must agree on now come from one module
+  (`app/tools/output_policy.py`); the triage tier, which answers in strict JSON and must not print
+  a warning, gets the inference rule instead — partial context is not evidence of health. Triage's
+  own `snapshot[:3000]` slice, the third silent cut in this family, now reports what it dropped and
+  keeps the `[Protected] … withheld` sentence that used to fall off its end.
+
+### Fixed
+
+- **The V4 cortex deleted the truncation notice `run_kubectl` had just written — deterministically,
+  not occasionally.** `run_kubectl` caps its output at 8 000 characters and appends
+  `[truncated: N chars omitted …]` *after* that cap, so an over-cap listing comes back at 8 173
+  characters; the cortex bound was `content[:8000]`, the same number, so it removed exactly the
+  notice on every single over-cap listing, and took the `[Protected] … withheld` sentence off a
+  filtered one at the budget the same way. The model then read a clipped listing as a complete
+  one on a route that is not optional for everyone — `LLM_PROVIDER=anthropic` requires
+  `CORTEX_V4_ENABLED`. The two layers that bound tool results now share one predicate for "this
+  line is about the result, not part of it" (`app/tools/output_policy.py`) and both carry those
+  lines across their own cut. The chop of the rows themselves stays silent by default, which is
+  what the ADR-101 harness flag exists to change; destroying another layer's sentence was never
+  part of that trade.
+
 ### Fixed
 
 - **The coordinator's tool-output trimmer dropped rows in silence, and deleted the `[Protected]`

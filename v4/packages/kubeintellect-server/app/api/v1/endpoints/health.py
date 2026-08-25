@@ -50,6 +50,18 @@ class HealthResponse(BaseModel):
     # Whether the memory hierarchy (L1 episodes, L2 knowledge graph, consolidation) is running.
     # A pod that lost the race with Postgres has none of it and looks identical to a cluster
     # where nothing has happened — so it has to be askable, not inferred from an empty graph.
+    #
+    # `enabled` reports that the POOL is up, which is not the same claim as "memory works": an
+    # evaluation lane once ran nine hours with `enabled: true` while nothing was ever written or
+    # recalled, and health was green the whole time without saying anything false. So this block
+    # also carries observed behaviour — `recall_attempts`, `recall_hits`, `recall_failures`,
+    # `episodes_written` — plus `symptoms` (plain statements of what is observably wrong) and
+    # `healthy`, the single boolean to key on. `healthy: false` with `enabled: true` is the
+    # connected-but-doing-nothing case that used to be invisible.
+    #
+    # Note this deliberately does NOT move the top-level `status`. That is liveness, and failing
+    # it would restart a pod whose memory is merely cold — turning a degraded subsystem into a
+    # crash loop, which is the trap the module docstring above warns about.
     memory: dict = Field(default_factory=dict)
     # Whether anything is actually watching the cluster. The four blocks above each exist
     # because an empty table reads as a quiet cluster; perception is the subsystem that

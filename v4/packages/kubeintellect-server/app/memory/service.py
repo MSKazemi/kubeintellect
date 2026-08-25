@@ -29,7 +29,7 @@ import asyncio
 import asyncpg
 
 from app.core.config import settings
-from app.memory import episodes, kg, preferences
+from app.memory import episodes, kg, liveness, preferences
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -43,6 +43,14 @@ _tasks: list[asyncio.Task] = []
 _state: str = "starting"
 _reason: str = ""
 _dropped_observations: int = 0
+_ingest_failures: int = 0
+
+# A drain failure that repeats is not an incident, it is an outage: the queue may be bound to a
+# dead loop, or Postgres may be gone. Retrying instantly cannot fix either, and once cost a run
+# 16,690,848 identical log lines and 3 GB. Back off, and say so out loud after this many in a row.
+_INGEST_FAILURES_BEFORE_DEGRADED: int = 3
+_INGEST_BACKOFF_MIN_S: float = 0.05
+_INGEST_BACKOFF_MAX_S: float = 30.0
 
 #: Seconds between reconnect attempts while the pool is down.
 _RETRY_INTERVAL_S = 30.0
@@ -57,12 +65,29 @@ def memory_status() -> dict:
 
     ``observations_dropped`` is what turns "the knowledge graph is empty" from a guess into a
     fact — the sensorium keeps producing whether or not anything is there to receive.
+
+    ``recall_*``/``episodes_written`` answer the question ``enabled`` cannot: whether memory is
+    doing anything, as opposed to merely being reachable. ``symptoms`` is the short human-readable
+    summary, and ``healthy`` is the single boolean a probe or a benchmark gate should key on —
+    false whenever the process is connected but observably not working.
     """
+    symptoms = liveness.symptoms(
+        state=_state, observations_dropped=_dropped_observations
+    )
     return {
         "enabled": _state == "ready",
         "state": _state,
         "reason": _reason,
         "observations_dropped": _dropped_observations,
+        "ingest_failures": _ingest_failures,
+        # Observed behaviour. `enabled` says the pool is up; these say whether anything came
+        # out of it. A run where `recall_attempts` is high and `recall_hits` is 0 is the exact
+        # shape of the nine-hour dead-memory lane described at the top of this module.
+        **liveness.counters(),
+        # Empty means nothing observably wrong. Non-empty is the machine-readable version of
+        # "do not trust memory-dependent results from this process".
+        "symptoms": symptoms,
+        "healthy": _state in {"ready", "flag", "sqlite"} and not symptoms,
     }
 
 
@@ -81,6 +106,52 @@ async def init_memory() -> None:
         return
     # Not fatal and, crucially, not final: keep one task alive whose only job is to try again.
     _tasks.append(asyncio.get_running_loop().create_task(_reconnect_loop()))
+
+
+async def init_memory_readonly() -> bool:
+    """Bind the hierarchy for READING ONLY: pool + query modules, no workers, no consolidation.
+
+    `init_memory` is a *server* startup. Two of the things it starts are writers: the
+    observation drain, and the consolidation schedule — whose startup pass backfills
+    `rca_outcomes` into `episodes` and whose later passes promote rules, build summaries and
+    fire prospective rechecks. That is correct for the process that owns the cluster's memory,
+    and wrong for any process that only wants to look at it.
+
+    It cost a confirmatory run to learn that. On 2026-08-24 the OpsMemBench metric reader called
+    `init_memory()` in-process to answer "which episode did the agent write for this fault?".
+    On the No-memory control arm the reader's own startup consolidation pass then backfilled one
+    row into an `episodes` table the arm gate requires to stay empty, and the gate voided the
+    arm — correctly, because a control that holds an episode is not a control. The instrument
+    was writing to the thing it was measuring, and the only reason it was caught is that the
+    gate counted rows rather than trusting `/healthz` (which reported `episodes_written: 0`,
+    since a backfill is deliberately not a live write).
+
+    Returns True when the pool is bound. Never raises, never retries: a reader with no database
+    reports nothing, which is the honest answer, whereas a reader that blocks or retries turns
+    a measurement into an outage.
+    """
+    global _pool, _state, _reason
+    if settings.USE_SQLITE:
+        _state, _reason = "sqlite", "USE_SQLITE=true — hierarchy needs Postgres"
+        logger.info("memory: SQLite mode — read-only reader not attached")
+        return False
+    try:
+        _pool = await asyncpg.create_pool(
+            settings.POSTGRES_DSN, min_size=1, max_size=2, command_timeout=5
+        )
+    except Exception as exc:
+        _pool = None
+        _state, _reason = "unavailable", str(exc)
+        logger.warning(f"memory: read-only reader could not connect ({exc})")
+        return False
+    # Wire the query surfaces onto the pool — and stop. No `_obs_queue`, so `enqueue_observation`
+    # cannot ingest; no tasks, so nothing consolidates. Deliberately NOT `_activate`.
+    episodes.init_episodes(_pool)
+    kg.init_kg(_pool)
+    preferences.init_preferences(_pool)
+    _state, _reason = "ready", ""
+    logger.info("memory: read-only reader attached (no observation drain, no consolidation)")
+    return True
 
 
 async def _try_connect() -> bool:
@@ -105,14 +176,26 @@ async def _try_connect() -> bool:
 def _activate(pool: asyncpg.Pool) -> None:
     """Wire the hierarchy onto a live pool. Split out of init_memory so the reconnect loop
     finishes startup properly rather than leaving a pool with no workers on it."""
-    global _obs_queue, _state, _reason
+    global _obs_queue, _state, _reason, _ingest_failures
     episodes.init_episodes(pool)
     kg.init_kg(pool)
     preferences.init_preferences(pool)
+
+    # Activation must be idempotent. It is reached twice in the ordinary reconnect case, and the
+    # previous generation of workers is still running when it is: leaving them alive left a drain
+    # task awaiting a queue that had since been rebound on another loop, which is unrecoverable
+    # and silent. Cancel the old generation before creating the new one.
+    for task in _tasks:
+        task.cancel()
+    _tasks.clear()
+
     _obs_queue = asyncio.Queue(maxsize=10_000)
+    _ingest_failures = 0
 
     loop = asyncio.get_running_loop()
-    _tasks.append(loop.create_task(_drain_observations()))
+    # The queue is passed in, not read from the global: a worker must not be able to reach a
+    # queue created after it was, no matter what reassigns the global while it runs.
+    _tasks.append(loop.create_task(_drain_observations(_obs_queue)))
 
     from app.memory.consolidation import consolidation_loop, run_consolidation_once
 
@@ -141,8 +224,9 @@ async def _reconnect_loop() -> None:
 
 
 async def close_memory() -> None:
-    global _pool, _obs_queue, _state, _reason
+    global _pool, _obs_queue, _state, _reason, _ingest_failures
     _state, _reason = "starting", ""
+    _ingest_failures = 0
     for task in _tasks:
         task.cancel()
     _tasks.clear()
@@ -175,14 +259,46 @@ def enqueue_observation(obs) -> None:
         _dropped_observations += 1
 
 
-async def _drain_observations() -> None:
-    assert _obs_queue is not None
+async def _drain_observations(queue: asyncio.Queue) -> None:
+    """Drain the observation queue onto the knowledge graph.
+
+    Failures here used to be logged and retried immediately, forever. That is right for an
+    incidental error and catastrophic for a persistent one, which is the case that actually
+    occurs: the loop cannot make progress, cannot stop, and never tells anyone -- `_state` stayed
+    "ready" while every observation was discarded. So: count consecutive failures, back off
+    between them, and degrade the reported state once the failures are clearly not incidental.
+    """
+    global _ingest_failures, _state, _reason
+    backoff = _INGEST_BACKOFF_MIN_S
     while True:
         try:
-            obs = await _obs_queue.get()
+            obs = await queue.get()
             if obs.kind == "pod_status":
                 await kg.ingest_pod_observation(obs)
         except asyncio.CancelledError:
             break
         except Exception as exc:
-            logger.warning(f"memory: observation ingest error: {exc}")
+            _ingest_failures += 1
+            # Log the first, then thin out: the point of the counter is that the log does not
+            # have to carry the volume.
+            if _ingest_failures == 1 or _ingest_failures % 100 == 0:
+                logger.warning(
+                    f"memory: observation ingest error ({_ingest_failures} consecutive): {exc}"
+                )
+            if _ingest_failures >= _INGEST_FAILURES_BEFORE_DEGRADED and _state == "ready":
+                _state = "degraded"
+                _reason = f"observation ingest failing: {exc}"
+                logger.error(
+                    f"memory: ingest has failed {_ingest_failures} times in a row — the "
+                    f"knowledge graph is no longer being updated ({exc})"
+                )
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, _INGEST_BACKOFF_MAX_S)
+            continue
+        # Progress: this generation is healthy again.
+        if _ingest_failures:
+            _ingest_failures = 0
+            backoff = _INGEST_BACKOFF_MIN_S
+            if _state == "degraded":
+                _state, _reason = "ready", ""
+                logger.info("memory: observation ingest recovered")

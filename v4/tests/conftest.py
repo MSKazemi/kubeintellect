@@ -9,6 +9,8 @@ import os
 import sys
 from unittest.mock import MagicMock
 
+import pytest
+
 # ── Evaluation-harness tests ─────────────────────────────────────────────────
 # These modules test the `evaluation/` research harness, which lives outside the
 # published source tree. Skip collecting them when it is not importable, so the
@@ -50,3 +52,30 @@ os.environ["DEMO_KEY_HMAC_SECRET"] = ""
 _pg_saver = MagicMock()
 _pg_saver.AsyncPostgresSaver = MagicMock()
 sys.modules.setdefault("langgraph.checkpoint.postgres.aio", _pg_saver)
+
+
+# ── One test's import must not change the next test's environment ────────────
+# `evaluation/runner.py` calls `load_dotenv()` at IMPORT time, so importing
+# `test_evaluation_runner.py` loads the developer's repo-root `.env` into
+# `os.environ` for the rest of the process. The clearing above runs at collection,
+# before that import, so it cannot undo it.
+#
+# Measured: `USE_SQLITE` went `None -> 'false'` at that import and stayed, and
+# `test_a_missing_project_env_is_not_an_error` — which asserts a config file's
+# `USE_SQLITE=true` reaches the environment — failed in the full suite while
+# passing alone. `load_dotenv()` does not override a variable already set, which
+# is why the four auth-key lists (explicitly set to "" above) survived and this
+# one did not: the blast radius is exactly the variables conftest does not name.
+#
+# The fix is here rather than in `evaluation/runner.py`: that module is executing
+# a live campaign and its module-level `DEFAULT_URL`/`DEFAULT_KEY` are read from
+# the environment that `load_dotenv()` populates. Snapshotting per test also
+# covers the next module that mutates the environment at import, which naming one
+# more variable would not.
+@pytest.fixture(autouse=True)
+def _isolate_environment():
+    saved = dict(os.environ)
+    yield
+    if os.environ != saved:
+        os.environ.clear()
+        os.environ.update(saved)

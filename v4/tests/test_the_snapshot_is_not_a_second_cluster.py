@@ -19,7 +19,9 @@ The tests below are grouped by the layer they cover, so a reverted layer fails i
 from __future__ import annotations
 
 import asyncio
+import os
 import subprocess
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -33,7 +35,31 @@ from app.agent.nodes.context_fetcher import (
     _snapshot_refusal,
 )
 from app.agent.workflow import targeted_investigator
-from app.core.config import settings
+from app.core.config import Settings, settings
+
+# The parameter list below must not be read from ambient configuration. `settings` resolves
+# KUBECTL_BLOCKED_NAMESPACES from the environment at import time, so a developer, a CI job or
+# merely an unrelated module that narrows the list collected *fewer* cases: the namespaces the
+# product ships as protected went unproven and the suite still reported green. Measured
+# 2026-08-25 — importing `evaluation/test_autonomy_containment.py`, which set the variable to
+# three namespaces at module scope, silently deleted eight cases here, and the only visible
+# symptom was the doc-claims gate reporting a suite-count drift nobody had caused.
+#
+# Parametrising over the shipped default instead makes both the case list and the guard's own
+# answer independent of the environment: what is proven is the protection the product ships
+# with, which is the claim the tests exist to support. An operator's own additions are a
+# deployment concern and are checked by `app.core.config_audit`.
+_SHIPPED_BLOCKED_CSV: str = Settings.model_fields["KUBECTL_BLOCKED_NAMESPACES"].default
+SHIPPED_BLOCKED_NAMESPACES: tuple[str, ...] = tuple(
+    sorted(ns.strip().lower() for ns in _SHIPPED_BLOCKED_CSV.split(",") if ns.strip())
+)
+
+
+@pytest.fixture
+def _shipped_blocklist(monkeypatch):
+    """Pin the guard to the shipped blocklist, so the assertion matches the parameter."""
+    monkeypatch.setattr(settings, "KUBECTL_BLOCKED_NAMESPACES", _SHIPPED_BLOCKED_CSV)
+
 
 PODS_TABLE = (
     "NAMESPACE       NAME                  READY   STATUS             RESTARTS   AGE\n"
@@ -109,8 +135,8 @@ class TestTheClusterWideSnapshotIsFiltered:
 
 # ── L2 · a blocked namespace is refused before the subprocess runs ────────────
 class TestABlockedNamespaceIsRefusedAtTheFunnel:
-    @pytest.mark.parametrize("ns", sorted(settings.kubectl_blocked_namespaces))
-    def test_every_blocked_namespace_is_refused(self, ns):
+    @pytest.mark.parametrize("ns", SHIPPED_BLOCKED_NAMESPACES)
+    def test_every_blocked_namespace_is_refused(self, ns, _shipped_blocklist):
         assert _snapshot_refusal(["get", "pods", "-n", ns]) is not None
 
     @pytest.mark.parametrize("spelling", [
@@ -266,8 +292,8 @@ class TestTheRenderedSnapshot:
         with patch.object(subprocess, "run", _run):
             return asyncio.run(cf.context_fetcher({"session_id": "t"}))
 
-    @pytest.mark.parametrize("ns", sorted(settings.kubectl_blocked_namespaces))
-    def test_no_blocked_namespace_appears_in_the_prompt(self, ns):
+    @pytest.mark.parametrize("ns", SHIPPED_BLOCKED_NAMESPACES)
+    def test_no_blocked_namespace_appears_in_the_prompt(self, ns, _shipped_blocklist):
         assert ns not in self._snapshot()["cluster_snapshot"]
 
     @pytest.mark.parametrize("secret", ["openai-api-key", "6443/livez", "etcd-control-plane"])
@@ -282,3 +308,53 @@ class TestTheRenderedSnapshot:
 
     def test_the_withholding_is_stated_not_implied(self):
         assert "withheld" in self._snapshot()["cluster_snapshot"]
+
+
+# ── L5 · the case list itself is a property of the product, not of the shell ──
+class TestTheCaseListDoesNotDependOnTheEnvironment:
+    """A guard whose coverage shrinks with the environment is not a guard.
+
+    Both blocklist tests above used to parametrise over `settings.kubectl_blocked_namespaces`,
+    which is resolved from the environment at import. Narrowing `KUBECTL_BLOCKED_NAMESPACES`
+    therefore *deleted* cases rather than failing any: on 2026-08-25 an unrelated module set it
+    to three namespaces at import scope and eight cases — every one proving `cert-manager`,
+    `ingress-nginx`, `kube-public` and `kube-node-lease` are refused — silently stopped
+    existing. Nothing turned red. The suite reported green with less of the product tested.
+
+    These two tests make that failure loud: the shipped set is pinned to a literal, and the
+    collected node ids are asserted identical under a deliberately narrowed environment.
+    """
+
+    def test_the_shipped_set_is_what_the_product_ships(self):
+        assert set(SHIPPED_BLOCKED_NAMESPACES) == {
+            "cert-manager",
+            "ingress-nginx",
+            "kube-node-lease",
+            "kube-public",
+            "kube-system",
+            "kubeintellect",
+            "monitoring",
+        }
+
+    def test_collection_is_identical_under_a_narrowed_blocklist(self):
+        def node_ids(blocklist: str) -> list[str]:
+            proc = subprocess.run(  # noqa: S603 - fixed argv, no shell
+                [
+                    sys.executable, "-m", "pytest",
+                    "--collect-only", "-q", "--no-header", "-p", "no:randomly",
+                    __file__,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=300,
+                env={**os.environ, "KUBECTL_BLOCKED_NAMESPACES": blocklist},
+            )
+            return sorted(ln for ln in proc.stdout.splitlines() if "::" in ln)
+
+        wide = node_ids(_SHIPPED_BLOCKED_CSV)
+        narrow = node_ids("kube-system")
+        assert wide, "collection produced no node ids — the probe itself is broken"
+        assert wide == narrow, (
+            "collected cases changed with KUBECTL_BLOCKED_NAMESPACES: "
+            f"{len(wide)} vs {len(narrow)}"
+        )

@@ -587,6 +587,28 @@ Layer 6 — namespace output filter
   return value and not for what the agent read. Policy lines are now lifted out of the trim and
   re-attached, and dropped rows and lines are counted in the notice.
 
+  ⚠️ **There are two routes to the model, and the second one had the same defect** (fixed
+  2026-08-24). The V4 cortex bounds tool results with its own cut, and that cut was
+  `content[:8000]` — the *same* number this layer caps at. Because the notice below is appended
+  **after** the cap, `run_kubectl` returns 8 173 characters for an over-cap listing and the cortex
+  bound removed the last 173: the notice, every time, by construction rather than by luck. The
+  `[Protected] … withheld` sentence went the same way on any filtered listing at the budget. That
+  route is not optional for everyone — `LLM_PROVIDER=anthropic` requires `CORTEX_V4_ENABLED`. Both
+  layers now share one predicate for "this line is about the result, not part of it"
+  (`app/tools/output_policy.py`) and carry those lines across their own bound.
+
+  ⚠️ **A marker nobody is looking for is not a warning** (fixed 2026-08-24). Surviving the trim is
+  half of it; the other half is being written in the words the reader was told to watch for. Every
+  shortening site was driven over its cap and its real output measured: `run_kubectl` and
+  `query_loki` conformed, **`run_helm` wrote `[... N chars truncated]`** and the cortex subagent
+  bound wrote **`…[summary truncated …]`** — neither matching either string the prompt names, and
+  neither recognised as a policy line, so those two were also the ones the downstream trims were
+  free to delete. Worse, **the three cortex prompts named no vocabulary at all**: on that route a
+  perfectly formed marker was read by a model that had never been told what it meant. The marker
+  text, the instruction, and the patterns they must agree on now come from one module, and the
+  triage tier — which answers in strict JSON and must not print a warning — gets the inference
+  rule instead: partial context is not evidence of health.
+
 Layer 7 — output cap
   Output is truncated at 8 000 characters regardless of what kubectl returns.
   Prevents memory exhaustion from pathological outputs and includes an explicit

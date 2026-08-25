@@ -16,6 +16,7 @@ import httpx
 from langchain_core.tools import tool
 
 from app.core.config import settings
+from app.tools.output_policy import mark_unavailable
 from app.tools.namespace_guard import (
     all_withheld_message,
     blocked_namespace_in_query,
@@ -99,7 +100,10 @@ def _query_typed(promql: str, range_minutes: int) -> tuple[str, Any, str | None]
     """
     base_url = _base_url()
     if base_url is None:
-        return "", None, "Prometheus is not configured. Set PROMETHEUS_URL in ~/.kubeintellect/.env and restart."
+        return "", None, mark_unavailable(
+            "Prometheus is not configured. Set PROMETHEUS_URL in ~/.kubeintellect/.env and restart.",
+            "Prometheus is not configured.",
+        )
     logger.debug(f"query_prometheus: {promql!r} range_minutes={range_minutes}")
     try:
         with httpx.Client(timeout=15.0) as client:
@@ -124,9 +128,10 @@ def _query_typed(promql: str, range_minutes: int) -> tuple[str, Any, str | None]
         payload = data.get("data", {})
         return str(payload.get("resultType", "")), payload.get("result", []), None
     except httpx.ConnectError:
-        return "", None, (
+        return "", None, mark_unavailable(
             f"Cannot reach Prometheus at {base_url}. "
-            "Is kube-prometheus-stack deployed? (make install-prometheus-kind)"
+            "Is kube-prometheus-stack deployed? (make install-prometheus-kind)",
+            "Prometheus cannot be reached.",
         )
     except httpx.TimeoutException:
         return "", None, "Prometheus query timed out (15s)."

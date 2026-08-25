@@ -18,6 +18,7 @@ import httpx
 from langchain_core.tools import tool
 
 from app.core.config import settings
+from app.tools.output_policy import mark_unavailable
 from app.tools.namespace_guard import (
     all_withheld_message,
     blocked_namespace_in_query,
@@ -59,7 +60,10 @@ def query_loki(logql: str, limit: int = 100, since: str = "1h") -> str:
         Formatted log lines or metric values, capped at 6 000 characters.
     """
     if not settings.LOKI_URL:
-        return "Loki is not configured. Set LOKI_URL in ~/.kubeintellect/.env and restart."
+        return mark_unavailable(
+            "Loki is not configured. Set LOKI_URL in ~/.kubeintellect/.env and restart.",
+            "Loki is not configured.",
+        )
 
     blocked_ns = blocked_namespace_in_query(logql)
     if blocked_ns:
@@ -86,9 +90,10 @@ def query_loki(logql: str, limit: int = 100, since: str = "1h") -> str:
                 output = _log_query(client, base_url, logql, limit, start_ns, now_ns)
 
     except httpx.ConnectError:
-        return (
+        return mark_unavailable(
             f"Cannot reach Loki at {base_url}. "
-            "Is Loki deployed? (make install-loki-kind)"
+            "Is Loki deployed? (make install-loki-kind)",
+            "Loki cannot be reached.",
         )
     except httpx.TimeoutException:
         return "Loki query timed out (15s)."

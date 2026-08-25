@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from app.tools.aci import ACI_READ_VERB_ALLOWLIST
+from app.tools.output_policy import truncation_marker
 
 # ~2k-token summary budget. Chars-per-token ≈ 4 (English/code heuristic); kept explicit and
 # conservative so the bound is deterministic without a tokenizer dependency.
@@ -69,7 +70,12 @@ def bound_summary(text: str, max_tokens: int = SUMMARY_MAX_TOKENS) -> tuple[str,
     nl = cut.rfind("\n")
     if nl > max_chars // 2:  # only prefer a line break if it isn't wastefully early
         cut = cut[:nl]
-    return cut.rstrip() + "\n…[summary truncated to fit the 2k-token subagent budget]", True
+    # The marker said "[summary truncated …]" until 2026-08-24: an explicit marker, in words no
+    # prompt names. The lead agent is instructed to warn on `[truncated` / `chars omitted`.
+    marker = truncation_marker(
+        len(text) - len(cut), hint="summary cut to fit the 2k-token subagent budget"
+    )
+    return cut.rstrip() + "\n…" + marker, True
 
 
 def finalize_result(contract: SubagentContract, raw_summary: str, verbs_used: list[str]) -> SubagentResult:

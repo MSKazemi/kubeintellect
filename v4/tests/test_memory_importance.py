@@ -54,7 +54,14 @@ class TestImportanceScore:
 
 class TestImportanceWeightedRecallSQL:
     def test_trgm_variant_weights_by_importance(self):
-        assert "sim * (0.5 + 0.5 * COALESCE(importance, 0.5))" in episodes._SQL_RECALL_TRGM_IMP
+        # ⚠️ This used to assert the literal `"sim * (0.5 + 0.5 * COALESCE(importance, 0.5))"`,
+        # which pinned the MECHANISM rather than the property — and the mechanism it pinned was
+        # a query Postgres rejects outright (`sim` is a SELECT-list alias, illegal inside an
+        # ORDER BY expression), so this test stayed green while the arm it covers could not
+        # recall anything at all. See test_the_importance_ranked_recall_query_never_ran.py.
+        s = episodes._SQL_RECALL_TRGM_IMP
+        assert "* (0.5 + 0.5 * COALESCE(importance, 0.5))" in s          # relevance is weighted
+        assert "ORDER BY sim *" not in s                                 # ...but not via the alias
         assert "COALESCE(importance" not in episodes._SQL_RECALL_TRGM   # flat variant untouched
 
     def test_hybrid_variant_threads_importance(self):
