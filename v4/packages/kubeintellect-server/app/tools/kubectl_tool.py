@@ -26,6 +26,7 @@ from langgraph.types import interrupt
 
 from app.core.config import settings
 from app.tools import kubectl_errors
+from app.tools.output_policy import mark_unavailable, unavailable_notice
 from app.tools.namespace_guard import (
     annotate_withheld,
     drop_blocked_table_rows,
@@ -1648,10 +1649,11 @@ def run_kubectl(
             shell=False,
         )
     except FileNotFoundError:
-        return (
+        return mark_unavailable(
             "[Error] kubectl is not installed or not found in PATH. "
             "Install it from https://kubernetes.io/docs/tasks/tools/ "
-            "or run 'kubeintellect kind-setup' to provision a local cluster."
+            "or run 'kubeintellect kind-setup' to provision a local cluster.",
+            "kubectl is not on PATH.",
         )
 
     stdout, stderr = proc.stdout or "", proc.stderr or ""
@@ -1688,6 +1690,7 @@ def run_kubectl(
     # is forbidden — returned a complete-looking listing with no sign a namespace was denied.
     if proc.returncode != 0 and not _exit_is_an_answer(verb, args, proc.returncode):
         detail = stderr.strip() or "(kubectl wrote nothing to stderr)"
+        pattern_name: str | None = None
         # Append a single-line hint when the stderr matches a known pattern. The original error
         # is preserved verbatim.
         if settings.KUBECTL_ERROR_HINTS_ENABLED:
@@ -1699,6 +1702,10 @@ def run_kubectl(
                     extra={"pattern": pattern_name, "exit_code": proc.returncode},
                 )
         output = f"[kubectl exited {proc.returncode}] {detail}"
+        if pattern_name in kubectl_errors.TERMINAL_PATTERNS:
+            # The apiserver is not answering — a second call to the same tool cannot get past
+            # that, and the prompt's "do not retry" rule needs a string to key on.
+            output += "\n" + unavailable_notice("The cluster is not reachable from here.")
         if kubectl_printed and stdout.strip():
             output += (
                 f"\n\nkubectl also produced this output before/alongside the error — it may be "

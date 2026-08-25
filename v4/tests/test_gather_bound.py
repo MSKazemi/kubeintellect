@@ -28,7 +28,12 @@ def test_flag_on_is_never_silent_and_line_aligned(monkeypatch):
     big = ("some log line here\n" * 1000)  # >8000 chars, many line boundaries
     out = _bound_tool_content(big)
     assert "truncated" in out                     # never silent (ADR-101)
-    assert not out.replace("\n…[summary truncated to fit the 2k-token subagent budget]", "").endswith("some")  # cut on a line boundary, not mid-token
+    # The marker used to be spelled out here as a literal; when its wording changed on 2026-08-24
+    # the `replace` matched nothing, the assertion below became a statement about the marker
+    # rather than about the cut, and this test passed while testing nothing. Strip whatever the
+    # last line is instead.
+    body = "\n".join(out.splitlines()[:-1])
+    assert body.endswith("here")                  # cut on a line boundary, not mid-token
 
 
 def test_flag_on_requires_both_flags(monkeypatch):

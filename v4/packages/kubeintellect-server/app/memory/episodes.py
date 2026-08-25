@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.core.config import settings
+from app.memory import liveness
 from app.memory import pass_health
 from app.utils.logger import get_logger
 from app.utils.redact import redact_secrets
@@ -179,6 +180,12 @@ async def write_episode(
             trust,
         )
         episode_id = str(row["id"]) if row else None
+        if episode_id:
+            # Live writes only. `backfill_from_rca_outcomes` deliberately does NOT count here:
+            # it is a one-shot migration of rows that already existed, and letting it satisfy
+            # the "nothing has ever been written" symptom would hide exactly the failure that
+            # symptom is for — a store that looks populated but is not being fed.
+            liveness.record_episode_written()
         if episode_id and settings.MEMORY_SECURITY_HARDENING:
             # Tamper-evidence (R8.2): chain each admitted write so a later silent edit is detectable.
             from app.memory import security
@@ -296,9 +303,15 @@ _SQL_RECALL_HYBRID = """
 # importance weight ∈ [0.5,1.0] and recency stays the tiebreak. importance affects RANKING
 # ONLY; retention is untouched (R6.2). Same shape as the flat variants so the flag only
 # swaps the ORDER BY (and, for hybrid, threads e.importance through the final select).
+# NOTE: the similarity expression is REPEATED here rather than reusing the `sim` output
+# alias. SQL allows a SELECT-list alias to stand alone as a sort key but not inside a larger
+# expression, so `ORDER BY sim * <weight>` raises `column "sim" does not exist` on every call
+# — which is what this query did until 2026-08-24. The hybrid variant below has no such
+# problem because `f.rrf` is a real column of the `fused` CTE, not an output alias.
 _SQL_RECALL_TRGM_IMP = _SQL_RECALL_TRGM.replace(
     "ORDER BY sim DESC, started_at DESC",
-    f"ORDER BY sim * {_imp_weight('importance')} DESC, started_at DESC",
+    "ORDER BY similarity(summary || ' ' || COALESCE(root_cause, ''), $1) * "
+    f"{_imp_weight('importance')} DESC, started_at DESC",
 )
 _SQL_RECALL_HYBRID_IMP = _SQL_RECALL_HYBRID.replace(
     "e.playbooks, e.namespace, e.started_at, f.rrf\n",
@@ -360,11 +373,17 @@ async def recall_episodes(
                 )
             except Exception as exc2:
                 logger.warning(f"episodes: baseline recall also failed: {exc2}")
+                liveness.record_recall_failure()
                 raise MemoryUnavailable(
                     f"episode recall failed on both channels: {exc2}"
                 ) from exc2
         else:
-            return []
+            # Not a hedge: `[]` here made a query Postgres could not even parse arrive at
+            # the model as an *absence of prior incidents* (`render_recall_block([]) == ""`,
+            # `episodes=0` in the log). Same split the hybrid path makes above — say the
+            # lookup failed and let `memory_loader` decide the turn survives.
+            liveness.record_recall_failure()
+            raise MemoryUnavailable(f"episode recall failed: {exc}") from exc
     out = []
     for row in rows:
         # Baseline path applies the trgm noise floor here; the hybrid SQL already
@@ -377,6 +396,10 @@ async def recall_episodes(
         ):
             continue
         out.append(dict(row))
+    # Counted after the noise floor, not before: rows that all fall below the floor are a miss
+    # as far as the caller is concerned, and recording them as a hit would let a store that
+    # never returns anything usable still report a healthy hit rate.
+    liveness.record_recall(hit=bool(out))
     return out
 
 

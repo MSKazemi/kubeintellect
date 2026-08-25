@@ -35,33 +35,43 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         method = request.method
         t0 = time.monotonic()
 
+        # The reset MUST NOT happen before the access line below is emitted. It used to: the
+        # `finally` fired, `request_id_var` went back to its "-" default, and only then did this
+        # middleware log `POST /v1/chat/completions 200 …`. The result was that the single line
+        # mapping a request to its status and duration was the one line in the whole system that
+        # could not be correlated with the request — while `X-Request-ID` went back to the caller
+        # and every downstream line carried the id correctly. Found in the campaign's own Loki
+        # data: 159 of 159 `api.middleware` access lines in a four-minute window read `[-]`.
+        # One try/finally around everything that logs, and the reset last.
         try:
-            response = await call_next(request)
-        except Exception as exc:
+            try:
+                response = await call_next(request)
+            except Exception as exc:
+                elapsed_ms = (time.monotonic() - t0) * 1000
+                logger.error(
+                    f"{method} {path} — unhandled exception after {elapsed_ms:.1f}ms",
+                    exc_info=exc,
+                    extra={"method": method, "path": path, "duration_ms": round(elapsed_ms, 1)},
+                )
+                raise
+
             elapsed_ms = (time.monotonic() - t0) * 1000
-            logger.error(
-                f"{method} {path} — unhandled exception after {elapsed_ms:.1f}ms",
-                exc_info=exc,
-                extra={"method": method, "path": path, "duration_ms": round(elapsed_ms, 1)},
-            )
-            raise
+            status = response.status_code
+
+            if path not in _SILENT_PATHS:
+                log_level = "warning" if status >= 400 else "info"
+                getattr(logger, log_level)(
+                    f"{method} {path} {status} {elapsed_ms:.1f}ms",
+                    extra={
+                        "method": method,
+                        "path": path,
+                        "status": status,
+                        "duration_ms": round(elapsed_ms, 1),
+                        "request_id": req_id,
+                    },
+                )
+
+            response.headers["X-Request-ID"] = req_id
+            return response
         finally:
             request_id_var.reset(token)
-
-        elapsed_ms = (time.monotonic() - t0) * 1000
-        status = response.status_code
-
-        if path not in _SILENT_PATHS:
-            log_level = "warning" if status >= 400 else "info"
-            getattr(logger, log_level)(
-                f"{method} {path} {status} {elapsed_ms:.1f}ms",
-                extra={
-                    "method": method,
-                    "path": path,
-                    "status": status,
-                    "duration_ms": round(elapsed_ms, 1),
-                },
-            )
-
-        response.headers["X-Request-ID"] = req_id
-        return response

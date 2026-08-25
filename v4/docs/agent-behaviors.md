@@ -98,6 +98,33 @@ because the user's only cue that verification happened is what the block says:
   would waste more than half the budget) and carries an explicit marker naming how many characters
   were dropped, in the same terms `run_kubectl` uses for partial tool output: absence of a fact
   from that text is not evidence that it was not observed.
+- **A notice a tool already wrote survives the cortex bound, on both sides of the harness flag.**
+  Tool results are bounded again before they enter cortex context. That bound was a plain
+  8 000-character slice — the same budget `run_kubectl` caps itself at, and since `run_kubectl`
+  appends its `[truncated: N chars omitted …]` line *after* its own cap, the slice removed that
+  line on every over-cap listing, and took a `[Protected] … withheld` sentence off a filtered one
+  the same way. The cut of the rows stays silent by default (making it speak is what the ADR-101
+  harness flag is for); what changed on 2026-08-24 is that a sentence another layer already wrote
+  is lifted out of the cut and re-attached rather than destroyed by it.
+- **The cortex tiers are now told what a truncation marker means.** They were not: the gather and
+  synthesis prompts carried no instruction about partial output, so the marker that survives the
+  bound reached a model with no rule for it. Both now carry the same clause the coordinator does,
+  from a single definition. Triage is deliberately different — it answers in strict JSON, so it is
+  given the inference (`[truncated` / `[Protected]` means the context is partial; absence from it
+  is unknown, not healthy; prefer `investigate`) rather than an instruction to print anything. Its
+  own `snapshot[:3000]` slice was the third silent cut of this family and now announces its loss
+  and keeps the withheld-namespace sentence.
+- **A tool that cannot answer at all says `[unavailable]`.** The gather prompt has always told the
+  model not to retry a tool that "replies that it is not configured or unavailable". Driving all
+  eight such replies on 2026-08-24 showed only the two "the URL is unset" ones contained either
+  word: a missing binary, a refused backend connection and an unreachable cluster — the three
+  cases where a retry provably cannot succeed — carried neither, so the rule had no trigger where
+  it mattered. All eight now append the marker, the prompt names it, and it is a policy line so
+  the trims carry it. It stays *off* answerable failures: a missing pod or an RBAC denial is a
+  fact about the cluster that a differently shaped command can still get at. One classifier
+  defect surfaced on the way — kubectl's most common cluster-down message ("The connection to the
+  server ... was refused") put four words between "connection" and "refused" and so matched no
+  pattern at all, producing no hint and no classification.
 
 
 ---

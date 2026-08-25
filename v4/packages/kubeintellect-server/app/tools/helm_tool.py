@@ -32,6 +32,8 @@ import yaml
 from langchain_core.tools import tool
 
 from app.core.config import settings
+from app.tools import kubectl_errors
+from app.tools.output_policy import mark_unavailable, truncation_marker, unavailable_notice
 from app.tools.kubectl_tool import _blocked_resources, _flag_value, _resource_spellings
 from app.tools.namespace_guard import withheld_note
 from app.utils.logger import get_logger
@@ -325,9 +327,10 @@ def run_helm(command: str) -> str:
             timeout=30,
         )
     except FileNotFoundError:
-        return (
+        return mark_unavailable(
             "[Error] 'helm' binary not found on PATH. "
-            "Helm may not be installed in this environment."
+            "Helm may not be installed in this environment.",
+            "helm is not on PATH.",
         )
     except subprocess.TimeoutExpired:
         return "[Error] helm command timed out after 30 seconds."
@@ -362,6 +365,10 @@ def run_helm(command: str) -> str:
         output = f"[helm exited {proc.returncode}] " + (
             detail or "(helm wrote nothing to stderr)"
         )
+        # helm talks to the same apiserver kubectl does, so it fails the same way and is
+        # classified by the same patterns rather than a second copy of them.
+        if kubectl_errors.interpret(detail)[0] in kubectl_errors.TERMINAL_PATTERNS:
+            output += "\n" + unavailable_notice("The cluster is not reachable from here.")
         # `run_kubectl` has to record whether kubectl printed anything *before* its pipe
         # emulator runs, because `_apply_pipes("")` manufactures "(no matching lines)". Neither
         # helm filter does that — both are the identity on input with nothing in it, which
@@ -382,7 +389,12 @@ def run_helm(command: str) -> str:
     # ── 5. Output cap ─────────────────────────────────────────────────────────
     if len(output) > _OUTPUT_CAP:
         omitted = len(output) - _OUTPUT_CAP
-        output = output[:_OUTPUT_CAP] + f"\n[... {omitted} chars truncated]"
+        # Until 2026-08-24 this said "[... N chars truncated]" — which matches neither string
+        # the coordinator prompt tells the model to watch for, so the one reader of this line
+        # was never looking for it. The wording is not this module's to choose.
+        output = output[:_OUTPUT_CAP] + "\n" + truncation_marker(
+            omitted, hint="narrow with -n <namespace> or name a single release"
+        )
 
     logger.debug(f"run_helm: exit={proc.returncode} output_len={len(output)}")
     return output or "(no output)"

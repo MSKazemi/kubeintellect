@@ -192,8 +192,8 @@ which nothing has happened, so ask the process rather than the tables:
 
 ```bash
 curl -s localhost:8000/healthz | jq .memory
-# {"enabled": true,  "state": "ready",       "reason": "",              "observations_dropped": 0}
-# {"enabled": false, "state": "unavailable", "reason": "Connect call failed ...", "observations_dropped": 8123}
+# {"enabled": true,  "state": "ready",       "healthy": true,  "symptoms": [], "recall_hits": 41, ...}
+# {"enabled": false, "state": "unavailable", "healthy": false, "reason": "Connect call failed ...", ...}
 ```
 
 | `state` | Meaning |
@@ -202,6 +202,38 @@ curl -s localhost:8000/healthz | jq .memory
 | `flag` | `MEMORY_HIERARCHY_ENABLED=false`. Configuration, not a fault. |
 | `sqlite` | `USE_SQLITE=true`; the hierarchy needs Postgres. Configuration, not a fault. |
 | `unavailable` | Postgres refused the connection. **Nothing is being recorded**; a reconnect loop is retrying. |
+
+### `enabled` is not the same claim as "memory works"
+
+`enabled` reports that the **pool is up**. That is a narrower statement than it looks, and the gap
+has cost real results: an evaluation lane ran three arms for nine hours with `state: "ready"`
+throughout while not one episode was ever written or recalled. Postgres was genuinely reachable, so
+nothing in the response was false — and the arms were graded and their numbers written down before
+anyone counted the rows by hand.
+
+So the block also reports what memory actually **did**:
+
+| field | Meaning |
+|---|---|
+| `recall_attempts` | Recall queries completed since start, hit or miss. |
+| `recall_hits` | Of those, how many returned at least one episode (counted *after* the similarity floor, so rows too weak to use are a miss). |
+| `recall_failures` | Attempts that raised instead of returning rows. |
+| `episodes_written` | Episodes persisted to L1. One-shot backfill is excluded on purpose — migrating old rows must not satisfy "something is being written". |
+| `symptoms` | Plain statements of what is observably wrong. Empty is the healthy answer. |
+| `healthy` | The single boolean to key on: doing what it was configured to do, with no symptoms. |
+
+`healthy: false` alongside `enabled: true` is the connected-but-doing-nothing case that used to be
+invisible. A cold store is **not** a fault — symptoms stay silent until at least 10 recall attempts
+have gone by, because a new cluster legitimately recalls nothing — and memory switched off by flag
+or running under SQLite reports `healthy: true`, since it is doing what it was told.
+
+`healthy` deliberately does **not** move the top-level `status`. `/healthz` is liveness, and failing
+it because memory is cold would restart the pod — turning a degraded subsystem into a crash loop.
+Alert on `.memory.healthy`; restart on `.status`.
+
+If you are running an evaluation or benchmark against this server, check `.memory.healthy` **before
+grading anything**. That check is the one that would have caught the nine-hour lane at its first
+probe.
 
 `observations_dropped` counts sensorium observations discarded since the process started —
 those that arrived with no queue to receive them, and those dropped because the queue was full.

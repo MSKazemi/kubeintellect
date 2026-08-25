@@ -142,10 +142,13 @@ class TestNothingElseMoved:
 
         from app.detectors.models import parse_detect_block
 
-        root = pathlib.Path(
+        # Anchored to THIS FILE, not to the cwd. The relative form below found nothing when
+        # pytest ran from the repo root — `glob` over a missing directory is not an error, so
+        # the loop simply did zero iterations. Only the `checked > 0` guard at the end turned
+        # that into a failure instead of a green test that had read no playbooks at all.
+        root = pathlib.Path(__file__).resolve().parents[1] / (
             "packages/kubeintellect-server/app/agent/playbooks")
-        if not root.exists():  # running from inside the server package
-            root = pathlib.Path("app/agent/playbooks")
+        assert root.is_dir(), f"playbook corpus not where the test expects it: {root}"
         checked = 0
         for f in sorted(root.glob("*.yaml")):
             raw = yaml.safe_load(f.read_text()) or {}

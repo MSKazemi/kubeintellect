@@ -131,9 +131,21 @@ def test_compute_rqb_table_averages(tmp_path):
     ])
     table = compute_rqb_table([run])
     assert table[0]["avg_judge_score"] == 30.0
-    assert table[0]["judge_pass_rate_pct"] == 50.0   # 1 of 2 > 28 (28.0 itself does not pass)
+    # 28.0 IS a pass: judge.PASS_THRESHOLD is 28 and the rule is >=, everywhere. `compute_rqb_table`
+    # was corrected from a strict `> 28` and this assertion was left behind on the old semantics,
+    # so it has been red ever since — the boundary is asserted here rather than the count.
+    assert table[0]["judge_pass_rate_pct"] == 100.0
     assert table[0]["avg_latency_s"] == 15.0
-    assert table[0]["avg_tokens"] == 1500
+    # The token cell carries its own denominator, because the mean is over scenarios with usable
+    # telemetry only and a bare number would read as a mean over all 62. That disclosure is part of
+    # the contract, so it is asserted rather than stripped.
+    assert table[0]["avg_tokens"] == "1500 (n=2)"
+
+    below = _make_run_summary("v2", [
+        {"id": "01", "cat": "debugging", "score": 0.8, "judge": 27.9, "lat": 10000, "tok": 1000},
+    ])
+    assert compute_rqb_table([below])[0]["judge_pass_rate_pct"] == 0.0, \
+        "just under the threshold must still fail — the fix is >=, not a removed threshold"
 
 
 def test_compute_rqc_table_groups_by_category(tmp_path):

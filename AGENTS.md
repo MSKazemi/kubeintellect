@@ -39,6 +39,35 @@ The repo holds four generations of the product. **Only `v4/` accepts behavioral 
 Do not "fix" duplication *between* version directories. They are deliberately independent
 snapshots of a design lineage, and the older ones are cited by a peer-reviewed paper.
 
+## Working map of `v4/`
+
+Start with [`v4/docs/architecture.md`](v4/docs/architecture.md) for the system topology and
+[`v4/docs/configuration.md`](v4/docs/configuration.md) for feature flags. The main code paths
+are:
+
+| Concern | Source of truth |
+|---|---|
+| Process startup and background services | `packages/kubeintellect-server/app/main.py` |
+| Settings, environment validation, feature flags | `packages/kubeintellect-server/app/core/config.py` |
+| Authenticated API surface | `packages/kubeintellect-server/app/api/v1/router.py` and `packages/kubeintellect-server/app/api/v1/endpoints/` |
+| Default V2 LangGraph and session runner | `packages/kubeintellect-server/app/agent/workflow.py` |
+| Optional explicit-node Cortex graph | `packages/kubeintellect-server/app/cortex/graph.py` |
+| Cluster, Prometheus, Loki, and Helm tools | `packages/kubeintellect-server/app/tools/` |
+| Sensorium, detectors, and autonomous investigations | `packages/kubeintellect-server/app/sensorium/`, `packages/kubeintellect-server/app/detectors/`, `packages/kubeintellect-server/app/autonomy/` |
+| Memory and persistence | `packages/kubeintellect-server/app/memory/`, `packages/kubeintellect-server/app/db/`, and `packages/kubeintellect-server/app/db/schema.sql` |
+| Server-to-client event schema | `packages/ki-protocol/ki_protocol/` |
+| Terminal client | `packages/kube-q/kube_q/` |
+| Browser demo | `packages/kube-q/web/` |
+
+All paths in this table are relative to `v4/`. `CORTEX_V4_ENABLED` selects the Cortex graph at
+graph initialization; the V2 graph remains the default. Do not implement the same behavior
+in both graphs unless the issue explicitly requires parity.
+
+The SSE protocol has two deliberately separate views: `ki_protocol/wire.py` defines what the
+server emits, and `ki_protocol/events.py` defines what clients parse. Any wire-format change
+must update both, plus the server and kube-q parity tests. The server and kube-q test trees are
+also separate Python packages named `tests`; run them as separate pytest invocations.
+
 ## Setup
 
 Requires Python 3.12 and [`uv`](https://docs.astral.sh/uv/).
@@ -48,21 +77,25 @@ cd v4
 uv sync          # creates .venv and installs the whole workspace
 ```
 
-## Gate commands — these are exactly what CI runs
+## Required validation
 
-From the repo root, `make setup` runs all six gates in order. Individually, from `v4/`:
+The root [`.github/workflows/ci.yml`](.github/workflows/ci.yml) is the executable source of
+truth. `make setup` installs the workspace and runs the six core gates, but use the standalone
+commands below when validating a change so the lint scope cannot lag behind CI.
+
+From `v4/`:
 
 ```bash
 # 1. Lint — `ruff check` only. NOT `ruff format`.
-uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/
+uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/ packages/kube-q/ tests/ scripts/
 
 # 2. Types — the workspace is at ZERO errors; keep it there.
 uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q
 
-# 3. Server suite (3588 tests)
+# 3. Server suite (4553 tests)
 uv run python -m pytest tests/ -q
 
-# 4. kq CLI suite (468 tests)
+# 4. kq CLI suite (724 tests)
 cd packages/kube-q && uv run python -m pytest tests/ -q
 ```
 
@@ -76,6 +109,30 @@ make fix-modes            # corrects any violation in place
 # 6. Syntax — every tracked .py outside v1-v3 compiles with no SyntaxWarning.
 make check-syntax         # or: ./scripts/check-syntax-warnings.py
 ```
+
+CI additionally checks the lockfile and clean-wheel installation, builds and probes the
+container, and runs the browser demo's lint/build. When a change reaches those surfaces, run
+the corresponding focused checks locally:
+
+```bash
+# From v4/ — lockfile and all three distributions
+uv lock --check
+uv build --package ki-protocol -o dist
+uv build --package kube-q -o dist
+uv build --package kubeintellect -o dist
+
+# From v4/packages/kube-q/web/ — Node 24 in CI
+npm ci --no-audit --no-fund
+npm run lint
+npm run build
+
+# From v4/ — documentation consistency and site build
+uv run python scripts/check_doc_claims.py
+uv run mkdocs build
+```
+
+Python 3.14 test jobs are visible but non-blocking candidate coverage. Python 3.12 and 3.13,
+the install smoke test, web build, and container build-and-serve job are blocking coverage.
 
 Both report **what they examined**, not what exists: the mode gate reads one git index
 (`--git-dir DIR` points it at another) and the syntax gate compiles the tracked `*.py` it
@@ -115,7 +172,7 @@ Two annotations are load-bearing and mypy *cannot* verify them — see "Safety i
 
 ### Known pre-existing debt — do not try to fix it in an unrelated PR
 
-- **`ruff format --check` is not a CI gate** and would reformat **116** files. `make lint` in
+- **`ruff format --check` is not a CI gate** and would reformat **117** files. `make lint` in
   `v4/` *does* run it, so `make lint` fails on a clean checkout. Use the `ruff check` command
   above to predict CI, not `make lint`.
 - **`ruff` is pinned `<0.16`** on purpose — 0.16's default rules reported 438 findings, then
