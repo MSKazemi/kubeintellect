@@ -48,7 +48,15 @@ _PATTERNS: tuple[_Pattern, ...] = (
     ),
     _Pattern(
         "apiserver_unreachable",
-        re.compile(r"connection refused|no route to host|i/o timeout", re.IGNORECASE),
+        # `connection refused` alone missed kubectl's most common form of this error, measured
+        # 2026-08-24: "The connection to the server 127.0.0.1:6443 was refused - did you specify
+        # the right host or port?" puts four words between "connection" and "refused", so a
+        # cluster that is simply down matched no pattern here and got no hint at all.
+        re.compile(
+            r"connection refused|no route to host|i/o timeout"
+            r"|connection to the server .{0,80}? was refused",
+            re.IGNORECASE,
+        ),
         "→ kube-apiserver unreachable — check cluster connectivity and kubeconfig.",
     ),
     _Pattern(
@@ -100,6 +108,17 @@ _PATTERNS: tuple[_Pattern, ...] = (
         "→ Resource was updated mid-flight — re-fetch and retry the patch.",
     ),
 )
+
+
+# The categories a retry cannot get past inside one investigation: the apiserver is not
+# answering, the kubeconfig points nowhere, or the hostname does not resolve. Everything else in
+# `_PATTERNS` describes a *cluster* fact (a missing namespace, an RBAC denial) that a differently
+# shaped command can still answer, so it is not listed here.
+TERMINAL_PATTERNS: frozenset[str] = frozenset({
+    "apiserver_unreachable",
+    "unable_to_connect",
+    "dns_lookup_failed",
+})
 
 
 def interpret(stderr: str) -> tuple[str | None, str | None]:

@@ -40,6 +40,7 @@ from app.agent.nodes.subagent import run_subagent
 from app.agent.state import AgentFinding, AgentState, SubagentInput
 from app.core.config import settings
 from app.core.llm import get_langfuse_callbacks, get_langfuse_run_metadata
+from app.core.usage import TokenMeterCallback
 from app.streaming.emitter import (
     ErrorEvent,
     HitlRequestEvent,
@@ -379,9 +380,15 @@ async def invoke(
         user_message, session_id, user_id, user_role, extra_state, trigger_source
     )
 
-    callbacks = get_langfuse_callbacks()
-    if callbacks:
-        config["callbacks"] = callbacks
+    # The token meter is attached unconditionally, and deliberately not inside the `if callbacks`
+    # below: usage must come back to the caller whether or not tracing is on. The campaign that
+    # lost every cost number *had* Langfuse enabled and still shipped zeros, because nothing
+    # joined the trace back to the response.
+    # `or []` is not defensive noise: the previous form was `if callbacks:`, which quietly
+    # tolerated a None return, and tests rely on that contract.
+    langfuse = get_langfuse_callbacks() or []
+    config["callbacks"] = [*langfuse, TokenMeterCallback()]
+    if langfuse:
         config["metadata"] = get_langfuse_run_metadata(session_id)
     try:
         result = await graph.ainvoke(state, config=config)
@@ -480,9 +487,15 @@ async def stream_events(
             trigger_source=trigger_source,
         )
 
-    callbacks = get_langfuse_callbacks()
-    if callbacks:
-        config["callbacks"] = callbacks
+    # The token meter is attached unconditionally, and deliberately not inside the `if callbacks`
+    # below: usage must come back to the caller whether or not tracing is on. The campaign that
+    # lost every cost number *had* Langfuse enabled and still shipped zeros, because nothing
+    # joined the trace back to the response.
+    # `or []` is not defensive noise: the previous form was `if callbacks:`, which quietly
+    # tolerated a None return, and tests rely on that contract.
+    langfuse = get_langfuse_callbacks() or []
+    config["callbacks"] = [*langfuse, TokenMeterCallback()]
+    if langfuse:
         config["metadata"] = get_langfuse_run_metadata(session_id)
     try:
         async for event in graph.astream_events(input_data, config=config, version="v2"):

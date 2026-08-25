@@ -41,7 +41,13 @@ from app.agent.nodes.memory_loader import memory_loader
 from app.agent.state import AgentState, PlanStep
 from app.core.config import settings
 from app.streaming.emitter import PlanEvent, StatusEvent, TokenEvent, emit
-from app.tools.output_policy import split_policy_lines
+from app.tools.output_policy import (
+    PARTIAL_CONTEXT_CLAUSE,
+    RETRY_CLAUSE,
+    TRUNCATION_CLAUSE,
+    split_policy_lines,
+    truncation_marker,
+)
 from app.tools.registry import ALL_TOOLS
 from app.utils.logger import get_logger
 
@@ -94,20 +100,28 @@ Rules:
 - NEVER ask the user for permission in text — execute via tools; the gate
   handles approval.
 - If a tool replies that it is not configured or unavailable, do NOT retry
-  it — work with what the other tools can provide.
+  it — work with what the other tools can provide. (The exact marker is named
+  below.)
 - When the evidence is sufficient (and any requested fix is applied), STOP
   calling tools and reply with the single word: EVIDENCE_COMPLETE
+
+""" + TRUNCATION_CLAUSE + """
+
+""" + RETRY_CLAUSE + """
 """
 
 _SYNTHESIS_SYSTEM = """You are KubeIntellect's synthesis tier. Compose the final answer to the user
 from the conversation and gathered evidence: findings first, root cause (if
 diagnosed), what was done or recommended, and concrete next steps. Be precise
 and cite the actual object names/namespaces/exit codes you observed. No tool
-calls — answer only."""
+calls — answer only.
+
+""" + TRUNCATION_CLAUSE
 
 # Triage repair loop (#22): the triage tier answers in strict JSON; when the
 # reply does not parse, we feed it back with a corrective hint and retry before
 # falling back to the investigate default.
+_TRIAGE_SNAPSHOT_MAX_CHARS = 3_000
 _TRIAGE_MAX_PARSE_ATTEMPTS = 3
 _TRIAGE_REPAIR_ECHO_MAX_CHARS = 2_000
 _TRIAGE_REPAIR_HINT = (
@@ -125,10 +139,24 @@ async def triage(state: CortexState, config: RunnableConfig) -> dict:
         phase="analyzing", message="Triaging request…", session_id=session_id,
     ))
 
-    context_parts = [state.get("memory_context") or ""]
+    context_parts = [PARTIAL_CONTEXT_CLAUSE, state.get("memory_context") or ""]
     snapshot = state.get("cluster_snapshot") or ""
     if snapshot:
-        context_parts.append(f"## Cluster snapshot\n{snapshot[:3000]}")
+        # `snapshot[:3000]` until 2026-08-24: the third cut in this codebase that shortened a
+        # kubectl read and said nothing. The snapshot is filtered by the same namespace policy
+        # `run_kubectl` applies, so its `[Protected] … withheld` sentence is in here — at the
+        # end, where the cut lands. Triage decides chat-vs-investigate from this text; a
+        # snapshot that reads as complete is the input that makes that decision confidently.
+        body, policy = split_policy_lines(snapshot)
+        shown = body[:_TRIAGE_SNAPSHOT_MAX_CHARS]
+        note = ""
+        if len(body) > _TRIAGE_SNAPSHOT_MAX_CHARS:
+            note = "\n" + truncation_marker(
+                len(body) - _TRIAGE_SNAPSHOT_MAX_CHARS,
+                hint="cluster snapshot cut for the triage prompt",
+            )
+        tail = f"\n{policy}" if policy else ""
+        context_parts.append(f"## Cluster snapshot\n{shown}{note}{tail}")
     playbooks = state.get("matched_playbooks") or []
     if playbooks:
         context_parts.append(f"## Matched playbooks\n{', '.join(playbooks)}")

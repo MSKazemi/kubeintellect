@@ -100,6 +100,16 @@ data: {"object":"chat.completion.chunk","model":"kubeintellect","ki_event":{"typ
 | `tool_result` | `tool`, `output` | Result of a tool call (first ~500 chars). |
 | `plan` | `steps` | The visible investigation plan (a list of steps). |
 | `error` | `message`, `fatal` | Something failed. `fatal: true` means **the turn ended here**; without it the agent recovered and the answer that follows is still valid. |
+| `usage` | `prompt_tokens`, `completion_tokens`, `total_tokens`, `llm_calls` | What the turn cost. Emitted **once**, immediately before the `finish_reason: "stop"` chunk, summed over every model call the turn made — triage, the coordinator loop, the subagent fan-out, verification. |
+
+> **Reading `usage`.** `llm_calls` is the field that makes a zero interpretable. `llm_calls: 0`
+> means no model was called; `llm_calls: 40, total_tokens: 0` means the provider reported no
+> counts, which is an instrumentation gap and **not** a free turn. A client that records cost
+> should also distinguish "the frame said zero" from "no frame arrived" — an older server emits
+> none at all, and treating that as `0` is how a whole evaluation campaign came to report
+> `tokens == 0` for every one of its 72 predictions and write off its efficiency axis. Usage is
+> reported whether or not Langfuse tracing is enabled.
+
 
 > **Detecting a failed turn.** A crashed stream terminates with the *same* frames a successful
 > one does — a `finish_reason: "stop"` chunk, then `[DONE]` — and the reason arrives as ordinary
@@ -439,7 +449,7 @@ Response:
 | `version` | Package SemVer — distinguishes v4 / v4.1 / v4.2. |
 | `set_but_unwired_flags` | Flags you turned **on** that no code reads — they change nothing. Normally `[]`. A name here means the setting had no effect, so do not treat it as confirmation that a slice is live; see [v5 experimental flags](v5-experimental-flags.md). |
 | `degraded_experimental_flags` | Flags you turned **on** that code *does* read, but whose subsystem is **not running** — so they change nothing anyway. Every `MEMORY_*` slice runs inside the memory hierarchy, so all of them appear here while it is down, including when you turned a slice on and left `MEMORY_HIERARCHY_ENABLED` off. They stay listed in `active_flags`: that list is rollout *identity* — how this pod was configured — and must not flap when Postgres blips. Normally `[]`. |
-| `memory` | The memory hierarchy's own state and reason, identical to the field on [`/healthz`](#get-healthz). Read it for **why** the flags above are degraded. |
+| `memory` | The memory hierarchy's own state, observed recall/write counters, `symptoms` and `healthy`, identical to the field on [`/healthz`](#get-healthz). Read it for **why** the flags above are degraded — and read `healthy`, not just `enabled`, since `enabled` only means the pool is up. |
 | `unenforceable_guard_config` | Guard settings you configured that **cannot match anything** — a `KUBECTL_BLOCKED_NAMESPACES` entry that is not a legal namespace name (a glob, a slash), or an `AUTONOMY_NAMESPACE_LEVELS` / `AUTONOMY_A3_ALLOWLIST` entry the parser drops. Also covers `ALLOWED_ORIGINS`, where an unmatchable entry (trailing slash, missing scheme) is silently not allowed and **`*` is reported as a security problem** — CORS runs with credentials enabled, so a wildcard lets any site call this API with an operator's session. Normally `[]`. A name here means the protection you configured is **not in force**; see [security](security.md#how-the-kubectl-blocklist-works). |
 | `cortex_v5_enabled` | The master v5 switch. |
 | `active_flags` | The `KI_V5_*` experimental toggles currently on (empty ⇒ v4 baseline). |
@@ -742,6 +752,18 @@ is running, and `observations_dropped` counts the sensorium observations discard
 [Memory → When the hierarchy is not running](memory.md#when-the-hierarchy-is-not-running).
 `state: "flag"` and `state: "sqlite"` are configuration, not faults. Like `audit`, this is
 reported state rather than a probe, and `/healthz` stays `200` while it is down.
+
+Read `memory.healthy`, not only `memory.enabled`. `enabled` says the **pool is up**, which is a
+narrower claim than "memory works": an evaluation lane once ran nine hours with `state: "ready"`
+while nothing was ever written or recalled, and nothing in the response was false. Alongside it the
+block reports what memory actually did — `recall_attempts`, `recall_hits`, `recall_failures`,
+`episodes_written` — with `symptoms` naming anything observably wrong and `healthy` folding it into
+one boolean. `enabled: true` with `healthy: false` is the connected-but-doing-nothing case. A cold
+store is not a fault: symptoms stay silent for the first 10 recall attempts, and memory switched off
+by flag reports `healthy: true`. `healthy` does not move the top-level `status`, because restarting
+a pod whose memory is merely cold turns a degraded subsystem into a crash loop — alert on
+`.memory.healthy`, restart on `.status`. Benchmarks and evaluation harnesses should gate on
+`.memory.healthy` before grading.
 
 `sensorium` reports whether anything is actually **watching** the cluster, and it is the field
 to alert on — the three blocks around it describe what gets *written down*, while this one
