@@ -37,7 +37,7 @@ def plugin_dir(tmp_path):
 
         @staticmethod
         def write(name: str, body: str) -> None:
-            (directory / name).write_text(textwrap.dedent(body))
+            (directory / name).write_text(textwrap.dedent(body), encoding="utf-8")
 
     yield Dir()
 

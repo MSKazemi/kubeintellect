@@ -97,7 +97,7 @@ class TestTheUnitCanStart:
         """`service install` before `init` is a legal order. Without the dash systemd fails it."""
         monkeypatch.setattr(cli.subprocess, "run", _systemctl(0))
         cli._install_service()
-        unit = cli._SERVICE_FILE.read_text()
+        unit = cli._SERVICE_FILE.read_text(encoding="utf-8")
         assert not cli._CONFIG_FILE.exists()
         assert f"EnvironmentFile=-{cli._CONFIG_FILE}" in unit, unit
 
@@ -105,7 +105,7 @@ class TestTheUnitCanStart:
         """Vacuity guard: an empty ExecStart would satisfy every assertion above."""
         monkeypatch.setattr(cli.subprocess, "run", _systemctl(0))
         cli._install_service()
-        exec_line = [line for line in cli._SERVICE_FILE.read_text().splitlines()
+        exec_line = [line for line in cli._SERVICE_FILE.read_text(encoding="utf-8").splitlines()
                      if line.startswith("ExecStart=")]
         assert exec_line and exec_line[0].endswith("kubeintellect serve")
         assert len(exec_line[0]) > len("ExecStart= serve")

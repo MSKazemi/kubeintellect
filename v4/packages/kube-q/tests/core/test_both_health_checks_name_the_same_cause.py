@@ -171,7 +171,8 @@ class TestTheClassifiersAreTheOnlyPlaceThisIsDecided:
         import ast
         from pathlib import Path
         tree = ast.parse(
-            (Path(__file__).resolve().parents[2] / "kube_q" / "core" / "client.py").read_text())
+            (Path(__file__).resolve().parents[2] / "kube_q" / "core" / "client.py")
+            .read_text(encoding="utf-8"))
         found = [n for n in ast.walk(tree)
                  if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef) and n.name == "health"]
         assert len(found) == 2, "expected exactly two health() definitions"

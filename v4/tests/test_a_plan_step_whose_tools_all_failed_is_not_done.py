@@ -125,7 +125,7 @@ class TestTheRendererHasAGlyphForIt:
 
         from kube_q.cli import theme as T
         for th in (T._COLOURED, T._NEUTRAL):
-            out = Console(theme=th, force_terminal=False, width=40, file=open(os.devnull, "w"))
+            out = Console(theme=th, force_terminal=False, width=40, file=open(os.devnull, "w", encoding="utf-8"))
             out.print(PLAN_ICONS["failed"])  # raises on a style the theme does not define
 
 

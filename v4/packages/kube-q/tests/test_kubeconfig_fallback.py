@@ -73,7 +73,7 @@ _NAME_FIRST_INDENTED = """
 def kubeconfig_file(tmp_path, monkeypatch):
     def write(body: str) -> None:
         path = tmp_path / "config"
-        path.write_text(textwrap.dedent(body).lstrip("\n"))
+        path.write_text(textwrap.dedent(body).lstrip("\n"), encoding="utf-8")
         monkeypatch.setenv("KUBECONFIG", str(path))
     return write
 
@@ -149,7 +149,7 @@ class TestTheFallbackParser:
     def test_the_first_path_in_kubeconfig_wins(self, tmp_path, monkeypatch):
         """KUBECONFIG may hold several paths; the parser documents that it reads the first."""
         first = tmp_path / "first"
-        first.write_text(textwrap.dedent(_NAME_FIRST).lstrip("\n"))
+        first.write_text(textwrap.dedent(_NAME_FIRST).lstrip("\n"), encoding="utf-8")
         monkeypatch.setenv("KUBECONFIG", f"{first}:{tmp_path / 'second'}")
         assert kubeconfig._from_kubeconfig_file() == ["staging", "prod"]
 
