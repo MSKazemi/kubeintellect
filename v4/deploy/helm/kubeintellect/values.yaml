@@ -106,6 +106,17 @@ serviceMonitor:
   enabled: false
   interval: 30s
   scrapeTimeout: 10s
+  # A ServiceMonitor Prometheus ignores looks exactly like one it is using: the object exists,
+  # `kubectl get servicemonitor` lists it, and no target is ever scraped. kube-prometheus-stack
+  # ships `serviceMonitorSelector: {matchLabels: {release: kube-prometheus-stack}}`, so a
+  # ServiceMonitor without that label is silently invisible to it. Set the label to whatever your
+  # Prometheus selects on, and then CHECK a target appeared -- creating the object proves nothing:
+  #
+  #   --set serviceMonitor.enabled=true \
+  #   --set serviceMonitor.additionalLabels.release=kube-prometheus-stack
+  #
+  # Verify with: kubectl -n <prom-ns> get prometheus -o jsonpath='{.items[0].spec.serviceMonitorSelector}'
+  # then confirm the target is UP in Prometheus, not merely that the ServiceMonitor exists.
   additionalLabels: {}
 
 serviceAccount:
