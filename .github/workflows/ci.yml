@@ -171,6 +171,19 @@ jobs:
         working-directory: ${{ matrix.syncdir }}
         run: uv sync
 
+      # tests/test_demo_gif_renderer.py asserts that every glyph the client paints resolves
+      # to a real one rather than the .notdef box, and the renderer composes its chain from
+      # SYSTEM fonts. The runner carries almost none of them, so without this U+1F7E1 -- the
+      # risk marker on the approval banner, the one frame the demo corpus exists to show --
+      # has no font anywhere in the chain. Relaxing the assertion instead would restore
+      # exactly the blind spot that let a row of tofu into the README hero image.
+      - name: Install the fonts the demo renderer composes its chain from
+        if: matrix.suite == 'server'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            fonts-dejavu fonts-freefont-otf fonts-noto-core
+
       - name: Run pytest
         working-directory: ${{ matrix.workdir }}
         run: uv run python -m pytest ${{ matrix.path }} -q
@@ -215,6 +228,19 @@ jobs:
       - name: Sync dependencies
         working-directory: v4
         run: uv sync --python 3.13
+
+      # tests/test_demo_gif_renderer.py asserts that every glyph the client paints resolves
+      # to a real one rather than the .notdef box, and the renderer composes its chain from
+      # SYSTEM fonts. The runner carries almost none of them, so without this U+1F7E1 -- the
+      # risk marker on the approval banner, the one frame the demo corpus exists to show --
+      # has no font anywhere in the chain. Relaxing the assertion instead would restore
+      # exactly the blind spot that let a row of tofu into the README hero image.
+      - name: Install the fonts the demo renderer composes its chain from
+        if: matrix.suite == 'server'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            fonts-dejavu fonts-freefont-otf fonts-noto-core
 
       - name: Run pytest
         working-directory: ${{ matrix.workdir }}
@@ -261,6 +287,19 @@ jobs:
       - name: Sync dependencies
         working-directory: v4
         run: uv sync --python 3.14
+
+      # tests/test_demo_gif_renderer.py asserts that every glyph the client paints resolves
+      # to a real one rather than the .notdef box, and the renderer composes its chain from
+      # SYSTEM fonts. The runner carries almost none of them, so without this U+1F7E1 -- the
+      # risk marker on the approval banner, the one frame the demo corpus exists to show --
+      # has no font anywhere in the chain. Relaxing the assertion instead would restore
+      # exactly the blind spot that let a row of tofu into the README hero image.
+      - name: Install the fonts the demo renderer composes its chain from
+        if: matrix.suite == 'server'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            fonts-dejavu fonts-freefont-otf fonts-noto-core
 
       - name: Run pytest
         working-directory: ${{ matrix.workdir }}
