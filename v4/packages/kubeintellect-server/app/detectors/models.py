@@ -77,6 +77,22 @@ class DetectBlock:
     promql: tuple[str, ...] = ()
     debounce_seconds: int = 0
     trend_predicates: tuple[TrendPredicate, ...] = ()
+    #: Predicates the loader REFUSED, with the reason, for a block that still has live ones.
+    #:
+    #: A detector with one dead predicate and one live predicate is not a dead detector, and
+    #: dropping the whole row for the dead half removes real coverage — on the F3 soak that
+    #: would have removed a Pod predicate matching every healthy `Running` pod, which is a
+    #: false-positive source, so refusing the row would have moved the measured false-positive
+    #: rate toward the pre-registered direction by deleting evidence. Empty for every block
+    #: compiled from a playbook file; only `load_db_detectors` ever fills it.
+    dropped_predicates: tuple[str, ...] = ()
+    #: Predicates that are LIVE and match a healthy object, with the reason. These are not
+    #: dropped: a detector firing on every healthy pod is the evidence that the detector is
+    #: wrong, and deleting it at load would improve the measured false-positive rate by removing
+    #: the rows that falsify it — the exact mistake the round-two liveness gate made. The
+    #: authoring and review gates refuse them; the engine reports them.
+    #: Empty for every block compiled from a playbook file; only `load_db_detectors` fills it.
+    fires_on_healthy: tuple[str, ...] = ()
 
 
 @dataclass

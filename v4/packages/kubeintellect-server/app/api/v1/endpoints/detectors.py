@@ -126,12 +126,17 @@ async def shadow_findings(name: str):
         )
     found = [f.to_dict() for f in engine.shadow_findings if f.playbook == name]
     ring = engine.shadow_findings
+    loaded = next((d for d in engine.shadow_detectors if d.playbook == name), None)
+    watching, watching_reason = _watching(loaded, name)
     return {
         "name": name,
         # False also covers "the DB was unreachable at the last refresh", which `load_db_detectors`
-        # documents as silently disarming stored detectors — so this says "not loaded here", never
-        # "no such detector".
-        "watching": any(d.playbook == name for d in engine.shadow_detectors),
+        # documents as silently disarming stored detectors — so this says "not evaluated here",
+        # never "no such detector".
+        "watching": watching,
+        # Why, in one sentence. A bare False sent an operator to the predicate when the cause was
+        # a flag, and a bare True hid a trend-only detector that nothing was evaluating.
+        "watching_reason": watching_reason,
         "findings": found,
         # The ring is fixed-size and in-memory: it is emptied by a restart and, once saturated,
         # drops the OLDEST firing per new one. Either way `findings` is a floor, not a total.
@@ -142,3 +147,59 @@ async def shadow_findings(name: str):
         },
         "durable": False,
     }
+
+
+def _watching(loaded, name: str) -> tuple[bool, str]:
+    """Is this detector's predicate actually being *evaluated*, and if not, why not.
+
+    `watching` used to mean "the engine loaded it", which is a weaker claim than it reads as and
+    was wrong in both directions on a real deployment:
+
+    * A trend-only detector on a server with `PREDICTIVE_DETECTION_ENABLED=false` is loaded and
+      never evaluated — nothing calls `evaluate_trends`. `watching: true` told an operator the
+      detector was on duty while its only predicate was unreachable, which is the same silence
+      the whole F3 soak was void for.
+    * `false` on its own sent a reviewer to inspect a predicate when the cause was a flag or an
+      unreachable store, which is a different repair entirely.
+
+    So the field now answers the question it is read as answering, and carries the reason.
+    """
+    from app.core.config import settings
+
+    if loaded is None:
+        return False, (
+            f"{name} is not in the engine's shadow set — it was not loaded (refused at load as "
+            "unable to fire, malformed, scoped to another cluster, or the detector store was "
+            "unreachable at the last refresh). This is not a statement that no such detector "
+            "exists; see the server log for `db_detector_can_never_fire` and `load_db_detectors`."
+        )
+    # A partially-loaded detector is evaluated, but not as it was authored, and the difference
+    # matters to whoever reads its firing count: the predicate they see in the store is not the
+    # predicate that ran. Said here rather than only in the log, because the log is on the lane
+    # and the reviewer is not.
+    dropped = getattr(loaded, "dropped_predicates", ()) or ()
+    partial = (f" {len(dropped)} of its predicates were refused at load and are NOT evaluated "
+               f"({dropped[0]});" if dropped else "")
+    # `watching: true` on a detector that fires on every healthy pod is true and misleading in
+    # the same breath — the reviewer reads a firing count as a fault count. `nl:soak-cpu-saturated`
+    # produced 46 findings on `kube-system` coredns pods on an idle cluster, all of them
+    # `evidence: "pod status=Running"`, and the reason was only ever in a server log on the lane.
+    healthy = getattr(loaded, "fires_on_healthy", ()) or ()
+    if healthy:
+        partial += (f" WARNING: this detector fires on HEALTHY objects, so its findings are not "
+                    f"evidence of a fault — {healthy[0]}")
+    if loaded.watch_predicates:
+        return True, (f"loaded, with watch predicates evaluated on every observation.{partial}"
+                      if partial else
+                      "loaded, with watch predicates evaluated on every observation")
+    if loaded.trend_predicates:
+        if settings.PREDICTIVE_DETECTION_ENABLED:
+            return True, ("loaded, with trend predicates evaluated on the predictive "
+                          f"interval.{partial}" if partial else
+                          "loaded, with trend predicates evaluated on the predictive interval")
+        return False, (
+            f"{name} is loaded but has only trend predicates, and PREDICTIVE_DETECTION_ENABLED "
+            "is false — nothing evaluates them, so it cannot fire on this deployment. Its zero "
+            f"firings are not evidence about the predicate.{partial}"
+        )
+    return False, f"{name} compiled to no evaluable predicate"
