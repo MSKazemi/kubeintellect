@@ -15,15 +15,21 @@ import pytest
 # These modules test the `evaluation/` research harness, which lives outside the
 # published source tree. Skip collecting them when it is not importable, so the
 # suite is green on a clean clone instead of erroring at collection time.
+#: Declared unconditionally so the doc-claims gate can read it without importing this
+#: module. `evaluation/` is private, so it is importable on a maintainer's machine and on
+#: no clone -- which made the collected suite size differ between the two. The gate counts
+#: what a CLONE would collect, and needs this list even when the harness IS present.
+EVALUATION_HARNESS_TESTS = [
+    "test_aggregate.py",
+    "test_compare.py",
+    "test_evaluation_runner.py",
+    "test_follow_up.py",
+    "test_loki_telemetry.py",
+    "test_signal_scorer.py",
+]
+
 if importlib.util.find_spec("evaluation") is None:
-    collect_ignore = [
-        "test_aggregate.py",
-        "test_compare.py",
-        "test_evaluation_runner.py",
-        "test_follow_up.py",
-        "test_loki_telemetry.py",
-        "test_signal_scorer.py",
-    ]
+    collect_ignore = list(EVALUATION_HARNESS_TESTS)
 
 # ── Pydantic Settings — supply dummy values so Settings() validates ──────────
 # Use os.environ[...] = (not setdefault) to force-override any values that

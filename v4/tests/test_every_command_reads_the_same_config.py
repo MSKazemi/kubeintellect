@@ -49,6 +49,13 @@ def project_only(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     for var in _VARS:
         monkeypatch.delenv(var, raising=False)
+    # KUBECONFIG_PATH is NOT in _VARS, so without this the validator falls back to
+    # ~/.kube/config and reports a `warn` on any machine that has no cluster -- which is
+    # every CI runner, and no developer laptop. That made a test about ADMIN KEYS depend on
+    # whether the person running it happened to have kubectl configured.
+    kubeconfig = tmp_path / "kubeconfig"
+    kubeconfig.write_text("apiVersion: v1\nkind: Config\nclusters: []\n", encoding="utf-8")
+    monkeypatch.setenv("KUBECONFIG_PATH", str(kubeconfig))
     return tmp_path
 
 
