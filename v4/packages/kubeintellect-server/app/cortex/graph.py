@@ -39,8 +39,10 @@ from langgraph.graph import END, START, StateGraph
 from app.agent.nodes.context_fetcher import context_fetcher
 from app.agent.nodes.memory_loader import memory_loader
 from app.agent.state import AgentState, PlanStep
+from app.core import metrics
 from app.core.config import settings
 from app.streaming.emitter import PlanEvent, StatusEvent, TokenEvent, emit
+from app.answer_contract import PREMISE_CLAUSE
 from app.tools.output_policy import (
     PARTIAL_CONTEXT_CLAUSE,
     RETRY_CLAUSE,
@@ -116,7 +118,7 @@ diagnosed), what was done or recommended, and concrete next steps. Be precise
 and cite the actual object names/namespaces/exit codes you observed. No tool
 calls — answer only.
 
-""" + TRUNCATION_CLAUSE
+""" + PREMISE_CLAUSE + "\n\n" + TRUNCATION_CLAUSE
 
 # Triage repair loop (#22): the triage tier answers in strict JSON; when the
 # reply does not parse, we feed it back with a corrective hint and retry before
@@ -336,17 +338,25 @@ async def gather_tools(state: CortexState, config: RunnableConfig) -> dict:
         tool = _TOOLS_BY_NAME.get(name)
         if tool is None:
             failures.append(f"{name or '<unnamed>'}: unknown tool")
+            metrics.record_tool_call(name, "unknown_tool")
             return ToolMessage(tool_call_id=tc.get("id", ""), name=name,
                                content=f"Unknown tool: {name}")
+        started = time.perf_counter()
         try:
             result = await tool.ainvoke(args, config)
             content = result.content if hasattr(result, "content") else str(result)
+            metrics.record_tool_call(name, "ok", time.perf_counter() - started)
         except Exception as exc:
             # GraphInterrupt must propagate for HITL; everything else becomes
             # an error ToolMessage the model can react to.
             from langgraph.errors import GraphInterrupt
             if isinstance(exc, GraphInterrupt):
+                # Counted as its own outcome, never as an error: an approval gate stopping a
+                # destructive action is the product working, and folding it into the error rate
+                # would make the safety feature look like a defect on every dashboard.
+                metrics.record_hitl_interrupt(name)
                 raise
+            metrics.record_tool_call(name, "error", time.perf_counter() - started)
             failures.append(f"{name}: {exc}")
             content = f"Tool error: {exc}"
         return ToolMessage(tool_call_id=tc.get("id", ""), name=name, content=_bound_tool_content(str(content)))

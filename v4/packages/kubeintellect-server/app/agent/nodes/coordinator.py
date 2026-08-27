@@ -19,6 +19,7 @@ from app.agent.state import AgentState, PlanStep
 from app.core.config import settings
 from app.core.llm import get_coordinator_llm
 from app.streaming.emitter import PlanEvent, StatusEvent, emit
+from app.answer_contract import PREMISE_CLAUSE
 from app.tools.output_policy import POLICY_LINE_RE
 from app.tools.registry import ALL_TOOLS
 from app.utils.logger import get_logger
@@ -564,12 +565,14 @@ When synthesizing subagent findings (messages contain <findings> XML):
   Produce a comprehensive root-cause analysis with a concrete fix recommendation.
   Be specific: name the exact resource, namespace, and remediation command.
 
+{premise_clause}
+
 IMPORTANT — Truncated output:
   If any tool output contains a truncation marker (text like "[truncated" or "chars omitted"),
   you MUST include a visible warning in your response, for example:
   "> ⚠️ Output was truncated — use narrower filters (e.g. `-n <namespace>`, `-l <label>`, `--tail`) to see the full result."
   Never silently drop this warning. The user must know the list is incomplete.
-"""
+""".replace("{premise_clause}", PREMISE_CLAUSE)
 
 
 # ── Investigation Plan prompt block ───────────────────────────────────────────
