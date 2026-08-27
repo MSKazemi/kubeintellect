@@ -1,0 +1,5 @@
+# DEMO 4 — the hardest read-only case: nothing is red.
+# Every pod is Ready, the Deployment is Available, the Service exists. It serves nothing.
+the inventory service returns no data but all its pods look fine. what is wrong?
+how did you determine that?
+what is the exact fix?

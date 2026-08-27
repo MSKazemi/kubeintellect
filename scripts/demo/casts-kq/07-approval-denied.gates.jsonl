@@ -1,0 +1,1 @@
+{"turn": 2, "gate": 1, "human_summary": "kubectl scale deployment web -n shop --replicas=10", "answered_with": "deny"}

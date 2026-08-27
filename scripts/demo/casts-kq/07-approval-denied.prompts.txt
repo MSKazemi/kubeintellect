@@ -1,0 +1,12 @@
+# DEMO 7 — the same gate, DENIED. Run with --deny-nth 1.
+# A gate that is only ever approved has not been shown to gate anything. This is the proof that
+# "no" is a real answer and the cluster is left untouched.
+#
+# The first turn is not decoration. A cold single-turn mutating request tends to come back as
+# PROSE -- "this requires approval ... shall I proceed?" -- with no structured gate behind it.
+# That reads like a gate in a transcript and is not one: nothing was registered, and nothing
+# would have stopped the action but the model's own choice of words. Investigating first puts
+# the agent on the path where it actually invokes the tool, which is what the gate sits in front of.
+why is checkout not rolling out?
+scale the web deployment in the shop namespace to 10 replicas
+how many replicas does web have now?
