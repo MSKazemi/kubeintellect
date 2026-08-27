@@ -64,7 +64,9 @@ TEXT_IO_NAMES = ("read_text", "write_text", "open")
 # have no text `encoding` parameter, so the remediation this gate prints would
 # raise TypeError if a contributor followed it — the one thing a gate must never
 # do. Matched on the receiver name, which is how these modules are always called.
-NON_TEXT_OPEN_OWNERS = frozenset({"webbrowser", "os", "zipfile", "tarfile", "shelve", "dbm"})
+NON_TEXT_OPEN_OWNERS = frozenset(
+    {"webbrowser", "os", "zipfile", "tarfile", "shelve", "dbm", "Image", "ImageFont"}
+)
 
 # These do take an encoding, but their open() defaults to BINARY, unlike the
 # builtin. Flagging a call that names no mode would therefore be a false positive;

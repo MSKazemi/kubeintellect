@@ -211,7 +211,7 @@ def test_every_memory_slice_really_does_live_inside_the_hierarchy():
         rel = str(path.relative_to(app_dir))
         if rel.startswith(allowed_prefixes):
             continue
-        for name in pattern.findall(path.read_text()):
+        for name in pattern.findall(path.read_text(encoding="utf-8")):
             stray.append(f"{rel}:{name}")
     assert not stray, f"MEMORY_* read outside the hierarchy: {stray}"
 

@@ -23,7 +23,7 @@ from app import cli
 def board(tmp_path, monkeypatch, capsys):
     """A fully green board, plus a knob per row so a test can break exactly one thing."""
     user_env = tmp_path / "user.env"
-    user_env.write_text("USE_SQLITE=true\n")
+    user_env.write_text("USE_SQLITE=true\n", encoding="utf-8")
     monkeypatch.setattr(cli, "_CONFIG_FILE", user_env)
     monkeypatch.chdir(tmp_path)
 
@@ -39,11 +39,11 @@ def board(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("KUBEINTELLECT_ADMIN_KEYS", "ki-admin-abc")
 
     sqlite_path = tmp_path / "kubeintellect.db"
-    sqlite_path.write_text("")
+    sqlite_path.write_text("", encoding="utf-8")
     monkeypatch.setenv("SQLITE_PATH", str(sqlite_path))
 
     kubeconfig = tmp_path / "kubeconfig"
-    kubeconfig.write_text("apiVersion: v1\nkind: Config\n")
+    kubeconfig.write_text("apiVersion: v1\nkind: Config\n", encoding="utf-8")
     monkeypatch.setenv("KUBECONFIG_PATH", str(kubeconfig))
     monkeypatch.setattr(cli, "_cluster_reachable", lambda _p: True)
     monkeypatch.setattr(cli, "_get_kube_context", lambda _p: "test-ctx")

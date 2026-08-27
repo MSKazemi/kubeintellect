@@ -52,7 +52,7 @@ def _files(tmp_path: Path, present: int, missing: int) -> list[str]:
     paths = []
     for i in range(present):
         f = tmp_path / f"ok{i}.py"
-        f.write_text("x = 1\n")
+        f.write_text("x = 1\n", encoding="utf-8")
         paths.append(str(f))
     paths += [str(tmp_path / f"gone{i}.py") for i in range(missing)]
     return paths
@@ -113,7 +113,7 @@ class TestNothingCompiledIsNotOK:
     def test_a_real_failure_still_fails(self, gate, tmp_path, capsys):
         """Reporting skips must not outrank reporting defects."""
         bad = tmp_path / "bad.py"
-        bad.write_text('import re\nre.compile("\\d+")\n')
+        bad.write_text('import re\nre.compile("\\d+")\n', encoding="utf-8")
         rc = gate.main([str(bad), str(tmp_path / "gone.py")])
         cap = capsys.readouterr()
         assert rc == 1, "a SyntaxWarning was demoted by the presence of a skipped path"
@@ -134,7 +134,7 @@ class TestTheTrackedFormKeepsItsOwnContract:
 
     def test_a_sparse_checkout_says_how_much_it_missed(self, gate, tmp_path, capsys, monkeypatch):
         """The tracked form claims to have covered the tree, so a shortfall must be visible."""
-        (tmp_path / "here.py").write_text("x = 1\n")
+        (tmp_path / "here.py").write_text("x = 1\n", encoding="utf-8")
         monkeypatch.setattr(gate, "repo_root", lambda: str(tmp_path))
         monkeypatch.setattr(gate, "tracked_python_files",
                             lambda root=None: ["here.py", "gone_a.py", "gone_b.py"])

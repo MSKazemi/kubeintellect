@@ -73,17 +73,30 @@ def pg():
         import time
 
         import asyncpg
-        deadline = time.time() + 90
-        while time.time() < deadline:
-            if subprocess.run(["docker", "exec", name, "pg_isready", "-U", "t"],
-                              capture_output=True).returncode == 0:
-                break
-            time.sleep(1)
-
         dsn = f"postgresql://t:t@127.0.0.1:{port}/t"
 
+        async def _connect_when_ready():
+            """Wait for a connection that SURVIVES, not for `pg_isready` to say yes.
+
+            During initialisation the postgres image runs a temporary server so
+            initdb can seed the cluster, then shuts it down and starts the real one.
+            `pg_isready` inside the container answers for that bootstrap server over
+            the unix socket and returns 0 while nothing is listening on TCP yet, so
+            connecting on the first yes loses the race about half the time and the
+            fixture errors with `ConnectionResetError` instead of skipping or waiting.
+            """
+            deadline = time.time() + 90
+            last: Exception | None = None
+            while time.time() < deadline:
+                try:
+                    return await asyncpg.create_pool(dsn, min_size=1, max_size=2)
+                except (OSError, asyncpg.PostgresError) as exc:
+                    last = exc
+                    await asyncio.sleep(0.5)
+            raise AssertionError(f"postgres never accepted a connection on {port}: {last}")
+
         async def _setup():
-            pool = await asyncpg.create_pool(dsn, min_size=1, max_size=2)
+            pool = await _connect_when_ready()
             async with pool.acquire() as con:
                 await con.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
                 await con.execute(

@@ -131,7 +131,7 @@ class TestBothHalvesResolveTheSameWay:
         reintroduces it on this line reintroduces the defect."""
         from pathlib import Path
         src = Path(__file__).resolve().parents[1]
-        graph = (src / "packages/kubeintellect-server/app/cortex/graph.py").read_text()
+        graph = (src / "packages/kubeintellect-server/app/cortex/graph.py").read_text(encoding="utf-8")
         line = next(line for line in graph.splitlines() if "render_change_prior(recent_changes(" in line)
         assert 'or ""' not in line, line
 

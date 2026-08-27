@@ -199,6 +199,6 @@ class TestMainUsesTheParsedProperty:
         from pathlib import Path
         main = Path(__file__).resolve().parents[1] / (
             "packages/kubeintellect-server/app/main.py")
-        source = main.read_text()
+        source = main.read_text(encoding="utf-8")
         assert 'ALLOWED_ORIGINS.split(",")' not in source
         assert "allow_origins=settings.allowed_origins," in source

@@ -180,14 +180,14 @@ class TestTheDocumentedContractMatchesTheCode:
 
     def test_the_retry_schedule_in_the_docs_is_the_one_in_the_code(self):
         """The published schedule said `[1s, 3s, 5s]`; the code has always said (2, 5, 10)."""
-        text = self.SDK.read_text()
+        text = self.SDK.read_text(encoding="utf-8")
         assert re.search(r"[`,\s]*".join(f"{d}s" for d in QUERY_RETRY_DELAYS), text), (
             f"docs/sdk.md must name the real schedule {QUERY_RETRY_DELAYS}")
 
     def test_the_docs_do_not_still_claim_the_old_schedule(self):
-        assert "[1s, 3s, 5s]" not in self.SDK.read_text()
+        assert "[1s, 3s, 5s]" not in self.SDK.read_text(encoding="utf-8")
 
     def test_the_docs_say_stream_raises_and_query_does_not(self):
-        text = self.SDK.read_text()
+        text = self.SDK.read_text(encoding="utf-8")
         assert "raises the last `httpx.TransportError`" in text
         assert '`query()` | returns `{"text": "", …}`' in text

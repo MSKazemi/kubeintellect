@@ -137,7 +137,7 @@ class TestAnUnusableConfigIsNotACompletedSetup:
         result = wizard(NO_KEY)
         config = tmp_path / "home" / ".kubeintellect" / ".env"
         assert config.exists()
-        assert "LLM_PROVIDER=openai" in config.read_text()
+        assert "LLM_PROVIDER=openai" in config.read_text(encoding="utf-8")
         assert "were still written" in result.out
 
     def test_it_does_not_offer_to_start_a_server_that_cannot_answer(self, wizard):

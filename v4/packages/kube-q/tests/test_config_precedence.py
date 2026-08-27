@@ -51,12 +51,13 @@ def layers(tmp_path, monkeypatch):
         @staticmethod
         def write(user=None, profile=None, local=None, shell=None, profile_name="prod"):
             if user is not None:
-                (home / ".env").write_text(f"KUBE_Q_URL={user}\n")
+                (home / ".env").write_text(f"KUBE_Q_URL={user}\n", encoding="utf-8")
             if profile is not None:
-                (profiles / f"{profile_name}.env").write_text(f"KUBE_Q_URL={profile}\n")
+                (profiles / f"{profile_name}.env").write_text(
+                    f"KUBE_Q_URL={profile}\n", encoding="utf-8")
                 monkeypatch.setenv("KUBE_Q_PROFILE", profile_name)
             if local is not None:
-                (project / ".env").write_text(f"KUBE_Q_URL={local}\n")
+                (project / ".env").write_text(f"KUBE_Q_URL={local}\n", encoding="utf-8")
             if shell is not None:
                 monkeypatch.setenv("KUBE_Q_URL", shell)
 
@@ -92,8 +93,9 @@ class TestTheLayersOverrideInTheDocumentedOrder:
         """The old loader could reach a profile named in ~/.kube-q/.env, because it pushed that
         file into os.environ first. Keep that working."""
         layers.home_dir.joinpath(".env").write_text(
-            f"KUBE_Q_URL={_USER}\nKUBE_Q_PROFILE=prod\n")
-        layers.home_dir.joinpath("profiles", "prod.env").write_text(f"KUBE_Q_URL={_PROFILE}\n")
+            f"KUBE_Q_URL={_USER}\nKUBE_Q_PROFILE=prod\n", encoding="utf-8")
+        layers.home_dir.joinpath("profiles", "prod.env").write_text(
+            f"KUBE_Q_URL={_PROFILE}\n", encoding="utf-8")
         assert core_config.load_config(strict=False).url == _PROFILE
 
 
@@ -104,13 +106,13 @@ class TestLoadingTwiceInOneProcess:
     def test_the_second_load_sees_an_edited_file(self, layers, tmp_path):
         layers.write(user=_USER, local=_LOCAL)
         assert core_config.load_config(strict=False).url == _LOCAL
-        (tmp_path / "project" / ".env").write_text(f"KUBE_Q_URL={_PROFILE}\n")
+        (tmp_path / "project" / ".env").write_text(f"KUBE_Q_URL={_PROFILE}\n", encoding="utf-8")
         assert core_config.load_config(strict=False).url == _PROFILE
 
     def test_a_key_removed_from_every_file_stops_being_returned(self, layers, tmp_path):
         layers.write(local=_LOCAL)
         assert core_config.load_config(strict=False).url == _LOCAL
-        (tmp_path / "project" / ".env").write_text("")
+        (tmp_path / "project" / ".env").write_text("", encoding="utf-8")
         core_config.load_config(strict=False)
         assert "KUBE_Q_URL" not in core_config.os.environ, (
             "a removed key survived in os.environ as a phantom shell export"

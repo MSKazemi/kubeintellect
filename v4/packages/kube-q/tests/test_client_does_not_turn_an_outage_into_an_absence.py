@@ -122,4 +122,4 @@ class TestExport:
             return_value=Response(200, json=pm))
         out = tmp_path / "report.json"
         assert export_cmd.run(["ep1", "--output", str(out)]) == 0
-        assert json.loads(out.read_text())["episode_id"] == "ep1"
+        assert json.loads(out.read_text(encoding="utf-8"))["episode_id"] == "ep1"

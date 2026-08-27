@@ -133,7 +133,7 @@ class TestTheDocumentedTableMatchesTheCode:
     def test_the_cli_reference_says_the_same_thing(self):
         from pathlib import Path
         ref = Path(__file__).resolve().parents[3] / "docs" / "cli-reference.md"
-        text = ref.read_text()
+        text = ref.read_text(encoding="utf-8")
         assert "rejected on its merits" in text
         assert "`1` is worth retrying and `3` never is" in text
 

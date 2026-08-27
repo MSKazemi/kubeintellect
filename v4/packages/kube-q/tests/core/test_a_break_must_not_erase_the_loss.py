@@ -170,7 +170,7 @@ class TestTheDocumentedPatternIsTheOneThatIsTested:
 
     def test_the_sdk_doc_tells_callers_how_to_be_fail_closed(self):
         from pathlib import Path
-        text = (Path(__file__).resolve().parents[2] / "docs" / "sdk.md").read_text()
+        text = (Path(__file__).resolve().parents[2] / "docs" / "sdk.md").read_text(encoding="utf-8")
         # The attribute as a caller would write it — a bare substring check passes for
         # `_last_stream_stats` too, which is a different (private) name.
         assert "client.last_stream_stats" in text

@@ -43,8 +43,8 @@ _VARS = (
 def project_only(tmp_path, monkeypatch):
     """A user config file with no LLM settings, and a ./.env that has them all."""
     user_env = tmp_path / "user.env"
-    user_env.write_text("USE_SQLITE=true\n")
-    (tmp_path / ".env").write_text(_PROJECT_ENV)
+    user_env.write_text("USE_SQLITE=true\n", encoding="utf-8")
+    (tmp_path / ".env").write_text(_PROJECT_ENV, encoding="utf-8")
     monkeypatch.setattr(cli, "_CONFIG_FILE", user_env)
     monkeypatch.chdir(tmp_path)
     for var in _VARS:
@@ -80,14 +80,14 @@ class TestPrecedenceIsUnchanged:
 
     def test_the_user_config_file_still_beats_the_project_one(self, project_only):
         (project_only / "user.env").write_text(
-            "USE_SQLITE=true\nAZURE_OPENAI_API_KEY=from-the-user-file\n"
+            "USE_SQLITE=true\nAZURE_OPENAI_API_KEY=from-the-user-file\n", encoding="utf-8"
         )
         cli._load_effective_config()
         assert os.environ["AZURE_OPENAI_API_KEY"] == "from-the-user-file"
 
     def test_a_missing_project_env_is_not_an_error(self, tmp_path, monkeypatch):
         user_env = tmp_path / "user.env"
-        user_env.write_text("USE_SQLITE=true\n")
+        user_env.write_text("USE_SQLITE=true\n", encoding="utf-8")
         monkeypatch.setattr(cli, "_CONFIG_FILE", user_env)
         monkeypatch.chdir(tmp_path)
         cli._load_effective_config()          # no ./.env here at all
@@ -102,5 +102,5 @@ class TestPrecedenceIsUnchanged:
 class TestTheseTestsWouldNoticeTheDefect:
     def test_the_project_env_is_the_only_source_of_the_key(self, project_only):
         """Vacuity guard: if the key were also in the user file, every test above would pass anyway."""
-        assert "AZURE_OPENAI_API_KEY" not in (project_only / "user.env").read_text()
+        assert "AZURE_OPENAI_API_KEY" not in (project_only / "user.env").read_text(encoding="utf-8")
         assert "AZURE_OPENAI_API_KEY" not in os.environ
