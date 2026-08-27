@@ -150,3 +150,141 @@ def predicate_liveness_errors(pred, *, strict: bool = False) -> list[str]:
             )
 
     return errors
+
+
+# ── Predicates that fire on a healthy object ────────────────────────────────────────────────────
+# The mirror image of a dead predicate, and it went unrefused for exactly as long. A dead
+# predicate contributes silence; one that matches a HEALTHY status contributes a finding about
+# every object of its kind on the cluster, for ever.
+#
+# `nl:soak-cpu-saturated`, authored from the prose "a workload is pinned at its CPU limit",
+# compiled to `{kind: Pod, status_regex: '^Running$'}`. `WatchPredicate` has no namespace or
+# label scope — `matches()` tests the status and nothing else — so that predicate matches every
+# healthy pod on the cluster, and the trend predicate that carried the actual CPU condition is
+# evaluated on a separate loop and OR'd, never AND'd. On the F3 soak cluster its ring held 46
+# findings before any fault was injected, every one of them `kube-system/coredns-…` with
+# `evidence: "pod status=Running"`.
+#
+# The authoring and review gates refuse this. The ENGINE deliberately does not: refusing at load
+# would delete the evidence that the detector is wrong, which is a mistake this codebase has
+# already made once — the round-two liveness gate dropped whole detectors and improved the
+# measured result by removing the rows that falsified it. The engine records it instead.
+
+#: What the observer emits for an object in a normal steady state.
+#: Pod: `pod_display_status` returns `Running` for a healthy pod, `Completed` for a container that
+#: exited cleanly, and `Succeeded` for a finished pod with no container statuses.
+#: Node: `Ready`.
+HEALTHY_STATUS = {
+    "Pod": ("Running", "Completed", "Succeeded"),
+    "Node": ("Ready",),
+}
+
+
+def predicate_health_errors(pred) -> list[str]:
+    """Reasons `pred` fires on objects that are FINE. Empty list ⇒ it does not.
+
+    Deliberately narrow, and deliberately not a guess: it asks the predicate the same question
+    the engine will — `status_regex.search(status)` — against the statuses the observer emits for
+    a healthy object. Nothing here reasons about whether a detector is a *good* one.
+    """
+    if pred.kind not in HEALTHY_STATUS or pred.status_regex is None:
+        return []
+    hits = [s for s in HEALTHY_STATUS[pred.kind] if pred.status_regex.search(s)]
+    if not hits:
+        return []
+    return [
+        f"status_regex {pred.status_regex.pattern!r} matches {', '.join(hits)}, which is what "
+        f"the observer emits for a HEALTHY {pred.kind} — this predicate fires on every "
+        f"{pred.kind.lower()} on the cluster, not on a fault. A {pred.kind} predicate has no "
+        f"namespace or label scope, so there is no way to narrow it."
+    ]
+
+
+# ── Trend predicates ────────────────────────────────────────────────────────────────────────────
+# `predicate_liveness_errors` covers watch predicates only, and that gap shipped dead detectors.
+# Two of the eight NL-authored detectors on the F3 soak cluster were forecasts over
+# `kube_deployment_status_replicas{deployment="your-deployment-name"}` and
+# `{deployment="your_service_name"}` — the model returned the *template* rather than filling it
+# in, and the template was accepted, stored, listed as `shadow` and offered for promotion. A
+# PromQL selector pinned to a series name that does not exist returns no samples, `project_eta`
+# gets fewer than two points, and the detector's zero firings read exactly like "the condition
+# never occurred".
+
+# Deliberately narrow. A false positive here refuses an author's *valid* detector, which is worse
+# than the gap it closes, so this matches only strings that cannot plausibly be a real Kubernetes
+# object name: the `your-`/`your_` template form both live cases used, and the four templating
+# syntaxes. Words like `example`, `foo` or `test` are NOT listed — they are perfectly ordinary
+# namespace and deployment names, and guessing at intent is how a validator starts lying.
+_PLACEHOLDER_RE = re.compile(
+    r"^(?:"
+    r"your[-_].*"                                   # your-deployment-name, your_service_name
+    r"|<[^>]*>"                                     # <name>
+    r"|\{\{.*\}\}"                                 # {{ name }}
+    r"|\$\{?[A-Za-z_][A-Za-z0-9_]*\}?"              # $NAME / ${NAME}
+    r"|(?:CHANGE_?ME|REPLACE_?ME|PLACEHOLDER|TODO|FIXME)"
+    r")$",
+    re.IGNORECASE,
+)
+
+# Label matchers inside a PromQL selector: name, operator, quoted value.
+_LABEL_MATCHER_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*(=~|!~|!=|=)\s*\"([^\"]*)\"")
+
+VALID_DIRECTIONS = ("rising", "falling")
+
+
+def trend_liveness_errors(trend) -> list[str]:
+    """Reasons `trend` can never fire. Empty list ⇒ it can.
+
+    Every check here is a *provable* impossibility read off `engine.project_eta` and its caller,
+    which fire only when `r2 >= min_r2` and `0 < eta_minutes <= min(projection_horizon_minutes,
+    fire_if_eta_within_minutes)`. Nothing here guesses at whether a forecast is a *good* one —
+    a counter used as a level, say — because that depends on runtime values this cannot see.
+    """
+    errors: list[str] = []
+
+    metric = (trend.metric or "").strip()
+    if not metric:
+        errors.append("trend predicate has no metric — there is nothing to project")
+        return errors
+
+    for label, _op, value in _LABEL_MATCHER_RE.findall(metric):
+        if _PLACEHOLDER_RE.match(value):
+            errors.append(
+                f"trend metric pins {label}={value!r}, which is an unfilled template rather than "
+                f"a cluster object — the selector matches no series, so this predicate can never "
+                f"fire ({metric!r})"
+            )
+
+    # r2 is a squared correlation coefficient: it lies in [0, 1] by construction.
+    if trend.min_r2 > 1.0:
+        errors.append(
+            f"min_r2={trend.min_r2} is above 1.0 and r2 cannot exceed 1.0, so the fit check "
+            "rejects every series — this predicate can never fire"
+        )
+
+    # The caller requires eta_minutes > 0 AND <= both bounds; a non-positive bound excludes
+    # every value eta can take.
+    for field_name, value in (("fire_if_eta_within_minutes", trend.fire_if_eta_within_minutes),
+                              ("projection_horizon_minutes", trend.projection_horizon_minutes)):
+        if value <= 0:
+            errors.append(
+                f"{field_name}={value} excludes every projected ETA (the engine requires "
+                "0 < eta <= this) — this predicate can never fire"
+            )
+
+    if trend.window_minutes <= 0:
+        errors.append(
+            f"window_minutes={trend.window_minutes} asks for an empty lookback, so the "
+            "regression never gets the two samples it needs — this predicate can never fire"
+        )
+
+    # Not an impossibility — it is worse. `project_eta` treats anything that is not exactly
+    # "falling" as rising, so a typo does not fail, it silently inverts the author's intent.
+    if trend.direction not in VALID_DIRECTIONS:
+        errors.append(
+            f"direction={trend.direction!r} is not one of {', '.join(VALID_DIRECTIONS)}; the "
+            "engine would silently treat it as 'rising', which is the opposite condition half "
+            "the time — say which one you mean"
+        )
+
+    return errors

@@ -16,7 +16,11 @@ import json
 import re
 
 from app.detectors.models import DetectBlock, parse_detect_block
-from app.detectors.predicate_shape import predicate_liveness_errors
+from app.detectors.predicate_shape import (
+    predicate_health_errors,
+    predicate_liveness_errors,
+    trend_liveness_errors,
+)
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -36,6 +40,28 @@ Output ONLY a JSON object with any of these keys (omit those you don't need):
     window_minutes, projection_horizon_minutes, fire_if_eta_within_minutes,
     direction: "rising"|"falling", min_r2} — for forecasting a slow-burn failure
 - "debounce_seconds": integer
+
+Hard rules, each one written because a model broke it and the result was stored as a live
+detector that could never fire:
+- NEVER leave a placeholder in a PromQL selector. If the description does not name a concrete
+  deployment/service/namespace, omit the label matcher entirely rather than writing
+  {deployment="your-deployment-name"} — an unmatched selector returns no series and the
+  detector is silently dead.
+- "direction" must be exactly "rising" or "falling". Anything else is read as "rising", so a
+  typo asks the opposite question instead of failing.
+- "min_r2" is a squared correlation coefficient: it must be in [0, 1].
+- A Pod "status_regex" is matched against the STATUS column `kubectl get pods` prints — a
+  waiting reason (CrashLoopBackOff, ImagePullBackOff), a terminated reason (OOMKilled, Error,
+  Completed), Init:<reason>, Evicted, Terminating, or a bare phase. It is NOT the pod's phase
+  alone and NOT an arbitrary word: "NotReady" in particular does NOT mean "the readiness probe
+  is failing" (kubectl prints "Running" for that pod) — use an Event predicate on Unhealthy.
+- A Pod "status_regex" must NEVER match a HEALTHY status: Running, Completed or Succeeded (nor
+  a Node "status_regex" matching Ready). A predicate has no namespace or label scope — it is
+  matched against the status and nothing else — so "^Running$" means "fire on every pod on the
+  cluster", not "fire on the pod I described". Adding a trend_predicate does not narrow it: the
+  two are evaluated by separate loops and OR'd, never AND'd. If the condition is a resource level
+  ("pinned at its CPU limit", "memory climbing"), express it as a trend_predicate ALONE and emit
+  NO watch_predicates.
 
 Use anchored, specific RE2 regexes. Examples:
 {"watch_predicates": [{"kind": "Pod", "status_regex": "^OOMKilled$"}]}
@@ -81,8 +107,9 @@ def validate_detect_block(raw: dict, name: str = "nl") -> tuple[DetectBlock | No
     """Validate a compiled block by running it through the real compiler.
 
     Returns (block, errors). block is None when nothing valid compiled, a predicate is
-    malformed (e.g. an uncompilable regex), or a predicate compiles cleanly but provably
-    cannot ever match — see `predicate_shape.predicate_liveness_errors`.
+    malformed (e.g. an uncompilable regex), a predicate compiles cleanly but provably cannot ever
+    match (`predicate_shape.predicate_liveness_errors`), or one matches a healthy object and so
+    fires on the whole cluster (`predicate_shape.predicate_health_errors`).
     """
     if not isinstance(raw, dict):
         return None, ["compiler did not return a JSON object"]
@@ -100,6 +127,23 @@ def validate_detect_block(raw: dict, name: str = "nl") -> tuple[DetectBlock | No
     # predicate that provably can never match rather than staging a candidate whose zero
     # firings will be read as "the condition never occurred".
     dead = [msg for p in block.watch_predicates for msg in predicate_liveness_errors(p)]
+
+    # Trend predicates were exempt from this until 2026-08-25, and the exemption shipped dead
+    # detectors: two of the eight staged on the F3 soak cluster forecast a metric selector still
+    # holding the model's own template (`deployment="your-deployment-name"`). They validated,
+    # stored, listed as `shadow`, and matched no series for 24 hours. A forecast that can never
+    # fire is worse than a missing one — its silence reads as a clean bill of health.
+    dead += [msg for t in block.trend_predicates for msg in trend_liveness_errors(t)]
+
+    # And the mirror image: a predicate that matches a HEALTHY object. `nl:soak-cpu-saturated`
+    # was authored from "a workload is pinned at its CPU limit" and compiled to
+    # `{kind: Pod, status_regex: '^Running$'}`, which fires on every healthy pod on the cluster —
+    # 46 of them on an idle soak cluster before any fault was injected. A `WatchPredicate` has no
+    # namespace or label scope, so the author cannot narrow it afterwards; the only place to stop
+    # it is here. This is refused for the same reason a dead predicate is: its output does not
+    # mean what the operator will read it to mean.
+    dead += [msg for p in block.watch_predicates for msg in predicate_health_errors(p)]
+
     if dead:
         return None, dead
 
