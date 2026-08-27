@@ -1,0 +1,5 @@
+# DEMO 1 — crash-loop. The cause is in the container log, not the manifest.
+# Read-only throughout: no approval gate should appear here, and that is itself worth showing.
+which pods in the shop namespace are not healthy?
+why is payments-api crash-looping?
+what exactly do I need to change to fix it?

@@ -1,0 +1,5 @@
+# DEMO 6 — THE HEADLINE. Diagnose, then act, and stop for a human first.
+# The gate is the product: the agent proposes the mutating command and waits.
+why is payments-api failing?
+restart the payments-api deployment in the shop namespace
+did the restart change anything?

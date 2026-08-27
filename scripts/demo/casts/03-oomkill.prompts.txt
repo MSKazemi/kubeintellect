@@ -1,0 +1,4 @@
+# DEMO 3 — an OOMKill. Asks for the evidence, not just the label.
+what happened to the report-worker pod?
+show me the evidence that it was OOMKilled rather than crashing on its own
+what memory limit would you set, and what are you basing that on?

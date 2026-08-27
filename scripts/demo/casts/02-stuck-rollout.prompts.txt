@@ -1,0 +1,5 @@
+# DEMO 2 — a deployment stuck mid-rollout while the service stays UP.
+# The trap: a naive health check says "checkout is serving traffic", which is true and useless.
+is the checkout deployment healthy?
+why has the checkout rollout not finished?
+which revision are the running pods actually on, and which one is failing?

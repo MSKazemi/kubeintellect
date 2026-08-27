@@ -1,0 +1,6 @@
+# DEMO 8 — the complex one: six workloads, four independent faults, one open question.
+# The discriminating test is whether it separates them instead of reporting "the namespace is
+# unhealthy", and whether it leaves `web` and `inventory`'s PODS out of the fault list.
+give me a full triage of the shop namespace: what is broken, and are these one incident or several?
+rank them by user impact and tell me which to fix first
+which of these would page someone at 3am, and which can wait until morning?
