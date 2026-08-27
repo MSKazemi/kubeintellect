@@ -1,0 +1,25 @@
+# The healthy half of the shop. Its job in every demo is to be the thing the agent must NOT
+# name: a namespace where everything is broken teaches nothing about whether the diagnosis
+# discriminates.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web, namespace: shop}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web}}
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.29-alpine
+          ports: [{containerPort: 80}]
+          readinessProbe: {httpGet: {path: /, port: 80}, initialDelaySeconds: 2}
+          resources: {requests: {cpu: 10m, memory: 24Mi}, limits: {memory: 96Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: web, namespace: shop}
+spec:
+  selector: {app: web}
+  ports: [{port: 80, targetPort: 80}]

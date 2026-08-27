@@ -1,0 +1,21 @@
+# DEMO 2 — a deployment stuck mid-rollout on a tag that does not exist.
+# The old ReplicaSet is still serving, so the service is UP. That is the interesting part: the
+# cluster is degraded, not down, and a naive "is it healthy?" check says yes.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+  namespace: shop
+  annotations: {kubernetes.io/change-cause: "release 5.1.0"}
+spec:
+  replicas: 3
+  progressDeadlineSeconds: 120
+  strategy: {rollingUpdate: {maxUnavailable: 0, maxSurge: 1}}
+  selector: {matchLabels: {app: checkout}}
+  template:
+    metadata: {labels: {app: checkout}}
+    spec:
+      containers:
+        - name: checkout
+          image: nginx:5.1.0-does-not-exist
+          resources: {requests: {cpu: 10m, memory: 24Mi}}

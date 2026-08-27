@@ -1,0 +1,1 @@
+{"action_id": "6070d66e-e385-41ed-9ab7-0f96893adc73", "risk_level": "medium", "human_summary": "kubectl scale deployment web --replicas=10 -n shop", "answered_with": "deny", "turn": 1}

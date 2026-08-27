@@ -1,0 +1,139 @@
+$ kubectl -n shop get pods
+NAME                             READY   STATUS             RESTARTS        AGE
+checkout-6c767b687-7jzc2         0/1     ImagePullBackOff   0               13m
+checkout-6c767b687-q8mfc         0/1     ImagePullBackOff   0               13m
+checkout-6c767b687-zpqkq         0/1     ImagePullBackOff   0               13m
+inventory-5c7489cd6d-nt9ql       1/1     Running            0               13m
+inventory-5c7489cd6d-prd75       1/1     Running            0               13m
+ml-scorer-67c545c75-9qcrx        0/1     Pending            0               13m
+payments-api-594dbd4bff-768w9    0/1     CrashLoopBackOff   7 (3m13s ago)   13m
+payments-api-594dbd4bff-zkhjp    0/1     CrashLoopBackOff   7 (3m2s ago)    13m
+report-worker-6684d7d4d4-tbvxg   0/1     CrashLoopBackOff   7 (3m13s ago)   13m
+web-65cdd6765b-hgnsh             1/1     Running            0               13m
+web-65cdd6765b-vjnnm             1/1     Running            0               13m
+
+$ kubectl -n shop get deploy,endpoints
+NAME                            READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/checkout        0/3     3            0           13m
+deployment.apps/inventory       2/2     2            2           13m
+deployment.apps/ml-scorer       0/1     1            0           13m
+deployment.apps/payments-api    0/2     2            0           13m
+deployment.apps/report-worker   0/1     1            0           13m
+deployment.apps/web             2/2     2            2           13m
+
+NAME                  ENDPOINTS                       AGE
+endpoints/inventory   <none>                          13m
+endpoints/web         10.244.1.50:80,10.244.1.55:80   13m
+
+$ kq chat  # KubeIntellect
+
+[driver] session c4ddd383-6967-4aa1-826b-723cef54b732 -> http://127.0.0.1:30082
+
+> why is payments-api failing?
+### Findings:
+1. Both `payments-api-594dbd4bff-768w9` and `payments-api-594dbd4bff-zkhjp` pods in the `shop` namespace are in a `CrashLoopBackOff` state.
+2. Logs from both pods show the following error:
+   ```
+   FATAL: DATABASE_URL is not set; refusing to start
+   hint: the value is provisioned by the 'payments-db' Secret
+   ```
+3. The application exits with code `1` due to the missing `DATABASE_URL` environment variable.
+4. Events confirm repeated container restarts due to the failure.
+
+### Root Cause:
+The `DATABASE_URL` environment variable, required for the `payments-api` to start, is not set. This variable is expected to be provided by the `payments-db` Secret, but it is either missing or not properly configured.
+
+### Actions Taken:
+- Inspected the pod descriptions and logs for both `payments-api` pods.
+- Reviewed events for both pods to confirm the issue.
+
+### Next Steps:
+1. Verify the existence and correctness of the `payments-db` Secret in the `shop` namespace:
+   ```bash
+   kubectl get secret payments-db -n shop
+   ```
+2. Check if the `DATABASE_URL` key is present in the `payments-db` Secret:
+   ```bash
+   kubectl describe secret payments-db -n shop
+   ```
+3. Ensure the deployment for `payments-api` is correctly mounting the `payments-db` Secret and setting the `DATABASE_URL` environment variable.
+4. If the Secret is missing or misconfigured, recreate it with the correct `DATABASE_URL` value:
+   ```bash
+   kubectl create secret generic payments-db -n shop --from-literal=DATABASE_URL=<your-database-url>
+   ```
+5. Restart the `payments-api` pods to apply the changes:
+   ```bash
+   kubectl rollout restart deployment payments-api -n shop
+   ```
+
+> restart the payments-api deployment in the shop namespace
+
+
+---
+🟡 **Approval Required** — risk level: `MEDIUM`
+
+**Command:**
+```
+kubectl rollout restart deployment payments-api -n shop
+```
+
+**Type `yes` or `/approve` to proceed, or `no` / `/deny` to cancel.**
+
+> approve
+### Findings:
+1. The new `payments-api` pod (`payments-api-6494d76d4d-qx5z2`) is also failing with the same issue as the previous pods:
+   - Logs show:
+     ```
+     payments-api starting (build 4.2.1)
+     FATAL: DATABASE_URL is not set; refusing to start
+     hint: the value is provisioned by the 'payments-db' Secret
+     ```
+   - Pod description confirms the container is in a `CrashLoopBackOff` state due to the missing `DATABASE_URL` environment variable.
+   - Events indicate repeated restarts with a `BackOff` warning.
+
+### Root Cause:
+The `DATABASE_URL` environment variable is still not set, and the application cannot start without it. This variable is expected to be provided by the `payments-db` Secret, which appears to be missing or misconfigured.
+
+### Next Steps:
+1. Verify the existence and correctness of the `payments-db` Secret in the `shop` namespace:
+   ```bash
+   kubectl get secret payments-db -n shop
+   ```
+2. Check if the `DATABASE_URL` key is present in the `payments-db` Secret:
+   ```bash
+   kubectl describe secret payments-db -n shop
+   ```
+3. If the Secret is missing or misconfigured, recreate it with the correct `DATABASE_URL` value:
+   ```bash
+   kubectl create secret generic payments-db -n shop --from-literal=DATABASE_URL=<your-database-url>
+   ```
+4. Restart the `payments-api` deployment to apply the changes:
+   ```bash
+   kubectl rollout restart deployment payments-api -n shop
+   ```
+
+> did the restart change anything?
+No, the restart did not resolve the issue. The new `payments-api` pod (`payments-api-6494d76d4d-qx5z2`) is still failing with the same error:
+
+- Logs confirm the `DATABASE_URL` environment variable is not set, causing the application to crash.
+- The root cause remains unchanged: the `payments-db` Secret is either missing or misconfigured, and the `DATABASE_URL` is not being provided to the pods.
+
+### Next Steps:
+1. Verify the existence and correctness of the `payments-db` Secret in the `shop` namespace:
+   ```bash
+   kubectl get secret payments-db -n shop
+   ```
+2. Check if the `DATABASE_URL` key is present in the `payments-db` Secret:
+   ```bash
+   kubectl describe secret payments-db -n shop
+   ```
+3. If the Secret is missing or misconfigured, recreate it with the correct `DATABASE_URL` value:
+   ```bash
+   kubectl create secret generic payments-db -n shop --from-literal=DATABASE_URL=<your-database-url>
+   ```
+4. Restart the `payments-api` deployment to apply the changes:
+   ```bash
+   kubectl rollout restart deployment payments-api -n shop
+   ```
+
+[driver] 3 prompt(s), 1 gate(s), 1 answered.

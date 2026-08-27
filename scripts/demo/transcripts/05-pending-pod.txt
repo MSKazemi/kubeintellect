@@ -1,0 +1,83 @@
+$ kubectl -n shop get pods
+NAME                             READY   STATUS             RESTARTS        AGE
+checkout-6c767b687-7jzc2         0/1     ImagePullBackOff   0               13m
+checkout-6c767b687-q8mfc         0/1     ImagePullBackOff   0               13m
+checkout-6c767b687-zpqkq         0/1     ImagePullBackOff   0               13m
+inventory-5c7489cd6d-nt9ql       1/1     Running            0               13m
+inventory-5c7489cd6d-prd75       1/1     Running            0               13m
+ml-scorer-67c545c75-9qcrx        0/1     Pending            0               13m
+payments-api-594dbd4bff-768w9    0/1     CrashLoopBackOff   7 (2m56s ago)   13m
+payments-api-594dbd4bff-zkhjp    0/1     CrashLoopBackOff   7 (2m45s ago)   13m
+report-worker-6684d7d4d4-tbvxg   0/1     CrashLoopBackOff   7 (2m56s ago)   13m
+web-65cdd6765b-hgnsh             1/1     Running            0               13m
+web-65cdd6765b-vjnnm             1/1     Running            0               13m
+
+$ kubectl -n shop get deploy,endpoints
+NAME                            READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/checkout        0/3     3            0           13m
+deployment.apps/inventory       2/2     2            2           13m
+deployment.apps/ml-scorer       0/1     1            0           13m
+deployment.apps/payments-api    0/2     2            0           13m
+deployment.apps/report-worker   0/1     1            0           13m
+deployment.apps/web             2/2     2            2           13m
+
+NAME                  ENDPOINTS                       AGE
+endpoints/inventory   <none>                          13m
+endpoints/web         10.244.1.50:80,10.244.1.55:80   13m
+
+$ kq chat  # KubeIntellect
+
+[driver] session a8429e42-bd58-460f-a96c-abd2ce3f239d -> http://127.0.0.1:30082
+
+> the ml-scorer deployment has been at 0/1 for an hour. why?
+### Findings:
+1. The `ml-scorer` pod is stuck in a `Pending` state due to insufficient resources on the cluster nodes. The pod requests **64 CPUs** and **512Gi of memory**, which exceeds the capacity of the available worker node (`ki-camp1-c2-worker`).
+2. The cluster has only two nodes:
+   - `ki-camp1-c2-control-plane`: Reserved for control-plane tasks, not suitable for workloads.
+   - `ki-camp1-c2-worker`: Insufficient resources to meet the pod's requirements.
+3. The deployment configuration specifies a single replica with these high resource requests, making scheduling impossible.
+
+### Root Cause:
+The resource requests for the `ml-scorer` pod are unrealistically high and cannot be satisfied by the current cluster setup.
+
+### Actions Taken:
+- Inspected the pod's status and events, confirming the scheduling failure due to resource constraints.
+- Reviewed the deployment configuration and identified the excessive resource requests.
+- Verified the cluster nodes' resource availability, confirming the lack of capacity.
+
+### Next Steps:
+1. **Adjust Resource Requests**:
+   - Update the deployment (`ml-scorer` in namespace `shop`) to request realistic CPU and memory values that fit within the available node capacity. For example:
+     ```yaml
+     resources:
+       requests:
+         cpu: "1"
+         memory: "1Gi"
+     ```
+   - Apply the updated configuration using `kubectl apply`.
+
+2. **Scale Cluster**:
+   - If the high resource requests are intentional, add more worker nodes to the cluster with sufficient CPU and memory to accommodate the pod.
+
+3. **Monitor Deployment**:
+   - After making changes, monitor the pod status using:
+     ```bash
+     kubectl get pods -n shop
+     ```
+   - Ensure the pod transitions to `Running`.
+
+4. **Verify Logs**:
+   - Once the pod is running, check its logs for any runtime issues:
+     ```bash
+     kubectl logs <pod-name> -n shop
+     ```
+
+Let me know if you need help with updating the deployment or scaling the cluster!
+
+> is this a cluster capacity problem or a manifest problem?
+This is primarily a **manifest problem**. The `ml-scorer` deployment requests **64 CPUs** and **512Gi of memory**, which are unrealistically high and exceed the capacity of the cluster's worker node (`ki-camp1-c2-worker`). The cluster itself is functioning correctly, but the pod cannot be scheduled due to these excessive resource requests.
+
+If the resource requests were adjusted to realistic values (e.g., 1 CPU and 1Gi of memory), the pod would likely schedule and run successfully. Therefore, the issue lies in the deployment's configuration rather than the cluster's capacity.
+
+[driver] 2 prompt(s), 0 gate(s), 0 answered.
+[driver] note: no approval gate appeared. A readonly key never reaches one, and a read-only question would not raise one either.

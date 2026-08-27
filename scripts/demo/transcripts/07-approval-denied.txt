@@ -1,0 +1,52 @@
+$ kubectl -n shop get pods
+NAME                             READY   STATUS             RESTARTS        AGE
+checkout-6c767b687-7jzc2         0/1     ImagePullBackOff   0               14m
+checkout-6c767b687-q8mfc         0/1     ImagePullBackOff   0               14m
+checkout-6c767b687-zpqkq         0/1     ImagePullBackOff   0               14m
+inventory-5c7489cd6d-nt9ql       1/1     Running            0               14m
+inventory-5c7489cd6d-prd75       1/1     Running            0               14m
+ml-scorer-67c545c75-9qcrx        0/1     Pending            0               14m
+payments-api-594dbd4bff-768w9    0/1     CrashLoopBackOff   7 (4m16s ago)   14m
+payments-api-594dbd4bff-zkhjp    0/1     CrashLoopBackOff   7 (4m5s ago)    14m
+payments-api-6494d76d4d-qx5z2    0/1     Error              3 (37s ago)     50s
+report-worker-6684d7d4d4-tbvxg   0/1     CrashLoopBackOff   7 (4m16s ago)   14m
+web-65cdd6765b-hgnsh             1/1     Running            0               14m
+web-65cdd6765b-vjnnm             1/1     Running            0               14m
+
+$ kubectl -n shop get deploy,endpoints
+NAME                            READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/checkout        0/3     3            0           14m
+deployment.apps/inventory       2/2     2            2           14m
+deployment.apps/ml-scorer       0/1     1            0           14m
+deployment.apps/payments-api    0/2     1            0           14m
+deployment.apps/report-worker   0/1     1            0           14m
+deployment.apps/web             2/2     2            2           14m
+
+NAME                  ENDPOINTS                       AGE
+endpoints/inventory   <none>                          14m
+endpoints/web         10.244.1.50:80,10.244.1.55:80   14m
+
+$ kq chat  # KubeIntellect
+
+[driver] session cf07f513-b094-4b39-a1f4-5dde550d213f -> http://127.0.0.1:30082
+
+> scale the web deployment in the shop namespace to 10 replicas
+
+
+---
+🟡 **Approval Required** — risk level: `MEDIUM`
+
+**Command:**
+```
+kubectl scale deployment web --replicas=10 -n shop
+```
+
+**Type `yes` or `/approve` to proceed, or `no` / `/deny` to cancel.**
+
+> deny
+The scaling action to set the `web` deployment in the `shop` namespace to 10 replicas was canceled. If you still want to proceed or need assistance with something else, let me know!
+
+> how many replicas does web have now?
+The `web` deployment in the `shop` namespace currently has 2 replicas configured, with 2 replicas running and available. Let me know if you'd like to scale it or perform any other actions!
+
+[driver] 2 prompt(s), 1 gate(s), 1 answered.
