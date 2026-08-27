@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -300,8 +301,11 @@ def build_parser() -> argparse.ArgumentParser:
                      help="file of prompts, one per line ('#' comments and blanks ignored)")
 
     p.add_argument("--base-url", default=DEFAULT_BASE_URL, help=f"default {DEFAULT_BASE_URL}")
-    p.add_argument("--api-key", default=None,
-                   help="Bearer key; must be operator or above to reach a gate at all")
+    p.add_argument("--api-key", default=os.environ.get("KI_API_KEY") or None,
+                   help="Bearer key; must be operator or above to reach a gate at all. "
+                        "Defaults to $KI_API_KEY, which is the form to prefer: a key passed "
+                        "on the command line is visible in `ps` and lands in any terminal "
+                        "recording of the session.")
     p.add_argument("--session-id", default=None, help="reuse a specific session id")
 
     p.add_argument("--approve-phrase", default=DEFAULT_APPROVE,

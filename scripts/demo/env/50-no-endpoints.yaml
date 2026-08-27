@@ -1,0 +1,26 @@
+# DEMO 4 — the service that is "up" and serves nothing: a selector typo.
+# The Deployment is healthy, every pod is Ready, the Service exists. The Service selects
+# `app: inventory-api` and the pods are labelled `app: inventory`. Endpoints: none.
+# Nothing in `get pods` or `get deploy` is red.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: inventory, namespace: shop}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: inventory}}
+  template:
+    metadata: {labels: {app: inventory}}
+    spec:
+      containers:
+        - name: inventory
+          image: nginx:1.29-alpine
+          ports: [{containerPort: 80}]
+          readinessProbe: {httpGet: {path: /, port: 80}, initialDelaySeconds: 2}
+          resources: {requests: {cpu: 10m, memory: 24Mi}, limits: {memory: 96Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: inventory, namespace: shop}
+spec:
+  selector: {app: inventory-api}   # <-- the typo. Pods are `app: inventory`.
+  ports: [{port: 80, targetPort: 80}]

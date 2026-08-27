@@ -1,0 +1,24 @@
+# DEMO 3 — an OOMKill that really happens, via an ANONYMOUS buffer.
+# Not a tmpfs write: a tmpfs emptyDir is pod-scoped, survives the container restart, and moves
+# the kill to container init (StartError/128) so `Reason: OOMKilled` never appears. `of=/dev/null`
+# keeps the buffer anonymous -- charged, unreclaimable, freed with the process -- and `exec`
+# makes the kill the container's own exit status: exit 137.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: report-worker, namespace: shop}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: report-worker}}
+  template:
+    metadata: {labels: {app: report-worker}}
+    spec:
+      containers:
+        - name: worker
+          image: busybox:1.37
+          command:
+            - sh
+            - -c
+            - |
+              echo "report-worker: building the nightly aggregate"
+              exec dd if=/dev/zero of=/dev/null bs=100M count=1
+          resources: {requests: {memory: 32Mi}, limits: {memory: 64Mi}}
