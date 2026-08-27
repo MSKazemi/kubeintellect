@@ -92,7 +92,7 @@ uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/ packa
 # 2. Types — the workspace is at ZERO errors; keep it there.
 uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q
 
-# 3. Server suite (4553 tests)
+# 3. Server suite (4869 tests)
 uv run python -m pytest tests/ -q
 
 # 4. kq CLI suite (724 tests)
@@ -172,7 +172,7 @@ Two annotations are load-bearing and mypy *cannot* verify them — see "Safety i
 
 ### Known pre-existing debt — do not try to fix it in an unrelated PR
 
-- **`ruff format --check` is not a CI gate** and would reformat **117** files. `make lint` in
+- **`ruff format --check` is not a CI gate** and would reformat **120** files. `make lint` in
   `v4/` *does* run it, so `make lint` fails on a clean checkout. Use the `ruff check` command
   above to predict CI, not `make lint`.
 - **`ruff` is pinned `<0.16`** on purpose — 0.16's default rules reported 438 findings, then
