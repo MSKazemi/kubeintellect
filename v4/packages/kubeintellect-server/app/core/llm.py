@@ -57,7 +57,37 @@ def get_langfuse_callbacks() -> list[Any]:
     os.environ["LANGFUSE_PUBLIC_KEY"] = settings.LANGFUSE_PUBLIC_KEY or ""
     os.environ["LANGFUSE_SECRET_KEY"] = settings.LANGFUSE_SECRET_KEY or ""
     os.environ["LANGFUSE_HOST"]       = settings.LANGFUSE_HOST or ""
+    _stamp_otel_identity()
     return [CallbackHandler()]
+
+
+def _stamp_otel_identity() -> None:
+    """Say which deployment a trace came from.
+
+    Langfuse v4 traces through OpenTelemetry, and an OTel resource with no attributes set reports
+    `service.name = "unknown_service"`. Every trace this server has ever emitted carried that,
+    plus a `service.instance.id` that is a fresh UUID per process — so a shared Langfuse project
+    collecting from several clusters holds traces that cannot be attributed to any of them, and
+    the only way to guess which deployment produced one is the timestamp.
+
+    That failed concretely. A multi-cluster campaign tried to attribute traces to a run by time
+    window and got the wrong lane's traces: two lanes overlapped in wall-clock time on different
+    clusters, both wrote to one project, and nothing in the trace could tell them apart. The
+    counts looked entirely plausible.
+
+    `setdefault`, not assignment: an operator who has set OTEL_SERVICE_NAME or
+    OTEL_RESOURCE_ATTRIBUTES for their own collector means it, and this must not overwrite them.
+    These are read when the SDK builds its resource, so they are stamped before the first handler
+    is constructed; a provider already initialised by something else keeps its own resource.
+    """
+    os.environ.setdefault("OTEL_SERVICE_NAME", "kubeintellect")
+    attrs = [f"service.name={os.environ.get('OTEL_SERVICE_NAME', 'kubeintellect')}"]
+    if settings.KI_VERSION:
+        attrs.append(f"service.version={settings.KI_VERSION}")
+    if settings.CLUSTER_ID:
+        # The one field that makes a trace attributable to a cluster in a shared project.
+        attrs.append(f"kubeintellect.cluster_id={settings.CLUSTER_ID}")
+    os.environ.setdefault("OTEL_RESOURCE_ATTRIBUTES", ",".join(attrs))
 
 
 def get_langfuse_run_metadata(session_id: str) -> dict:
