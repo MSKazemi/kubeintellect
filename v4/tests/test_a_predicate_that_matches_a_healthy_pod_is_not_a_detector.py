@@ -179,7 +179,8 @@ class TestTheEngineLoadsItAnyway:
 
     def test_the_loader_records_it_rather_than_dropping_the_predicate(self):
         src = (__import__("pathlib").Path(
-            __import__("app.detectors.engine", fromlist=["x"]).__file__).read_text())
+            __import__("app.detectors.engine", fromlist=["x"]).__file__
+        ).read_text(encoding="utf-8"))
         i_record = src.index("db_detector_fires_on_healthy_objects")
         assert "fires_on_healthy=tuple(unhealthy)" in src
         # It must NOT appear in the expression that computes the live predicate set.

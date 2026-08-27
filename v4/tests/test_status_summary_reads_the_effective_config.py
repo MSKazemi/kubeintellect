@@ -45,13 +45,13 @@ def board(tmp_path, monkeypatch, capsys):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("USE_SQLITE", "true")
     monkeypatch.setenv("KUBECONFIG_PATH", str(tmp_path / "kubeconfig"))
-    (tmp_path / "kubeconfig").write_text("apiVersion: v1\nkind: Config\n")
+    (tmp_path / "kubeconfig").write_text("apiVersion: v1\nkind: Config\n", encoding="utf-8")
     monkeypatch.setattr(cli, "_cluster_reachable", lambda _p: None)
 
     def _render(*, user: str = "", project: str = "") -> str:
-        user_env.write_text(user)
+        user_env.write_text(user, encoding="utf-8")
         if project:
-            (tmp_path / ".env").write_text(project)
+            (tmp_path / ".env").write_text(project, encoding="utf-8")
         capsys.readouterr()
         # `status` exits 1 when any row is ✗ (see test_status_exit_code.py). These tests are
         # about what the board *says*, and several of them render a deliberately broken one.
@@ -97,7 +97,7 @@ class TestTheSummarySaysWhatItChecked:
     def test_a_project_env_alone_still_gets_a_summary(self, board, tmp_path, monkeypatch, capsys):
         """The config need not live in ~/.kubeintellect/.env for the question to be answerable."""
         monkeypatch.setattr(cli, "_CONFIG_FILE", tmp_path / "does-not-exist.env")
-        (tmp_path / ".env").write_text(_AZURE)
+        (tmp_path / ".env").write_text(_AZURE, encoding="utf-8")
         capsys.readouterr()
         with contextlib.suppress(SystemExit):   # no ~/.kubeintellect/.env ⇒ a ✗ row ⇒ exit 1
             cli.cmd_status(None)

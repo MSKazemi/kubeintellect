@@ -92,7 +92,7 @@ def _scan() -> tuple[list[tuple[str, int, str]], int]:
     findings, files = [], 0
     for path in sorted(_APP.rglob("*.py")):
         files += 1
-        for lineno, signature in _discarded_calls(ast.parse(path.read_text())):
+        for lineno, signature in _discarded_calls(ast.parse(path.read_text(encoding="utf-8"))):
             findings.append((path.relative_to(_APP).as_posix(), lineno, signature))
     return findings, files
 
@@ -191,7 +191,7 @@ class TestTheCommandsThemselves:
         from app import cli
 
         unit = tmp_path / "kubeintellect.service"
-        unit.write_text("[Unit]\n")
+        unit.write_text("[Unit]\n", encoding="utf-8")
         monkeypatch.setattr(cli, "_SERVICE_FILE", unit)
 
         def fake_run(cmd, **kwargs):
@@ -217,7 +217,7 @@ class TestTheCommandsThemselves:
         from app import cli
 
         unit = tmp_path / "kubeintellect.service"
-        unit.write_text("[Unit]\n")
+        unit.write_text("[Unit]\n", encoding="utf-8")
         monkeypatch.setattr(cli, "_SERVICE_FILE", unit)
 
         def fake_run(cmd, **kwargs):
@@ -240,7 +240,7 @@ class TestTheCommandsThemselves:
         from app import cli
 
         config = tmp_path / ".env"
-        config.write_text("EXISTING=1\n")
+        config.write_text("EXISTING=1\n", encoding="utf-8")
         monkeypatch.setattr(cli, "_CONFIG_FILE", config)
         monkeypatch.setattr(cli, "_CONFIG_DIR", tmp_path)
 
@@ -255,4 +255,4 @@ class TestTheCommandsThemselves:
         assert "service restarted to apply changes" not in out
         assert "previous configuration" in out
         assert "Job for kubeintellect.service failed." in out
-        assert "LOG_LEVEL=DEBUG" in config.read_text()
+        assert "LOG_LEVEL=DEBUG" in config.read_text(encoding="utf-8")

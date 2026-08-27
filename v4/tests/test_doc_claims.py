@@ -274,7 +274,7 @@ class TestEveryCountClaimIsCovered:
     def test_a_wrong_count_in_a_live_doc_is_caught(self, tmp_path, monkeypatch):
         """Red-green against a new input rather than a revert: plant one and prove it fails."""
         planted = tmp_path / "faq.md"
-        planted.write_text("KubeIntellect ships **7 deterministic playbooks** today.\n")
+        planted.write_text("KubeIntellect ships **7 deterministic playbooks** today.\n", encoding="utf-8")
         monkeypatch.setattr(type(self), "_population", staticmethod(lambda: [planted]))
         with pytest.raises(AssertionError, match="playbook count says 7"):
             self.test_no_doc_states_a_count_the_code_disagrees_with()

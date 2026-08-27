@@ -151,7 +151,7 @@ class TestNothingElseMoved:
         assert root.is_dir(), f"playbook corpus not where the test expects it: {root}"
         checked = 0
         for f in sorted(root.glob("*.yaml")):
-            raw = yaml.safe_load(f.read_text()) or {}
+            raw = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
             det = raw.get("detect")
             if not isinstance(det, dict):
                 continue

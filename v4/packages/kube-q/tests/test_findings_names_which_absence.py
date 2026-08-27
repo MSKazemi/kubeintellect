@@ -173,7 +173,7 @@ def test_the_fixture_sentences_match_the_server_source():
         "packages/kubeintellect-server/app/detectors/perception.py")
     if not src.exists():  # kube-q is installable on its own
         pytest.skip("server source not present in this checkout")
-    body = _flat(src.read_text())
+    body = _flat(src.read_text(encoding="utf-8"))
     for probe in ("the sensorium is switched off (SENSORIUM_ENABLED=false)",
                   "the sensorium loaded no compiled detectors",
                   "replica has been perceiving nothing since",  # split literal in source
