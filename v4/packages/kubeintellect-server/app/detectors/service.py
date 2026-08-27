@@ -17,7 +17,11 @@ _engine: DetectorEngine | None = None
 _tasks: list[asyncio.Task] = []
 # DB-detector counts as of the last SUCCESSFUL refresh. Kept so a failed refresh can say what
 # it is preserving, and so a set that drops to zero is reported rather than falling silent.
-_last_db_counts: tuple[int, int] = (0, 0)
+# `None` means "no refresh has completed in this process yet", which is NOT the same as
+# "the last refresh found nothing". The difference is the whole point of the first log line
+# below: a startup that loads zero detectors has to say so once, and a steady state of zero
+# must not then repeat itself every refresh interval forever.
+_last_db_counts: tuple[int, int] | None = None
 
 # Why there is no engine. Four unrelated situations end at ``_engine is None`` and the
 # perception surfaces used to describe all four with one sentence that named two causes as
@@ -163,21 +167,35 @@ async def _refresh_db_detectors(cluster_id: str) -> None:
         # disarming. `load_db_detectors` raises here rather than returning empty tuples for
         # exactly that reason; before it did, this handler could not run.
         logger.warning(
-            f"sensorium: db-detector refresh failed, KEEPING the {_last_db_counts[0]} active / "
-            f"{_last_db_counts[1]} shadow db detector(s) already loaded: {exc}"
+            f"sensorium: db-detector refresh failed, KEEPING the "
+            f"{(_last_db_counts or (0, 0))[0]} active / {(_last_db_counts or (0, 0))[1]} shadow "
+            f"db detector(s) already loaded: {exc}"
         )
         return
     _engine.detectors = tuple(load_detectors()) + active
     _engine.shadow_detectors = shadow
-    # Logged when there is something loaded, and also when there is not but there was — a
-    # promoted detector going away is the news, and `if active or shadow:` alone reported the
-    # arrival of coverage while staying silent about its removal.
-    if active or shadow or _last_db_counts != (0, 0):
+    # Logged on the FIRST refresh and on every change thereafter — never on an unchanged steady
+    # state, which would spam a line per refresh interval forever.
+    #
+    # The old guard was `if active or shadow or _last_db_counts != (0, 0)`, which reported the
+    # arrival of coverage and its removal and said NOTHING in the one case that needed saying:
+    # zero loaded, zero before, from startup. That is exactly what a cluster-id mismatch looks
+    # like, and it is indistinguishable from "nobody has authored a detector" unless the line is
+    # emitted at least once. It cost a 24-hour F3 shadow soak, which reported a perfect
+    # false-positive rate of 0.0 while `shadow_detectors` was the empty tuple: 8 rows sat in the
+    # DB under `cluster_id='global'` while this reader asked for `f3-shadow-soak-r2`. Two
+    # silences compounded — a query that matched nothing, and a log line that only spoke when
+    # something changed.
+    counts = (len(active), len(shadow))
+    if _last_db_counts is None or counts != _last_db_counts:
+        was = "startup" if _last_db_counts is None else f"{_last_db_counts[0]}/{_last_db_counts[1]}"
         logger.info(
-            f"sensorium: db detectors — {len(active)} active, {len(shadow)} shadow "
-            f"(was {_last_db_counts[0]}/{_last_db_counts[1]})"
+            f"sensorium: db detectors — {counts[0]} active, {counts[1]} shadow "
+            f"(was {was}), cluster={cluster_id}",
+            extra={"db_detectors_active": counts[0], "db_detectors_shadow": counts[1],
+                   "cluster_id": cluster_id},
         )
-    _last_db_counts = (len(active), len(shadow))
+    _last_db_counts = counts
 
 
 async def _db_refresh_loop(cluster_id: str) -> None:
@@ -194,5 +212,5 @@ async def stop_sensorium(reason: str = STOPPED, detail: str = "") -> None:
         task.cancel()
     _tasks.clear()
     _engine = None
-    _last_db_counts = (0, 0)  # a restart must not inherit the previous run's counts
+    _last_db_counts = None  # a restart must not inherit the previous run's counts
     _absence, _absence_detail = reason, detail

@@ -158,7 +158,11 @@ class TestTheRefreshKeepsWhatItHas:
         await dsvc._refresh_db_detectors("global")
         assert dsvc._last_db_counts == (1, 0)
         await dsvc.stop_sensorium()
-        assert dsvc._last_db_counts == (0, 0), "a restart would inherit stale counts"
+        # `None`, not `(0, 0)`: the sentinel now distinguishes "no refresh has completed in this
+        # process" from "the last refresh found nothing". Both reset the counts, but only `None`
+        # makes the next refresh announce what it loaded — including zero, which is what a
+        # cluster-id mismatch looks like and what a bare `(0, 0)` kept silent.
+        assert dsvc._last_db_counts is None, "a restart would inherit stale counts"
 
 
 # ── 3. removal is reported, not only arrival ─────────────────────────────────────────────────
@@ -191,12 +195,18 @@ class TestCoverageChangesAreReported:
 
     async def test_a_steady_state_of_none_stays_quiet(self, engine, mocker, caplog):
         # The other direction: a cluster that has never had a DB detector must not log every
-        # refresh interval forever.
+        # refresh interval forever. It must, however, say so ONCE — a startup that loads zero
+        # detectors is exactly what a cluster-id mismatch looks like, and the previous "stay
+        # completely quiet" behaviour is what hid one through a 24-hour shadow soak.
         mocker.patch.object(msvc, "_pool", _Pool(rows=[]))
+        dsvc._last_db_counts = None  # as at process start
         with caplog.at_level(logging.INFO):
             await dsvc._refresh_db_detectors("global")
             await dsvc._refresh_db_detectors("global")
-        assert _svc_lines(caplog) == []
+            await dsvc._refresh_db_detectors("global")
+        lines = _svc_lines(caplog)
+        assert len(lines) == 1, f"expected exactly one line, got {lines}"
+        assert "0 active, 0 shadow" in lines[0]
 
 
 # ── 4. rows that were dropped are named ──────────────────────────────────────────────────────
