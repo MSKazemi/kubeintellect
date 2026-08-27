@@ -21,6 +21,7 @@ absence from the engine is not evidence about the detector's existence.
 """
 
 from collections import deque
+from contextlib import contextmanager
 from unittest.mock import patch
 
 import pytest
@@ -32,8 +33,18 @@ from app.core.config import settings
 
 
 class FakeDetector:
-    def __init__(self, playbook):
+    """Shaped like the real `DetectBlock`, which always carries both predicate tuples.
+
+    It did not, and the omission mattered: `watching` now asks *which kind* of predicate a
+    loaded detector has, because a trend-only detector on a server with predictive detection
+    off is loaded and evaluated by nothing. A fake missing a field the real object always has
+    cannot exercise that.
+    """
+
+    def __init__(self, playbook, *, watch=("pod-status",), trend=()):
         self.playbook = playbook
+        self.watch_predicates = tuple(watch)
+        self.trend_predicates = tuple(trend)
 
 
 class FakeFinding:
@@ -144,3 +155,56 @@ class TestTheSiblingRuleIsWrittenDownHere:
         with patch.object(ep.review, "list_detectors",
                           side_effect=ep.review.DetectorStoreUnavailable("db down")):
             assert client.get("/v1/detectors").status_code == 503
+
+
+class TestALoadedDetectorIsNotAlwaysAnEvaluatedOne:
+    """`watching` used to mean "loaded", which is a weaker claim than it reads as.
+
+    A detector whose only predicate is a trend predicate is evaluated by `evaluate_trends`, and
+    `evaluate_trends` runs only when `PREDICTIVE_DETECTION_ENABLED` is true. On the F3 soak
+    cluster two such detectors were loaded, watched-per-this-field, and evaluated by nothing —
+    the same silence the whole soak was void for, one layer down.
+    """
+
+    TREND_ONLY = FakeEngine(shadow=[FakeDetector("nl:disk-filling", watch=(), trend=("cpu",))])
+
+    @staticmethod
+    @contextmanager
+    def _predictive(on: bool):
+        before = settings.PREDICTIVE_DETECTION_ENABLED
+        settings.PREDICTIVE_DETECTION_ENABLED = on
+        try:
+            yield
+        finally:
+            settings.PREDICTIVE_DETECTION_ENABLED = before
+
+    def test_a_trend_only_detector_is_not_watching_when_prediction_is_off(self, client):
+        with self._predictive(False):
+            body = ask(client, self.TREND_ONLY).json()
+        assert body["watching"] is False
+        assert "PREDICTIVE_DETECTION_ENABLED" in body["watching_reason"]
+        assert "not evidence" in body["watching_reason"]
+
+    def test_the_same_detector_is_watching_once_prediction_is_on(self, client):
+        with self._predictive(True):
+            body = ask(client, self.TREND_ONLY).json()
+        assert body["watching"] is True
+        assert "trend predicates" in body["watching_reason"]
+
+    def test_a_watch_predicate_detector_does_not_depend_on_that_flag(self, client):
+        with self._predictive(False):
+            body = ask(client, LOADED).json()
+        assert body["watching"] is True
+        assert "watch predicates" in body["watching_reason"]
+
+    def test_an_unloaded_detector_says_so_without_blaming_the_predicate(self, client):
+        body = ask(client, NOT_LOADED).json()
+        assert body["watching"] is False
+        assert "not loaded" in body["watching_reason"]
+        assert "not a statement that no such detector exists" in body["watching_reason"]
+
+    def test_a_detector_with_no_predicates_at_all_is_not_watching(self, client):
+        engine = FakeEngine(shadow=[FakeDetector("nl:disk-filling", watch=(), trend=())])
+        body = ask(client, engine).json()
+        assert body["watching"] is False
+        assert "no evaluable predicate" in body["watching_reason"]
