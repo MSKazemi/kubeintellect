@@ -3,6 +3,12 @@ Scrape config for kube-prometheus-stack. Off by default because a ServiceMonitor
 without the Prometheus Operator CRDs makes `helm install` fail outright ("no matches for kind
 ServiceMonitor"), which would break every quickstart to serve a feature only some clusters can
 use. Enterprise deployments that run the operator turn it on.
+
+Turning it on is not sufficient on its own: kube-prometheus-stack selects ServiceMonitors by
+label (`release: kube-prometheus-stack` by default), so one created without a matching label is
+accepted by the API server and ignored by Prometheus -- indistinguishable, from the outside, from
+one that is working. Set `serviceMonitor.additionalLabels` accordingly and verify a target
+appeared. See values.yaml.
 */}}
 {{- if .Values.serviceMonitor.enabled }}
 apiVersion: monitoring.coreos.com/v1
