@@ -1,0 +1,1 @@
+{"turn": 2, "gate": 1, "human_summary": "kubectl rollout restart deployment payments-api -n shop", "answered_with": "approve"}
