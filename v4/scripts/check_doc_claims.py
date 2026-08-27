@@ -152,6 +152,32 @@ def _files_on_disk_only(rootdir: Path, subdir: str, pattern: str) -> list[Path]:
     return [path for path in on_disk if path not in shipped]
 
 
+def _evaluation_harness_tests(rootdir: Path) -> list[str]:
+    """The test modules `tests/conftest.py` skips when the private `evaluation/` tree is absent.
+
+    Read with `ast` rather than by importing conftest, which sets environment variables on
+    import. An unreadable or changed conftest yields an empty list: the count then reflects
+    this machine, which is the pre-existing behaviour and visible as a drift failure, rather
+    than a silently wrong number.
+    """
+    try:
+        tree = ast.parse((rootdir / "tests" / "conftest.py").read_text(encoding="utf-8"))
+    except (OSError, SyntaxError):
+        return []
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(t, ast.Name) and t.id == "EVALUATION_HARNESS_TESTS"
+                   for t in node.targets):
+            continue
+        try:
+            value = ast.literal_eval(node.value)
+        except ValueError:
+            return []
+        return [str(v) for v in value] if isinstance(value, list) else []
+    return []
+
+
 def _collect_count(rootdir: Path) -> int | None:
     """Number of tests pytest *collects* under *rootdir* — collection only, nothing runs.
 
@@ -161,6 +187,12 @@ def _collect_count(rootdir: Path) -> int | None:
     reported by the caller.
     """
     ignores = [f"--ignore={path}" for path in _files_on_disk_only(rootdir, "tests", "test_*.py")]
+    # Count what a CLONE collects, not what this machine does. tests/conftest.py drops the
+    # evaluation-harness modules when `evaluation/` is not importable; that tree is private,
+    # so it is present for a maintainer and absent in every clone and in CI -- a 26-test gap
+    # that put a number in AGENTS.md which CI could never reproduce. Ignoring them here
+    # unconditionally makes the published figure the one a contributor actually sees.
+    ignores += [f"--ignore=tests/{name}" for name in _evaluation_harness_tests(rootdir)]
     try:
         proc = subprocess.run(
             [sys.executable, "-m", "pytest", "--collect-only", "-q", "tests/", *ignores],
