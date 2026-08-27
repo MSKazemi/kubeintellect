@@ -21,9 +21,9 @@
 
   <br/>
 
-  <img src=".github/assets/kubeintellect-demo.gif" alt="KubeIntellect diagnosing a CrashLoopBackOff, then pausing for approval before scaling" width="880" />
+  <img src=".github/assets/kubeintellect-demo.gif" alt="KubeIntellect diagnosing a crash-looping payments-api, then pausing for approval before restarting it" width="880" />
 
-  <sub>Ask why a pod is broken → get the root cause. Ask it to <em>change</em> something → it stops and waits for you.<br/>Scripted demo, time-compressed; panels are the real <code>kq</code> UI.</sub>
+  <sub>Ask why a pod is broken → get the root cause. Ask it to <em>change</em> something → it stops and waits for you.<br/>A real session against a live cluster, recorded end to end — nothing is cut, only the waiting is compressed.</sub>
 </div>
 
 ---

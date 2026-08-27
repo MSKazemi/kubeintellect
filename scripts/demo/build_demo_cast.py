@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""Build the README demo cast from the *real* kq renderer.
+"""Build a *scripted* demo cast from the real kq renderer.
 
-Every panel, icon, colour and footer in the resulting recording is produced by
-the shipping code in ``v4/packages/kube-q/kube_q/cli/renderer.py`` — nothing here
-is a mock-up. The assistant's answer text is taken verbatim from a real recorded
-troubleshooting session, so the content is real too.
+SUPERSEDED as the source of the README hero. ``.github/assets/kubeintellect-demo.gif``
+is now rendered straight from ``scripts/demo/casts-kq/06-approval-gate.cast`` — a
+genuine end-to-end session against a live cluster — so do not point this script at
+that path; doing so would replace a recording with a reconstruction.
 
-The recording is *scripted and time-compressed*: a real model round-trip takes
-several seconds, and the spinner beats here are shortened so the whole story fits
-in ~19 seconds. No latency or cost claim is made anywhere from this asset.
+It is kept because it still builds an illustrative frame without a cluster: every
+panel, icon, colour and footer comes from the shipping code in
+``v4/packages/kube-q/kube_q/cli/renderer.py``, and the assistant's answer text is
+taken verbatim from a real recorded session — but the *sequence* is assembled here
+rather than observed, and the spinner beats are shortened so the story fits in ~19
+seconds. No latency or cost claim may be made from this asset.
 
 Usage:
     python scripts/demo/build_demo_cast.py out.cast
-    python scripts/demo/cast_to_gif.py out.cast .github/assets/kubeintellect-demo.gif
+    python scripts/demo/cast_to_gif.py out.cast out.gif
 """
 from __future__ import annotations
 
