@@ -112,7 +112,7 @@ def test_server_error_is_reported(capsys):
 def test_unwritable_output_path_fails(capsys, tmp_path):
     _mock(_REPORT)
     blocker = tmp_path / "afile"
-    blocker.write_text("not a directory")
+    blocker.write_text("not a directory", encoding="utf-8")
     assert export_cmd.run(["ep-1", "-o", str(blocker / "report.json")]) == 1
     assert "Could not write" in capsys.readouterr().err
 

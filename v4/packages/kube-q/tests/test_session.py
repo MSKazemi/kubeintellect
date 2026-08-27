@@ -26,7 +26,7 @@ def test_resolve_attachments_no_at(tmp_path: Path) -> None:
 
 def test_resolve_attachments_existing_file(tmp_path: Path) -> None:
     f = tmp_path / "pod.yaml"
-    f.write_text("apiVersion: v1\nkind: Pod\n")
+    f.write_text("apiVersion: v1\nkind: Pod\n", encoding="utf-8")
     msg = f"what is wrong? @{f}"
     expanded, attached, errors = _resolve_attachments(msg)
     assert errors == []
@@ -57,7 +57,7 @@ def test_resolve_attachments_file_too_large(tmp_path: Path) -> None:
 
 def test_resolve_attachments_quoted_path(tmp_path: Path) -> None:
     f = tmp_path / "my file.json"
-    f.write_text('{"key": "value"}')
+    f.write_text('{"key": "value"}', encoding="utf-8")
     msg = f'@"{f}"'
     expanded, attached, errors = _resolve_attachments(msg)
     assert errors == []
@@ -68,8 +68,8 @@ def test_resolve_attachments_quoted_path(tmp_path: Path) -> None:
 def test_resolve_attachments_multiple_files(tmp_path: Path) -> None:
     a = tmp_path / "a.yaml"
     b = tmp_path / "b.yaml"
-    a.write_text("a: 1")
-    b.write_text("b: 2")
+    a.write_text("a: 1", encoding="utf-8")
+    b.write_text("b: 2", encoding="utf-8")
     expanded, attached, errors = _resolve_attachments(f"compare @{a} and @{b}")
     assert errors == []
     assert len(attached) == 2
@@ -79,7 +79,7 @@ def test_resolve_attachments_multiple_files(tmp_path: Path) -> None:
 
 def test_resolve_attachments_unknown_extension(tmp_path: Path) -> None:
     f = tmp_path / "notes.xyz"
-    f.write_text("some content")
+    f.write_text("some content", encoding="utf-8")
     expanded, _attached, errors = _resolve_attachments(f"@{f}")
     assert errors == []
     # Unknown extension → fence with no language specifier
@@ -101,13 +101,13 @@ def test_load_or_create_user_id_explicit(tmp_path: Path, monkeypatch: pytest.Mon
     monkeypatch.setattr("kube_q.core.session._USER_ID_FILE", str(id_file))
     uid = _load_or_create_user_id("my-explicit-id")
     assert uid == "my-explicit-id"
-    assert id_file.read_text() == "my-explicit-id"
+    assert id_file.read_text(encoding="utf-8") == "my-explicit-id"
     assert oct(id_file.stat().st_mode)[-3:] == "600"
 
 
 def test_load_or_create_user_id_from_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     id_file = tmp_path / "kube_q_id"
-    id_file.write_text("saved-user-id")
+    id_file.write_text("saved-user-id", encoding="utf-8")
     monkeypatch.setattr("kube_q.core.session._USER_ID_FILE", str(id_file))
     uid = _load_or_create_user_id()
     assert uid == "saved-user-id"
@@ -121,14 +121,14 @@ def test_load_or_create_user_id_generates_new(
     uid = _load_or_create_user_id()
     assert uid.startswith("cli-user-")
     assert id_file.exists()
-    assert id_file.read_text() == uid
+    assert id_file.read_text(encoding="utf-8") == uid
 
 
 def test_load_or_create_user_id_empty_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     id_file = tmp_path / "kube_q_id"
-    id_file.write_text("   ")  # whitespace only — treated as empty
+    id_file.write_text("   ", encoding="utf-8")  # whitespace only — treated as empty
     monkeypatch.setattr("kube_q.core.session._USER_ID_FILE", str(id_file))
     uid = _load_or_create_user_id()
     # Should generate a new ID rather than returning whitespace

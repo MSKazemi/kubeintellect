@@ -70,6 +70,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   means the provider reported nothing, which is an instrumentation gap rather than a free turn.
   Reported whether or not Langfuse tracing is enabled.
 
+- **A gate now keeps the two contributor rosters in sync** (#167).
+  `.all-contributorsrc` and the **Contributors** table in `README.md` are both hand-maintained,
+  nothing compared them, and they had drifted: 5 people on one side, 8 on the other, and one
+  contributor on neither. `scripts/check-contributor-roster.py` fails naming exactly which
+  handles are missing from which surface, plus a person listed twice or spelled two ways.
+
+  It refuses to pass on an **empty** read. A comparison that quietly stops seeing rows — a
+  renamed heading, a changed row format — would otherwise compare two empty sets and report
+  green forever, which is how this repo has lost a guard before.
+
+  `make check-roster`, and a step inside the existing **Syntax warnings** CI job. It joins that
+  job rather than adding one of its own on purpose: branch protection matches required checks by
+  name, so a new job name is a check `main` does not require, and every open PR would sit
+  unmergeable until the settings caught up.
+
+  Two related gaps closed while wiring it: `scripts/dev-setup.sh` never ran the encoding gate
+  added in #161, and `make check-encoding` was missing from `.PHONY` and from `make help`.
+  Contributor setup now runs eight gates, not six, and `AGENTS.md`, `CONTRIBUTING.md` and
+  `TRIAGE.md` say so.
+
 ### Fixed
 
 - **A dead predicate took the detector's live predicates down with it.** The load-time liveness
@@ -2628,6 +2648,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
   9 new tests, red-green verified: with the fix reverted, 4 of them fail — the exhaustion test with
   exactly the uncaught `GraphRecursionError` that was the defect.
+### Changed
+- **The contributor roster now names everyone who has contributed.** `.all-contributorsrc`
+  listed 5 people while the README credited 8, and one contributor —
+  [@Chris7717](https://github.com/Chris7717), who wrote the `HPANotScaling` playbook (#114)
+  and filed the `.env.example` report (#115) — appeared on neither. Four entries added:
+  [@floze-the-genius](https://github.com/floze-the-genius) (#109),
+  [@Priyanshu608](https://github.com/Priyanshu608) (#108),
+  [@Chris7717](https://github.com/Chris7717) (#114, #115) and
+  [@AshSgDe29071999](https://github.com/AshSgDe29071999) (#107).
+
+  #107 did not merge — it collided with an already-claimed issue — and it is listed anyway.
+  The roster records the contribution that arrived, not whether it happened to land: running
+  that branch as a control is the only reason we know the `pytest_configure` hook in #109 is
+  load-bearing rather than incidental.
+
+  The two surfaces are now in sync at 9 people. Nothing keeps them that way yet — see #167.
+
+### Fixed
+- **Every text-mode read and write now names its encoding, and a gate keeps it that way**
+  (#156, #161) — thanks to [@shaurya703](https://github.com/shaurya703). A bare
+  `read_text()` / `write_text()` / `open()` decodes with the *platform default*, which is
+  CP1252 or CP936 on Windows and ASCII under the POSIX `C` locale. That is the bug #136 hit
+  in the playbook loader, where a non-UTF-8 locale made the loader silently **drop** a
+  playbook containing em-dashes; #138 fixed that one call site and left the class alive at
+  62 more, several of them read-modify-write cycles on the user's own `.env` and config
+  files — where a decode failure does not crash, it writes mangled content back.
+
+  All 62 are fixed, across the whole CI-linted scope rather than only the three files #156
+  enumerates: a gate that exempts tests and probes is a gate with a carve-out, and those are
+  the places this class survives in. The frozen `v1/`–`v3/` are untouched (ADR-001/002).
+
+  `scripts/check-text-encoding.py` holds the class, with `make check-encoding` and a step in
+  the existing `Syntax warnings` CI job. Like `check-syntax-warnings.py` it is stdlib-only
+  and deliberately **independent of ruff and of the `<0.16` pin**, so the blind spot that pin
+  creates cannot reach it. Ruff's `PLW1514` covers the same rule and would replace it once
+  the pin lifts and the linted scope widens.
+
+  The gate is precise about what it does *not* flag, because a red run whose printed fix
+  breaks your code is worse than no gate: `webbrowser.open(url)`, `zipfile.ZipFile(z).open(m)`
+  and the compression modules' binary default are left alone, an encoding passed positionally
+  is accepted, and an explicit `gzip.open(p, "rt")` is still caught. A source file it cannot
+  decode is **reported**, never silently skipped.
 
 ### Security
 - **`nanoid` bumped 3.3.17 → 3.3.18 in `v4/packages/kube-q/web`** (GHSA high: custom generators
@@ -2643,6 +2705,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   instead of contradicting it.
 
 ### Added
+- **CI now runs the frozen arms' test suites** — `Tests (v2 · frozen)` and `Tests (v3 · frozen)`
+  (#155). The frozen generations are not developed any more, but shared fixes still land in them
+  (the UTF-8 playbook-loader fix did, in both), and nothing in CI had ever run their regression
+  tests. Each arm resolves from its own lockfile rather than the v4 workspace.
+
+  Fixing the gate exposed that **v2's suite could not run at all** — for anyone, including on a
+  maintainer's own machine. Five test modules import `evaluation/`, the offline scoring harness
+  that produced the campaign numbers; it is deliberately not part of this repository, so on any
+  clone those imports fail. Four of them fail at *module scope*, which does not break four
+  modules — it aborts collection for the **whole suite**, so the other thirteen never ran either.
+  Guarding the five with `pytest.importorskip` takes v2 from `4 errors during collection`,
+  **0 tests run**, to **259 passed, 5 skipped**. The guard is conditional, not a deletion: where
+  the harness is present, all five modules still run.
+
 - **CI now gates the demo front-end** (`Web (lint + build)`). `v4/packages/kube-q/web` had no
   gate of any kind: every existing job is scoped to the Python tree, so nothing in CI had ever
   run `npm ci`, `eslint` or `next build`. The gap was not theoretical — the eslint 9 → 10 bump

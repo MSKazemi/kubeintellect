@@ -162,7 +162,7 @@ def main() -> None:
                     help="disable font antialiasing (smaller file, harsher text)")
     args = ap.parse_args()
 
-    with open(args.cast) as fh:
+    with open(args.cast, encoding="utf-8") as fh:
         header = json.loads(fh.readline())
         events = [json.loads(line) for line in fh if line.strip()]
     cols, rows = header["width"], header["height"]

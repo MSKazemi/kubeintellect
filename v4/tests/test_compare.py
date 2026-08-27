@@ -7,10 +7,10 @@ def _make_run_dir(tmp_path: Path, target: str, records: list[dict]) -> Path:
     run_dir = tmp_path / f"{target}_20260501_120000"
     run_dir.mkdir()
     (run_dir / "metadata.json").write_text(
-        json.dumps({"target": target, "mode": "run", "tag": target})
+        json.dumps({"target": target, "mode": "run", "tag": target}), encoding="utf-8"
     )
     for rec in records:
-        (run_dir / f"{rec['query_id']}.json").write_text(json.dumps(rec))
+        (run_dir / f"{rec['query_id']}.json").write_text(json.dumps(rec), encoding="utf-8")
     return run_dir
 
 
@@ -59,7 +59,7 @@ def test_load_run_parses_records(tmp_path):
 
 def test_load_run_skips_metadata_and_scores_json(tmp_path):
     run_dir = _make_run_dir(tmp_path, "v2", [])
-    (run_dir / "scores.json").write_text('{"01": {"total": 35}}')
+    (run_dir / "scores.json").write_text('{"01": {"total": 35}}', encoding="utf-8")
     from evaluation.compare import load_run
     run = load_run(run_dir)
     assert len(run.records) == 0  # no scenario JSON files
@@ -68,7 +68,7 @@ def test_load_run_skips_metadata_and_scores_json(tmp_path):
 def test_load_run_includes_judge_total_from_scores_json(tmp_path):
     recs = [_rec("01-crashloop", "v2", "debugging")]
     run_dir = _make_run_dir(tmp_path, "v2", recs)
-    (run_dir / "scores.json").write_text(json.dumps({"01-crashloop": {"total": 35, "result": "pass"}}))
+    (run_dir / "scores.json").write_text(json.dumps({"01-crashloop": {"total": 35, "result": "pass"}}), encoding="utf-8")
     from evaluation.compare import load_run
     run = load_run(run_dir)
     assert run.records[0].judge_total == 35.0

@@ -80,10 +80,9 @@ uv sync          # creates .venv and installs the whole workspace
 ## Required validation
 
 The root [`.github/workflows/ci.yml`](.github/workflows/ci.yml) is the executable source of
-truth. `make setup` installs the workspace and runs the six core gates, but use the standalone
-commands below when validating a change so the lint scope cannot lag behind CI.
-
-From `v4/`:
+truth. From the repo root, `make setup` installs the workspace and runs all eight gates in
+order, but use the standalone commands below when validating a change so the lint scope
+cannot lag behind CI. Individually, from `v4/`:
 
 ```bash
 # 1. Lint — `ruff check` only. NOT `ruff format`.
@@ -99,7 +98,10 @@ uv run python -m pytest tests/ -q
 cd packages/kube-q && uv run python -m pytest tests/ -q
 ```
 
-Plus two repo-root gates, which need no virtualenv:
+Plus four repo-root gates, which need no virtualenv. Gates 7 and 8 run inside the CI job
+named **Syntax warnings** rather than jobs of their own — branch protection matches required
+checks by name, so a new job name is a check `main` does not require and every open PR would
+sit unmergeable until the settings caught up:
 
 ```bash
 # 5. File modes — a tracked file is executable if and only if it has a shebang.
@@ -108,6 +110,12 @@ make fix-modes            # corrects any violation in place
 
 # 6. Syntax — every tracked .py outside v1-v3 compiles with no SyntaxWarning.
 make check-syntax         # or: ./scripts/check-syntax-warnings.py
+
+# 7. Encoding — every text-mode read/write names an encoding (#136/#156).
+make check-encoding       # or: ./scripts/check-text-encoding.py
+
+# 8. Roster — .all-contributorsrc and the README table name the same people (#167).
+make check-roster         # or: ./scripts/check-contributor-roster.py
 ```
 
 CI additionally checks the lockfile and clean-wheel installation, builds and probes the
