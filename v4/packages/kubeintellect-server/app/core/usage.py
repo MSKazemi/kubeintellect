@@ -31,6 +31,8 @@ from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
 
+from app.core import metrics
+
 
 class UsageMeter:
     """Accumulates token counts for one request. Safe to mutate from several tasks."""
@@ -44,10 +46,16 @@ class UsageMeter:
         self.llm_calls = 0
 
     def add(self, *, input_tokens: int = 0, output_tokens: int = 0) -> None:
+        inp = max(0, int(input_tokens or 0))
+        out = max(0, int(output_tokens or 0))
         with self._lock:
-            self.input_tokens += max(0, int(input_tokens or 0))
-            self.output_tokens += max(0, int(output_tokens or 0))
+            self.input_tokens += inp
+            self.output_tokens += out
             self.llm_calls += 1
+        # Emitted outside the lock: a metrics backend is not something to hold a request-scoped
+        # lock across, and `record_llm_usage` swallows its own failures. This is the one place
+        # every model call in a request converges, which is why the callback lives here at all.
+        metrics.record_llm_usage(input_tokens=inp, output_tokens=out, calls=1)
 
     @property
     def total_tokens(self) -> int:
