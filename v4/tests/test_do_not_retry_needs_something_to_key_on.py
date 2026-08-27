@@ -112,6 +112,7 @@ class TestItStaysOffTheAnswerableOnes:
         assert UNAVAILABLE_MARKER not in out
 
     def test_prometheus_answers_normally_when_it_can(self):
+        from app.core.config import settings
         from app.tools.prometheus_tool import query_prometheus
         payload = {"status": "success", "data": {"resultType": "vector", "result": [
             {"metric": {"__name__": "up"}, "value": [0, "1"]}]}}
@@ -119,7 +120,13 @@ class TestItStaysOffTheAnswerableOnes:
         resp.json.return_value = payload
         client = MagicMock()
         client.__enter__.return_value.get.return_value = resp
-        with patch("httpx.Client", return_value=client):
+        # PROMETHEUS_URL must be set explicitly. The tool short-circuits to the unavailable
+        # marker BEFORE any HTTP call when it is empty, so the mocked client is never reached
+        # and the assertion below fails for a reason that has nothing to do with retrying.
+        # A developer with Prometheus in their .env sees this pass; CI has no .env and saw it
+        # fail. A test must bring the configuration it depends on.
+        with patch.object(settings, "PROMETHEUS_URL", "http://prometheus.test:9090"), \
+                patch("httpx.Client", return_value=client):
             assert UNAVAILABLE_MARKER not in query_prometheus.invoke({"promql": "up"})
 
 
