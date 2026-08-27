@@ -13,6 +13,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **A detector predicate that matches a *healthy* object is refused when it is authored.** The
+  dead-predicate family got three gates because a predicate that can never fire contributes
+  silence, and silence reads as a healthy cluster. The mirror image had none: a Pod predicate
+  matching a healthy status fires on every pod on the cluster, for ever. `nl:soak-cpu-saturated`,
+  authored (ADR-012) from *"a workload is pinned at its CPU limit"*, compiled to
+  `{kind: Pod, status_regex: "^Running$"}` — `WatchPredicate.matches` tests the status and
+  nothing else, there is no namespace or label scope, and the trend predicate carrying the actual
+  CPU condition runs on a separate loop and is OR'd, never AND'd. On a soak cluster its ring held
+  46 findings before any fault was injected, every one a `kube-system` coredns pod with
+  `evidence: "pod status=Running"`. `predicate_shape.predicate_health_errors` now asks the
+  predicate the same question the engine will — `status_regex.search(status)` against the
+  statuses `pod_display_status` emits for a healthy object — and the authoring and review gates
+  refuse it. `^NotReady$` and `^.*NotReady.*$` are untouched: `Ready` is a substring of
+  `NotReady`, and anchoring is what keeps them apart. Zero shipped playbooks trip it.
+- **The engine loads such a detector anyway, and says so.** Refusing at load would delete the
+  evidence that the detector is wrong and move a measured false-positive rate toward the
+  pre-registered direction by removing the rows that falsify it — the mistake a previous liveness
+  gate made before `dropped_predicates` split refusal per predicate. `DetectBlock.fires_on_healthy`
+  carries the reason, the loader logs `db_detector_fires_on_healthy_objects`, and
+  `GET /v1/detectors/<n>/shadow-findings` puts it in `watching_reason`, because `watching: true`
+  on a detector that fires on health is true and misleading in the same breath — a reviewer reads
+  a firing count as a fault count.
+
 - **A local-LLM judge now records the machine it ran on.** `rescore_ollama.py` writes
   `judge/provenance-<tag>.json` next to each re-scoring: CPU model, core count, AVX-512 flags,
   Ollama version, model digest, size and quantization, and the pinned sampling. Everything read
@@ -48,6 +71,61 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   Reported whether or not Langfuse tracing is enabled.
 
 ### Fixed
+
+- **A dead predicate took the detector's live predicates down with it.** The load-time liveness
+  gate refused any stored detector carrying a predicate that could never fire — and refused the
+  whole row. One stored detector carried an unfilled forecast template beside a Pod predicate
+  matching every healthy `Running` pod: refusing the row deleted a real, firing predicate to be
+  rid of a dead one. The loader now drops the dead predicate, keeps the live ones, logs
+  `db_detector_predicate_can_never_fire` with the reason and the surviving count, and records
+  the drop on the compiled block so `watching_reason` can say that the predicate in the store is
+  not the predicate that ran. A row with no live predicate left is still refused whole — that is
+  a dead detector and there is nothing to keep.
+
+- **`watching: true` meant *loaded*, not *evaluated*.** `/v1/detectors/{name}/shadow-findings`
+  reported `watching: true` for any detector the engine held in its shadow set, including a
+  detector whose only predicates are *trend* predicates on a server where
+  `PREDICTIVE_DETECTION_ENABLED` is false — a configuration in which nothing evaluates them and
+  the firing count is therefore not a measurement. On the live soak that was two of eight
+  detectors, each reporting `watching: true` beside a `predictive: "off"` server. The field now
+  means the engine will actually evaluate the detector, and a new `watching_reason` string says
+  which of the four cases produced the answer — not loaded, watch predicates evaluated per
+  observation, trend predicates evaluated on the predictive interval, or loaded-but-inert with
+  the flag named. A precision or recall figure whose denominator counts an inert detector is
+  measuring the flag, not the predicate.
+
+- **A container killed for memory was invisible to the thing watching for it.**
+  `pod_display_status` claimed to mirror the STATUS column `kubectl get pods` prints, and had no
+  *terminated* branch — so `OOMKilled`, `Error`, `Completed`, `ExitCode:N` and `Signal:N` were
+  all outside the range of the only function a Pod predicate is ever matched against. A detector
+  whose predicate was `^OOMKilled$` could not fire on any cluster, and its silence read as a
+  cluster that never ran out of memory. The function now implements kubectl's `printPod` in full:
+  `status.reason` as the *base* rather than a last-resort fallback, the container loop walked in
+  reverse so the first container has the last word, the terminated branch, the
+  `Completed`-beside-a-runner → `Running`/`NotReady` rule, and `Terminating` only while the phase
+  is non-terminal (a `Succeeded`/`Failed` pod under deletion keeps its own outcome instead of
+  having it erased). Thirteen of the twenty new tests fail against the previous implementation.
+
+- **A forecast pinned to the authoring model's own template was staged, stored and offered for
+  promotion.** `predicate_liveness_errors` only ever walked `watch_predicates`; `trend_predicates`
+  had no liveness gate at any of the three points a detector passes through. Two detectors staged
+  on a soak cluster forecast `kube_deployment_status_replicas{deployment="your-deployment-name"}`
+  — the template, unfilled — matched no series for twenty-four hours, and reported nothing. The
+  new `trend_liveness_errors` refuses a selector whose label value is an unfilled template
+  (`your-*`, `<name>`, `{{ … }}`, `${…}`, `CHANGEME`), an `min_r2` above 1.0, a non-positive ETA
+  bound or lookback window, and a `direction` that is neither `rising` nor `falling` — that last
+  one because `project_eta` treats anything but `falling` as rising, so a typo did not fail, it
+  silently asked the opposite question. Ordinary names that merely *look* like placeholders
+  (`example`, `foo`, `test`, `my-app`) are deliberately left alone: refusing a working detector
+  is the worse error. Wired into the authoring validator, the engine's load path, and the
+  promotion gate.
+
+- **The promotion gate could not see the detectors it was built to stop.** `review._liveness_error`
+  read `WHERE cluster_id = $1` while `stage_candidate` writes `cluster_id = 'global'`, so on any
+  deployment that sets `CLUSTER_ID` the lookup found no row, returned `None` — which the caller
+  reads as *no reason to refuse* — and promoted without ever checking. Same defect, and the same
+  fix, as `engine.load_db_detectors`: `cluster_id IN ($1, 'global')`, preferring the
+  cluster-specific row when both exist.
 
 - **A judge's stated total is no longer taken as the score.** The rubric is eight dimensions of
   1–5, so the total is defined by the dimensions rather than observed — but both judges returned

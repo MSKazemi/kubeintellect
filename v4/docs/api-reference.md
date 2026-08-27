@@ -598,19 +598,60 @@ candidate that observes but never reaches the watchtower until promoted. Gated b
 `GET /v1/preferences` and `GET /v1/detectors` answer **503** when their store cannot be read (not configured, or the query failed) rather than an empty `200`. An empty `detectors` list therefore means exactly one thing: the store was read and holds nothing — never that the question could not be answered.
 
 Promotion is refused with **409** for a detector whose predicates provably cannot match — a
-`kind` outside `Pod`/`Event`/`Node`, a `Pod`/`Node` predicate with no `status_regex`, or a
-`reason_regex`/`status_regex` satisfiable only by something no cluster emits. Shadow detectors
+`kind` outside `Pod`/`Event`/`Node`, a `Pod`/`Node` predicate with no `status_regex`, a
+`reason_regex`/`status_regex` satisfiable only by something no cluster emits, or a
+`trend_predicates` entry pinned to an unfilled template
+(`{deployment="your-deployment-name"}`), asking for an `min_r2` above 1.0, or carrying a
+non-positive ETA bound, lookback window, or an unrecognised `direction`. Shadow detectors
 are promoted on their precision record, and one that cannot fire records zero firings, which
 looks identical to a condition that never occurred. The same check runs when detectors are
 loaded from the store, so such a row is skipped with a warning rather than counted as coverage.
 A store read failure is not treated as evidence that a detector is dead, a missing detector is
 still a **404**, and demotion is never blocked.
 
+The store lookup behind that check reads `cluster_id IN (<this cluster>, 'global')`. Authoring
+writes under `global` — the write path's word for *everywhere* — so an equality lookup found no
+row on any deployment that sets `CLUSTER_ID`, returned "no reason to refuse", and promoted
+without checking. The load path reads the same way, for the same reason: a detector authored
+through this API is evaluated by the cluster running it, not only by a deployment that happens
+to leave `CLUSTER_ID` unset.
+
 ```json
 {"staged": true, "status": "shadow", "name": "nl:OOMKilled",
  "compiled": {"watch_predicates": [{"kind": "Pod", "status_regex": "^OOMKilled$"}]},
  "errors": []}
 ```
+
+`GET /v1/detectors/{name}/shadow-findings` answers with the firings **and** two fields about
+whether the number means anything:
+
+```json
+{"name": "nl:soak-cpu-saturated", "findings": [], "watching": false,
+ "watching_reason": "nl:soak-cpu-saturated is loaded but has only trend predicates, and PREDICTIVE_DETECTION_ENABLED is false — nothing evaluates them. Its zero firings are not evidence about the predicate."}
+```
+
+`watching` means the engine **evaluates** this detector, not merely that it loaded it. The two
+are different for a detector whose only predicates are `trend_predicates`: those are evaluated on
+the predictive interval, which does not run when `PREDICTIVE_DETECTION_ENABLED` is false. Such a
+detector is in the shadow set, lists as `shadow`, and is evaluated by nothing — so `"findings":
+[]` is a fact about the flag, not about the cluster. `watching_reason` names the case in words,
+including which flag to change. **A precision or recall figure computed over shadow detectors
+must take its denominator from `watching`, never from the row count in the store.**
+
+`watching_reason` also carries the opposite problem, because `watching: true` on its own can be
+true and misleading in the same breath. A detector whose predicate matches a **healthy** object
+fires on every object of its kind on the cluster, and a reviewer reads a firing count as a fault
+count:
+
+```json
+{"name": "nl:soak-cpu-saturated", "watching": true,
+ "watching_reason": "loaded, with watch predicates evaluated on every observation. WARNING: this detector fires on HEALTHY objects, so its findings are not evidence of a fault — status_regex '^Running$' matches Running, which is what the observer emits for a healthy Pod; this predicate fires on every pod on the cluster, not on a fault. A Pod predicate has no namespace or label scope, so there is no way to narrow it."}
+```
+
+`POST /v1/detectors` refuses such a predicate outright, and so does promotion out of `shadow`.
+The **engine loads it anyway** — deleting a false-positive source at load would improve a
+measured false-positive rate by removing the evidence against it — so a detector authored before
+the gate existed keeps firing, keeps counting, and now explains itself.
 
 The [`kq detector`](cli-reference.md#kq-detector-teach-a-new-failure-in-plain-english)
 subcommands wrap these.

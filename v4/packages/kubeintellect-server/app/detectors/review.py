@@ -36,15 +36,26 @@ class DetectorCannotFire(RuntimeError):
 async def _liveness_error(name: str, cluster_id: str) -> str | None:
     """Why this stored detector can never fire, or None. Unreadable/absent → None (not our call)."""
     from app.detectors.models import parse_detect_block
-    from app.detectors.predicate_shape import predicate_liveness_errors
+    from app.detectors.predicate_shape import (
+        predicate_health_errors,
+        predicate_liveness_errors,
+        trend_liveness_errors,
+    )
     from app.memory import service
 
     pool = service._pool
     if pool is None:
         return None
     try:
+        # `cluster_id IN ($1, 'global')`, for the same reason `engine.load_db_detectors` uses
+        # it: `stage_candidate` defaults to storing under `global`, so a promotion requested
+        # from a cluster that sets CLUSTER_ID found no row here, returned None — "not our call"
+        # — and let a dead detector through the one gate written to stop it. The equality form
+        # made this check silently inapplicable to exactly the detectors it was built for.
         row = await pool.fetchrow(
-            "SELECT predicate FROM detectors WHERE cluster_id = $1 AND name = $2",
+            "SELECT predicate FROM detectors"
+            " WHERE cluster_id IN ($1, 'global') AND name = $2"
+            " ORDER BY (cluster_id = $1) DESC LIMIT 1",
             cluster_id, name,
         )
     except Exception as exc:                       # a read failure is not evidence of deadness
@@ -67,7 +78,11 @@ async def _liveness_error(name: str, cluster_id: str) -> str | None:
     if block is None:
         return None
     for predicate in block.watch_predicates:
-        errors = predicate_liveness_errors(predicate)
+        errors = predicate_liveness_errors(predicate) or predicate_health_errors(predicate)
+        if errors:
+            return errors[0]
+    for trend in block.trend_predicates:
+        errors = trend_liveness_errors(trend)
         if errors:
             return errors[0]
     return None

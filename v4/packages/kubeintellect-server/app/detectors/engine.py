@@ -21,7 +21,7 @@ import json
 import time
 from collections import deque
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from app.core.config import settings
 from app.db import flight_recorder
@@ -480,9 +480,30 @@ async def load_db_detectors(
         next refresh, query raises engine.detectors = 20  (playbooks 20 + db 0)   ← disarmed
 
     `_refresh_db_detectors` already had the correct handler for this; it was unreachable.
+
+    **`global` rows are loaded on every cluster.** The write path — `stage_candidate`,
+    `promote_candidate`, `demote_candidate`, `list_detectors` — all default `cluster_id="global"`,
+    while this reader is called with the deployment's own `get_cluster_id()`. Nothing reconciled
+    the two, so on any deployment that sets `CLUSTER_ID` (which the Helm chart does) an
+    NL-authored detector was stored, listed as `shadow`, promotable and demotable — and never
+    loaded, never evaluated, by design of the query alone.
+
+    Measured on the campaign's soak cluster 2026-08-25: 8 detectors in the DB under
+    `cluster_id='global'`, engine loading for `f3-shadow-soak-r2`, zero rows matched. The 24-hour
+    F3 shadow soak that ran against it reported `false_positive_rate: 0.0` — a flawless score
+    produced by evaluating nothing, which is exactly the outcome its own driver was written to
+    refuse. The driver checked the DB status, because that is the only thing the API exposed.
+
+    `global` is not a magic cluster name here; it is the write path's word for "everywhere", and
+    this is where that word finally means something. A row stored under a specific cluster id
+    still loads only there.
     """
     from app.detectors.models import parse_detect_block
-    from app.detectors.predicate_shape import predicate_liveness_errors
+    from app.detectors.predicate_shape import (
+        predicate_health_errors,
+        predicate_liveness_errors,
+        trend_liveness_errors,
+    )
     from app.detectors.review import DetectorStoreUnavailable
     from app.memory import service
 
@@ -492,7 +513,7 @@ async def load_db_detectors(
     try:
         rows = await pool.fetch(
             "SELECT name, predicate, status FROM detectors"
-            " WHERE cluster_id = $1 AND status IN ('active', 'shadow')",
+            " WHERE cluster_id IN ($1, 'global') AND status IN ('active', 'shadow')",
             cluster_id,
         )
     except Exception as exc:
@@ -530,13 +551,50 @@ async def load_db_detectors(
         # passes through, so it is where the check has to be. A dead SHADOW row is the worst
         # case: it accrues zero firings, and zero firings are read as precision evidence by
         # the human deciding whether to promote it.
-        dead = [msg for p in block.watch_predicates for msg in predicate_liveness_errors(p)]
-        if dead:
+        #
+        # The refusal is PER PREDICATE, not per row, and that distinction is load-bearing.
+        # `nl:soak-replicas-short` carries a trend predicate pinned to the authoring model's
+        # own `{deployment="your-deployment-name"}` template AND a Pod predicate `^Running$`.
+        # The template can never match a series; `^Running$` matches every healthy pod on the
+        # cluster. Refusing the whole row for the first would have deleted the second — and the
+        # second is a false-positive source on a lane whose endpoint IS the false-positive rate.
+        # Dropping it would have moved that rate toward the pre-registered direction by
+        # removing evidence, which is the worst way to be wrong here.
+        live_watch = tuple(p for p in block.watch_predicates
+                           if not predicate_liveness_errors(p))
+        # Trend predicates were exempt until 2026-08-25. Two of the eight rows on the F3 soak
+        # cluster forecast `kube_deployment_status_replicas{deployment="your-deployment-name"}`
+        # — the authoring model's own template, stored verbatim. They loaded, matched no series,
+        # and their silence was indistinguishable from a healthy cluster.
+        live_trend = tuple(tp for tp in block.trend_predicates
+                           if not trend_liveness_errors(tp))
+        dropped = [msg for p in block.watch_predicates for msg in predicate_liveness_errors(p)]
+        dropped += [msg for tp in block.trend_predicates for msg in trend_liveness_errors(tp)]
+        if dropped and not (live_watch or live_trend):
             logger.warning(
                 "db_detector_can_never_fire name=%r status=%r reason=%s — not loaded",
-                r["name"], r["status"], dead[0],
+                r["name"], r["status"], dropped[0],
             )
             continue
+        if dropped:
+            logger.warning(
+                "db_detector_predicate_can_never_fire name=%r status=%r reason=%s — that "
+                "predicate is dropped; the detector still loads with %d live predicate(s)",
+                r["name"], r["status"], dropped[0], len(live_watch) + len(live_trend),
+            )
+            block = replace(block, watch_predicates=live_watch, trend_predicates=live_trend,
+                            dropped_predicates=tuple(dropped))
+        # A live predicate that matches a healthy object is NOT dropped — see
+        # `DetectBlock.fires_on_healthy`. It is loaded, evaluated, and named, so an operator
+        # reading the detector's findings can see why there are so many of them.
+        unhealthy = [msg for p in block.watch_predicates for msg in predicate_health_errors(p)]
+        if unhealthy:
+            logger.warning(
+                "db_detector_fires_on_healthy_objects name=%r status=%r reason=%s — LOADED "
+                "anyway; its findings are not evidence of a fault",
+                r["name"], r["status"], unhealthy[0],
+            )
+            block = replace(block, fires_on_healthy=tuple(unhealthy))
         (active if r["status"] == "active" else shadow).append(block)
     if skipped:
         logger.warning(
