@@ -3,6 +3,16 @@ import json
 from pathlib import Path
 import pytest
 
+# Every test below defers `from evaluation.compare import ...` into the function
+# body. That kept collection alive, but only moved the failure: without the
+# out-of-tree `evaluation/` harness all 12 turned into runtime errors instead.
+# Skip the module outright for the same reason as the other harness-dependent
+# suites here. See #155.
+pytest.importorskip(
+    "evaluation.compare",
+    reason="needs the out-of-tree `evaluation/` scoring harness",
+)
+
 
 def _make_run_dir(tmp_path: Path, target: str, records: list[dict]) -> Path:
     run_dir = tmp_path / f"{target}_20260501_120000"

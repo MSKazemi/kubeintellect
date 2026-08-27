@@ -42,66 +42,83 @@ uv sync
 ok "workspace installed into v4/.venv"
 
 # ---------------------------------------------------------------------------
-# Run the six gates CI runs. Keep these in lockstep with:
+# Run the eight gates CI runs. Keep these in lockstep with:
 #   .github/workflows/ci.yml, CONTRIBUTING.md, AGENTS.md
 #
-# Gates 1-4 need the virtualenv. Gates 5-6 deliberately do not — see the header
-# comments in the two scripts they call.
+# Gates 1-4 need the virtualenv. Gates 5-8 deliberately do not — see the header
+# comments in the four scripts they call. Gates 7-8 ride inside the CI job
+# named "Syntax warnings", so they add no new required check.
 # ---------------------------------------------------------------------------
 STATUS=0
 
-say "Gate 1/6 — ruff check (this IS the CI lint gate)"
+say "Gate 1/8 — ruff check (this IS the CI lint gate)"
 if uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/; then
   ok "lint clean"
 else
   fail "ruff check failed"; STATUS=1
 fi
 
-say "Gate 2/6 — mypy (the workspace sits at zero errors)"
+say "Gate 2/8 — mypy (the workspace sits at zero errors)"
 if uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q; then
   ok "types clean"
 else
   fail "mypy failed"; STATUS=1
 fi
 
-say "Gate 3/6 — server test suite"
+say "Gate 3/8 — server test suite"
 if uv run python -m pytest tests/ -q; then
   ok "server suite passed"
 else
   fail "server suite failed"; STATUS=1
 fi
 
-say "Gate 4/6 — kq CLI test suite"
+say "Gate 4/8 — kq CLI test suite"
 if (cd packages/kube-q && uv run python -m pytest tests/ -q); then
   ok "kq suite passed"
 else
   fail "kq suite failed"; STATUS=1
 fi
 
-say "Gate 5/6 — file modes (executable iff shebang)"
+say "Gate 5/8 — file modes (executable iff shebang)"
 if (cd "$ROOT" && ./scripts/check-file-modes.sh); then
   ok "file modes clean"
 else
   fail "file-mode check failed"; STATUS=1
 fi
 
-say "Gate 6/6 — syntax warnings"
+say "Gate 6/8 — syntax warnings"
 if (cd "$ROOT" && ./scripts/check-syntax-warnings.py); then
   ok "no syntax warnings"
 else
   fail "syntax-warning check failed"; STATUS=1
 fi
 
+say "Gate 7/8 — text-mode calls name an encoding"
+if (cd "$ROOT" && ./scripts/check-text-encoding.py); then
+  ok "every text-mode call names an encoding"
+else
+  fail "encoding check failed"; STATUS=1
+fi
+
+say "Gate 8/8 — contributor rosters agree"
+if (cd "$ROOT" && ./scripts/check-contributor-roster.py); then
+  ok "both contributor rosters name the same people"
+else
+  fail "roster check failed"; STATUS=1
+fi
+
 echo
 if [ "$STATUS" -eq 0 ]; then
   cat <<'EOF'
 ────────────────────────────────────────────────────────────────────────────
- You are ready to contribute. All six locally-runnable gates pass on a
+ You are ready to contribute. All eight locally-runnable gates pass on a
  clean checkout.
 
- `main` requires NINE checks. Six of them are the gates above. The other
- three run only in CI, because they need a clean machine or another
- interpreter — so a green run here does not guarantee a green PR:
+ `main` requires NINE checks. The eight gates above cover six of them —
+ the encoding and roster gates ride inside the "Syntax warnings" check
+ rather than adding one of their own. The other three run only in CI,
+ because they need a clean machine or another interpreter, so a green run
+ here does not guarantee a green PR:
    • Install smoke test
    • Tests (server · py3.13)
    • Tests (kube-q CLI · py3.13)
@@ -113,9 +130,11 @@ if [ "$STATUS" -eq 0 ]; then
    uv run python -m pytest tests/ -q
    cd packages/kube-q && uv run python -m pytest tests/ -q
 
- …and the two that need no virtualenv, from the repo root:
+ …and the four that need no virtualenv, from the repo root:
    make check-modes
    make check-syntax
+   make check-encoding
+   make check-roster
 
  Heads-up, so you don't chase pre-existing debt that is NOT your bug:
    • `make lint` fails on a clean checkout — it runs `ruff format --check`,

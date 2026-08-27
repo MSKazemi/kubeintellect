@@ -56,7 +56,7 @@ def test_frozen_generations_are_out_of_scope():
 def test_invalid_escape_sequence_is_caught(tmp_path: Path):
     """The #63 defect, verbatim: a regex in a non-raw string."""
     bad = tmp_path / "bad.py"
-    bad.write_text('import re\n_RE = re.compile("^[ \\t]*(?:[-*]|\\d+\\.?)\\s+(.+)$")\n')
+    bad.write_text('import re\n_RE = re.compile("^[ \\t]*(?:[-*]|\\d+\\.?)\\s+(.+)$")\n', encoding="utf-8")
 
     checker = _load_checker()
     checked, failures, _skipped = checker.check_paths([str(bad)])
@@ -68,7 +68,7 @@ def test_invalid_escape_sequence_is_caught(tmp_path: Path):
 
 def test_clean_file_passes(tmp_path: Path):
     good = tmp_path / "good.py"
-    good.write_text('import re\n_RE = re.compile(r"^[ \\t]*(?:[-*]|\\d+\\.?)\\s+(.+)$")\n')
+    good.write_text('import re\n_RE = re.compile(r"^[ \\t]*(?:[-*]|\\d+\\.?)\\s+(.+)$")\n', encoding="utf-8")
 
     checker = _load_checker()
     checked, failures, _skipped = checker.check_paths([str(good)])
@@ -81,11 +81,11 @@ def test_main_exit_codes(tmp_path: Path, capsys):
     checker = _load_checker()
 
     good = tmp_path / "ok.py"
-    good.write_text("x = 1\n")
+    good.write_text("x = 1\n", encoding="utf-8")
     assert checker.main([str(good)]) == 0
 
     bad = tmp_path / "nope.py"
-    bad.write_text('x = "\\d+"\n')
+    bad.write_text('x = "\\d+"\n', encoding="utf-8")
     assert checker.main([str(bad)]) == 1
 
     # The failure has to name the file, or a red CI run is a scavenger hunt.

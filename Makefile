@@ -10,7 +10,7 @@
 # All versions share ONE Langfuse project; each tags its traces with version:vN, so
 # per-version cost is a tag filter (per-version projects need Langfuse Enterprise).
 # ═══════════════════════════════════════════════════════════════════════════════
-.PHONY: help setup check-modes fix-modes check-syntax kind-cluster-create kind-cluster-create-vm kind-cluster-stop kind-cluster-start \
+.PHONY: help setup check-modes fix-modes check-syntax check-encoding check-roster kind-cluster-create kind-cluster-create-vm kind-cluster-stop kind-cluster-start \
         kind-cluster-cleanup monitoring-install monitoring-uninstall \
         langfuse-provision langfuse-install langfuse-clean hosts-entry helm-package \
         opsmembench opsmembench-demo opsmembench-driver-check opsmembench-test
@@ -23,10 +23,12 @@ help: ## Show shared-infra targets
 	@printf "Defaults: KIND_CLUSTER_NAME=\033[33m$(KIND_CLUSTER_NAME)\033[0m  MONITORING_NS=\033[33m$(MONITORING_NS)\033[0m\n"
 	@printf "Per-version app targets live in vN/Makefile — e.g. \033[36mcd v4 && make kind-deploy-kubeintellect\033[0m\n"
 	@printf "\n\033[1mContributors — start here (no cluster needed)\033[0m\n"
-	@printf "  \033[36msetup\033[0m                   Install the v4 workspace and run all six CI gates\n"
+	@printf "  \033[36msetup\033[0m                   Install the v4 workspace and run all eight CI gates\n"
 	@printf "  \033[36mcheck-modes\033[0m             Check the CI file-mode gate (executable iff shebang)\n"
 	@printf "  \033[36mfix-modes\033[0m               Fix any file-mode violations in place\n"
 	@printf "  \033[36mcheck-syntax\033[0m            Check the CI syntax gate (no SyntaxWarning on 3.13)\n"
+	@printf "  \033[36mcheck-encoding\033[0m           Check the CI encoding gate (every text-mode call names one)\n"
+	@printf "  \033[36mcheck-roster\033[0m             Check the CI roster gate (both contributor lists agree)\n"
 	@printf "\n\033[1mKind cluster (one cluster, shared by all versions)\033[0m\n"
 	@printf "  \033[36mkind-cluster-create\033[0m      Create the shared Kind cluster (run once)\n"
 	@printf "  \033[36mkind-cluster-create-vm\033[0m   Create Kind cluster on an Azure VM (run once on the VM)\n"
@@ -61,6 +63,12 @@ fix-modes: ## Fix file-mode violations in place (stages the mode changes)
 
 check-syntax: ## Check the syntax CI gate — no SyntaxWarning on the newest supported interpreter
 	@./scripts/check-syntax-warnings.py
+
+check-encoding: ## Check the encoding CI gate — every text-mode read/write names its encoding
+	@./scripts/check-text-encoding.py
+
+check-roster: ## Check the roster CI gate — .all-contributorsrc and the README table name the same people
+	@./scripts/check-contributor-roster.py
 
 kind-cluster-create: ## Create the shared Kind cluster (2-node, hot-reload mounts) — run once
 	KIND_CLUSTER_NAME=$(KIND_CLUSTER_NAME) bash scripts/kind/create-kind-cluster.sh
