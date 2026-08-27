@@ -166,3 +166,16 @@ terraform.tfstate.backup
 .note.*
 .mohsen.note
 .mohsen.note.*
+
+# ── Demo recordings: narrow re-includes ──────────────────────────────────────
+# Two rules above catch these by accident and both would silently drop the source of record.
+#   *.cast  is aimed at throwaway MCP/Playwright captures; scripts/demo/casts/ holds reviewed
+#           recordings that DEMOS.md and the demo regression test both assert against.
+#   env/    is the virtualenv rule; scripts/demo/env/ is Kubernetes manifests. A directory
+#           exclusion cannot be undone file-by-file, so the directory is re-included first.
+!scripts/demo/casts/
+!scripts/demo/casts/*.cast
+!scripts/demo/casts-kq/
+!scripts/demo/casts-kq/*.cast
+!scripts/demo/env/
+!scripts/demo/env/*.yaml
