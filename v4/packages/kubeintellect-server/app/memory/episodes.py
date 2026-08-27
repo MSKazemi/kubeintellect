@@ -255,7 +255,31 @@ _SQL_RECALL_TRGM = """
 # Rows matched by EITHER channel are kept; RRF ranks them together. `ts_rank` is
 # not true BM25 (review F2) but is a real term-weighted channel over stock
 # Postgres; a stored tsvector + GIN index (P0) makes it index-fast at scale.
-_SQL_RECALL_HYBRID = """
+#: The lexical channel's query, built ONCE and interpolated into both the WHERE and the ORDER BY
+#: so the filter and the ranking can never disagree about what "matches".
+#:
+#: `plainto_tsquery` ANDs every lexeme of its input. `recall_episodes` is called with the user's
+#: last message verbatim (`agent/nodes/memory_loader.py`), so the AND form demands that one
+#: episode summary contain *every* non-stopword term of a natural-language question — "explain",
+#: "clearly", "safest", "tell", "find" included. It never does. Measured 2026-08-26 by the F6
+#: shadow lane over 225 questions against a 208-episode corpus: the channel returned **zero rows
+#: on 225 of 225 queries**, so the RRF sum had a single term, `MEMORY_HYBRID_RETRIEVAL` produced
+#: byte-identical rankings to the trgm baseline on every query, and paid 2.6x the p95 latency for
+#: the second CTE. On the same queries an OR'd query matched a median of 200 of the 208 episodes.
+#:
+#: OR is also what the channel is *for*. It is a ranking input to Reciprocal Rank Fusion, not a
+#: filter: `ts_rank` already orders by how many query terms a document carries and how weighty
+#: they are, and RRF only ever reads the resulting rank. A channel that admits many documents and
+#: ranks them is exactly the term-weighted counterpart to trigram similarity that ADR-014 fuses.
+#:
+#: Each lexeme is `quote_literal`-ed before being joined: `tsvector_to_array` yields raw lexemes
+#: (`-01`, `crashloop-gold`), and an unquoted one is a syntax error in a tsquery cast. A query
+#: whose text produces no lexemes at all yields NULL, and `@@ NULL` matches nothing — the same
+#: empty channel as before, which is the correct answer for a question with no content words.
+_FTS_QUERY = """(SELECT string_agg(quote_literal(lex), ' | ')::tsquery
+                 FROM unnest(tsvector_to_array(to_tsvector('english', $1))) lex)"""
+
+_SQL_RECALL_HYBRID = f"""
     WITH trgm AS (
         SELECT id,
                row_number() OVER (
@@ -272,7 +296,7 @@ _SQL_RECALL_HYBRID = """
                row_number() OVER (
                    ORDER BY ts_rank(
                        to_tsvector('english', summary || ' ' || COALESCE(root_cause, '')),
-                       plainto_tsquery('english', $1)
+                       {_FTS_QUERY}
                    ) DESC,
                    started_at DESC
                ) AS rnk
@@ -280,7 +304,7 @@ _SQL_RECALL_HYBRID = """
         WHERE cluster_id = $2
           AND summary <> ''
           AND to_tsvector('english', summary || ' ' || COALESCE(root_cause, ''))
-              @@ plainto_tsquery('english', $1)          -- index: idx_episodes_fts
+              @@ {_FTS_QUERY}                            -- index: idx_episodes_fts
     ),
     fused AS (
         SELECT id, SUM(w) AS rrf FROM (
