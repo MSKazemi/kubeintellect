@@ -621,6 +621,53 @@ triggers:
     co-condition is what separates them. Without it, two playbooks fire on one
     event and the operator is told about a restart loop that is not happening.
 
+!!! warning "A `status_regex` is only as live as the STATUS column it is matched against"
+    A Pod predicate is matched against `pod_display_status`, which reproduces what
+    `kubectl get pods` prints. That function is the *whole* vocabulary available to
+    a `status_regex`, and until 2026-08-25 it had no branch for a **terminated**
+    container — so `OOMKilled`, `Error`, `Completed`, `ExitCode:N` and `Signal:N`
+    were not in it. `status_regex: "^OOMKilled$"` is the obvious way to watch for
+    a memory kill, it is exactly the string kubectl shows, it passes every liveness
+    check (it is a perfectly legal Kubernetes reason), and it could not fire.
+
+    Two consequences worth carrying:
+
+    * **A dead predicate can be dead because of the observer, not the pattern.**
+      The liveness gate asks whether a string *looks like* a Kubernetes reason. It
+      cannot ask whether this deployment's observer emits it. Widen the observer
+      and dead detectors come alive without anyone editing them.
+    * **`NotReady` does not mean what it looks like it means.** kubectl prints
+      `Running` for a pod whose readiness probe is failing. `NotReady` appears only
+      for a pod that has a *completed* container alongside a running-and-ready one
+      and is itself not Ready. A detector waiting for `NotReady` to catch a failing
+      probe is live, legal — and watching for the wrong event. Liveness and
+      correctness are different properties, and only one of them is machine-checkable.
+
+!!! warning "`trend_predicates:` are gated for liveness too — and were not, for a while"
+    A forecast can be dead in ways a regex cannot be, and until 2026-08-25 nothing
+    checked. Two NL-authored detectors reached a soak cluster forecasting
+    `kube_deployment_status_replicas{deployment="your-deployment-name"}` — the
+    authoring model returned its own **template** rather than filling it in, and the
+    template validated, stored, listed as `shadow`, and matched no series for
+    twenty-four hours. `trend_liveness_errors` now refuses:
+
+    | refused | why it can never fire |
+    |---|---|
+    | a label value that is an unfilled template (`your-*`, `<name>`, `{{ … }}`, `${…}`, `CHANGEME`) | the selector matches no series, so the regression never gets two samples |
+    | `min_r2 > 1.0` | r² is a squared correlation coefficient — it cannot exceed 1.0 |
+    | `fire_if_eta_within_minutes <= 0`, `projection_horizon_minutes <= 0` | the engine fires only when `0 < eta <= bound`; no ETA satisfies both halves |
+    | `window_minutes <= 0` | an empty lookback never yields the two samples the fit needs |
+    | a `direction` that is neither `rising` nor `falling` | `project_eta` treats anything but `falling` as rising, so a typo does not fail — it silently asks the opposite question |
+
+    Names that merely *look* like placeholders — `example`, `foo`, `test`, `my-app` —
+    are deliberately **not** refused. Each is a name someone has really shipped, and
+    refusing a working detector to catch a hypothetical template is the worse error.
+
+    What this still cannot catch is a forecast that is *reachable but wrong*: a raw
+    `_total` counter used as a level, say, whose current value is already past the
+    threshold on the first scrape. That depends on runtime values, so it belongs to a
+    shadow period and a human, not to a validator.
+
 Of the 23 shipped playbooks, **20 compile to detectors**; 3 are LLM-only
 (`CommandHardcodedFailure` — disambiguated from CrashLoopBackOff only by
 reading the pod spec — `ServiceUnreachable`, and `NetworkPolicyBlocking`,
