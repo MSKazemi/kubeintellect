@@ -1,0 +1,1 @@
+{"action_id": "df1d60b2-e5de-4f8d-91b4-edcf64456c60", "risk_level": "medium", "human_summary": "kubectl rollout restart deployment payments-api -n shop", "answered_with": "approve", "turn": 2}
