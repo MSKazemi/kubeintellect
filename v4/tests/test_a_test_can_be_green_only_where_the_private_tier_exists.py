@@ -259,7 +259,7 @@ class TestTheGatesDoNotReadTheDevelopersHome:
     @pytest.fixture
     def run_stanza(self) -> str:
         """Everything the script does after `--export-only` would have returned."""
-        text = _SCRIPT.read_text()
+        text = _SCRIPT.read_text(encoding="utf-8")
         marker = "if [ -n \"$export_only\" ]; then"
         assert marker in text, "the --export-only early exit moved; re-anchor this test"
         return text[text.index(marker):]
@@ -297,7 +297,7 @@ class TestTheGatesDoNotReadTheDevelopersHome:
 
         home_env = tmp_path / ".kubeintellect" / ".env"
         home_env.parent.mkdir(parents=True)
-        home_env.write_text("USE_SQLITE=true\n")
+        home_env.write_text("USE_SQLITE=true\n", encoding="utf-8")
 
         assert Settings().USE_SQLITE is False, "the default this test stands on has moved"
         assert Settings(_env_file=(str(home_env),)).USE_SQLITE is True
