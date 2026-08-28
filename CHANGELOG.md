@@ -13,6 +13,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **The public-checkout instrument read the developer's home directory** (`scripts/check-public-checkout.sh`,
+  `v4/tests/test_a_test_can_be_green_only_where_the_private_tier_exists.py`). The whole claim of
+  `make check-public-checkout` is "this is the verdict GitHub will reach", and it exported HEAD to
+  earn it — but `$HOME` is not in the export. `app/core/config.py` loads
+  `~/.kubeintellect/.env`, a machine-global file written by `kubeintellect init` that lives outside
+  the repo and outside any git, and the project `.env` only outranks it where both name the same
+  key. The export has no project `.env`, so in there the home file wins outright. Measured
+  2026-08-29: a self-host walk-through wrote `USE_SQLITE=true` into that file and
+  `test_digest.py::TestDigestBuilder::test_empty_window` went red in the export while staying green
+  in the working tree, where `v4/.env` happened to set it back to false. Neither answer was CI's —
+  a runner has no home config at all — so the instrument could report both a red GitHub will not
+  see and, in the other direction, a green that hides one. The gates now run under a throwaway
+  `HOME`, with the uv cache and interpreter store pinned to the real one first, since those are
+  build artifacts rather than configuration. Five tests pin it, three of which fail against the
+  previous script.
+
 - **🔴 Released 2.4.0 cannot start the server** (`v4/packages/kubeintellect-server/pyproject.toml`,
   `app/main.py`, `v4/tests/test_a_plain_pip_install_can_start_the_server.py`). Found by installing
   the published wheel from PyPI into a clean virtualenv on 2026-08-29. `pip install kubeintellect`
