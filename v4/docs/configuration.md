@@ -9,14 +9,31 @@ All KubeIntellect settings are environment variables. They can be set in:
 
 - Shell environment — **highest priority**, overrides every file
 - `~/.kubeintellect/.env` — written by `kubeintellect init`; used for pip installs
-- `.env` in the project directory — **lowest priority**, used for dev overrides
+- `.env` in the project directory — used for dev overrides
 - Helm `values.yaml` (in-cluster deploy) — maps to a Kubernetes Secret and ConfigMap, which
   reach the process as shell environment variables and therefore win
 
-`init`, `status`, `serve` and `db-init` all resolve configuration through the same loader, in
-that order, so what `kubeintellect status` reports is what the server runs on. A variable set in
-more than one place takes the value from the highest source listed above — in particular a repo
-`.env` can never override the admin keys in your `~/.kubeintellect/.env`.
+`init`, `status`, `serve` and `db-init` resolve configuration through the same loader, so those
+four agree with each other.
+
+!!! warning "The two `.env` files, and which one wins, depends on how the server was started"
+
+    Measured 2026-08-28 with one key set differently in both files:
+
+    | how the server starts | which file wins |
+    |---|---|
+    | `kubeintellect serve` | `~/.kubeintellect/.env` — the CLI exports it into the environment first, and a real environment variable outranks every file |
+    | `uvicorn`, the container image, the Helm chart | **`./.env` in the working directory** — `Settings` lists it last, and the last file has priority |
+
+    So a project `.env` **can** override values from `~/.kubeintellect/.env`, including
+    `KUBEINTELLECT_ADMIN_KEYS`, for a server that was not started through the CLI. An earlier
+    version of this page said the opposite; it described the `kubeintellect serve` path only.
+
+    Two practical consequences until the precedence is unified:
+
+    - keep credentials in **one** of the two files, not both;
+    - `kubeintellect status` now names every `.env` it read and says so when both set the same
+      key to different values.
 
 This reference covers the application's per-version `v4/.env` settings. A separate
 repo-**root** `.env` holds shared infrastructure config used by the root Makefile

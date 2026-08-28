@@ -471,6 +471,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **`kubeintellect status` described a configuration assembled from a file it never named, and
+  the documented precedence was wrong for every non-CLI launch.** Two `.env` files are read —
+  `~/.kubeintellect/.env` and a `./.env` in the working directory — and the two loaders disagree
+  about which wins. Measured with one key set differently in both: `kubeintellect serve` resolves
+  the **home** value (its loader exports that file into the environment first, and a real
+  environment variable outranks any `.env`), while a directly-launched server — uvicorn, the
+  container image, the Helm chart — resolves the **working-directory** value (`Settings` lists
+  `./.env` last, and the last file has priority). `configuration.md` claimed a project `.env` was
+  "lowest priority" and "can never override the admin keys in your `~/.kubeintellect/.env`";
+  measured, a directly-launched server takes `KUBEINTELLECT_ADMIN_KEYS` from the project file.
+  The Config row now names **every** file it read, marks a working-directory-only config as
+  present rather than missing, and prints the keys the two files set to different values. Which
+  file *should* win is still open; being told that both were read is not.
+
 - **The documented `helm install` could never have worked — the chart repository it names does not
   exist.** `helm repo add kubeintellect https://mskazemi.github.io/kubeintellect` fails immediately
   (*"not a valid chart repository … index.yaml : 404 Not Found"*): that URL is the documentation
