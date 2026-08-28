@@ -28,6 +28,12 @@ The KubeIntellect image is a **stateless, config-free artifact**. Build it once,
 | Helm charts, compose files, scripts | Deploy tooling belongs outside the image |
 | Tests, build tools, `uv` | Build-stage only — stripped in the final image |
 
+> The build names its runtime extras one by one (`--extra tracing --extra metrics`) rather than
+> passing `--all-extras`. `kube-q` declares its test and lint toolchain as a PEP 621 **extra**
+> called `dev`, and an extra is not a dependency-group — so `--all-extras` re-added exactly what
+> `--no-dev` excludes, and every image published up to and including `2.2.0` carries `pytest`,
+> `mypy` and `ruff` inside the runtime venv. Naming the extras removes 127 MB.
+
 ---
 
 ## Build

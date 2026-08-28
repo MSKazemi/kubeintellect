@@ -471,6 +471,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **The README's Docker command could not run, on any tag, and never could.** `docker run --rm -it
+  ghcr.io/mskazemi/kubeintellect:2.2.0 --help` exits **127** — *exec: "--help": executable file not
+  found in $PATH* — because the image has no `Entrypoint` and its `Cmd` is the uvicorn server, so
+  the flag is read as the command. No release could have fixed it: it was a documentation defect
+  for as long as the block existed. There is also no `kubeintellect` console script inside the
+  image to fall back on. The block now runs the server, which is what the surrounding text
+  promised, and shows the `/healthz` line that proves it came up — verified verbatim against
+  `2.2.0`: `{"status":"ok","arm":"v4",...}`.
+- **Every published image carried `pytest`, `mypy` and `ruff` inside the runtime venv, while
+  `deploy/image.md` said build tools were stripped from it.** The Dockerfile passed
+  `--no-dev --all-extras`, and `kube-q` declares its test and lint toolchain as a PEP 621
+  *extra* named `dev` — an extra is not a dependency-group, so `--all-extras` re-added precisely
+  what `--no-dev` excluded. The build now names its runtime extras (`--extra tracing --extra
+  metrics`). Measured on a local build: venv **296 MB → 200 MB**, image **646 MB → 519 MB**, with
+  `langfuse` and `prometheus_fastapi_instrumentator` still present, `/healthz` and `/metrics` both
+  200. Takes effect on the next published image.
+
 - **The anti-flap band demoted classes for being young, and its audit line said their agreement had
   fallen.** A Wilson lower bound is driven by sample size as well as by failures, and
   `hysteresis_breach` compared it to `θ − 0.05` at any n. Measured: at θ=0.95 a class with a
