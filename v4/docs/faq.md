@@ -52,8 +52,11 @@ back to SQLite (`~/.kubeintellect/kubeintellect.db`) if none is reachable.
 PostgreSQL unlocks the cross-session cognitive layers: the
 [reflexion subsystem](reflexion.md), the [memory hierarchy](memory.md) (episodes
 + temporal knowledge graph), the memory loader, and the hash-chained
-[flight recorder](flight-recorder.md) — all PostgreSQL-native. In SQLite mode these
-are disabled; nothing else is. See [Configuration → Database](configuration.md#database).
+[flight recorder](flight-recorder.md) — all PostgreSQL-native. It also carries the
+[audit log](operations.md#audit-log), which has no SQLite equivalent: on SQLite the
+server starts with `audit: SQLite mode — audit logging disabled`, so there is no
+stored record of who asked for what. In SQLite mode these are disabled; nothing else
+is. See [Configuration → Database](configuration.md#database).
 
 ---
 
