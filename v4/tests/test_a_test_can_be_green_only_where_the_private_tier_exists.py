@@ -238,3 +238,73 @@ class TestNoPrivateTierPathReachesTheExport:
         indexed = {line for line in out.stdout.splitlines() if line}
         leaked = sorted(indexed & set(private_only))
         assert not leaked, f"private-tier paths in the export index: {leaked[:10]}"
+
+
+class TestTheGatesDoNotReadTheDevelopersHome:
+    """The export is necessary but not sufficient: `$HOME` is not in the export.
+
+    `app/core/config.py` loads `~/.kubeintellect/.env` — written by
+    `kubeintellect init`, outside the repo and outside any git — and the project
+    `.env` only outranks it where both name the same key. The export carries no
+    project `.env`, so in there the home file wins outright.
+
+    Measured 2026-08-29: a self-host walk-through wrote `USE_SQLITE=true` into
+    that file and `test_digest.py::TestDigestBuilder::test_empty_window` went red
+    in the export while staying green in the working tree, where `v4/.env`
+    happened to set it back to false. Neither answer was CI's — a runner has no
+    home config at all. An instrument whose entire claim is "this is the verdict
+    GitHub will reach" must not consult the developer's home directory.
+    """
+
+    @pytest.fixture
+    def run_stanza(self) -> str:
+        """Everything the script does after `--export-only` would have returned."""
+        text = _SCRIPT.read_text()
+        marker = "if [ -n \"$export_only\" ]; then"
+        assert marker in text, "the --export-only early exit moved; re-anchor this test"
+        return text[text.index(marker):]
+
+    def test_home_is_neutralised_before_the_gates_run(self, run_stanza):
+        assert "export HOME=" in run_stanza, (
+            "the gates run with the developer's HOME — a machine-global "
+            "~/.kubeintellect/.env can decide the verdict"
+        )
+        assert run_stanza.index("export HOME=") < run_stanza.index("make setup"), (
+            "HOME is overridden after the gates have already run"
+        )
+
+    def test_the_neutral_home_is_a_directory_the_script_creates(self, run_stanza):
+        # Pointing HOME at a path that does not exist is not the same as pointing
+        # it somewhere empty: tools that write into it fail instead of finding
+        # nothing there.
+        assert "mkdir -p \"$fake_home\"" in run_stanza
+        assert run_stanza.index("mkdir -p \"$fake_home\"") < run_stanza.index("export HOME=")
+
+    def test_the_uv_cache_is_pinned_before_home_moves(self, run_stanza):
+        # Order matters and is easy to get wrong: these default to `$HOME/...`,
+        # so setting them *after* HOME moves would silently point them into the
+        # throwaway directory and turn a four-minute check into a full download.
+        home_at = run_stanza.index("export HOME=")
+        for var in ("UV_CACHE_DIR", "UV_PYTHON_INSTALL_DIR"):
+            assert f"export {var}=" in run_stanza, f"{var} is not pinned"
+            assert run_stanza.index(f"export {var}=") < home_at, (
+                f"{var} is set after HOME moves, so it resolves into the throwaway home"
+            )
+
+    def test_the_home_config_really_can_decide_a_setting(self, tmp_path):
+        """The hazard is real, not theoretical — the file format is read."""
+        from app.core.config import Settings
+
+        home_env = tmp_path / ".kubeintellect" / ".env"
+        home_env.parent.mkdir(parents=True)
+        home_env.write_text("USE_SQLITE=true\n")
+
+        assert Settings().USE_SQLITE is False, "the default this test stands on has moved"
+        assert Settings(_env_file=(str(home_env),)).USE_SQLITE is True
+
+    def test_the_config_still_reads_the_home_file(self):
+        """If this ever stops being true, the neutralisation above can go."""
+        from app.core.config import Settings
+
+        env_files = Settings.model_config["env_file"]
+        assert str(Path.home() / ".kubeintellect" / ".env") in [str(f) for f in env_files]
