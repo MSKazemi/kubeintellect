@@ -1468,9 +1468,20 @@ def cmd_db_init(_args: argparse.Namespace) -> None:
 # ── backup manifest / verify-restore (enterprise A12) ─────────────────────────
 
 def _backup_query(dsn: str):
-    """A sync ``query(sql) -> rows`` over psycopg, for `app.db.backup`."""
+    """A sync ``query(sql) -> rows`` over psycopg, for `app.db.backup`.
+
+    `autocommit` is load-bearing, not a default. `backup.verify` is built to report **every**
+    problem rather than the first — it catches per-check exceptions and carries on — and that
+    design is defeated by the driver underneath it: in a transaction, one failing statement
+    poisons the connection, so every later query dies with "current transaction is aborted".
+    Measured 2026-08-28 against a real restore missing one table: one true finding, **eight
+    false ones**, six of which said `the restore did not create it` about tables that were
+    present and correct. Mid-incident that is worse than useless. These are read-only counts;
+    each one has to stand on its own.
+    """
     import psycopg  # type: ignore[import-untyped]
     conn = psycopg.connect(dsn)
+    conn.autocommit = True
 
     def query(sql: str):
         with conn.cursor() as cur:
