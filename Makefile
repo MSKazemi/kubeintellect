@@ -23,12 +23,13 @@ help: ## Show shared-infra targets
 	@printf "Defaults: KIND_CLUSTER_NAME=\033[33m$(KIND_CLUSTER_NAME)\033[0m  MONITORING_NS=\033[33m$(MONITORING_NS)\033[0m\n"
 	@printf "Per-version app targets live in vN/Makefile — e.g. \033[36mcd v4 && make kind-deploy-kubeintellect\033[0m\n"
 	@printf "\n\033[1mContributors — start here (no cluster needed)\033[0m\n"
-	@printf "  \033[36msetup\033[0m                   Install the v4 workspace and run all eight CI gates\n"
+	@printf "  \033[36msetup\033[0m                   Install the v4 workspace and run all nine CI gates\n"
 	@printf "  \033[36mcheck-modes\033[0m             Check the CI file-mode gate (executable iff shebang)\n"
 	@printf "  \033[36mfix-modes\033[0m               Fix any file-mode violations in place\n"
 	@printf "  \033[36mcheck-syntax\033[0m            Check the CI syntax gate (no SyntaxWarning on 3.13)\n"
 	@printf "  \033[36mcheck-encoding\033[0m           Check the CI encoding gate (every text-mode call names one)\n"
 	@printf "  \033[36mcheck-roster\033[0m             Check the CI roster gate (both contributor lists agree)\n"
+	@printf "  \033[36mcheck-public-checkout\033[0m    Run the nine gates against an export of HEAD, not your tree\n"
 	@printf "\n\033[1mKind cluster (one cluster, shared by all versions)\033[0m\n"
 	@printf "  \033[36mkind-cluster-create\033[0m      Create the shared Kind cluster (run once)\n"
 	@printf "  \033[36mkind-cluster-create-vm\033[0m   Create Kind cluster on an Azure VM (run once on the VM)\n"
@@ -72,6 +73,9 @@ check-roster: ## Check the roster CI gate — .all-contributorsrc and the README
 
 check-required: ## Compare main's required checks against what ci.yml produces (needs an authed `gh`)
 	@./scripts/check-required-checks.py
+
+check-public-checkout: ## Run the nine gates against an export of HEAD — what a public clone carries, not your working tree
+	@./scripts/check-public-checkout.sh
 
 kind-cluster-create: ## Create the shared Kind cluster (2-node, hot-reload mounts) — run once
 	KIND_CLUSTER_NAME=$(KIND_CLUSTER_NAME) bash scripts/kind/create-kind-cluster.sh
