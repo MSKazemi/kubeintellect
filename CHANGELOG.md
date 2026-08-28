@@ -11,7 +11,71 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **🔴 Released 2.4.0 cannot start the server** (`v4/packages/kubeintellect-server/pyproject.toml`,
+  `app/main.py`, `v4/tests/test_a_plain_pip_install_can_start_the_server.py`). Found by installing
+  the published wheel from PyPI into a clean virtualenv on 2026-08-29. `pip install kubeintellect`
+  succeeds in 23.7 s and `kubeintellect --version` prints `kubeintellect 2.4.0` with exit 0 — the
+  defect that made 2.2.0 unusable is genuinely fixed. `kubeintellect serve` then dies before
+  uvicorn binds a port, with `ModuleNotFoundError: No module named
+  'prometheus_fastapi_instrumentator'` raised from `app/main.py` at module scope.
+  `METRICS_ENABLED` defaults to `True` and `app/main.py` imports the instrumentator under that
+  flag, while the distribution declared the package **only** under `extra == 'metrics'` and
+  `extra == 'all'`. The primary command of the release could not run out of the box; every local
+  gate passed because the development virtualenv has the package installed for other reasons —
+  the same "green here, absent there" class as the public-checkout work. Two changes: the package
+  is now a **core** dependency, because a feature that is on by default is not optional; and the
+  import is **guarded**, because a control plane must not refuse to boot over a telemetry package.
+  The `metrics` extra is kept as a harmless alias. Four tests pin it, three of which fail against
+  the state that shipped. **This does not fix the artifact already on PyPI — 2.4.0 there is still
+  broken and a re-release is needed.**
+
+- **The FAQ's SQLite answer said "nothing else is" disabled, and one more thing was**
+  (`v4/docs/faq.md`, `v4/tests/test_the_sqlite_answer_names_everything_sqlite_turns_off.py`).
+  Found by following `configuration.md`'s pip-install `.env` template into a clean `HOME` and
+  running `kubeintellect serve`. The documented path works — auto-detection wrote
+  `USE_SQLITE=true`, the server started, `/healthz` returned 200 — but three subsystems announced
+  themselves disabled: `audit`, `flight_recorder` and `memory`. *Do I need PostgreSQL?* named the
+  memory hierarchy and the flight recorder and then claimed nothing else was disabled, omitting
+  the audit log. It is documented in `operations.md` and `api-reference.md`; the FAQ's closing
+  claim was the defect. A new gate derives the disabled set from the source at test time.
+
+- **`kubeintellect init` crashed after telling the user it had succeeded**
+  (`app/cli.py`, `v4/tests/test_init_survives_a_machine_without_docker.py`).
+  `_docker_available()` returned `subprocess.run(["docker", "info"], ...).returncode == 0`.
+  On a machine with no Docker installed there is no return code — the exec raises
+  `FileNotFoundError` — so the predicate raised in exactly the case it exists to detect.
+  Measured on a clean Ubuntu 24.04 Azure VM against the published 2.4.0: `init` printed the
+  full "Setup complete" banner, wrote both `.env` files and the API key, and then died in a
+  traceback. An absent or hung Docker now reads as unavailable, which is what the name promises.
+
+- **The init wizard did not keep the promise printed in its own banner**
+  (`app/cli.py`, `app/__main__.py`, `v4/tests/test_init_wizard_keeps_its_cancel_promise.py`).
+  The banner says "Press Ctrl+C at any time to cancel without saving"; nothing implemented it.
+  Nine `input()` calls had no handler and `main()` wrapped none of them, so `KeyboardInterrupt`
+  and `EOFError` both escaped as a stack trace. EOF is the one people actually hit — piping,
+  CI, or `< /dev/null` reaches end-of-file on the first question, which is how it was found.
+  Cancelling now exits 130 with "Cancelled — nothing was saved", and a non-interactive stdin
+  gets a sentence instead of a traceback. `main()` returns that status and `python -m app`
+  propagates it rather than discarding it.
+
+- **The Helm chart published unsigned while the release reported a failure**
+  (`.github/workflows/helm-publish.yml`). The job authenticates with `helm registry login`,
+  which writes helm's own registry config, while `actions/attest-build-provenance` with
+  `push-to-registry: true` resolves credentials through the Docker config — so it failed with
+  "No credentials found for registry ghcr.io". On the v2.4.0 tag the chart itself published
+  fine and only the attestation failed, which reads as a broken release rather than an unsigned
+  artifact. A `docker/login-action` step now runs before the attestation.
+
+### Documented
+
+- **`kq` is missing after `uv tool install kubeintellect`** (`v4/docs/troubleshooting.md`).
+  Not a PATH problem: `uv tool` links only the entry points of the package it was given, and
+  `kq` belongs to the `kube-q` distribution, so the install reports
+  `Installed 1 executable: kubeintellect`. `pip install kubeintellect` installs the entry points
+  of every distribution it pulls in and does give you both — which is why the install pages use
+  `pip`. With uv, install the client as its own tool: `uv tool install kube-q`.
 
 ## [2.4.0] – 2026-08-29
 

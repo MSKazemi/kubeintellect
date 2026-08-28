@@ -38,6 +38,10 @@ dependencies = [
     "pyyaml>=6.0",
     # HTTP (Prometheus + Loki queries)
     "httpx>=0.28",
+    # Self-metrics. Core, not an extra: METRICS_ENABLED defaults to True and app/main.py
+    # imports this at module scope, so as an extra it made `pip install kubeintellect`
+    # unable to start the server at all. The `metrics` extra is kept as a no-op alias.
+    "prometheus-fastapi-instrumentator>=7.1.0",
     # Workspace members (ADR-004) — published together with the server
     "kube-q>=1.6.0",
     "ki-protocol>=1.1.0",
