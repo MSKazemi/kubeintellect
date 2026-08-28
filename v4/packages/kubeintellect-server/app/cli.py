@@ -1742,10 +1742,45 @@ def cmd_status(_args: argparse.Namespace) -> None:
 
     print(f"\n  {_bold('KubeIntellect status')}\n")
 
-    # Config file
-    cfg_status = _mark(_CONFIG_FILE.exists(), "config file")
-    cfg_note = "" if _CONFIG_FILE.exists() else f"  {_dim('→ run: kubeintellect init')}"
-    print(f"  Config:    {cfg_status}  {_CONFIG_FILE}{cfg_note}")
+    # Config file(s)
+    #
+    # BOTH files are read — `_load_effective_config` loads ~/.kubeintellect/.env and then a
+    # ./.env from the working directory — and until 2026-08-28 this row named only the home
+    # one. Run `status` from a directory that happens to hold a .env and every row below
+    # described a configuration assembled partly from a file this line never mentioned.
+    #
+    # Naming both is the minimum honest report, because the two loaders do not agree on which
+    # of them wins. Measured, same two files, one key: `kubeintellect serve` resolves the HOME
+    # value (its loader exports the home file into the environment first, and a real
+    # environment variable outranks any .env), while a directly-launched server — uvicorn,
+    # the container image, the Helm chart — resolves the WORKING-DIRECTORY value, because
+    # Settings lists ./.env last and pydantic-settings gives the last file priority. Until
+    # that is settled, a caller who has both files is entitled to be told so.
+    local_env = Path(".env")
+    local_used = local_env.is_file() and local_env.resolve() != _CONFIG_FILE.resolve()
+    cfg_status = _mark(_CONFIG_FILE.exists() or local_used, "config file")
+    if _CONFIG_FILE.exists():
+        print(f"  Config:    {cfg_status}  {_CONFIG_FILE}")
+        if local_used:
+            print(f"             {ok_}  {local_env.resolve()}  {_dim('(working directory)')}")
+    elif local_used:
+        # A container, a Compose stack and a checkout following `cp .env.example .env` all have
+        # configuration and no user file. Reporting ✗ there called a configured install broken.
+        print(f"  Config:    {cfg_status}  {local_env.resolve()}  {_dim('(working directory)')}")
+        print(f"             {_dim(f'no user config at {_CONFIG_FILE} — run: kubeintellect init')}")
+    else:
+        print(f"  Config:    {cfg_status}  {_CONFIG_FILE}  {_dim('→ run: kubeintellect init')}")
+    if local_used and _CONFIG_FILE.exists():
+        home_keys: dict[str, str] = {}
+        local_keys: dict[str, str] = {}
+        _load_dotenv_dict(_CONFIG_FILE, home_keys)
+        _load_dotenv_dict(local_env, local_keys)
+        clash = sorted(k for k in local_keys if k in home_keys and home_keys[k] != local_keys[k])
+        if clash:
+            print(_warn(
+                f"             both files set {', '.join(clash)} to different values — "
+                "`serve` takes the home value, a directly-launched server takes this one"
+            ))
 
     # LLM
     #
