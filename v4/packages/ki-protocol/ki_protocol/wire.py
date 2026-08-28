@@ -84,6 +84,29 @@ class ErrorEvent(BaseModel):
     ts: float = Field(default_factory=time.time)
 
 
+class UsageEvent(BaseModel):
+    """Token and call counts for one request, emitted once before the terminator.
+
+    Declared here late. `chat_completions.py` built this frame as a hand-written
+    `{"type": "usage", **meter.as_dict()}` dict, so the one module `__init__` calls canonical
+    for what the server sends did not describe the ninth thing it sends — and the 2026-08-20
+    round-trip audit, which enumerated the models declared here, could not see it. It was lossy
+    in both directions when finally measured: `llm_calls` was dropped on arrival and the client
+    declared a `model` field the server has never populated.
+
+    `llm_calls` is not decoration: `core/usage.py` keeps it so that "called 40 times, reported
+    no tokens" — an instrumentation gap — stays distinguishable from a genuinely cheap request.
+    """
+
+    type: Literal["usage"] = "usage"
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    llm_calls: int = 0
+    session_id: str
+    ts: float = Field(default_factory=time.time)
+
+
 Event = (
     StatusEvent
     | ToolCallEvent
@@ -93,4 +116,5 @@ Event = (
     | HitlRequestEvent
     | PlanEvent
     | ErrorEvent
+    | UsageEvent
 )

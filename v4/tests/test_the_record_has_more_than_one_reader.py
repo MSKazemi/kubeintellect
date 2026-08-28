@@ -47,6 +47,10 @@ WIRE_SAMPLES: dict[str, dict] = {
     "plan": dict(steps=[{"description": "check events", "status": "done"},
                         {"description": "check logs", "status": "pending"}], session_id="s"),
     "error": dict(error="boom", session_id="s"),
+    # Declared in `wire` since 2026-08-28; it was emitted as a hand-built dict before,
+    # which is why no generative guard over `wire` — including this one — could see it.
+    "usage": dict(prompt_tokens=100, completion_tokens=40, total_tokens=140,
+                  llm_calls=3, session_id="s"),
 }
 
 

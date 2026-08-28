@@ -46,6 +46,8 @@ SAMPLES: dict[str, dict] = {
     "plan":         dict(steps=[{"description": "check pods", "status": "pending"}],
                          session_id="s1"),
     "error":        dict(error="boom", session_id="s1"),
+    "usage":        dict(prompt_tokens=100, completion_tokens=40, total_tokens=140,
+                         llm_calls=3, session_id="s1"),
 }
 
 
@@ -185,3 +187,50 @@ class TestPlanIsAFirstClassClientEvent:
 
     def test_an_empty_plan_is_valid(self):
         assert parse_event({"type": "plan", "data": {}}).data.steps == []
+
+
+# ── the direction this file could not see ─────────────────────────────────────
+#
+# Everything above is generative over `ki_protocol.wire`, so it catches a server model with no
+# client counterpart. It cannot catch the reverse — a type the *client* declares that no server
+# model does — because a payload the server never sends has no sample to generate from.
+#
+# That is not hypothetical. `usage` lived only on the client side of this contract until
+# 2026-08-28: `chat_completions.py` emitted it as a hand-written `{"type": "usage", ...}` dict,
+# so `wire.py` never described it, and being outside `wire.py` is exactly what made it invisible
+# to a sweep scoped by `wire.py`. Both halves drifted unobserved — the server sent `llm_calls`
+# the client had no field for, and the client declared a `model` the server has never sent.
+class TestNeitherHalfKnowsAnEventTheOtherDoesNot:
+    @staticmethod
+    def _client_types() -> set[str]:
+        import typing
+
+        args = typing.get_args(events.Event)
+        if args and hasattr(args[0], "__args__"):      # unwrap Annotated[...]
+            args = typing.get_args(args[0])
+        return {
+            typing.get_args(m.model_fields["type"].annotation)[0]
+            for m in args
+            if typing.get_args(m.model_fields["type"].annotation)
+        }
+
+    def test_the_client_declares_nothing_the_server_cannot_send(self):
+        orphans = self._client_types() - set(WIRE_TYPES)
+        assert not orphans, (
+            f"the client parses {sorted(orphans)}, which no `wire` model emits — either the "
+            f"server builds that frame by hand, or the client carries a dead branch"
+        )
+
+    def test_the_server_emits_nothing_the_client_cannot_read(self):
+        orphans = set(WIRE_TYPES) - self._client_types()
+        assert not orphans, f"`wire` emits {sorted(orphans)} and no client model accepts it"
+
+    def test_usage_is_on_both_halves(self):
+        assert "usage" in WIRE_TYPES and "usage" in self._client_types()
+
+    def test_the_call_count_is_not_dropped_on_arrival(self):
+        # `core/usage.py` keeps `llm_calls` so that "called 40 times, reported no tokens" stays
+        # distinguishable from a genuinely cheap request. It was discarded at the wire.
+        parsed = parse_event(_on_the_wire("usage"))
+        assert parsed is not None
+        assert parsed.data.llm_calls == 3
