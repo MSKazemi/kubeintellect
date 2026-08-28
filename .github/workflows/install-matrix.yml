@@ -1,0 +1,60 @@
+# Prove the published install works on a clean machine of each OS.
+#
+# This exists because v2.3.0 and v2.3.1 were tagged but never published, and for
+# two weeks `pip install kubeintellect` served 2.2.0, whose `kubeintellect
+# --version` exits 2. Nothing in CI noticed, because CI tests the source tree —
+# never the artifact a user actually receives from PyPI.
+#
+# macOS is here for a second reason: Azure sells no macOS VM (no Apple publisher
+# exists in the Marketplace), so a GitHub-hosted runner is the only clean Mac
+# available to this project.
+#
+# Runners are NOT pristine user machines — they ship Python and pip preinstalled.
+# A real first-run on a clean Ubuntu 24.04 or Windows Server 2022 image has
+# neither. Treat this as a regression gate on the published artifact, not as a
+# recording of the newcomer experience.
+name: Install matrix
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    name: Install on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install from PyPI and report versions
+        shell: bash
+        run: |
+          set -x
+          python -m venv ki
+          if [ -d ki/bin ]; then B=ki/bin; else B=ki/Scripts; fi
+          "$B/python" -m pip install --quiet --upgrade pip
+          "$B/python" -m pip install --quiet --no-cache-dir kubeintellect kube-q
+          "$B/python" -m pip list | grep -Ei 'kubeintellect|kube-q|ki-protocol'
+          "$B/kubeintellect" --version
+          "$B/kq" --version
+
+      - name: The version flag must exit 0, not 2
+        shell: bash
+        run: |
+          if [ -d ki/bin ]; then B=ki/bin; else B=ki/Scripts; fi
+          "$B/kubeintellect" --version > /dev/null
+          echo "kubeintellect --version exit=$?"
+          "$B/kq" --version > /dev/null
+          echo "kq --version exit=$?"
