@@ -11,17 +11,24 @@ No cluster, no Docker, no LLM key of your own. Install the thin `kq` client and
 point it at the hosted demo server (read-only):
 
 ```bash
-# 1. Get a personal key: open https://kubeintellect.com/demo, enter your email —
-#    the key appears on the page (looks like ki-ro-…). Keys last 30 days.
-
-# 2. Install the CLI (Python 3.12+)
+# 1. Install the CLI (Python 3.12+)
 pip install kube-q
 
-# 3. Save your key and start the REPL — kq already defaults to the hosted server
-mkdir -p ~/.kube-q
-echo "KUBE_Q_API_KEY=<your-ki-ro-key>" >> ~/.kube-q/.env
+# 2. Start the REPL — kq already defaults to the hosted server,
+#    https://api.kubeintellect.com, and the demo needs no key
 kq
 ```
+
+!!! info "No key to fetch — and none to set"
+    The hosted demo does not issue API keys today, so there is nothing to paste
+    here. `KUBE_Q_API_KEY` in `~/.kube-q/.env` is what you set once you point `kq`
+    at **your own** server:
+
+    ```bash
+    mkdir -p ~/.kube-q
+    echo "KUBE_Q_API_KEY=<your key>" >> ~/.kube-q/.env
+    echo "KUBE_Q_URL=http://localhost:8000" >> ~/.kube-q/.env
+    ```
 
 Now ask, in plain English:
 
@@ -68,7 +75,11 @@ All pip-install paths use the `kubeintellect` CLI:
 | `kubeintellect set KEY=VALUE` | Update a config value in `~/.kubeintellect/.env` |
 | `kubeintellect db-init` | Apply schema to PostgreSQL (skip for SQLite — auto-created) |
 | `kubeintellect backup-manifest` | Record what the database holds, so a restore can be proved complete |
+| `kubeintellect chain-export` | Archive one hash chain into a self-verifying file |
+| `kubeintellect chain-verify-export` | Check a chain archive — no database needed |
+| `kubeintellect chain-truncate` | Remove archived rows from a hash chain, declaring the gap (destructive) |
 | `kubeintellect verify-restore` | Check a restored database against a backup manifest (exits 1 on any gap) |
+| `kubeintellect provenance` | Show how to verify a released artifact came from this project's build |
 | `kubeintellect kind-setup` | Create a Kind cluster with DNS config (standalone, without running `init`) |
 | `kubeintellect service <action>` | Manage the systemd background service (install / uninstall / start / stop / status / logs) |
 

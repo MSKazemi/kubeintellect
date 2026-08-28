@@ -32,22 +32,11 @@ No install, no terminal. Open **[kubeintellect.com/demo](https://kubeintellect.c
 ## Option A — kube-q CLI
 
 Install only the thin CLI client and connect it to our hosted KubeIntellect instance.
-`kq` already defaults to `https://api.kubeintellect.com`, so all you need is a personal API key.
+`kq` already defaults to `https://api.kubeintellect.com`, so there is nothing to configure.
 
 **Requirements:** Python 3.12+
 
-### 1. Get your personal API key
-
-Go to **[kubeintellect.com/demo](https://kubeintellect.com/demo)**, enter your email, and your key
-appears instantly on the page and is emailed to you. It looks like:
-
-```
-ki-ro-dXNlckBleGFtcGxlLmNvbQ.a1b2c3d4e5f6g7h8i9j0k1l2
-```
-
-Keys expire after 30 days — request a new one at any time from the same page.
-
-### 2. Install kube-q
+### 1. Install kube-q
 
 ```bash
 pip install kube-q
@@ -58,19 +47,28 @@ pip install kube-q
 > echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 > ```
 
-### 3. Connect
+### 2. Connect
 
 ```bash
-kq --api-key ki-ro-dev
-```
-
-Or save it permanently so you never type it again:
-
-```bash
-mkdir -p ~/.kube-q
-echo "KUBE_Q_API_KEY=ki-ro-dev" >> ~/.kube-q/.env
 kq
 ```
+
+That is the whole setup — `kq`'s default backend is the hosted demo.
+
+!!! info "The hosted demo issues no API key"
+    This page used to describe fetching a personal `ki-ro-…` key. There is no such
+    flow: the demo is open, and `KUBE_Q_API_KEY` is what you set once you run your
+    own server —
+
+    ```bash
+    mkdir -p ~/.kube-q
+    echo "KUBE_Q_API_KEY=<your key>" >> ~/.kube-q/.env
+    echo "KUBE_Q_URL=http://localhost:8000" >> ~/.kube-q/.env
+    ```
+
+    Keys for your own server are configured with `KUBEINTELLECT_ADMIN_KEYS` /
+    `_OPERATOR_KEYS` / `_READONLY_KEYS` — see
+    [configuration](../configuration.md) and [security](../security.md).
 
 !!! note "Read-only access"
     The demo cluster is shared. Destructive operations (delete, restart, scale) are disabled.

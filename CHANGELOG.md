@@ -13,6 +13,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **The quickstart's first step could not be followed** (`v4/docs/quickstart.md`,
+  `v4/docs/install/no-cluster.md`, `v4/tests/test_the_quickstart_can_actually_be_followed.py`).
+  Step 1 of the "first answer in ~2 minutes" path told the reader to open
+  `kubeintellect.com/demo`, enter their email, and copy a personal `ki-ro-…` key that "appears
+  instantly on the page and is emailed to you" and "expires after 30 days". Walked on 2026-08-28:
+  that page is the browser terminal demo — "No sign-up required", no email field, no key. The mint
+  route it describes (`POST /v1/auth/demo-keys`) exists in this repository and is **absent from the
+  deployed API**, whose OpenAPI document lists five paths in total. A reader following the
+  quickstart stops at step 1 with nothing to paste.
+
+  What does work was measured rather than assumed: `pip install kube-q`, Python 3.12+, and `kq`'s
+  default backend `https://api.kubeintellect.com`, which answers `/v1/healthz` in ~0.4 s. The
+  hosted demo requires no key — an unauthenticated `POST /v1/chat/completions` is rejected by
+  schema validation (422), not by auth. Both pages now say that plainly, and `KUBE_Q_API_KEY` is
+  described where it actually applies: pointing `kq` at your own server.
+
+  Seven tests pin what the doc-claims gate cannot, because it compares numbers: that the
+  quickstart's CLI table and `app/cli.py` name the same commands in both directions — it was four
+  short (`chain-export`, `chain-verify-export`, `chain-truncate`, `provenance`), now added — and
+  that no document sends a reader to that page for a key or promises a demo-key lifetime.
+
 - **Nothing could run the test suite the way `main` runs it** (`scripts/check-public-checkout.sh`,
   `Makefile`, `v4/tests/test_a_test_can_be_green_only_where_the_private_tier_exists.py`). Every
   local gate runs against the working tree, which carries the private research materials the root
