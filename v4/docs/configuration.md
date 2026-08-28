@@ -519,10 +519,26 @@ and the Anthropic model provider.
 | `MEMORY_SUMMARY_TREE` | `false` | **Memory V5 (experimental, spec R7).** RAPTOR/GraphRAG-style theme summaries: the consolidation worker builds one deterministic summary per `(cluster, playbook\|namespace)` signature into `memory_summaries`, so theme-level questions are answered without scanning every episode. Regeneration is tied to **KG change-rate** (rebuilt only when new episodes arrived or the cluster's KG edge count moved), never a fixed clock. Off ⇒ no summary tree. |
 | `MEMORY_SUMMARY_MIN_CLUSTER` | `3` | Minimum episodes in a theme before it gets a summary (when `MEMORY_SUMMARY_TREE` is on). |
 | `MEMORY_RETENTION_DAYS` | `0` | **Data retention / lifecycle.** Age out the telemetry and completed-work tables (`request_log`, `session_notes`, `fleet_signals`, terminal `prospective_memory` rows, `promotion_outcomes`) so a long-lived install stays bounded. `0` = keep everything, the default — a data-deleting default would silently discard history on upgrade. Bounded: at most 5 000 rows per table per consolidation pass. **The hash-chained ledgers `decision_log` and `memory_audit` (and their head anchors) are never pruned by this setting** — deleting their newest rows breaks no hash link, so it is invisible to chain verification while contradicting the head anchor; truncating an audit ledger needs a signed export, not a clock. `episodes` are excluded too (that is what the agent recalls; deliberate deletion goes through RTBF). `promotion_outcomes` has a hard floor at the ADR-102 90-day window, so a shorter setting cannot delete the samples the A3 statistical brake demotes on. |
-| `RATE_LIMIT_ENABLED` | `true` | **API rate limiting.** Per-caller token bucket on every route, keyed by a SHA-256 of the bearer token (the key itself is never stored or logged); the peer address is used only when auth is disabled. On by default — a limiter that ships off is not a limiter. |
+| `RATE_LIMIT_ENABLED` | `true` | **API rate limiting.** Per-caller token bucket on every route, keyed by a SHA-256 of the bearer token (the key itself is never stored or logged); the caller's **address** is used whenever a request carries no bearer token — a property of the request, not of the auth configuration. On by default — a limiter that ships off is not a limiter. |
 | `RATE_LIMIT_PER_MIN` | `120` | Sustained requests per minute per caller. Far above any interactive `kq` use; lower it for a shared or public deployment. |
 | `RATE_LIMIT_BURST` | `30` | Bucket capacity — how much idle allowance a caller may accrue and spend at once. |
 | `RATE_LIMIT_MAX_TRACKED` | `10000` | Cap on tracked callers. The limiter runs before route authentication, so arbitrary bearer tokens can create buckets; least-recently-seen is evicted. |
+| `RATE_LIMIT_TRUSTED_PROXY_HOPS` | `0` | How many proxies sit in front of the server. `0` ignores `X-Forwarded-For` entirely. **Set this to `1` if you run the bundled Ingress and any caller reaches you without a bearer token** — see the note below. |
+
+> ⚠️ **An address-keyed caller behind a proxy needs `RATE_LIMIT_TRUSTED_PROXY_HOPS`.** A request
+> with no bearer token is keyed by address, and behind an Ingress every such request arrives from
+> the ingress pod — so with the default `0`, all anonymous callers share **one** bucket and any
+> one of them can answer 429 to the rest (measured 2026-08-28 against the bundled chart, which
+> ships an Ingress at `/`). Setting it to the number of trusted hops reads the client address that
+> many entries from the **right** of `X-Forwarded-For`, the end proxies append to. It defaults to
+> `0` because the header is written by the client: honouring it unconditionally would let one
+> caller mint a fresh bucket per request and fill the bucket table doing it. A header with fewer
+> entries than the declared depth is ignored rather than half-believed. Callers that present a
+> bearer token are unaffected — they are keyed by token identity either way.
+>
+> ```bash
+> helm upgrade ... --set-string config.extraEnv.RATE_LIMIT_TRUSTED_PROXY_HOPS=1
+> ```
 
 > **Two limits of the built-in limiter, stated rather than tuned away.** The counters are **per replica**: N replicas behind one Service admit up to N × `RATE_LIMIT_PER_MIN` per caller, so this is a fair-use bound, not a fleet-wide quota (that needs shared state). And it is fair use, **not DDoS defence** — volumetric abuse belongs at the ingress, which can drop traffic before it reaches Python. `/healthz`, `/readyz`, `/v1/healthz`, `/v1/readyz` and `/metrics` are never limited: a 429 to the kubelet's probe would restart the pod under exactly the load the limiter exists to survive, and a throttled scrape target silently becomes an unmonitored one.
 | `PREFERENCE_MEMORY_ENABLED` | `true` | Learned operator-preference layer: explicit (`kq preference set`, confidence 1.0) + behaviour-**inferred** preferences (e.g. `default_namespace` from RCA history), injected into the prompt. `/v1/preferences` API. Fail-open. |

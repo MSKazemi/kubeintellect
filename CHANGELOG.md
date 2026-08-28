@@ -13,6 +13,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **The rate limiter's address fallback was inert behind the Ingress the chart ships**
+  (`v4/packages/kubeintellect-server/app/api/rate_limit.py`, `app/core/config.py`,
+  `v4/docs/configuration.md`). The limiter argues its central decision as *"keyed by identity, not
+  by IP — behind an Ingress every request arrives from one address, so an IP-keyed limiter would
+  throttle the whole tenancy the moment one client misbehaved."* That is right, and it covers only
+  requests carrying a bearer token; without one, `caller_key` fell back to `request.client.host`,
+  which behind an Ingress **is** the one address the paragraph warns about. Measured 2026-08-28
+  against the real ASGI app: three clients sent as `X-Forwarded-For: 203.0.113.9 / 198.51.100.4 /
+  192.0.2.77` all landed in the single bucket `ip:10.42.0.7`, and 20 requests from the second were
+  answered `404×10, 429×10` purely because the first had spent the burst. The chart ships an
+  Ingress at `/`, and `RATE_LIMIT_ENABLED` defaults to on — so on a deployment reached without
+  credentials, every anonymous caller on the internet shared one 120/min bucket and any one of
+  them could shut out the rest.
+
+  `X-Forwarded-For` is written by the client, so honouring it unconditionally is worse than
+  ignoring it — a caller would mint a fresh bucket per request and fill the bucket table on the
+  way. New `RATE_LIMIT_TRUSTED_PROXY_HOPS`, **default `0`, which is exactly the previous
+  behaviour**: set it to the number of proxies in front and the client address is read that many
+  entries from the *right* of the header, the end proxies append to and a client cannot forge. A
+  header shorter than the declared depth is ignored rather than half-believed. Reachable on the
+  bundled chart through the existing passthrough
+  (`--set-string config.extraEnv.RATE_LIMIT_TRUSTED_PROXY_HOPS=1`), so no chart surface was added.
+
+  Also corrected, in the module docstring and in `docs/configuration.md`: both said the address
+  fallback applies *"only when auth is disabled (local development)"*. It does not — `caller_key`
+  never consults the auth settings, and the measurement above ran with `settings.auth_enabled`
+  True. 13 tests, all red first, including that a client prepending a forged entry stays in its
+  own bucket.
+
+  Verified unchanged while measuring this: a burst is shed at exactly `RATE_LIMIT_BURST` (30
+  allowed, then 429 with an honest `Retry-After`), and the throttled caller still receives 200
+  on `/healthz` — the probe exemption the module calls a safety property holds.
+
 - **`kubeintellect provenance` promised a signature no release carries**
   (`v4/packages/kubeintellect-server/app/core/supply_chain.py`, `app/cli.py`, `docs/security.md`).
   The command opened, unconditionally and in the present indicative, with *"Each artifact carries
