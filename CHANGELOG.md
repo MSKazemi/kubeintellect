@@ -471,6 +471,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **The documented `helm install` could never have worked — the chart repository it names does not
+  exist.** `helm repo add kubeintellect https://mskazemi.github.io/kubeintellect` fails immediately
+  (*"not a valid chart repository … index.yaml : 404 Not Found"*): that URL is the documentation
+  site, and `helm-publish.yml` has only ever published the chart as an **OCI artifact**. The three
+  `docs/index.md` quick-starts (v4, v3, v2) now use the OCI form, which needs no `helm repo add` —
+  verified by running it: `helm template kubeintellect
+  oci://ghcr.io/mskazemi/charts/kubeintellect` resolves 2.3.1 and renders the manifests.
+
 - **The README's Docker command could not run, on any tag, and never could.** `docker run --rm -it
   ghcr.io/mskazemi/kubeintellect:2.2.0 --help` exits **127** — *exec: "--help": executable file not
   found in $PATH* — because the image has no `Entrypoint` and its `Cmd` is the uvicorn server, so

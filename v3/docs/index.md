@@ -218,8 +218,8 @@ SSE client or your own tooling at `/v1/chat/completions`.
 === "Helm (production)"
 
     ```bash
-    helm repo add kubeintellect https://mskazemi.github.io/kubeintellect
-    helm install kubeintellect kubeintellect/kubeintellect \
+    # the chart is published as an OCI artifact — no `helm repo add` step
+    helm install kubeintellect oci://ghcr.io/mskazemi/charts/kubeintellect \
       --set llm.provider=openai \
       --set llm.apiKey=<YOUR_KEY>
     ```
