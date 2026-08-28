@@ -471,6 +471,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **The demos page documented eighteen recordings and showed none of them.**
+  `scripts/demo/DEMOS.md` describes eight recorded scenarios across 352 lines, and embedded no
+  image at all: the sixteen rendered GIFs and the two browser-UI GIFs were committed to the
+  public repository and referenced only by the directory listing at the foot of the page. A
+  reader had no way to see any recording without cloning the repo. The current (`gifs-kq/`)
+  corpus and both chat-UI recordings are now embedded inline, collapsed behind `<details>` so
+  the page does not pull 3 MB unasked; the superseded `gifs/` corpus stays unembedded on
+  purpose and the page now says so. `v4/tests/test_the_demos_page_shows_the_demos.py` gates
+  both directions — every current recording is shown somewhere, and every embedded path
+  resolves — so a new recording that nobody links fails at the point it is added.
+
 - **The security page described the Homebrew tap and the krew index inaccurately.** The tap's
   formula does pin a `sha256` and it verifies — the pinned digest matches the file byte for byte
   — but what it pins is the **PyPI sdist** published by `publish.yml`, not a GitHub release

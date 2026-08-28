@@ -139,6 +139,74 @@ what was sent to *it*.
 | 07 | **Human-in-the-loop — denied** | mutating request on the *healthy* deployment | ✅ gated, denied, **cluster untouched** — see below |
 | 08 | Triage a whole broken namespace | six workloads, five faults, one healthy | ✅ **5 of 5**, and ranked by impact — see below |
 
+
+### Watch them
+
+Rendered from the `casts-kq/` recordings above — the same bytes asciinema captured, not a
+re-enactment. Each is collapsed because eight autoplaying GIFs on one page is 3 MB nobody asked
+for; open the one you want.
+
+<details>
+<summary><b>01</b> — A pod that will not stay up</summary>
+
+<img src="gifs-kq/01-crashloop.gif" alt="A pod that will not stay up" width="820">
+
+</details>
+
+<details>
+<summary><b>02</b> — A rollout that never finished</summary>
+
+<img src="gifs-kq/02-stuck-rollout.gif" alt="A rollout that never finished" width="820">
+
+</details>
+
+<details>
+<summary><b>03</b> — A worker the kernel keeps killing</summary>
+
+<img src="gifs-kq/03-oomkill.gif" alt="A worker the kernel keeps killing" width="820">
+
+</details>
+
+<details>
+<summary><b>04</b> — A Service returning no data</summary>
+
+<img src="gifs-kq/04-silent-service.gif" alt="A Service returning no data" width="820">
+
+</details>
+
+<details>
+<summary><b>05</b> — A pod that will never schedule</summary>
+
+<img src="gifs-kq/05-pending-pod.gif" alt="A pod that will never schedule" width="820">
+
+</details>
+
+<details>
+<summary><b>06</b> — Human-in-the-loop — approved</summary>
+
+<img src="gifs-kq/06-approval-gate.gif" alt="Human-in-the-loop — approved" width="820">
+
+</details>
+
+<details>
+<summary><b>07</b> — Human-in-the-loop — denied</summary>
+
+<img src="gifs-kq/07-approval-denied.gif" alt="Human-in-the-loop — denied" width="820">
+
+</details>
+
+<details>
+<summary><b>08</b> — Triage a whole broken namespace</summary>
+
+<img src="gifs-kq/08-complex-triage.gif" alt="Triage a whole broken namespace" width="820">
+
+</details>
+
+
+The first corpus in `gifs/` is deliberately **not** shown here: it is superseded by the kq
+recordings above and kept only as the record of a different deployment answering the same eight
+questions.
+
 ## The approval gate, in both directions
 
 A gate that is only ever approved has not been shown to gate anything. Both directions were
@@ -255,6 +323,14 @@ Hugging Face Space serves `deploy/huggingface-space/app.py`, a browser chat UI, 
 this corpus showed it. `chat-ui/` is one recorded session of that UI, driving the **same**
 incident scenario 01 uses — `payments-api` crash-looping in `shop`, asked with the same words —
 so the demo follows one fault across both surfaces instead of showing two unrelated sessions.
+
+<img src="chat-ui/chat-ui-crashloop.gif" alt="the diagnosis, in the browser chat UI" width="820">
+
+*Turn 1 — the diagnosis (0–31 s).*
+
+<img src="chat-ui/chat-ui-rbac-denied.gif" alt="the write, and the RBAC denial" width="820">
+
+*Turn 2 — the write, and the denial it earns (31–61 s).*
 
 | | |
 |---|---|
