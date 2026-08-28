@@ -249,7 +249,8 @@ SCENES = [
         ],
         caption="The parts that matter",
         sources=[
-            "../../../v4/CLAUDE.md § V2 Agent Behaviors / V4 Platform Layers",
+            "../../../v4/docs/how-it-works.md § Reading the diagram",
+            "../../../v4/docs/security.md § 2. Role capabilities",
             "app/db/flight_recorder.py",
         ],
         narration=(
@@ -290,7 +291,7 @@ SCENES = [
         ),
         source="09-install.txt", lines=(1, 60),
         caption="Install it",
-        sources=["../DEMOS.md", "../scenarios/09-install.txt"],
+        sources=["../DEMOS.md", "../transcripts-kq/09-install.txt"],
         narration=(
             "Installing it is one command, and a wizard that asks six questions."
         ),
