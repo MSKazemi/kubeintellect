@@ -113,3 +113,72 @@ class TestNoDocSendsTheReaderForAKeyThatIsNotIssued:
             "docs promise a demo-key lifetime, but nothing issues a demo key: "
             f"{offenders}"
         )
+
+
+class TestTheFastestPathCarriesACredentialThatWorks:
+    """The half the first version of this file missed.
+
+    Every assertion above pins the *absence* of a wrong instruction. All seven were
+    green while the quickstart told the reader that the hosted demo "needs no key" —
+    which is false, and which is worse than the flow it replaced, because the working
+    key was already published in the README and the rewrite removed it.
+
+    Measured against the deployment on 2026-08-29:
+
+    * `POST /v1/chat/completions` with **no** credentials → **401**
+      `{"detail":"Authorization: Bearer <api_key> required"}`.
+    * The earlier probe that read as "auth is open" sent `{}` and got a **422**. That
+      is FastAPI validating the body *before* the auth dependency runs — a schema
+      rejection, never an authorization result. A 422 on a malformed body says nothing
+      about whether the endpoint is authenticated.
+    * With `Authorization: Bearer ki-ro-dev` the same request answers in ~2.5 s.
+
+    So the pin has to be positive: the fastest path must hand the reader a credential,
+    and it must be the one the README publishes. A doc that names no key cannot work,
+    and two docs naming different keys means at least one of them does not.
+    """
+
+    _DEMO_KEY = "ki-ro-dev"
+    _README = _REPO_ROOT / "README.md"
+
+    def test_the_readme_still_publishes_the_shared_demo_key(self):
+        text = self._README.read_text(encoding="utf-8")
+        assert self._DEMO_KEY in text, (
+            "the README is where the shared read-only demo key is published; if it "
+            "moved or was rotated, every doc naming it has to move with it"
+        )
+
+    def test_the_quickstart_fastest_path_names_that_key(self):
+        text = _QUICKSTART.read_text(encoding="utf-8")
+        start = text.index("## Fastest path")
+        section = text[start : text.index("\n---", start)]
+        assert self._DEMO_KEY in section, (
+            "the fastest path must hand the reader a working credential — the hosted "
+            "demo answers 401 without one, and issues none on request"
+        )
+
+    def test_the_no_cluster_walkthrough_names_that_key(self):
+        page = _DOCS / "install" / "no-cluster.md"
+        assert self._DEMO_KEY in page.read_text(encoding="utf-8")
+
+    def test_no_doc_claims_the_hosted_demo_needs_no_key(self):
+        """The exact false claim shipped in 82f29fe, so it cannot come back."""
+        offenders: list[str] = []
+        patterns = (
+            "needs no key",
+            "no key to fetch",
+            "issues no api key",
+            "nothing to paste",
+            "the demo is open",
+        )
+        for path in sorted(_DOCS.rglob("*.md")) + [self._README]:
+            for number, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), start=1
+            ):
+                low = line.lower()
+                if any(p in low for p in patterns):
+                    offenders.append(f"{path.relative_to(_REPO_ROOT)}:{number}")
+        assert not offenders, (
+            "a doc claims the hosted demo is keyless; it answers 401 without a "
+            f"Bearer key: {offenders}"
+        )

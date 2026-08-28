@@ -24,10 +24,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   quickstart stops at step 1 with nothing to paste.
 
   What does work was measured rather than assumed: `pip install kube-q`, Python 3.12+, and `kq`'s
-  default backend `https://api.kubeintellect.com`, which answers `/v1/healthz` in ~0.4 s. The
-  hosted demo requires no key — an unauthenticated `POST /v1/chat/completions` is rejected by
-  schema validation (422), not by auth. Both pages now say that plainly, and `KUBE_Q_API_KEY` is
-  described where it actually applies: pointing `kq` at your own server.
+  default backend `https://api.kubeintellect.com`, which answers `/v1/healthz` in ~0.4 s. Both
+  pages now describe that path, and `KUBE_Q_API_KEY` is described where it actually applies:
+  pointing `kq` at your own server.
+
+- **…and the first fix for it removed the credential that made it work.** The correction above
+  originally replaced step 1 with "the demo needs no key". That was false. Measured on 2026-08-29
+  by installing the published `kube-q` wheel from PyPI into a clean virtualenv: a well-formed
+  `POST /v1/chat/completions` with no credentials returns **401**
+  `{"detail":"Authorization: Bearer <api_key> required"}`. The earlier probe that read as
+  "auth is open" sent an empty body and received a 422 — FastAPI validates the request body
+  *before* the auth dependency runs, so a schema rejection had been mistaken for an
+  authorization result. A 422 on a malformed body says nothing about whether an endpoint is
+  authenticated.
+
+  The working credential was already published: `ki-ro-dev`, the shared read-only demo key named
+  in `README.md`, `v4/README.md` and the Hugging Face Space's own README. With it, the freshly
+  installed wheel answered "how many pods are running in the cluster?" in **2.5 s**. Both pages
+  now hand the reader that key, state plainly that it is shared, rate-limited and read-only, and
+  keep `KUBE_Q_API_KEY` for your own server. Four tests were added, because every one of the
+  previous seven pinned the *absence* of a wrong instruction and none pinned the *presence* of a
+  working one — all seven stayed green across the regression. Three of the four fail against the
+  state that shipped.
 
   Seven tests pin what the doc-claims gate cannot, because it compares numbers: that the
   quickstart's CLI table and `app/cli.py` name the same commands in both directions — it was four
