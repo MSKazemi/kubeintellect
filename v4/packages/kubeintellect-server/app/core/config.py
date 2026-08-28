@@ -451,6 +451,17 @@ class Settings(BaseSettings):
     RATE_LIMIT_PER_MIN: int = 120         # sustained requests per minute, per caller
     RATE_LIMIT_BURST: int = 30            # bucket capacity — how much idle allowance accrues
     RATE_LIMIT_MAX_TRACKED: int = 10000   # bucket-table cap; least-recently-seen is evicted
+    # How many proxies sit in front of this server. 0 (the default) means `X-Forwarded-For` is
+    # ignored entirely, which is the only safe default: the header is written by the client and
+    # honouring it unconditionally lets one caller mint a fresh bucket per request.
+    #
+    # It matters because a caller with no bearer token is keyed by address, and behind the
+    # Ingress this chart ships every such request arrives from the ingress pod — so all anonymous
+    # traffic shared ONE bucket and any single client could shut out the rest (measured
+    # 2026-08-28). Set this to the number of trusted hops and the client address is read that
+    # many entries from the right of the header, the end proxies append to and a client cannot
+    # forge. One ingress controller and nothing else in front of it is `1`.
+    RATE_LIMIT_TRUSTED_PROXY_HOPS: int = 0
 
     # ── Operator-preference memory (MemoryAgent) ──────────────────────────────
     # Remembers how each user likes to operate (explicit + behaviour-inferred),

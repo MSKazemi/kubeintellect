@@ -11,8 +11,21 @@ Design, and the four decisions worth stating:
 * **Keyed by identity, not by IP.** Behind an Ingress every request arrives from one address, so
   an IP-keyed limiter would throttle the whole tenancy the moment one client misbehaved. The key
   is a SHA-256 of the bearer token — the raw key is never stored, never logged, and never leaves
-  the request. IP is the fallback only when auth is disabled (local development), where there is
-  no identity to key on.
+  the request. Address is the fallback whenever a request carries no bearer token; that is a
+  property of the request, not of the auth configuration, and `caller_key` never consults the
+  auth settings. (Until 2026-08-28 this paragraph tied the fallback to the auth configuration
+  and called it a local-development path; measured false, with `settings.auth_enabled` True.)
+* **The address fallback is only meaningful once you say who the proxies are.** That paragraph
+  above describes exactly what the fallback used to do: behind this chart's own Ingress every
+  anonymous caller landed in the single bucket `ip:<ingress-pod>`, so one client spending the
+  burst answered 429 to everyone else — measured 2026-08-28, and `T212` records that the
+  production API answers with no credentials at all, which is the case that reaches this path.
+  `X-Forwarded-For` is written by the client, so trusting it unconditionally is worse than
+  ignoring it: a caller would mint a fresh bucket per request and fill the bucket table on the
+  way. ``RATE_LIMIT_TRUSTED_PROXY_HOPS`` (default ``0``, i.e. ignore the header) says how many
+  proxies are in front; the client address is then read that many entries from the **right**,
+  the end a proxy appends to and a client cannot forge. A header shorter than the declared depth
+  did not come from that chain and is refused.
 * **Probe paths are exempt, and that is a safety property, not a convenience.** `/healthz` and
   `/readyz` are read by the kubelet. A limiter that can answer 429 to a liveness probe is a
   limiter that can restart the pod under exactly the load it exists to survive — strictly worse
@@ -81,8 +94,27 @@ def caller_key(request: Request) -> str:
         token = auth.removeprefix("Bearer ").strip()
         if token:
             return "k:" + hashlib.sha256(token.encode()).hexdigest()[:32]
-    client = request.client
-    return "ip:" + (client.host if client else "unknown")
+    return "ip:" + _client_address(request)
+
+
+def _client_address(request: Request) -> str:
+    """The caller's address, reading `X-Forwarded-For` only as far as the operator trusts it.
+
+    Proxies append the address they received the request from, so the rightmost entries are the
+    trustworthy ones and everything left of them may have been written by the client. With
+    ``RATE_LIMIT_TRUSTED_PROXY_HOPS = n`` the client is the n-th entry from the right; a list
+    with fewer than n entries cannot have come from that chain, so it is ignored rather than
+    half-believed.
+    """
+    peer = request.client.host if request.client else "unknown"
+    hops = settings.RATE_LIMIT_TRUSTED_PROXY_HOPS
+    if hops <= 0:
+        return peer
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+    if len(parts) < hops:
+        return peer
+    return parts[-hops]
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
