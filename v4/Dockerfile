@@ -45,12 +45,18 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 #                          packages themselves; their module dirs are copied flat into
 #                          the final image and imported from the working directory
 #                          (same cwd-import pattern the V2 image used for app/).
+# --extra tracing/metrics: the runtime extras, named one by one. NOT --all-extras: kube-q
+#                          declares its test+lint toolchain as a PEP 621 *extra* called
+#                          `dev`, and an extra is not a dependency-group — so --all-extras
+#                          re-added exactly what --no-dev excludes. That is how pytest,
+#                          mypy and ruff shipped inside every published runtime image
+#                          while deploy/image.md said build tools were stripped from it.
 COPY pyproject.toml uv.lock ./
 COPY packages/kubeintellect-server/pyproject.toml packages/kubeintellect-server/
 COPY packages/kube-q/pyproject.toml packages/kube-q/
 COPY packages/ki-protocol/pyproject.toml packages/ki-protocol/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-workspace --all-extras
+    uv sync --frozen --no-dev --no-install-workspace --extra tracing --extra metrics
 
 # Layer 2: bring in the workspace source trees (copied to the final stage below).
 COPY packages/kubeintellect-server/app packages/kubeintellect-server/app
