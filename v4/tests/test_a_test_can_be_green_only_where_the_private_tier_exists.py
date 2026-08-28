@@ -21,6 +21,7 @@ An instrument that manufactures its own findings is worse than no instrument.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -108,6 +109,58 @@ class TestTheScriptIsRunnableAtAll:
     def test_it_parses(self):
         proc = subprocess.run(["bash", "-n", str(_SCRIPT)], capture_output=True, text=True)
         assert proc.returncode == 0, proc.stderr
+
+
+class TestItRunsWhereGitHasNoConfiguredIdentity:
+    """The runner has no `user.name`, and `git commit` refuses without one.
+
+    This is the same defect the file is named for, pointed at the instrument
+    itself: the export step reads the source repository's identity so its commit
+    passes the guard hook, and on a maintainer's machine that always resolves. On
+    a CI runner `git var GIT_AUTHOR_IDENT` exits 128, and the first version of
+    this test was green locally and red on `main` for exactly that reason.
+    """
+
+    def test_the_export_still_builds(self, tmp_path):
+        env = dict(os.environ)
+        # Scrub every layer git would read an identity from — this is what a fresh
+        # runner looks like, and nothing else reproduces it.
+        env.update(
+            {
+                "GIT_CONFIG_GLOBAL": os.devnull,
+                "GIT_CONFIG_SYSTEM": os.devnull,
+                "HOME": str(tmp_path / "home"),
+            }
+        )
+        # EMPTY, not absent. Scrubbing config alone is not enough — git falls back to
+        # the passwd GECOS name, which a developer machine has and a runner does not,
+        # and that difference is what made the first version of this test pass here
+        # and fail on `main`. An empty GIT_AUTHOR_NAME reproduces the runner's exact
+        # "fatal: empty ident name" and wins over any config the script sets.
+        for key in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL",
+                    "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"):
+            env[key] = ""
+        (tmp_path / "home").mkdir()
+
+        proc = subprocess.run(
+            ["bash", str(_SCRIPT), "--export-only", str(tmp_path / "tree")],
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        assert proc.returncode == 0, (
+            f"the export needs a configured git identity, which CI does not have "
+            f"({proc.returncode})\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+        )
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=tmp_path / "tree",
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        assert head.returncode == 0, head.stderr
 
 
 class TestTheExportIsAFaithfulCheckout:

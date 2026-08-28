@@ -73,11 +73,24 @@ git -C "$root" archive HEAD | tar -x -C "$target"
 # and the fidelity check below is the only thing that would ever say so.
 git -C "$target" init -q
 git -C "$target" add -A -f
-ident=$(git -C "$root" var GIT_AUTHOR_IDENT)          # fails loudly if unconfigured
-ident_name=${ident%% <*}
-ident_email=${ident#*<}; ident_email=${ident_email%%>*}
-git -C "$target" \
-  -c "user.name=$ident_name" -c "user.email=$ident_email" -c commit.gpgsign=false \
+# Author: the source repository's own identity when git has one, so the standard
+# guard hook passes on this commit rather than being bypassed. A CI runner has no
+# configured identity at all — `git var` exits 128 there — and this commit exists
+# only so the export can resolve HEAD, is never pushed, and dies with the temp
+# directory, so a synthetic author is the right answer rather than a failure.
+if ident=$(git -C "$root" var GIT_AUTHOR_IDENT 2>/dev/null); then
+  ident_name=${ident%% <*}
+  ident_email=${ident#*<}; ident_email=${ident_email%%>*}
+else
+  ident_name="public checkout"
+  ident_email="checkout@localhost"
+fi
+# Passed as environment, not `-c user.*`: GIT_AUTHOR_NAME wins over config, so a
+# caller whose environment carries an EMPTY one (a CI runner does) would otherwise
+# override whatever identity is chosen above and fail with "empty ident name".
+GIT_AUTHOR_NAME="$ident_name"    GIT_AUTHOR_EMAIL="$ident_email" \
+GIT_COMMITTER_NAME="$ident_name" GIT_COMMITTER_EMAIL="$ident_email" \
+git -C "$target" -c commit.gpgsign=false \
   commit -q -m "export of $(git -C "$root" rev-parse HEAD)"
 
 # ── 3. fidelity, before anything is run in there ─────────────────────────────
