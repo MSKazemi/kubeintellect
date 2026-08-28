@@ -1,6 +1,6 @@
 [project]
 name = "kubeintellect"
-version = "2.3.1"
+version = "2.4.0"
 description = "AI-powered Kubernetes management — local server and CLI"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -39,8 +39,8 @@ dependencies = [
     # HTTP (Prometheus + Loki queries)
     "httpx>=0.28",
     # Workspace members (ADR-004) — published together with the server
-    "kube-q>=1.5.0",
-    "ki-protocol>=1.0.0",
+    "kube-q>=1.6.0",
+    "ki-protocol>=1.1.0",
     "langfuse>=4.14.3",
 ]
 
