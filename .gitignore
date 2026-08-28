@@ -179,3 +179,11 @@ terraform.tfstate.backup
 !scripts/demo/casts-kq/*.cast
 !scripts/demo/env/
 !scripts/demo/env/*.yaml
+
+# ── Narrated demo video: render artifacts, not sources ───────────────────────
+# scenes.py is the source of record; frames, narration audio and the muxed file
+# are all reproducible from it. `out/` was already caught and audio/ only by the
+# public git's own exclude, so `./ship` (which runs `git add -A`) swept 914 PNG
+# frames — 234 MB — into a commit on 2026-08-28. Caught before the push.
+scripts/demo/video/shots-*/
+scripts/demo/video/audio/
