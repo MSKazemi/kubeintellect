@@ -13,6 +13,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **Nothing could run the test suite the way `main` runs it** (`scripts/check-public-checkout.sh`,
+  `Makefile`, `v4/tests/test_a_test_can_be_green_only_where_the_private_tier_exists.py`). Every
+  local gate runs against the working tree, which carries the private research materials the root
+  `.gitignore` names. A test that reads one of those paths is green here and red on `main` — which
+  has happened twice, most recently in `74ac4cf`. The proof was a manual hide-the-paths-and-restore
+  dance, so in practice it was run after the breakage, not before.
+
+  `make check-public-checkout` exports `HEAD` into a throwaway directory and runs `make setup`
+  there. The non-obvious requirement, and the reason the script asserts it before running anything:
+  the export must be a real git checkout. Twelve tests in the server suite decide what to scan
+  from `git ls-files`, and a plain `tar -x` of `git archive` has no index at all — measured, the
+  suite then reports **twelve failures that do not exist on `main`**. The script gives the export an index
+  and commits it — `actions/checkout` gives CI a real `HEAD`, so an export
+  without one is *less* faithful than the clone it stands in for, and the first version of this
+  script proved that by failing its own test inside its own export. It then refuses to run if the
+  export differs from `HEAD` by even one path, which is how the one tracked file the committed
+  `.gitignore` also matches was found.
+
+  Measured on the current `HEAD` (`f09b8f7`): the public checkout is **green** — all nine gates,
+  5403 passed / 16 skipped in the server suite, 749 in the kq suite, in about four minutes. So
+  there is no third occurrence outstanding. The 16 skips against 9 locally are the honest
+  difference: six assertions are guarded on a private-tier file being present and simply do not
+  run in CI.
+
+  Nine tests pin the instrument itself, including the index-fidelity property and — derived from
+  the private index at runtime rather than enumerated in a published file — that no private-tier
+  path reaches the export. Also corrected: `make help` said `setup` ran "all eight CI gates"; it
+  runs nine.
+
 - **The ninth event the server sends was the one its wire module never declared**
   (`v4/packages/ki-protocol/ki_protocol/wire.py`, `ki_protocol/events.py`,
   `app/api/v1/endpoints/chat_completions.py`). `ki_protocol/__init__.py` calls `wire` "canonical
