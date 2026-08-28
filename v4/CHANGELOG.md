@@ -8,4 +8,4 @@ design-tier slices (default-off flags in the v4 server, ADR-101), following
 The `kq` CLI keeps its own package changelog:
 [`packages/kube-q/CHANGELOG.md`](packages/kube-q/CHANGELOG.md).
 
-Released package versions: `kubeintellect-server` 2.1.0 · `kube-q` 1.5.0 · `ki-protocol` 1.0.0.
+Released package versions: `kubeintellect-server` 2.4.1 · `kube-q` 1.6.0 · `ki-protocol` 1.1.0.

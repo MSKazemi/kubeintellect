@@ -154,6 +154,20 @@ jobs:
           fi
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
 
+      # `helm registry login` above writes helm's OWN registry config, which the
+      # attestation step cannot read: `actions/attest-build-provenance` with
+      # `push-to-registry: true` resolves credentials through the Docker config.
+      # Without this step it fails with "No credentials found for registry
+      # ghcr.io" — which is exactly what happened on the v2.4.0 tag, AFTER the
+      # chart itself had already published. The chart was fine and unsigned, and
+      # the only signal was a red job at the end of a successful release.
+      - name: Log in to GHCR for the attestation
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       # Supply chain (A13). The chart is the enterprise install path, so leaving it the one
       # unsigned artifact would have signed everything except what most operators run.
       - name: Attest the chart
