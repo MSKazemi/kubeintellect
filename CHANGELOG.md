@@ -11,6 +11,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`kubeintellect provenance` promised a signature no release carries**
+  (`v4/packages/kubeintellect-server/app/core/supply_chain.py`, `app/cli.py`, `docs/security.md`).
+  The command opened, unconditionally and in the present indicative, with *"Each artifact carries
+  a keyless sigstore attestation minted by the workflow that built it"* — with `--tag` defaulting
+  to this build's own version, so the bare `kubeintellect provenance` said it about `v2.3.1`. It
+  is not true of `v2.3.1` and never was: the attest steps were added to the four publishing
+  workflows **after** that tag was cut, so `git show v2.3.1:.github/workflows/docker-publish.yml
+  | grep -c attest` is `0`, and GitHub's attestations API 404s the subresource for this repository
+  where a repo that has published one returns `{"attestations": []}`. The workflows did run on the
+  tag and did succeed; they had no attest step yet. So the command handed every user four commands
+  that could only fail, and a failed verification has two readings — "never signed" and "signature
+  missing" — of which it had silently selected the alarming one.
+
+  The existing 28 tests all proved the workflows were *written* right, which was true and is a
+  different claim from the one on the screen. The module's own docstring already said the accurate
+  thing (*"every artifact published to date carries no attestation at all"*): the truth was in a
+  docstring the maintainer reads and the falsehood was on the surface the user reads. The claim is
+  now **derived** from a recorded constant, `FIRST_ATTESTED_TAG` (`None` while nothing is signed),
+  compared numerically so that `v2.10.0` does not sort below `v2.9.0`; the commands are still
+  printed, because they are correct and unexercised rather than wrong. `docs/security.md` § 8 made
+  the identical claim on the public surface with its correction buried three subsections down under
+  *What this does not prove*; the warning now sits above the commands it qualifies, and a test
+  ties it to the same constant so signing the first release fails until the page is updated too.
+
+  Verified while measuring this: the section's claim that the GHCR and Docker Hub copies share one
+  digest **holds** — both are `sha256:631a1dd…b54d`, so one attestation will cover both.
+
 ### Added
 
 - **The restore proof is now tested against a real PostgreSQL**
