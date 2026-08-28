@@ -23,6 +23,7 @@ what is persisted, and where the storage redactor does not apply — see
 5. [Secret protection — why users can't steal the API key](#5-secret-protection-why-users-cant-steal-the-api-key)
 6. [Shell injection prevention](#6-shell-injection-prevention)
 7. [Secret hygiene checklist](#7-secret-hygiene-checklist)
+8. [Supply chain — verifying what you installed](#8-supply-chain-verifying-what-you-installed)
 
 ---
 
@@ -986,11 +987,31 @@ it were a learned fact. The experimental Memory V5 upgrade defends this behind
   tampering would be a false accusation about your own data, and an alarm that fires on
   infrastructure failures is one operators learn to ignore. Read both flags; `valid` alone
   cannot tell an intact chain from one nobody could check.
-  Two limits, stated plainly: this is tamper-*evidence*, not prevention — an attacker with full
+  One limit, stated plainly: this is tamper-*evidence*, not prevention — an attacker with full
   database write can forge the head as well, and what the anchor removes is the tamper that
-  needs no second edit. And **nothing invokes the verifier on your behalf today**: there is no
-  endpoint, CLI command or scheduled check that calls it, so "detectable" currently means
-  "detectable by a query you run yourself".
+  needs no second edit.
+- **Who asks, and how often.** Until 2026-08-28 nothing did: there was no endpoint, CLI command
+  or scheduled check that called the verifier, so "detectable" meant "detectable by a query you
+  run yourself". A hash chain accuses nobody on its own — asked by nobody it detects nothing.
+  The server now verifies once at startup and then every `MEMORY_CHAIN_VERIFY_INTERVAL_S`
+  seconds (default 900; `0` keeps only the startup pass, a negative value disables both), and
+  reports the result under `memory.chain` on `GET /healthz`:
+
+  ```json
+  {"state": "intact", "checks": 4, "checked_at": 1756400000.0, "age_s": 122.4,
+   "valid": true, "verified": true, "stale": false}
+  ```
+
+  `state` is the field to read, and it is deliberately not a boolean: `off` (hardening is
+  disabled, so nothing writes the chain and there is nothing to check), `never-checked`,
+  `unverified` (a check ran and could not conclude — an unreachable database), `intact`, and
+  `TAMPERED`. Only `TAMPERED` is an accusation, and only `TAMPERED` sets `memory.healthy` to
+  false; `unverified` deliberately does not, for the same reason `verified` exists at all.
+  `stale` says the last verdict is too old to describe the store as it is now — which is what
+  separates a verifier that stopped from one that keeps agreeing with itself. The check is
+  periodic rather than on-demand because verifying reads every audit row for the cluster, and
+  `/healthz` is probed every few seconds; the probe reports the last recorded verdict and its
+  age, and never re-derives one.
 - **Tenant isolation** — Postgres Row-Level-Security policies are scaffolded (enabled with a
   transaction-scoped `SET LOCAL ki.cluster_id`), and a **right-to-be-forgotten** operation purges
   a subject's memory on request.
@@ -1044,3 +1065,66 @@ make vm-deploy
 KUBEINTELLECT_ADMIN_KEYS=ki-admin-new
 make vm-deploy
 ```
+
+---
+
+## 8. Supply chain — verifying what you installed
+
+Every release artifact carries a **signed build attestation**: a keyless
+[sigstore](https://www.sigstore.dev/) signature, minted by the GitHub workflow that produced it
+under `https://token.actions.githubusercontent.com`, binding the artifact's **digest** to the
+commit, workflow and run it came from, and recorded in a public transparency log.
+
+Digest, not tag. A tag is a mutable pointer — an attestation bound to `:latest` would say nothing
+about what `:latest` returns tomorrow.
+
+### Print the commands for the release you have
+
+```bash
+kubeintellect provenance --tag v2.3.1
+```
+
+That command is generated from the same constants the workflows are named by, so it cannot drift
+from what actually signs. Needs `gh` ≥ 2.49 to run the checks it prints.
+
+### What is signed, and how to check it
+
+| Artifact | Check |
+|---|---|
+| Container image (GHCR **and** Docker Hub — one build, one digest) | `gh attestation verify oci://ghcr.io/mskazemi/kubeintellect:2.3.1 --repo MSKazemi/kubeintellect --signer-workflow MSKazemi/kubeintellect/.github/workflows/docker-publish.yml` |
+| Image SBOM (SPDX, generated **from the built image**) | the same command plus `--predicate-type https://spdx.dev/Document` |
+| Helm chart (OCI) | `gh attestation verify oci://ghcr.io/mskazemi/charts/kubeintellect:2.3.1 --repo MSKazemi/kubeintellect --signer-workflow MSKazemi/kubeintellect/.github/workflows/helm-publish.yml` |
+| `kq` binaries | `gh attestation verify kq_linux_amd64.tar.gz --repo MSKazemi/kubeintellect --signer-workflow MSKazemi/kubeintellect/.github/workflows/release-binaries.yml` |
+| PyPI wheels (PEP 740) | `pypi-attestations verify pypi --repository https://github.com/MSKazemi/kubeintellect pypi:kubeintellect-2.3.1-py3-none-any.whl` |
+
+> **Do not drop `--signer-workflow`.** Without it the check still passes — it accepts an
+> attestation from *any* workflow in the repository, which is a far weaker claim than the one you
+> think you are making. The image and the Docker Hub copy share a digest, so one attestation
+> covers both; substitute the `docker.io/kazemi/kubeintellect` reference and the same check holds.
+
+### Why `checksums.txt` was never the answer
+
+The `kq` release still ships a `checksums.txt`, and it is still the right tool for a truncated
+download. It was never protection against tampering: it is published on the same release page, by
+the same writer, as the tarballs it checksums — anyone able to replace one can replace the other.
+The attestation lives in a transparency log instead, outside the reach of whoever controls the
+download.
+
+### What this does **not** prove
+
+- **Not a reproducible build.** The attestation says which run built the artifact and from which
+  commit. It does not say the same source rebuilds bit-for-bit; PyInstaller output in particular
+  is not byte-stable.
+- **No release has been signed yet** (as of 2026-08-28). These steps run on the next `v*` tag —
+  verifying an *existing* release will correctly report that no attestation exists.
+- **No dependency-level provenance.** The SBOM lists what is in the image; nothing here checks
+  that each of those components was signed by whoever published it.
+
+### Channels that are deliberately not attested
+
+| Channel | Why |
+|---|---|
+| Snap | The Snap Store signs and distributes under its own key and revision chain; a second GitHub-issued signature over those bytes would be one nobody checks. |
+| Homebrew tap | The formula pins the release tarball's `sha256`, so it installs exactly the artifact `release-binaries.yml` attests. `brew install` checks no attestation — tap users get checksum integrity, and the provenance lives on the release the formula resolves to. |
+| krew index | The plugin manifest is submitted to the upstream krew-index repository, which is not ours to attest; it resolves to the same attested tarballs. |
+| Hugging Face Space | Hugging Face builds the public demo in their own runner. It is a hosted demo with a readonly key, not a distribution channel — nothing is installed from it. |

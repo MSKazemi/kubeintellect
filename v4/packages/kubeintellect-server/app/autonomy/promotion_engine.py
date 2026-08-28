@@ -1,15 +1,25 @@
 """Statistical autonomy promotion engine (v5 P3 Trust plane, ADR-102).
 
 The decision layer over the pure ADR-102 stats (`promotion_stats`): given an action class's
-shadow-agreement outcomes, decide whether it earns the next rung, holds, or is auto-demoted — the
-"earned, not configured" autonomy no published tool ships (C5). Precedence follows the ADR's
-asymmetry: **fast down, slow up** — demotion is checked first, promotion only if not demoting.
+shadow-agreement outcomes, decide whether it earns the next rung, holds, or is auto-demoted.
+Precedence follows the ADR's asymmetry: **fast down, slow up** — demotion is checked first,
+promotion only if not demoting.
 
-The outcome **source** (per-class shadow-agreement Events reconstructed from flight-recorder data)
-is pluggable and defaults empty, exactly like the change ledger: with no shadow data the engine
-holds everything at its current rung (a no-op), and when action classes start running in shadow a
-real source is registered via `set_outcome_source`. The decision logic is pure and fully tested
-against the P0 replay fixtures.
+⚠️ **What ships today is the DOWN half only, and this docstring used to claim otherwise.** It read
+*"the 'earned, not configured' autonomy no published tool ships (C5)"* — a statement about the
+product, in the source of the module that would deliver it. The only production caller is
+`promotion_source.autofix_revocation`, and it can revoke `watchtower-autofix`'s A3 authority, never
+grant it. That is not a shortcut: every sample the store holds comes from a write the allowlist had
+already permitted, so promoting on them would be circular, and gating the write on an earned rung
+would deadlock a class with no samples out of ever producing one. ADR-102 earns rungs from
+**shadow agreement** — propose, a human executes, record whether the proposal matched — which this
+system does not run. Until it does, autonomy here is configured (ladder + allowlist) and can be
+taken away statistically; it is not granted statistically.
+
+The outcome **source** (per-class shadow-agreement Events) is pluggable and defaults empty, exactly
+like the change ledger: with no shadow data the engine holds everything at its current rung (a
+no-op). The decision logic is pure and fully tested against the P0 replay fixtures — `decide` is
+correct in both directions; it is the *evidence* that only exists for one of them.
 """
 
 from __future__ import annotations

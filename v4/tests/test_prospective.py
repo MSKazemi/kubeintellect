@@ -81,10 +81,16 @@ class TestRunProspectiveOnce:
         mocker.patch.object(prospective.settings, "MEMORY_PROSPECTIVE", True)
         # dev resolves to A1+ under the default ladder.
         mocker.patch.object(prospective, "level_for_namespace", lambda ns: "A1")
+        # The default dispatcher re-reads the cluster (2026-08-28); before that it returned
+        # 'rechecked' having read nothing. Give it a healthy namespace to grade.
+        mocker.patch("app.agent.nodes.context_fetcher._kubectl_snapshot", side_effect=lambda a: (
+            True,
+            "NAMESPACE  NAME   READY  STATUS   RESTARTS  AGE\ndev  api-0  1/1  Running  0  4h\n"
+            if a[1] == "pods" else "No resources found in dev namespace.\n"))
         n = await prospective.run_prospective_once()
         assert n == 1
         record = next(c for c in pool.calls if c[0] == "execute")
-        assert record[2][1] == "rechecked" and record[2][2] == "done"  # outcome + terminal status
+        assert record[2][1] == "resolved" and record[2][2] == "done"  # outcome + terminal status
 
     async def test_a0_namespace_never_fires(self, mocker):
         _reset_dispatch()

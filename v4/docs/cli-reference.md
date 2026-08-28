@@ -179,6 +179,164 @@ created on first start). Database errors print an actionable fix hint
 kubeintellect db-init
 ```
 
+The command also stamps a **schema version ledger** (`schema_migrations`): which version was
+applied, a fingerprint of the DDL, and when. The server reads it once at startup and reports the
+verdict under `db_schema` on `GET /healthz`:
+
+| `db_schema.state` | Meaning |
+|---|---|
+| `current` | The database is the shape this build writes to. |
+| `stale` | `schema.sql` changed since `db-init` last ran — columns this build writes to may not exist. **Run `kubeintellect db-init`.** |
+| `ahead` | The database is at a *newer* schema than this build: the deployment was rolled back and the database was not. Re-running `db-init` will not restore the older shape. |
+| `unrecorded` | No ledger row — a database created before the ledger existed, or one `db-init` never ran against. |
+| `unknown` | The check itself could not run; see `reason`. This is not a verdict. |
+
+This matters because every memory, recorder and audit write is fire-and-forget: a missing column
+is logged and swallowed, so a stale schema does not raise — memory quietly stops recording while
+the rest of `/healthz` stays green. A stale or ahead schema deliberately does **not** fail
+liveness; a failing probe would turn a fixable database into a restart loop.
+
+### `kubeintellect backup-manifest`
+
+Measure the live database and emit a JSON manifest — schema version and DDL fingerprint, exact row
+counts for every table whose loss is a data-loss event, and how far each hash chain got. Take it
+beside your `pg_dump`.
+
+```bash
+kubeintellect backup-manifest --out kubeintellect-$(date +%F).manifest.json --note nightly
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--out` | stdout | Write the manifest to this file |
+| `--note` | *empty* | Free text recorded in the manifest |
+
+### `kubeintellect verify-restore`
+
+Re-measure this database against a manifest and report **every** discrepancy. **Exits 1** if
+anything is missing, so it is safe to wire into a restore rehearsal.
+
+```bash
+kubeintellect verify-restore kubeintellect-2026-01-01.manifest.json
+```
+
+This catches the failure nothing else can see: a restore that drops the newest rows of
+`decision_log` or `memory_audit` breaks no hash link, so the shortened record still verifies
+intact. See [Operations → Backup & restore](operations.md#backup--restore).
+
+### `kubeintellect chain-export`
+
+Archive one hash-chained ledger into a **self-verifying** file: the rows verbatim, the anchor as
+it stood, the link verdict computed while the database was in front of it, and a SHA-256 over all
+of that. Read-only — it deletes nothing.
+
+```bash
+kubeintellect chain-export memory_audit prod-eu-1 --out memory-audit-prod-eu-1.json
+kubeintellect chain-export decision_log 7f4a…  --through-seq 500 --note "before the prune"
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--through-seq` | whole chain | Archive only up to this `seq`, inclusive |
+| `--out` | stdout | Write the archive to this file |
+| `--note` | *empty* | Free text recorded in the archive |
+
+`pg_dump` gives you a *copy* of a chain; a copy of tamper-evidence that cannot itself be checked
+is not evidence. This is the difference. Exporting a **broken** chain is deliberately allowed and
+says so on stderr — the archive is how you keep the evidence of a break.
+
+!!! warning "A content hash is not a signature"
+    It proves the archive has not been edited since it was written. It does **not** prove who
+    wrote it: anyone who can rewrite the archive can recompute the hash. Store the archive
+    somewhere this database's own operators cannot silently replace it — that, not the hash
+    field, is what makes it evidence.
+
+### `kubeintellect chain-verify-export`
+
+Check an archive. **No database needed** — that is the point of the archive.
+
+```bash
+kubeintellect chain-verify-export memory-audit-prod-eu-1.json
+```
+
+Recomputes the content hash and re-chains the rows from the `prev_hash` the archive recorded, and
+reports **every** problem rather than the first. **Exits 1** if anything is wrong. An archive that
+was edited, an archive whose rows do not chain, and an archive whose recorded verdict disagrees
+with what its rows say now are three different messages, because they need three different
+responses. Note that an archive verifies a *segment*: it does not have to start at `seq 0`, which
+is why this does not reuse the whole-chain verifier.
+
+!!! note "Retention still refuses to prune either ledger automatically"
+    The scheduled pruner will not touch `decision_log` or `memory_audit`, and that has not
+    changed. Removing chain rows is a deliberate, per-chain act — `chain-truncate` below.
+
+### `kubeintellect chain-truncate`
+
+Delete the rows an archive holds, **after** recording why the resulting gap is legitimate. The
+only destructive command in this group.
+
+```bash
+kubeintellect chain-export memory_audit prod-eu-1 --through-seq 5000 --out archive.json
+kubeintellect chain-verify-export archive.json     # and store it off this box first
+kubeintellect chain-truncate archive.json          # dry run — prints what it would remove
+kubeintellect chain-truncate archive.json --yes --note "90-day retention"
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--yes` | *off* | Actually delete. Without it this is a dry run and nothing is written |
+| `--note` | *empty* | Why these rows were removed; stored with the truncation record |
+
+It writes a row to `chain_truncation` — chain, scope, `through_seq`, the seq the chain resumes
+at, the hash it resumes from, and the archive's hash — **and then** deletes, both in one
+transaction. That order is the design: interrupted halfway you get a declared gap that does not
+exist yet, which verifies fine. The opposite order would leave an undeclared gap, i.e. a
+permanent tamper alarm on your own housekeeping.
+
+It refuses, before writing anything, unless every one of these holds against the live database:
+
+- the archive verifies on its own terms and covers at least one row;
+- the row at `through_seq` is still present and still carries the archive's `end_hash` — an
+  archive of a chain that has since changed does not describe what would be deleted;
+- rows survive past `through_seq`. Removing a chain entirely is deletion, not truncation, and the
+  head anchor would report it as such forever;
+- the surviving chain links to the archive: its first row's `prev_hash` **is** the archive's last
+  hash. This seam is what lets the verifier resume, and it is why a forged truncation record
+  cannot launder an edit — it has to be consistent with rows it does not control.
+
+!!! warning "Requires schema v2 — re-run `kubeintellect db-init` first"
+    `chain_truncation` arrived with schema version 2. On an install still on v1 the command fails
+    on the INSERT (nothing is deleted, the transaction rolls back), and — more quietly — a chain
+    truncated by a *newer* node would read as `unverified` on a node that cannot see the table.
+
+!!! note "What the verifier does with it"
+    A chain that still starts at `seq 0` is verified exactly as before; the record is consulted
+    only when the front of a chain is missing, which without a record is still reported as
+    **TAMPERED**. A record that does not match the surviving rows is TAMPERED too. A record that
+    cannot be *read* is `unverified` — never `intact`.
+
+### `kubeintellect provenance`
+
+Print the exact commands that verify a released artifact came from this project's build — the
+container image and its SBOM, the Helm chart, the `kq` binaries and the PyPI wheels — together
+with the signer identity each one must pin to.
+
+```bash
+kubeintellect provenance                 # this build's own version
+kubeintellect provenance --tag v2.3.1
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--tag` | this build's version | Release tag to verify |
+
+It prints commands; it runs none of them. The checks themselves need `gh` ≥ 2.49 (or
+`pypi-attestations` for the wheels) on the machine that pulled the artifact. The commands are
+generated from the same constants the publishing workflows are named by, so a renamed workflow
+fails the test suite rather than silently producing a verification line that names nothing. Also
+prints the channels that are deliberately **not** attested, and why. See
+[Security → Supply chain](security.md#8-supply-chain-verifying-what-you-installed).
+
 ### `kubeintellect kind-setup`
 
 Create a local Kind cluster for testing without a real cluster — standalone (you
@@ -464,6 +622,25 @@ off, where there is no hierarchy for it to run inside. **These flags stay listed
 and must not flap when Postgres blips; the degraded row is the liveness answer. A `memory` row
 below it always shows the hierarchy's state, the reason, and how many sensorium observations
 were dropped — it is what makes an *empty* degraded list evidence rather than silence.
+
+A `memory_chain` row reports the memory audit chain's last **recorded** tamper verdict and how
+old it is — never a fresh check, because verifying reads every audit row for the cluster. It is
+always shown when the server sends one, including when there is nothing wrong: a row that
+appeared only on bad news could not be used to confirm anything. Five states, because none of
+the four non-`intact` ones means *fine*:
+
+| `memory_chain` | What it means |
+|---|---|
+| `intact` | A check ran and nothing contradicted the stored rows. |
+| `TAMPERED` | A check ran and **found something**: the rows no longer hash to what they carry, or the chain is shorter than its own head anchor. Treat memory-derived answers as untrusted. This is the only state that makes `memory.healthy` false. |
+| `unverified` | A check ran and could not conclude — the audit rows or the anchor were unreadable. **Not** a tamper signal: a detector that cried tamper whenever its own database was down would be one you learn to ignore. |
+| `never-checked` | Hardening is on and no verification has completed yet. |
+| `off` | `MEMORY_SECURITY_HARDENING` is off, so no chain is being written and there is nothing to verify. Not a clean bill of health. |
+
+The age matters as much as the state: a `STALE` marker in red means the last verdict is older
+than the verification interval allows for, so the verifier may have stopped — which otherwise
+looks exactly like one that keeps agreeing with itself. Set the cadence with
+[`MEMORY_CHAIN_VERIFY_INTERVAL_S`](configuration.md).
 
 A second red row, `unenforceable_guard_config`, does the same for the **guard** settings: a
 `KUBECTL_BLOCKED_NAMESPACES` entry that is not a legal namespace name, or an autonomy override

@@ -6,9 +6,11 @@ the action class's statistically **earned rung**, and reversibility, BEFORE anyt
 
 ⚠️ **Designed destination, not the live brake.** `decide_write`/`plan_mutation` have no production
 caller yet: the A3 path today goes through `autonomy.watchtower` (ladder + allowlist +
-`auto_write_permitted`). `earned_rung` therefore always arrives as its `L2` default, and the store
-that would earn it (`promotion_outcomes`, ADR-102) has no production writer either. Wiring this up
-must also update the write-gate paragraph in `docs/how-it-works.md` —
+`auto_write_permitted`). `earned_rung` therefore always arrives as its `L2` default. The store that
+would earn it (`promotion_outcomes`, ADR-102) is no longer empty — it gained a writer and, on the
+watchtower path, a reader that can **revoke** A3 (both behind `KI_V5_STATISTICAL_PROMOTION`) — but
+nothing computes a rung for *this* signature, and nothing calls it. Wiring this up must also update
+the write-gate paragraph in `docs/how-it-works.md` —
 `tests/test_the_write_gate_doc_matches_the_wiring.py` fails until it does.
 
 This module is the pure decision core (no cluster, no execution): `classify_rollback` maps a

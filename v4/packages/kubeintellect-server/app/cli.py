@@ -979,6 +979,17 @@ def cmd_init(_args: argparse.Namespace) -> None:
     kube = existing.get("KUBECONFIG_PATH", "~/.kube/config")
     lines.append(f"KUBECONFIG_PATH={kube}\n")
 
+    # `_setup_observability()` appends the DETECTED node IP to the config file, but it runs
+    # *after* `existing` was loaded at the top of this function -- so without re-reading, that
+    # append is discarded by the template write below and replaced with a hardcoded guess. The
+    # guess is right often enough on a default `kind` bridge (172.18.0.2) that the bug hides.
+    if _CONFIG_FILE.exists():
+        _written: dict[str, str] = {}
+        _load_dotenv_dict(_CONFIG_FILE, _written)
+        for _k in ("PROMETHEUS_URL", "LOKI_URL", "GRAFANA_URL"):
+            if _written.get(_k):
+                existing[_k] = _written[_k]
+
     # Collect all values into a single dict, then write a fully-commented env file
     final: dict[str, str] = {}
     # Parse what the wizard built so far
@@ -999,16 +1010,20 @@ def cmd_init(_args: argparse.Namespace) -> None:
     def _v(key: str, default: str = "") -> str:
         return final.get(key, default)
 
-    def _line(key: str, default: str = "", comment: str = "") -> str:
+    def _line(key: str, default: str = "", comment: str = "", hint: str = "") -> str:
         """Return a KEY=value line (active) or # KEY=hint line (commented out).
         Comments go on a separate line above — never inline — so they are not
-        parsed as part of the value."""
+        parsed as part of the value.
+
+        `default` is a real value and makes the line ACTIVE; `hint` is example text shown
+        only on the commented-out line. Keep them apart: passing an example URL as `default`
+        writes it as configuration, which is how every install ended up declaring a
+        Prometheus at 172.18.0.2 it had never installed."""
         val = _v(key, default)
         c = f"# {comment}\n" if comment else ""
         if val:
             return f"{c}{key}={val}\n"
-        hint = default or comment or ""
-        return f"# {key}={hint}\n"
+        return f"# {key}={hint or default or comment or ''}\n"
 
     env_content = f"""\
 # KubeIntellect configuration
@@ -1065,9 +1080,9 @@ def cmd_init(_args: argparse.Namespace) -> None:
 
 # ── Observability (optional) ──────────────────────────────────────────────────
 # Set automatically by 'kubeintellect init' when observability stack is installed
-{_line("PROMETHEUS_URL", "http://172.18.0.2:30090")}
-{_line("LOKI_URL", "http://172.18.0.2:30100")}
-{_line("GRAFANA_URL", "http://172.18.0.2:30080")}
+{_line("PROMETHEUS_URL", hint="http://<kind-node-ip>:30090")}
+{_line("LOKI_URL", hint="http://<kind-node-ip>:30100")}
+{_line("GRAFANA_URL", hint="http://<kind-node-ip>:30080")}
 
 # ── Langfuse LLM tracing (optional) ──────────────────────────────────────────
 # Sign up at https://cloud.langfuse.com or self-host
@@ -1437,12 +1452,268 @@ def cmd_db_init(_args: argparse.Namespace) -> None:
     try:
         with psycopg.connect(dsn, autocommit=True) as conn:
             conn.execute(sql_text)
-        print(_ok("  ✓  Database schema initialized successfully."))
+            # Record WHAT was applied. Without this the server cannot tell an up-to-date
+            # database from one that never had this command run against it (enterprise A11).
+            from app.db.schema_version import RECORD_SQL, SCHEMA_VERSION, record_args
+            conn.execute(RECORD_SQL, record_args("db-init"))
+        print(_ok(f"  ✓  Database schema initialized successfully (v{SCHEMA_VERSION})."))
         print(_dim("  Next: kubeintellect serve"))
     except Exception as exc:
         print(_err(f"\n  Database error: {exc}\n"), file=sys.stderr)
         print(f"  {_bold('How to fix:')}\n  {_db_error_hint(exc)}\n", file=sys.stderr)
         sys.exit(1)
+
+
+
+# ── backup manifest / verify-restore (enterprise A12) ─────────────────────────
+
+def _backup_query(dsn: str):
+    """A sync ``query(sql) -> rows`` over psycopg, for `app.db.backup`."""
+    import psycopg  # type: ignore[import-untyped]
+    conn = psycopg.connect(dsn)
+
+    def query(sql: str):
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            return cur.fetchall()
+    return conn, query
+
+
+def cmd_backup_manifest(args: argparse.Namespace) -> None:
+    """Measure the live database and write the manifest that proves a restore was complete."""
+    import datetime as _dt
+    import json as _json
+
+    from app.db.backup import build_manifest
+
+    _load_effective_config()
+    if os.environ.get("USE_SQLITE", "").lower() == "true":
+        print(_warn("  SQLite mode — the whole database is one file; copy it while stopped."))
+        print("  See docs/operations.md § Backup & restore.")
+        return
+    dsn = _build_dsn()
+    print(f"  Reading: {_redact_dsn(dsn)}")
+    try:
+        conn, query = _backup_query(dsn)
+    except Exception as exc:
+        print(_err(f"\n  Database error: {exc}\n"), file=sys.stderr)
+        print(f"  {_bold('How to fix:')}\n  {_db_error_hint(exc)}\n", file=sys.stderr)
+        sys.exit(1)
+    try:
+        manifest = build_manifest(
+            query, taken_at=_dt.datetime.now(_dt.UTC).isoformat(), note=args.note or "")
+    finally:
+        conn.close()
+
+    body = _json.dumps(manifest, indent=2, sort_keys=True)
+    if args.out:
+        Path(args.out).write_text(body + "\n", encoding="utf-8")
+        print(_ok(f"  ✓  Manifest written to {args.out}"))
+    else:
+        print(body)
+    print(_dim("  Take the dump NOW, beside this manifest — see docs/operations.md."))
+
+
+def cmd_chain_export(args: argparse.Namespace) -> None:
+    """Write a self-verifying archive of one hash chain. Read-only; deletes nothing."""
+    import datetime as _dt
+    import json as _json
+
+    from app.db.chain_export import CHAINS, build_export
+
+    _load_effective_config()
+    if args.chain not in CHAINS:
+        print(_err(f"\n  Unknown chain {args.chain!r} — known: {', '.join(sorted(CHAINS))}\n"),
+              file=sys.stderr)
+        sys.exit(2)
+    dsn = _build_dsn()
+    print(f"  Reading: {_redact_dsn(dsn)}")
+    try:
+        conn, query = _backup_query(dsn)
+    except Exception as exc:
+        print(_err(f"\n  Database error: {exc}\n"), file=sys.stderr)
+        print(f"  {_bold('How to fix:')}\n  {_db_error_hint(exc)}\n", file=sys.stderr)
+        sys.exit(1)
+    try:
+        doc = build_export(
+            query, chain=args.chain, scope_id=args.scope,
+            taken_at=_dt.datetime.now(_dt.UTC).isoformat(),
+            through_seq=args.through_seq, note=args.note or "",
+        )
+    finally:
+        conn.close()
+
+    body = _json.dumps(doc, indent=2, sort_keys=True, default=str)
+    if args.out:
+        Path(args.out).write_text(body + "\n", encoding="utf-8")
+        print(_ok(f"  ✓  {doc['row_count']} row(s) archived to {args.out}"))
+    else:
+        print(body)
+    if doc["row_count"] == 0:
+        print(_warn("  No rows matched — an empty archive is not an empty chain until you have "
+                    "checked the scope id."))
+    elif not doc["links_verified_at_export"]:
+        # Exporting a broken chain is deliberately allowed: the archive is how you keep the
+        # evidence OF the break. Saying nothing about it would be the defect.
+        print(_err("  ⚠️  The archived rows do NOT chain — this archive preserves a chain that "
+                   "was already broken when it was read."))
+    print(_dim("  Store it where this database's operators cannot silently replace it."))
+
+
+def cmd_chain_verify_export(args: argparse.Namespace) -> None:
+    """Check an archive file. Needs no database — that is the point of the archive."""
+    import json as _json
+
+    from app.db.chain_export import verify_export
+
+    try:
+        doc = _json.loads(Path(args.archive).read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(_err(f"\n  Cannot read {args.archive}: {exc}\n"), file=sys.stderr)
+        sys.exit(1)
+    result = verify_export(doc)
+    if result["ok"]:
+        print(_ok(f"  ✓  Archive verifies — {len(doc.get('rows') or [])} row(s), "
+                  f"{result['checked']} check(s), no problems."))
+        return
+    print(_err(f"\n  ✗  {len(result['problems'])} problem(s):\n"), file=sys.stderr)
+    for problem in result["problems"]:
+        print(f"    • {problem}", file=sys.stderr)
+    print("", file=sys.stderr)
+    sys.exit(1)
+
+
+def cmd_chain_truncate(args: argparse.Namespace) -> None:
+    """Delete the rows an archive holds, after declaring the gap. The only destructive one."""
+    import json as _json
+
+    from app.db.chain_export import TruncationRefused, truncate_chain, verify_export
+
+    _load_effective_config()
+    try:
+        doc = _json.loads(Path(args.archive).read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(_err(f"\n  Cannot read {args.archive}: {exc}\n"), file=sys.stderr)
+        sys.exit(1)
+    result = verify_export(doc)
+    if not result["ok"]:
+        print(_err(f"\n  ✗  Refusing — the archive does not verify "
+                   f"({len(result['problems'])} problem(s)):\n"), file=sys.stderr)
+        for problem in result["problems"]:
+            print(f"    • {problem}", file=sys.stderr)
+        print("", file=sys.stderr)
+        sys.exit(1)
+
+    rows = doc.get("rows") or []
+    print(f"  Archive:  {args.archive} ({len(rows)} row(s), verifies)")
+    print(f"  Chain:    {doc.get('chain')} / {doc.get('scope_id')}")
+    print(f"  Removing: seq {doc.get('from_seq')}…{doc.get('through_seq')} inclusive")
+    if not args.yes:
+        print(_warn("\n  Nothing was deleted. This removes rows permanently; re-run with "
+                    "--yes once the archive is stored somewhere this database's operators "
+                    "cannot replace it (see the archive's own `limit` field)."))
+        return
+
+    dsn = _build_dsn()
+    print(f"  Database: {_redact_dsn(dsn)}")
+    try:
+        import psycopg  # type: ignore[import-untyped]
+        conn = psycopg.connect(dsn)
+    except Exception as exc:
+        print(_err(f"\n  Database error: {exc}\n"), file=sys.stderr)
+        print(f"  {_bold('How to fix:')}\n  {_db_error_hint(exc)}\n", file=sys.stderr)
+        sys.exit(1)
+    try:
+        # One transaction: the truncation record and the DELETE land together or not at all.
+        with conn.transaction():
+            with conn.cursor() as cur:
+                def query(sql: str):
+                    cur.execute(sql)
+                    return cur.fetchall()
+
+                def execute(sql: str) -> None:
+                    cur.execute(sql)
+
+                outcome = truncate_chain(query, execute, doc=doc, note=args.note or "")
+    except TruncationRefused as exc:
+        print(_err(f"\n  ✗  Refusing: {exc}\n"), file=sys.stderr)
+        print(_dim("  Nothing was deleted.\n"), file=sys.stderr)
+        sys.exit(1)
+    except Exception as exc:
+        print(_err(f"\n  Database error: {exc}\n"), file=sys.stderr)
+        print(_dim("  The transaction rolled back; nothing was deleted.\n"), file=sys.stderr)
+        sys.exit(1)
+    finally:
+        conn.close()
+
+    print(_ok(f"\n  ✓  {outcome['rows_removed']} row(s) removed; the chain now resumes at "
+              f"seq={outcome['resume_seq']}."))
+    print(_dim("  The gap is recorded in chain_truncation, so verification reports this chain "
+               "as intact. Keep the archive: it is the only copy of what was removed."))
+
+
+def cmd_verify_restore(args: argparse.Namespace) -> None:
+    """Re-measure a restored database against a manifest. Exit 1 if anything is missing."""
+    import json as _json
+
+    from app.db.backup import verify
+
+    _load_effective_config()
+    try:
+        manifest = _json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(_err(f"  Cannot read manifest {args.manifest}: {exc}"), file=sys.stderr)
+        sys.exit(1)
+    dsn = _build_dsn()
+    print(f"  Verifying: {_redact_dsn(dsn)}")
+    print(_dim(f"  Against:   {args.manifest} (taken {manifest.get('taken_at', '?')})"))
+    try:
+        conn, query = _backup_query(dsn)
+    except Exception as exc:
+        print(_err(f"\n  Database error: {exc}\n"), file=sys.stderr)
+        sys.exit(1)
+    try:
+        result = verify(query, manifest)
+    finally:
+        conn.close()
+
+    if result["ok"]:
+        print(_ok(f"  ✓  Restore verified — {result['checked']} check(s), no discrepancies."))
+        return
+    print(_err(f"\n  ✗  {len(result['problems'])} discrepancy(ies) after {result['checked']} "
+               f"check(s):\n"), file=sys.stderr)
+    for problem in result["problems"]:
+        print(f"    • {problem}", file=sys.stderr)
+    print(file=sys.stderr)
+    sys.exit(1)
+
+
+def cmd_provenance(args: argparse.Namespace) -> None:
+    """Print how to verify that a released artifact came from this project's build."""
+    from app.core.supply_chain import NOT_ATTESTED, OIDC_ISSUER, verify_commands
+
+    tag = args.tag if args.tag.startswith("v") else f"v{args.tag}"
+    print(f"\n  {_bold('Verifying a KubeIntellect release')} — {tag}\n")
+    print(_dim("  Each artifact carries a keyless sigstore attestation minted by the workflow"))
+    print(_dim(f"  that built it, under {OIDC_ISSUER}."))
+    print(_dim("  Nothing below runs here: these are the commands YOU run, on the machine that"))
+    print(_dim("  pulled the artifact. `gh attestation verify` needs gh >= 2.49.\n"))
+
+    for entry in verify_commands(tag):
+        print(f"  {_bold(entry['what'])}")
+        for line in entry["command"].splitlines():
+            print(f"    {line}")
+        print(_dim(f"    → proves: {entry['proves']}"))
+        print(_dim(f"    → signer: {entry['identity']}"))
+        print()
+
+    print(f"  {_bold('Not attested, and why:')}")
+    for channel, why in NOT_ATTESTED.items():
+        print(f"    • {channel}: {_dim(why)}")
+    print()
+    print(_warn("  A signed provenance says which run built this, from which commit. It does"))
+    print(_warn("  NOT say the same source rebuilds bit-for-bit — these are not reproducible"))
+    print(_warn("  builds. See docs/security.md § 8.\n"))
 
 
 # ── status ────────────────────────────────────────────────────────────────────
@@ -2068,6 +2339,90 @@ support:      mohsen.seyedkazemi@gmail.com
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
+    # backup-manifest
+    bm_p = sub.add_parser(
+        "backup-manifest",
+        help="Record what the database holds, so a restore can be verified",
+        description=(
+            "Measure the live database and emit a JSON manifest: schema version and fingerprint,\n"
+            "exact row counts, and how far each hash chain got. Take it beside your pg_dump.\n"
+            "A restore that silently drops the newest rows of decision_log or memory_audit breaks\n"
+            "no hash link, so the shortened record still verifies — only this comparison sees it."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    bm_p.add_argument("--out", help="Write the manifest here instead of stdout")
+    bm_p.add_argument("--note", default="", help="Free text recorded in the manifest")
+
+    # chain-export
+    ce_p = sub.add_parser(
+        "chain-export",
+        help="Archive one hash chain into a self-verifying file",
+        description=(
+            "Read one hash-chained ledger (decision_log or memory_audit) for one scope and write\n"
+            "a JSON archive that carries the rows verbatim, the anchor as it stood, the link\n"
+            "verdict, and a SHA-256 over all of it. `chain-verify-export` checks such a file with\n"
+            "NO database present. Read-only: this command deletes nothing, and retention still\n"
+            "refuses to prune either ledger — see docs/operations.md."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    ce_p.add_argument("chain", choices=["decision_log", "memory_audit"],
+                      help="Which ledger to archive")
+    ce_p.add_argument("scope", help="episode_id (decision_log) or cluster_id (memory_audit)")
+    ce_p.add_argument("--through-seq", type=int, default=None,
+                      help="Archive only up to this seq, inclusive (default: the whole chain)")
+    ce_p.add_argument("--out", help="Write the archive here instead of stdout")
+    ce_p.add_argument("--note", default="", help="Free text recorded in the archive")
+
+    # chain-verify-export
+    cv_p = sub.add_parser(
+        "chain-verify-export",
+        help="Check a chain archive — no database needed",
+        description=(
+            "Recompute the archive's content hash and re-chain its rows from the prev_hash it\n"
+            "recorded. Reports EVERY problem, not the first. Exits 1 if anything is wrong."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    cv_p.add_argument("archive", help="Path to the archive JSON")
+
+    ct_p = sub.add_parser(
+        "chain-truncate",
+        help="remove archived rows from a hash chain, declaring the gap (destructive)")
+    ct_p.add_argument("archive", help="an archive written by `chain-export`")
+    ct_p.add_argument("--yes", action="store_true",
+                      help="actually delete; without it this is a dry run")
+    ct_p.add_argument("--note", default="", help="why these rows were removed")
+
+    # verify-restore
+    vr_p = sub.add_parser(
+        "verify-restore",
+        help="Check a restored database against a backup manifest",
+        description=(
+            "Re-measure this database against a manifest taken at backup time and report EVERY\n"
+            "discrepancy. Exits 1 if anything is missing — safe to run in a restore rehearsal."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    vr_p.add_argument("manifest", help="Path to the manifest JSON")
+
+    # provenance
+    pv_p = sub.add_parser(
+        "provenance",
+        help="Show how to verify a released artifact came from this project's build",
+        description=(
+            "Print the exact commands that check the signed build attestation on the image,\n"
+            "the PyPI wheels, the Helm chart and the kq binaries — and the signer identity each\n"
+            "one must pin to. Omitting that identity makes the check accept an attestation from\n"
+            "ANY workflow in the repository, so the commands are generated, not remembered."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    pv_p.add_argument(
+        "--tag", default=f"v{__version__}",
+        help="Release tag to verify (default: this build's own version)")
+
     # status
     sub.add_parser(
         "status",
@@ -2153,6 +2508,18 @@ support:      mohsen.seyedkazemi@gmail.com
         cmd_serve(args)
     elif args.command == "db-init":
         cmd_db_init(args)
+    elif args.command == "backup-manifest":
+        cmd_backup_manifest(args)
+    elif args.command == "chain-export":
+        cmd_chain_export(args)
+    elif args.command == "chain-verify-export":
+        cmd_chain_verify_export(args)
+    elif args.command == "chain-truncate":
+        cmd_chain_truncate(args)
+    elif args.command == "verify-restore":
+        cmd_verify_restore(args)
+    elif args.command == "provenance":
+        cmd_provenance(args)
     elif args.command == "status":
         cmd_status(args)
     elif args.command == "kind-setup":

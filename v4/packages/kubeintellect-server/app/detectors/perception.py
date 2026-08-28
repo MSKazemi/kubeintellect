@@ -59,6 +59,12 @@ class PerceptionState:
     # Defaulted for the same reason as `sensorium_reason`.
     shed_total: int = 0
     queue_high_water: int = 0
+    # Namespaces the watch streams cover; empty means every namespace. A FOURTH way to be blind
+    # while every field above reads healthy, and the only one that is a deliberate operator
+    # choice: a scoped sensorium is working exactly as configured and still cannot have seen
+    # anything outside its scope. Reporting `active` with an empty findings list and NOT saying
+    # this would turn a setting into a false all-clear. Defaulted like the two fields above.
+    watch_namespaces: tuple[str, ...] = ()
 
     @property
     def watching(self) -> bool:
@@ -76,7 +82,12 @@ def perception_state(engine: "DetectorEngine | None" = None) -> PerceptionState:
     """
     from app.core.config import settings
     from app.detectors.service import get_engine
-    from app.sensorium.k8s_watcher import any_stream_connected, queue_stats, stream_health
+    from app.sensorium.k8s_watcher import (
+        any_stream_connected,
+        queue_stats,
+        stream_health,
+        watch_namespaces,
+    )
 
     # Read once, and on BOTH return paths: a sensorium that has since gone away can still
     # have shed observations while it was up, and reporting 0 there would be a claim rather
@@ -84,6 +95,7 @@ def perception_state(engine: "DetectorEngine | None" = None) -> PerceptionState:
     queue = queue_stats()
     shed = int(queue.get("shed_total") or 0)
     high_water = int(queue.get("high_water") or 0)
+    scope = watch_namespaces()
 
     if engine is None:
         engine = get_engine()
@@ -92,7 +104,7 @@ def perception_state(engine: "DetectorEngine | None" = None) -> PerceptionState:
         reason, detail = sensorium_absence()
         return PerceptionState(
             DISABLED, 0, OFF, 0, None, [], sensorium_reason=_absence_phrase(reason, detail),
-            shed_total=shed, queue_high_water=high_water,
+            shed_total=shed, queue_high_water=high_water, watch_namespaces=scope,
         )
 
     streams = stream_health()
@@ -129,6 +141,7 @@ def perception_state(engine: "DetectorEngine | None" = None) -> PerceptionState:
         streams=streams,
         shed_total=shed,
         queue_high_water=high_water,
+        watch_namespaces=scope,
     )
 
 
@@ -140,9 +153,10 @@ def perception_gaps(state: PerceptionState) -> list[str]:
     (`PREDICTIVE_DETECTION_ENABLED` is `false` by default), not an outage, and is not a gap —
     the same rule `kq findings` applies.
 
-    Three independent ways to fail, and the third is not an instrument: the watch stream can
-    be down, Prometheus can be unreachable, and the queue between the stream and the
-    detectors can have dropped what the stream did see.
+    Four independent ways to fail, and only the first is an instrument being unavailable: the
+    watch stream can be down, Prometheus can be unreachable, the queue between the stream and
+    the detectors can have dropped what the stream did see, and the sensorium can have been
+    scoped to a subset of namespaces — the last two leave every instrument reading healthy.
     """
     gaps: list[str] = []
     if state.sensorium == DISABLED:
@@ -178,6 +192,16 @@ def perception_gaps(state: PerceptionState) -> list[str]:
     # to say so on 2026-08-24; putting the rule only there recreated exactly the divergence
     # this module was written to end — the digest calling a window quiet that `kq findings`
     # refuses to call clear.
+    # A scoped sensorium is not broken — it is doing exactly what it was told. It is still
+    # blind outside its scope, and the operator reading an empty findings list is usually not
+    # the one who set the flag. `-A` (the default) says nothing, because there is nothing to say.
+    if state.watch_namespaces:
+        listed = ", ".join(state.watch_namespaces)
+        gaps.append(
+            f"the sensorium watches only {len(state.watch_namespaces)} namespace(s) ({listed}) "
+            f"— nothing outside them was perceived, so an empty findings list is not a statement "
+            f"about the cluster")
+
     if state.shed_total > 0:
         gaps.append(
             f"the observation queue dropped {state.shed_total} event(s) before any detector "

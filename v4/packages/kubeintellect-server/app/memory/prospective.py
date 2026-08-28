@@ -12,9 +12,10 @@ Design:
   - run_prospective_once() → the scheduler pass (called from the consolidation loop):
     claim due pending rows, FIRE each through the autonomy ladder, record the outcome.
   - Firing routes through the SAME ladder the watchtower uses (ADR-003): A0 namespaces
-    never fire (recorded 'skipped_a0'); A1+ dispatches an investigation. The dispatch is
-    pluggable (set_dispatch) so a re-check can open a real investigation in production while
-    tests inject a stub — the default logs the intent (never mutates).
+    never fire (recorded 'skipped_a0'); A1+ re-reads the cluster and grades the condition.
+    The dispatch is pluggable (set_dispatch) so a richer re-check (an LLM investigation)
+    can be injected, and so tests can stub it — but the DEFAULT is the real verifier, not
+    a placeholder, because nothing was ever wiring one (see `_default_dispatch`).
 
 Pool ownership: uses the memory service's pool (`app.memory.service._pool`), like
 consolidation/promotion. Gated by `MEMORY_PROSPECTIVE` (default off).
@@ -39,26 +40,71 @@ logger = get_logger(__name__)
 _FIRE_BATCH = 50
 
 # Dispatch hook: given a due re-check row + its resolved autonomy level, perform the
-# actual re-verification and return an outcome string. Injectable so production can wire
-# a real investigation and tests can stub it. Default = log-only (never mutates).
+# actual re-verification and return an outcome string. Injectable so a richer re-check
+# (an LLM investigation that reads logs and explains *why*) can replace the default, and
+# so tests can stub it. Read-only in every form — a re-check never mutates the cluster.
 DispatchFn = Callable[[dict[str, Any], str], Awaitable[str]]
 _dispatch: DispatchFn | None = None
 
 
 def set_dispatch(fn: DispatchFn | None) -> None:
-    """Install the re-check dispatcher (production) or reset it (tests)."""
+    """Install a richer re-check dispatcher, or reset to the built-in verifier (``None``)."""
     global _dispatch
     _dispatch = fn
 
 
 async def _default_dispatch(row: dict[str, Any], level: str) -> str:
-    """A1+ default: record the intent to re-verify. Real investigation is wired by the
-    watchtower via set_dispatch; the default never mutates the cluster."""
-    logger.info(
-        f"prospective_recheck_due cluster={row.get('cluster_id')} "
-        f"ns={row.get('namespace')} level={level} condition={row.get('condition')!r}"
+    """A1+ default: actually re-read the cluster and grade the condition.
+
+    Until 2026-08-28 this logged the row and returned ``"rechecked"`` without looking at
+    anything, and ``_TERMINAL`` mapped that to ``status='done'``. Nothing outside the tests
+    ever called :func:`set_dispatch`, so *every* scheduled post-fix re-check in production
+    closed as a completed verification that had verified nothing — the one row an operator
+    would read to answer "did the fix hold?" said yes by construction. The fix is to make the
+    default the verifier rather than to keep waiting for a caller that was never written.
+
+    Deliberately model-free and read-only: two ``kubectl get`` reads, scanned by the same
+    :func:`_scan_snapshot` the coordinator's post-fix check uses, so the two graders cannot
+    disagree about what "resolved" means. Lingering Warning events with healthy pods are not
+    a failure, matching ``coordinator._verify_resolution``.
+
+    Returns ``"resolved"`` (pods healthy), ``"still_broken"``, or ``"unverified"`` when the
+    read itself failed — which is NOT a grade, and :data:`_TERMINAL` leaves it ``pending`` so
+    the next pass tries again rather than closing the row on an answer nobody obtained.
+    """
+    import asyncio
+
+    from app.agent.nodes.context_fetcher import (
+        _kubectl_snapshot,
+        _scan_snapshot,
+        _unavailable_reason,
     )
-    return "rechecked"
+
+    namespace = (row.get("namespace") or "").strip()
+    ns_arg = ["-n", namespace] if namespace else ["--all-namespaces"]
+    # `_kubectl_snapshot` is a blocking subprocess call and this runs inside the
+    # consolidation loop — off-thread so one slow cluster read cannot stall the loop.
+    pods_ok, pods_out = await asyncio.to_thread(_kubectl_snapshot, ["get", "pods", *ns_arg])
+    if not pods_ok:
+        logger.warning(
+            f"prospective: cannot verify re-check id={row.get('id')} ns={namespace or '*'} — "
+            f"the cluster read failed ({_unavailable_reason(pods_out)}); "
+            f"recording 'unverified', not a result"
+        )
+        return "unverified"
+    events_ok, events_out = await asyncio.to_thread(_kubectl_snapshot, [
+        "get", "events", *ns_arg,
+        "--sort-by=.lastTimestamp",
+        "--field-selector=type=Warning",
+    ])
+    has_issues, _has_warnings, pod_count = _scan_snapshot(
+        pods_out, events_out, pods_ok=pods_ok, events_ok=events_ok)
+    outcome = "still_broken" if has_issues else "resolved"
+    logger.info(
+        f"prospective_recheck cluster={row.get('cluster_id')} ns={namespace} level={level} "
+        f"pods={pod_count} outcome={outcome} condition={row.get('condition')!r}"
+    )
+    return outcome
 
 
 _SQL_SCHEDULE = """
@@ -174,14 +220,27 @@ async def run_prospective_once() -> int:
     return fired
 
 
-# Outcome → terminal status. A re-check that ran is 'done'; one that can never fire in this
-# namespace (A0/observe-only) is 'cancelled' (no point retrying); a transient dispatch error
-# goes back to 'pending' so the next pass retries it. Either way the outcome is recorded (R6.4).
-_TERMINAL = {"rechecked": "done", "resolved": "done", "still_broken": "done",
-             "skipped_a0": "cancelled"}
+# Outcome → terminal status. A re-check that produced a GRADE is 'done'; one that can never
+# fire in this namespace (A0/observe-only) is 'cancelled' (no point retrying); anything else —
+# a dispatch exception ('error'), or a cluster read that failed ('unverified') — falls through
+# to 'pending' so the next pass retries it. Either way the outcome is recorded (R6.4).
+#
+# 'unverified' must never be listed here. It is the answer "we could not look", and closing a
+# row on it is the exact failure this table existed to avoid.
+#
+# 'rechecked' is kept only to interpret rows written before 2026-08-28, when the default
+# dispatcher returned it without reading anything. Those rows are `done` in the table and
+# cannot be re-graded after the fact; the label is retained so they still read as terminal
+# rather than silently re-firing. Nothing produces it any more.
+_TERMINAL = {"resolved": "done", "still_broken": "done",
+             "skipped_a0": "cancelled", "rechecked": "done"}
 
 
 async def _record_outcome(pool, recheck_id, outcome: str) -> None:
+    # A non-terminal outcome returns the row to 'pending' WITHOUT advancing `due_at`, so it
+    # re-fires on the next consolidation pass. That is the intended retry, and it is bounded
+    # only by `_FIRE_BATCH` — an unreadable cluster means up to 50 re-reads per pass until it
+    # comes back. Pre-existing behaviour for 'error'; 'unverified' now joins it.
     status = _TERMINAL.get(outcome, "pending")
     try:
         await pool.execute(_SQL_RECORD, recheck_id, outcome, status)

@@ -63,6 +63,7 @@ from typing import Any, NamedTuple
 import asyncpg
 
 from app.core.config import settings
+from app.db import chain_truncation
 from app.utils.logger import get_logger
 from app.utils.redact import redact_identifier, redact_secrets
 
@@ -147,16 +148,24 @@ _SQL_HEAD_UPSERT = """
 _SQL_HEAD_READ = "SELECT seq, hash FROM decision_log_head WHERE episode_id = $1"
 
 
-def verify_chain(rows: list[dict]) -> bool:
+def verify_chain(rows: list[dict], *, start_seq: int = 0, start_prev_hash: str = "") -> bool:
     """Recompute the hash chain over rows (ordered by seq). True iff every link verifies.
 
     **This is the link check only, and it cannot see a truncation.** Deleting an episode's
     newest rows leaves a shorter chain in which every link still verifies — measured
     2026-08-24, not assumed. Callers that present a tamper verdict to a human must also call
     `head_agrees`, which compares the surviving chain against the persisted anchor.
+
+    `start_seq` / `start_prev_hash` say where the chain is *expected* to begin. The defaults
+    are the whole chain from its origin, so every existing caller keeps its exact behaviour —
+    including the one that matters most: a chain whose first rows are gone still fails. They
+    are non-default only for a chain whose front was removed **deliberately**, where the
+    seq and prev_hash come from a `chain_truncation` record rather than from the caller's
+    opinion (see `app/db/chain_truncation.py`). A caller that passes these from anywhere else
+    is not verifying a chain, it is agreeing with one.
     """
-    prev = ""
-    expected_seq = 0
+    prev = start_prev_hash
+    expected_seq = start_seq
     for row in rows:
         if row["seq"] != expected_seq or row["prev_hash"] != prev:
             return False
@@ -264,9 +273,41 @@ async def verify_episode(episode_id: str, rows: list[dict]) -> ChainVerdict:
     that renders a verdict should call this — and must render ``verified`` as well as
     ``valid``, because a chain nobody could check is not a chain that checked out.
     """
-    if not verify_chain(rows):
-        # A link mismatch is a performed check with a positive finding: the records recompute
-        # to a different hash than they carry. Nothing about the anchor changes that.
+    if verify_chain(rows):
+        return await head_verdict(_pool, episode_id, rows)
+    # The links did not recompute from the origin. That is a performed check with a positive
+    # finding *unless* the front of this chain was removed on purpose — which is only possible
+    # to say because a truncation has to be declared, in a second place, with the hash of an
+    # archive holding the removed rows. Note what is NOT reached here: a chain that still
+    # starts at seq 0 takes no lookup at all, so the ordinary verdict path is untouched and
+    # cannot be weakened by this table being absent, unreadable, or empty.
+    if not rows or int(rows[0]["seq"]) == 0:
+        return ChainVerdict(False, True)
+    declared = await chain_truncation.declared_start(
+        _pool, chain="decision_log", scope_id=episode_id)
+    if not declared.read:
+        logger.warning(
+            f"flight_recorder: episode {episode_id!r} does not start at seq 0 and the "
+            f"truncation record could not be read — this chain is NOT verified; that is "
+            f"neither an accusation nor an all-clear"
+        )
+        return ChainVerdict(True, False)
+    if not declared.found:
+        logger.warning(
+            f"flight_recorder: episode {episode_id!r} starts at seq={rows[0]['seq']} with no "
+            f"recorded truncation — its earliest events were removed"
+        )
+        return ChainVerdict(False, True)
+    if int(rows[0]["seq"]) != declared.seq or str(rows[0]["prev_hash"]) != declared.prev_hash:
+        # A record exists but does not describe these rows. Worse than no record: something
+        # claims this gap is accounted for and the rows say otherwise.
+        logger.warning(
+            f"flight_recorder: episode {episode_id!r} has a truncation record resuming at "
+            f"seq={declared.seq} but the surviving chain starts at seq={rows[0]['seq']} — "
+            f"the record does not describe these rows"
+        )
+        return ChainVerdict(False, True)
+    if not verify_chain(rows, start_seq=declared.seq, start_prev_hash=declared.prev_hash):
         return ChainVerdict(False, True)
     return await head_verdict(_pool, episode_id, rows)
 

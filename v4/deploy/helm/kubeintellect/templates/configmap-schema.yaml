@@ -48,6 +48,19 @@ data:
     END;
     $$ LANGUAGE plpgsql;
 
+    -- ── Schema version ledger (enterprise A11) ───────────────────────────
+    -- This file is idempotent by design, which is exactly why nothing used to record that it had
+    -- ever been applied. Without this row, "upgraded but db-init not run", "rolled the Deployment
+    -- back while the database stayed new", and "correct" are indistinguishable -- and the first two
+    -- fail SILENTLY, because every memory/recorder/audit write is fire-and-forget. `db-init` writes
+    -- this row; `app/db/schema_version.py` reads it at startup and reports it on /healthz.
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+        version     INTEGER PRIMARY KEY,
+        fingerprint TEXT        NOT NULL,          -- sha256 of schema.sql's DDL (comments excluded)
+        applied_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+        applied_by  TEXT        NOT NULL DEFAULT 'db-init'
+    );
+
     -- ── Session notes ─────────────────────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS session_notes (
         id         BIGSERIAL PRIMARY KEY,
@@ -426,6 +439,31 @@ data:
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
+    -- Declared truncations — the record that turns a gap in a hash chain from evidence of tampering
+    -- into evidence of housekeeping. `retention` refuses to prune `decision_log` and `memory_audit`
+    -- precisely because a missing prefix is indistinguishable from an attack; this table is what
+    -- makes the difference expressible. A row here says: entries up to `through_seq` were removed
+    -- on purpose, the surviving chain resumes at `resume_seq` and must chain from
+    -- `resume_prev_hash`, and the removed rows are preserved in an archive whose content hash is
+    -- `archive_hash` (see `app/db/chain_export.py`). The verifiers read it; without a matching row,
+    -- a short chain is still reported as TAMPERED, which is the behaviour that must not change.
+    --
+    -- Tamper-evidence, not prevention, exactly as the anchors are: an attacker with full write can
+    -- forge a row here too. What it removes is the free gap — the one that needs no second edit.
+    CREATE TABLE IF NOT EXISTS chain_truncation (
+        chain            TEXT   NOT NULL,          -- decision_log | memory_audit
+        scope_id         TEXT   NOT NULL,          -- episode_id | cluster_id
+        through_seq      BIGINT NOT NULL,          -- highest seq removed, inclusive
+        resume_seq       BIGINT NOT NULL,          -- first seq that survives
+        resume_prev_hash TEXT   NOT NULL,          -- the hash the surviving chain chains from
+        archive_hash     TEXT   NOT NULL,          -- the verified archive that justifies the gap
+        note             TEXT   NOT NULL DEFAULT '',
+        truncated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (chain, scope_id, through_seq)
+    );
+    CREATE INDEX IF NOT EXISTS idx_chain_truncation_scope
+        ON chain_truncation (chain, scope_id, through_seq DESC);
+
     -- Flight-recorder chain head — the same anchor as `memory_chain_head`, for the same reason,
     -- on the chain that actually renders a tamper-evidence banner to a human. `verify_chain` over
     -- `decision_log` proves links; deleting the newest rows of an episode breaks no link, so the
@@ -491,3 +529,15 @@ data:
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_fleet_signals_tenant ON fleet_signals (tenant, created_at);
+
+    -- ── Stamp the ledger (enterprise A11) ────────────────────────────────────────
+    -- Applied LAST, so a partial run never claims a complete schema. The Helm chart's db-init Job
+    -- pipes this file straight into psql and never touches the Python CLI, so the stamp has to live
+    -- in the file itself or a chart-installed cluster would report `unrecorded` for ever.
+    -- `fingerprint` is left empty here on purpose: it is a sha256 OF THIS FILE, so embedding it
+    -- would be self-referential. `kubeintellect db-init` fills it in; the build-time gate in
+    -- `tests/test_a_stale_schema_is_not_silent.py` is what actually forces the version below to be
+    -- bumped whenever this file changes.
+    INSERT INTO schema_migrations (version, fingerprint, applied_by)
+    VALUES (2, '', 'schema.sql')
+    ON CONFLICT (version) DO UPDATE SET applied_at = now();

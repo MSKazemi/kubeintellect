@@ -565,7 +565,7 @@ async def remember(state: CortexState, config: RunnableConfig) -> dict:
             import asyncio as _asyncio
 
             from app.cluster_id import get_cluster_id
-            from app.memory.episodes import write_episode
+            from app.memory.episodes import trigger_kind_for, write_episode
 
             answer = ""
             last = turn_messages[-1] if turn_messages else None
@@ -577,9 +577,7 @@ async def remember(state: CortexState, config: RunnableConfig) -> dict:
                 # Provenance drives the memory write-admission trust score, so it is read
                 # from the state field only an in-process caller can set — never from
                 # `user_id`, which is `body.user` and free for any chat client to choose.
-                trigger_kind=(
-                    "detector" if state.get("trigger_source") == "detector" else "user_query"
-                ),
+                trigger_kind=trigger_kind_for(state.get("trigger_source")),
                 trigger_detail=_last_user_text(state)[:300],
                 summary=answer[:1200],
                 outcome="report_only",

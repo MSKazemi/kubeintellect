@@ -292,6 +292,18 @@ class Settings(BaseSettings):
     # reports lossy detection instead of growing until the container is OOMKilled. See
     # app/sensorium/k8s_watcher.py and design/enterprise-readiness.md (A5).
     SENSORIUM_QUEUE_MAXSIZE: int = 10000
+    # Namespaces the watch streams cover. Empty (the default) means `-A` — every namespace.
+    #
+    # This is the ONE lever that scales perception on a large cluster, and it works by watching
+    # LESS, not faster: `get pods -A --watch` relists the entire cluster on every reconnect, so
+    # past a few thousand pods the honest options are to narrow the scope or to accept counted
+    # loss (see SENSORIUM_QUEUE_MAXSIZE above). Comma-separated; whitespace is trimmed.
+    #
+    # ⚠️ Scoping creates a blind spot BY DESIGN, so it is disclosed rather than silent: the
+    # perception surfaces (`/v1/findings`, `kq findings`, the morning digest) report the scope as
+    # a gap, because an empty findings list from a scoped sensorium is not a statement about the
+    # cluster. See ADR-020 and app/detectors/perception.py.
+    SENSORIUM_WATCH_NAMESPACES: str = ""
 
     # ── Leader election (multi-replica safety) ────────────────────────────────
     # Every background worker here is a singleton by ASSUMPTION, enforced only by the chart's
@@ -388,6 +400,17 @@ class Settings(BaseSettings):
     MEMORY_SECURITY_HARDENING: bool = False
     MEMORY_WRITE_RATE_PER_MIN: int = 30   # max user-derived memory writes per requester / minute
     MEMORY_TRUST_FLOOR: float = 0.35      # user-derived writes below this trust are quarantined
+    # How often the running server re-verifies the memory audit chain, in seconds. 0 disables
+    # the periodic check and leaves only the one at startup; a negative value disables both.
+    #
+    # ⚠️ Why this setting exists at all, dated 2026-08-28: `verify_memory_chain` was written,
+    # tested and documented, and then **nothing in a running server ever called it** — the only
+    # callers were the test suite and `scripts/memory_pg_probe.py`. Tamper-evidence that is
+    # never evaluated is not weaker evidence than a live check, it is none: a chain can only
+    # accuse if somebody asks it. The check is periodic rather than per-request because
+    # verifying reads every audit row for the cluster, and `/healthz` is probed every few
+    # seconds — an on-demand verifier would make probe latency a function of cluster history.
+    MEMORY_CHAIN_VERIFY_INTERVAL_S: int = 900
     # Memory V5 P8 (spec R7): a RAPTOR/GraphRAG-style summary hierarchy over episode clusters.
     # When on, the consolidation worker builds one theme summary per (cluster, playbook|namespace)
     # signature so the agent can answer theme-level questions without scanning every episode.
@@ -396,6 +419,30 @@ class Settings(BaseSettings):
     # abstractive LLM summarization deferred. Off = no summary tree. Default off (additive).
     MEMORY_SUMMARY_TREE: bool = False
     MEMORY_SUMMARY_MIN_CLUSTER: int = 3   # min episodes in a theme before it gets a summary
+
+    # ── Data retention / lifecycle (enterprise A10) ───────────────────────────
+    # Age out the telemetry and completed-work tables so a long-lived install stays bounded.
+    # 0 = keep everything, and that is the default on purpose: a data-deleting default would
+    # silently discard an operator's history on upgrade. `app/memory/retention.py` carries the
+    # per-table rules AND the tables it refuses to prune with a dated reason — the hash-chained
+    # ledgers (`decision_log`, `memory_audit`) are never pruned by a clock, because deleting
+    # their newest rows is invisible to `verify_chain` and would contradict the head anchors.
+    # `promotion_outcomes` has a hard floor at the ADR-102 window: setting this below it does
+    # NOT prune the samples the A3 statistical brake demotes on.
+    MEMORY_RETENTION_DAYS: int = 0
+
+    # ── API rate limiting (enterprise A16) ────────────────────────────────────
+    # Per-caller token bucket, keyed by a hash of the bearer token (never the key itself).
+    # ON by default: a limiter that ships off is not a limiter, and 120/min per key is far above
+    # any interactive use of `kq`. Probe and metrics paths are exempt — see `api/rate_limit.py`
+    # for why answering 429 to a kubelet probe would be worse than having no limiter at all.
+    # NOTE: the counters are PER REPLICA. N replicas admit up to N x RATE_LIMIT_PER_MIN per
+    # caller; this is a fair-use bound, not a fleet-wide quota, and volumetric abuse belongs at
+    # the ingress.
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_PER_MIN: int = 120         # sustained requests per minute, per caller
+    RATE_LIMIT_BURST: int = 30            # bucket capacity — how much idle allowance accrues
+    RATE_LIMIT_MAX_TRACKED: int = 10000   # bucket-table cap; least-recently-seen is evicted
 
     # ── Operator-preference memory (MemoryAgent) ──────────────────────────────
     # Remembers how each user likes to operate (explicit + behaviour-inferred),
@@ -507,8 +554,12 @@ class Settings(BaseSettings):
     KI_V5_MAX_UNAVAILABLE_PER_ZONE: float = 0.34   # never take >~1/3 of a failure domain down at once
     # Statistical autonomy promotion engine (P3 Trust plane, ADR-102): an action-class earns a rung
     # only when its shadow-agreement Wilson-LCB clears the per-transition threshold, and is auto-
-    # demoted on regression. Buildable now on fixtures; the live shadow-agreement outcome source is
-    # pluggable (populated once action classes run in shadow). Default-off.
+    # demoted on regression. ON: each cluster-verified autonomous fix is recorded as one sample for
+    # `watchtower-autofix`, and the watchtower reads that record before it lets an investigation fix
+    # anything -- REVOKING A3 auto-fix when the record has collapsed. Revocation only: these samples
+    # come from writes the allowlist already permitted, so earning authority from them would be
+    # circular, and the system does not run shadow agreement yet. The allowlist stays the only way
+    # up. Default-off; off => A3 is exactly the ladder + allowlist + kill-switch/freeze gate.
     KI_V5_STATISTICAL_PROMOTION: bool = False
     # ADR-102 arm-3 offline-shadow weighting: offline-derived promotion outcomes count this much (≤
     # the 0.5 cap) vs a live shadow run's 1.0. The MECHANISM is built (`weighted_lcb`); the exact cap

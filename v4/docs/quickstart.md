@@ -67,6 +67,8 @@ All pip-install paths use the `kubeintellect` CLI:
 | `kubeintellect status` | Show config, connectivity, and all component health |
 | `kubeintellect set KEY=VALUE` | Update a config value in `~/.kubeintellect/.env` |
 | `kubeintellect db-init` | Apply schema to PostgreSQL (skip for SQLite — auto-created) |
+| `kubeintellect backup-manifest` | Record what the database holds, so a restore can be proved complete |
+| `kubeintellect verify-restore` | Check a restored database against a backup manifest (exits 1 on any gap) |
 | `kubeintellect kind-setup` | Create a Kind cluster with DNS config (standalone, without running `init`) |
 | `kubeintellect service <action>` | Manage the systemd background service (install / uninstall / start / stop / status / logs) |
 
