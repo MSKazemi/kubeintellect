@@ -1244,9 +1244,18 @@ def _postgres_reachable() -> bool:
 
 
 def _docker_available() -> bool:
-    return subprocess.run(
-        ["docker", "info"], capture_output=True, timeout=5
-    ).returncode == 0
+    # A predicate named "available" must not raise because the thing is
+    # unavailable. On a machine with no Docker at all, `subprocess.run` raises
+    # FileNotFoundError before it can report a return code, and that escaped
+    # all the way out of `kubeintellect init` — after the wizard had already
+    # printed "Setup complete". Measured on a clean Ubuntu 24.04 VM, 2026-08-29.
+    # A hung daemon trips the timeout instead; both mean "no usable Docker".
+    try:
+        return subprocess.run(
+            ["docker", "info"], capture_output=True, timeout=5
+        ).returncode == 0
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def _start_postgres_container() -> None:
@@ -2334,7 +2343,14 @@ def _get_kube_context(kube_path: str) -> str:
 
 # ── entry point ───────────────────────────────────────────────────────────────
 
-def main(argv: list[str] | None = None) -> None:
+def main(argv: list[str] | None = None) -> int | None:
+    """Return an exit status, or None for the ordinary success path.
+
+    The console-script wrapper generated for `kubeintellect` calls
+    ``sys.exit(main())``, so a returned int becomes the process status;
+    ``sys.exit(None)`` is 0. `init` uses this to report a cancelled or
+    non-interactive wizard without raising through `input()`.
+    """
     parser = argparse.ArgumentParser(
         prog="kubeintellect",
         description="KubeIntellect — AI-powered Kubernetes management platform",
@@ -2586,7 +2602,24 @@ support:      mohsen.seyedkazemi@gmail.com
     args = parser.parse_args(argv)
 
     if args.command == "init":
-        cmd_init(args)
+        # The wizard's own banner promises "Press Ctrl+C at any time to cancel
+        # without saving", and nothing kept that promise: KeyboardInterrupt and
+        # EOFError both escaped as a raw traceback out of `input()`. EOF is the
+        # common one — piping, CI, or `< /dev/null` hits it on the first
+        # question, and a stack trace reads as a crashed installer.
+        try:
+            cmd_init(args)
+        except KeyboardInterrupt:
+            print("\n\n  Cancelled — nothing was saved.\n")
+            return 130
+        except EOFError:
+            print(
+                "\n\n  `kubeintellect init` is an interactive wizard and stdin "
+                "reached end-of-file.\n"
+                "  Run it in a terminal, or write ~/.kubeintellect/.env "
+                "yourself.\n"
+            )
+            return 1
     elif args.command == "serve":
         cmd_serve(args)
     elif args.command == "db-init":
@@ -2612,6 +2645,10 @@ support:      mohsen.seyedkazemi@gmail.com
     elif args.command == "service":
         cmd_service(args)
 
+    # Every branch above either succeeded or raised; only `init` reports a
+    # status of its own.
+    return None
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
