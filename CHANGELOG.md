@@ -13,6 +13,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **The restore proof is now tested against a real PostgreSQL**
+  (`v4/tests/test_the_restore_proof_holds_against_a_real_database.py`). `backup.verify` is
+  driver-agnostic and its unit tests drive it with a dict — and both A12 defects fixed this cycle
+  lived precisely in what a dict cannot model: an exit code, and a poisoned transaction. The chain
+  subsystem next door has had a real-database test since it shipped, and a live adversarial
+  rehearsal of ten cases against it (tampered archive, wrong scope, progressive pruning,
+  undeclared deletion, deletion one row beyond a legitimate declaration, on both `decision_log`
+  and `memory_audit`) found nothing wrong. The backup path was the one that never adopted the
+  harness. These tests drive the real psycopg adapter against a real server; the missing-table
+  case fails without the autocommit fix. Skips without docker, like the eight files that already
+  use this pattern.
+
 - **The narrated demo's sources are tracked, and its claims are now checked** (`scripts/demo/
   video/`, `v4/tests/test_the_video_says_only_what_the_product_does.py`). The scene spec called
   itself the single source of truth and said every claim in it was checked against a file in
