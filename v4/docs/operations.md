@@ -126,6 +126,44 @@ reports **every** discrepancy, not the first — mid-incident, a list of three t
 one error and a re-run. A short table, a table the restore never created and a truncated chain are
 three different messages, because they need three different responses.
 
+#### Rehearse it
+
+A backup nobody has restored is an assumption. Rehearse the pair you actually took — last night's
+manifest and last night's dump — against a throwaway database. No cluster and no production
+access are involved, and nothing writes to the source:
+
+```bash
+docker run -d --name pg-rehearsal -e POSTGRES_USER=kubeuser -e POSTGRES_PASSWORD=probe \
+  -e POSTGRES_DB=scratch -p 55432:5432 postgres:17
+
+docker exec -i pg-rehearsal psql -U kubeuser -d scratch \
+  --single-transaction -v ON_ERROR_STOP=1 < kubeintellect-2026-01-01.sql
+
+DATABASE_URL=postgresql://kubeuser:probe@localhost:55432/scratch \
+  kubeintellect verify-restore kubeintellect-2026-01-01.manifest.json    # expect exit 0
+```
+
+Then break it deliberately and confirm the check goes red — a green light you have never seen
+fail is not evidence that it can:
+
+```bash
+docker exec pg-rehearsal psql -U kubeuser -d scratch \
+  -c "DELETE FROM decision_log WHERE seq >= 4"
+
+DATABASE_URL=postgresql://kubeuser:probe@localhost:55432/scratch \
+  kubeintellect verify-restore kubeintellect-2026-01-01.manifest.json    # expect exit 1
+
+docker rm -f pg-rehearsal
+```
+
+That second run is the one worth watching. The link check still passes over the surviving rows —
+they hash correctly — so nothing except the manifest can tell you the record is now short.
+
+!!! note "The dump has to have rows in it"
+    Rehearsing against a freshly initialised, empty database proves nothing: every count is zero,
+    so the deliberate `DELETE` removes nothing and the check stays green. Use a dump of a database
+    that was actually in use.
+
 #### RPO and RTO
 
 These are **your** numbers, set by the schedule you choose — KubeIntellect does not take backups

@@ -471,6 +471,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **One missing table made `verify-restore` invent eight more problems** (`app/cli.py`
+  `_backup_query`, `v4/tests/test_one_missing_table_must_not_invent_eight_more.py`).
+  `app/db/backup.verify` is built to report *every* discrepancy rather than the first — it
+  catches each check's exception and carries on, because mid-incident a list of three things to
+  fix beats one error and a re-run. The driver underneath defeated it: the connection was not in
+  autocommit, so the first failing statement poisoned the transaction and every later query died
+  with *current transaction is aborted*. Measured against a real restore missing exactly one
+  table: **9 discrepancies reported, 1 true**, and six of the false ones said `the restore did
+  not create it` about tables that were present and correct. An operator reading that
+  mid-recovery concludes seven tables were lost when one was. The same database now reports 2,
+  both `memory_audit`, both true. Nothing caught it because the suite drives `verify` with a
+  dict, and a dict has no transaction to poison. `chain-truncate` keeps its explicit transaction
+  — there the record and the DELETE must land together or not at all.
+
 - **`backup-manifest --out FILE` exited 0 without writing FILE** (`app/cli.py`,
   `v4/tests/test_a_manifest_that_was_never_written_is_not_a_success.py`). In SQLite mode the
   command printed its "the whole database is one file, copy it while stopped" advisory and
