@@ -59,11 +59,18 @@ pip install kube-q
 kq --api-key ki-ro-dev            # kq defaults to https://api.kubeintellect.com
 ```
 
-**Run the full system on a local cluster** (Docker is the only prerequisite):
+**Run the server from the container image** (Docker is the only prerequisite):
 
 ```bash
-docker run --rm -it ghcr.io/mskazemi/kubeintellect:2.2.0 --help
+docker run --rm -p 8000:8000 \
+  -e LLM_PROVIDER=openai -e OPENAI_API_KEY=sk-... -e USE_SQLITE=true \
+  ghcr.io/mskazemi/kubeintellect:2.2.0
+curl localhost:8000/healthz          # {"status":"ok","arm":"v4",...}
 ```
+
+That starts the API with no database and no cluster attached — enough to see it come up.
+To point it at a cluster and a real database, use
+**[Docker Compose](v4/README.md#docker-compose-laptop--vm---no-cluster-required-to-run-the-server)**.
 
 Or install the server from PyPI:
 
