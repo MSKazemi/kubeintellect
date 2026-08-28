@@ -292,6 +292,14 @@ class Settings(BaseSettings):
     # reports lossy detection instead of growing until the container is OOMKilled. See
     # app/sensorium/k8s_watcher.py and design/enterprise-readiness.md (A5).
     SENSORIUM_QUEUE_MAXSIZE: int = 10000
+    # The SECOND bounded buffer on the same observation stream: the sensorium sink calls
+    # `engine.process(obs)` AND `enqueue_observation(obs)`, and the latter feeds this queue,
+    # drained onto the knowledge graph. It was a hardcoded 10_000 in app/memory/service.py
+    # while its twin above was configurable, so an operator who widened the sensorium buffer
+    # on a busy cluster had not widened this one and kept losing observations at the same
+    # depth. Drops here are counted and surfaced as `observations_dropped` on /healthz -- the
+    # loss was always visible; the knob was the half that was missing.
+    MEMORY_OBS_QUEUE_MAXSIZE: int = 10000
     # Namespaces the watch streams cover. Empty (the default) means `-A` — every namespace.
     #
     # This is the ONE lever that scales perception on a large cluster, and it works by watching
