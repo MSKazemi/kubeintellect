@@ -34,6 +34,25 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 
 Or install with `pipx`, which manages the PATH for you: `pipx install kube-q`.
 
+### `kq: command not found` after `uv tool install kubeintellect`
+
+**Cause:** not PATH — the executable was never installed. `uv tool install`
+exposes only the entry points of the package you named, and `kq` belongs to the
+`kube-q` distribution. `uv tool install kubeintellect` reports
+`Installed 1 executable: kubeintellect`; `kube-q` is present underneath it as a
+library, but its script is not linked.
+
+`pip` does not behave this way. `pip install kubeintellect` installs the entry
+points of every distribution it pulls in, so it gives you both commands — which
+is why every install page in these docs uses `pip`.
+
+**Fix:** install the client as its own tool.
+
+```bash
+uv tool install kube-q          # provides kq
+uv tool install kubeintellect   # provides kubeintellect
+```
+
 ### `kubeintellect: command not found`
 
 Same cause as above for the server package. Re-open your shell after

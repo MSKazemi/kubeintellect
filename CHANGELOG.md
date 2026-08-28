@@ -9,7 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 > generations keep their own history: **v3** has `v3/CHANGELOG.md`; **v1** and **v2** are
 > versioned by their git tags (`v1.0`, `v2.0.x`). See the root `README.md` for the v1→v5 lineage.
 
-## [Unreleased]
+## [2.4.1] – 2026-08-29
+
+> **2.4.0 on PyPI cannot start the server.** It installs and `kubeintellect --version`
+> works, but `kubeintellect serve` dies before uvicorn binds a port with
+> `ModuleNotFoundError: No module named 'prometheus_fastapi_instrumentator'` — a
+> default-on feature was declared only as an optional extra. Only `kubeintellect-server`
+> changes here; `kube-q` 1.6.0 and `ki-protocol` 1.1.0 published correctly with 2.4.0 and
+> are unchanged. **If you installed 2.4.0, upgrade.**
 
 ### Fixed
 
@@ -44,8 +51,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   is now a **core** dependency, because a feature that is on by default is not optional; and the
   import is **guarded**, because a control plane must not refuse to boot over a telemetry package.
   The `metrics` extra is kept as a harmless alias. Four tests pin it, three of which fail against
-  the state that shipped. **This does not fix the artifact already on PyPI — 2.4.0 there is still
-  broken and a re-release is needed.**
+  the state that shipped. **The 2.4.0 artifact on PyPI stays broken — it cannot be
+  replaced in place. 2.4.1 is that re-release.**
 
 - **The FAQ's SQLite answer said "nothing else is" disabled, and one more thing was**
   (`v4/docs/faq.md`, `v4/tests/test_the_sqlite_answer_names_everything_sqlite_turns_off.py`).
