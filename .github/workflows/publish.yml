@@ -72,3 +72,9 @@ jobs:
           # workspace root.
           packages-dir: v4/dist
           skip-existing: true   # re-running an already-published version is a no-op
+          # PEP 740 attestations (A13). Stated explicitly rather than left to the action's
+          # default: this is the only evidence a PyPI user has that the wheel they installed
+          # was built by this workflow from this repo, and a default that silently flips off
+          # would remove it without changing a line here. Requires trusted publishing, which
+          # the `pypi` environment above already provides.
+          attestations: true

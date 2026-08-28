@@ -186,17 +186,42 @@ denies outright on an engaged kill switch or a declared change freeze.
 action class's earned rung, and reversibility — returning **auto**, **approve** or **deny**
 *before anything executes*, and dry-running the command server-side before an `auto` stands.
 That chokepoint is built and tested, but **it is not yet wired into the graph**: `earned_rung`
-still arrives as its `L2` default, and `promotion_outcomes` — the ADR-102 store that would earn
-it — has no production writer yet. It is the designed destination for A3, not a brake running
+still arrives as its `L2` default. It is the designed destination for A3, not a brake running
 in your cluster today.
+
+`promotion_outcomes` — the ADR-102 store that would earn that rung — **does** now have a
+production writer, behind `KI_V5_STATISTICAL_PROMOTION` (default off). When an autonomous
+investigation actually mutates the cluster, the coordinator re-snapshots it and grades the
+result; a graded attempt is recorded as one sample for the `watchtower-autofix` action class.
+Three things are deliberately *not* recorded, because each would be a sample the store invented:
+a fix a human asked for (not this class), a report-only investigation (nothing was attempted),
+and an outcome whose post-fix cluster read failed — that is reported as *unverified*, and a read
+is most likely to fail right after the disruptive change being graded. Evidence therefore
+accrues — and, behind the same flag, it is now **read on the A3 path**: before the watchtower
+lets an investigation fix anything, it asks the store whether `watchtower-autofix`'s recorded
+record has taken that authority away, and closes the gate if it has (two postcondition failures
+within 24 h will do it). That read runs **one way only: it can revoke, never grant.** Every
+sample in the store comes from a fix the watchtower was already allowed to make, so promoting on
+them would be circular — the grant producing the evidence for the grant — and it would deadlock,
+since a class with no samples could never take the action that produces one. ADR-102 earns rungs
+from *shadow* agreement, which this system does not run yet. The allowlist therefore stays the
+only way up. If the flag is on and there is no store to read, the brake is not operating and the
+log says so; if there is a store and it cannot be read, auto-fix is revoked rather than assumed
+clean. All of that is visible on `GET /v1/v5/status` under `autonomy_promotion` — `operating`
+rather than `enabled` is the field that answers whether the brake is in your write path. The chokepoint above is a separate, still-unwired destination — this brake sits in the
+watchtower, where the live A3 decision actually is.
 
 The decision function itself is built and tested, and its asymmetry runs one way only: a
 critical incident blocks promotion **and** forces demotion. That second half was missing —
 the CUSUM fast trip (2 postcondition failures in 24 h ⇒ −1 rung) skipped failures marked
 critical, and the two ADR triggers that exist for critical incidents are L4-scoped, so below
-L4 the worst failures were the only ones no fast trigger watched. Since nothing writes
-`promotion_outcomes` yet, the gap was latent rather than live; it is fixed regardless,
-because this is the code that will decide when to take authority away.
+L4 the worst failures were the only ones no fast trigger watched. The anti-flap band had the
+opposite fault: a Wilson lower bound is driven by sample size as well as by failures, so a class
+with a **flawless 15-for-15** record sat under θ − 0.05 and was demoted a rung with the reason
+*"last-50 LCB < θ − 0.05"* — while a class with **no** record at all was not demotable, making
+evidence of competence strictly worse than no evidence. The band now abstains wherever a perfect
+record at that sample size could not clear it, so a breach is always attributable to failures;
+the CUSUM trip, which does not depend on sample size, is unchanged.
 
 Both are enforced server-side, in the write path rather than in the prompt. A prompt-level
 "please ask first" constraint is not a security boundary, and shipping one that pretends to be

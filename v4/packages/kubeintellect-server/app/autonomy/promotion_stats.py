@@ -220,12 +220,37 @@ def cusum_trip(events: list[Event], *, fails: int = CUSUM_FAILS,
 
 def hysteresis_breach(events: list[Event], theta: float, *,
                       last_n: int = HYSTERESIS_LAST_N, band: float = HYSTERESIS_BAND) -> bool:
-    """True iff the LCB over the last ``last_n`` events has fallen below ``θ − band``."""
+    """True iff the LCB over the last ``last_n`` events has **fallen** below ``θ − band``.
+
+    The word doing the work is *fallen*. A Wilson lower bound is driven by two things — the
+    failure rate and the sample size — and below a certain n the second dominates so completely
+    that the band cannot be cleared by any record at all. Measured 2026-08-28, before the guard
+    below existed: at θ=0.95 a class with a **flawless 15-for-15** record breached the band
+    (LCB 0.8472 < 0.90) and ``evaluate_demotion`` demoted it a rung with the reason *"hysteresis:
+    last-50 LCB < θ − 0.05"* — an audit line stating that its agreement had fallen, about a class
+    that had never once failed. A flawless record needs n ≥ 16 (θ=0.90), n ≥ 25 (θ=0.95) or n ≥ 43
+    (θ=0.99) before the band is even reachable.
+
+    The ordering that produced was backwards: a class with **zero** events was not demoted (the
+    empty-window early-out), while the same class became demotable the moment it succeeded once
+    and stayed demotable through its first two dozen consecutive successes. Evidence of competence
+    was strictly worse than no evidence.
+
+    So the band only trips where a breach can be *attributed to failures*: if a perfect record at
+    this n would still sit under ``θ − band``, the window is too small for the bound to be about
+    performance and this trigger abstains. It is the anti-flap band around an established record,
+    which is what ADR-102 §4.4 describes; nothing here weakens the fast trigger that does not
+    depend on n — :func:`cusum_trip` still fires on two postcondition failures within 24 h, at any
+    sample size, which is the ADR's answer for a class that is genuinely going wrong early.
+    """
     win = sorted(events, key=lambda e: e.ts_days)[-last_n:]
     if not win:
         return False
+    floor = theta - band
+    if wilson_lcb(len(win), len(win)) < floor:
+        return False           # the band is unreachable at this n — a breach would say nothing
     successes = sum(1 for e in win if e.success)
-    return wilson_lcb(successes, len(win)) < theta - band
+    return wilson_lcb(successes, len(win)) < floor
 
 
 def evaluate_demotion(

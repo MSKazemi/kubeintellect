@@ -80,9 +80,9 @@ uv sync          # creates .venv and installs the whole workspace
 ## Required validation
 
 The root [`.github/workflows/ci.yml`](.github/workflows/ci.yml) is the executable source of
-truth. From the repo root, `make setup` installs the workspace and runs all eight gates in
-order, but use the standalone commands below when validating a change so the lint scope
-cannot lag behind CI. Individually, from `v4/`:
+truth. From the repo root, `make setup` installs the workspace and runs all nine
+locally-runnable gates in order, but use the standalone commands below when validating a
+change so the lint scope cannot lag behind CI. Individually, from `v4/`:
 
 ```bash
 # 1. Lint — `ruff check` only. NOT `ruff format`.
@@ -91,32 +91,43 @@ uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/ packa
 # 2. Types — the workspace is at ZERO errors; keep it there.
 uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q
 
-# 3. Server suite (4890 tests)
+# 3. Server suite (5338 tests)
 uv run python -m pytest tests/ -q
 
-# 4. kq CLI suite (724 tests)
+# 4. kq CLI suite (740 tests)
 cd packages/kube-q && uv run python -m pytest tests/ -q
+
+# 5. Doc claims — every documented count is recollected from the code and compared.
+uv run python scripts/check_doc_claims.py        # --fix rewrites the numbers in place
 ```
 
-Plus four repo-root gates, which need no virtualenv. Gates 7 and 8 run inside the CI job
-named **Syntax warnings** rather than jobs of their own — branch protection matches required
-checks by name, so a new job name is a check `main` does not require and every open PR would
-sit unmergeable until the settings caught up:
+Plus four repo-root gates, which need no virtualenv. Gates 5, 8 and 9 run inside existing CI
+jobs (**Lint (ruff)** for the first, **Syntax warnings** for the other two) rather than jobs
+of their own — branch protection matches required checks by name, so a new job name is a check
+`main` does not require and every open PR would sit unmergeable until the settings caught up:
 
 ```bash
-# 5. File modes — a tracked file is executable if and only if it has a shebang.
+# 6. File modes — a tracked file is executable if and only if it has a shebang.
 make check-modes          # or: ./scripts/check-file-modes.sh
 make fix-modes            # corrects any violation in place
 
-# 6. Syntax — every tracked .py outside v1-v3 compiles with no SyntaxWarning.
+# 7. Syntax — every tracked .py outside v1-v3 compiles with no SyntaxWarning.
 make check-syntax         # or: ./scripts/check-syntax-warnings.py
 
-# 7. Encoding — every text-mode read/write names an encoding (#136/#156).
+# 8. Encoding — every text-mode read/write names an encoding (#136/#156).
 make check-encoding       # or: ./scripts/check-text-encoding.py
 
-# 8. Roster — .all-contributorsrc and the README table name the same people (#167).
+# 9. Roster — .all-contributorsrc and the README table name the same people (#167).
 make check-roster         # or: ./scripts/check-contributor-roster.py
 ```
+
+`ci.yml` produces **15** named checks and `main` requires **9**. Which is which — and why each
+unrequired one is unrequired — is recorded in
+[`.github/required-checks.yml`](.github/required-checks.yml); `make check-required` compares
+that record against the live branch protection (needs an authenticated `gh`, so it is not a CI
+job). Adding a job to `ci.yml` without deciding its status fails that check rather than
+inheriting silence. Note what the unrequired list contains: **`Container image (build + serve)`
+is not required**, so a PR that breaks the published image can merge green.
 
 CI additionally checks the lockfile and clean-wheel installation, builds and probes the
 container, and runs the browser demo's lint/build. When a change reaches those surfaces, run
@@ -180,7 +191,7 @@ Two annotations are load-bearing and mypy *cannot* verify them — see "Safety i
 
 ### Known pre-existing debt — do not try to fix it in an unrelated PR
 
-- **`ruff format --check` is not a CI gate** and would reformat **120** files. `make lint` in
+- **`ruff format --check` is not a CI gate** and would reformat **127** files. `make lint` in
   `v4/` *does* run it, so `make lint` fails on a clean checkout. Use the `ruff check` command
   above to predict CI, not `make lint`.
 - **`ruff` is pinned `<0.16`** on purpose — 0.16's default rules reported 438 findings, then

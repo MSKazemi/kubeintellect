@@ -25,6 +25,7 @@ machine-readable answer, surfaced on `/healthz` next to `leader` and `audit`.
 from __future__ import annotations
 
 import asyncio
+import time
 
 import asyncpg
 
@@ -55,6 +56,23 @@ _INGEST_BACKOFF_MAX_S: float = 30.0
 #: Seconds between reconnect attempts while the pool is down.
 _RETRY_INTERVAL_S = 30.0
 
+#: A recorded verdict older than this many verify intervals is reported as stale. Two, not one,
+#: so a single slow or skipped pass is not an alarm — what this catches is a verifier that has
+#: stopped, which otherwise looks exactly like one that keeps agreeing with itself.
+_CHAIN_STALE_INTERVALS = 2.5
+
+
+def _chain_stale_after_s() -> float | None:
+    """When a recorded chain verdict stops describing the store as it is now.
+
+    ``None`` when the periodic verifier is off — a single startup verdict is the only verdict
+    there will ever be, so calling it stale would report a fault the operator already chose.
+    """
+    interval = settings.MEMORY_CHAIN_VERIFY_INTERVAL_S
+    if interval <= 0:
+        return None
+    return interval * _CHAIN_STALE_INTERVALS
+
 
 def memory_active() -> bool:
     return _pool is not None
@@ -70,9 +88,17 @@ def memory_status() -> dict:
     doing anything, as opposed to merely being reachable. ``symptoms`` is the short human-readable
     summary, and ``healthy`` is the single boolean a probe or a benchmark gate should key on —
     false whenever the process is connected but observably not working.
+
+    ``chain`` is the memory audit chain's last recorded verdict. It reports what was checked and
+    when, and it is the reason a *stale* verdict cannot be read as a current one.
     """
+    chain = liveness.chain_status(
+        enabled=settings.MEMORY_SECURITY_HARDENING,
+        now=time.time(),
+        stale_after_s=_chain_stale_after_s(),
+    )
     symptoms = liveness.symptoms(
-        state=_state, observations_dropped=_dropped_observations
+        state=_state, observations_dropped=_dropped_observations, chain=chain,
     )
     return {
         "enabled": _state == "ready",
@@ -80,6 +106,10 @@ def memory_status() -> dict:
         "reason": _reason,
         "observations_dropped": _dropped_observations,
         "ingest_failures": _ingest_failures,
+        # What the tamper-evidence chain last SAID, and when — never a fresh verdict computed
+        # inside a health probe. `state: "off"` and `state: "never-checked"` are deliberately
+        # distinct from `intact`: neither is a clean bill of health.
+        "chain": chain,
         # Observed behaviour. `enabled` says the pool is up; these say whether anything came
         # out of it. A run where `recall_attempts` is high and `recall_hits` is 0 is the exact
         # shape of the nine-hour dead-memory lane described at the top of this module.
@@ -170,6 +200,11 @@ async def _try_connect() -> bool:
         )
         return False
     _activate(_pool)
+    # One read, once, at the moment a pool first exists: is the database the shape this build
+    # writes to? Never on the request path and never in /healthz itself (liveness must not touch
+    # Postgres) -- the verdict is cached and reported. See `app/db/schema_version.py`.
+    from app.db.schema_version import check_schema
+    await check_schema(_pool)
     return True
 
 
@@ -202,8 +237,72 @@ def _activate(pool: asyncpg.Pool) -> None:
     # One-shot startup pass: rca_outcomes backfill + initial maintenance.
     _tasks.append(loop.create_task(run_consolidation_once(startup=True)))
     _tasks.append(loop.create_task(consolidation_loop()))
+    if settings.MEMORY_SECURITY_HARDENING and settings.MEMORY_CHAIN_VERIFY_INTERVAL_S >= 0:
+        # The chain is only written when the hardening flag is on, so verifying it otherwise
+        # would report "intact" about a chain nothing appends to — a green light for a feature
+        # that is not running. See `_verify_chain_loop`.
+        _tasks.append(loop.create_task(_verify_chain_loop()))
     _state, _reason = "ready", ""
     logger.info("memory: hierarchy active (L1 episodes, L2 kg, consolidation)")
+
+
+async def verify_chain_once() -> None:
+    """Ask the memory audit chain whether it still verifies, and record what it said.
+
+    Deliberately records rather than returns. The verdict's consumer is `/healthz`, which is
+    synchronous and probed every few seconds, while verifying reads every audit row for the
+    cluster — so the surface reports the last recorded answer and how old it is, and never
+    re-derives one on the probe path.
+
+    Never raises. This runs in a background task inside a subsystem whose whole discipline is
+    that a memory failure cannot break a user response; a verifier that crashed the task group
+    would take the observation drain and the consolidation schedule with it.
+    """
+    from app.cluster_id import get_cluster_id
+    from app.memory.security import verify_memory_chain
+
+    try:
+        verdict = await verify_memory_chain(_pool, get_cluster_id())
+    except Exception as exc:
+        # Not `valid=False`. An exception here is our failure to look, not a finding about
+        # the rows — the same doctrine `verify_memory_chain` applies to its own fetch errors.
+        logger.warning(f"memory: audit-chain verify raised: {exc} — recording as UNVERIFIED")
+        liveness.record_chain_check(valid=True, verified=False, at=time.time())
+        return
+    liveness.record_chain_check(
+        valid=verdict.valid, verified=verdict.verified, at=time.time()
+    )
+    if verdict.verified and not verdict.valid:
+        # The one line in this module that is an accusation. It is logged at ERROR because the
+        # only other place it appears is a `/healthz` field somebody has to be reading.
+        logger.error(
+            "memory: AUDIT CHAIN DOES NOT VERIFY — the recorded memory-audit rows no longer "
+            "hash to what they carry, or the chain is shorter than its own head anchor. "
+            "Treat memory-derived answers from this cluster as untrusted until reviewed."
+        )
+    elif not verdict.verified:
+        logger.info("memory: audit chain could not be verified this pass (not a tamper signal)")
+
+
+async def _verify_chain_loop() -> None:
+    """One verify at startup, then every `MEMORY_CHAIN_VERIFY_INTERVAL_S` seconds.
+
+    The startup pass matters on its own: a process that comes up against a database somebody
+    edited while it was down should say so before it serves anything, not one interval later.
+    An interval of 0 keeps that pass and skips the schedule.
+    """
+    await verify_chain_once()
+    interval = settings.MEMORY_CHAIN_VERIFY_INTERVAL_S
+    if interval <= 0:
+        return
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            await verify_chain_once()
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:      # the schedule itself must never die
+            logger.warning(f"memory: audit-chain verify loop error: {exc}")
 
 
 async def _reconnect_loop() -> None:

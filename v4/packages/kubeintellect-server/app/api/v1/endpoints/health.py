@@ -15,6 +15,7 @@ from app.core.readiness import is_ready
 from app.db.audit import audit_status
 from app.detectors.service import sensorium_status
 from app.db.flight_recorder import recorder_status
+from app.db.schema_version import schema_status
 from app.memory.service import memory_status
 from app.core.version import (
     active_experimental_flags,
@@ -73,6 +74,12 @@ class HealthResponse(BaseModel):
     # with Postgres records nothing, and "no rows for that episode" is the answer an operator
     # gets at exactly the moment they need the decision log most.
     recorder: dict = Field(default_factory=dict)
+    # Whether the DATABASE is the shape this build writes to. `schema.sql` is idempotent and
+    # applied by hand, so "upgraded but `db-init` not run" and "rolled the Deployment back while
+    # the database stayed new" both look exactly like a healthy install -- and both fail
+    # silently, because every write above is fire-and-forget. `state: "current"` is the only
+    # clean answer; `stale`, `ahead` and `unrecorded` each name a different thing to fix.
+    db_schema: dict = Field(default_factory=dict)
 
 
 class ReadyResponse(BaseModel):
@@ -97,6 +104,7 @@ async def healthz(request: Request):
         audit=audit_status(),
         memory=memory_status(),
         recorder=recorder_status(),
+        db_schema=schema_status(),
     )
 
 

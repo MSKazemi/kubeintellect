@@ -4,6 +4,10 @@ name: Release binaries
 # for linux/darwin x amd64/arm64, and attaches them to the GitHub Release for a
 # v* tag along with a checksums file.
 #
+# This job also CREATES the GitHub release for the tag (as a draft), attaches the
+# archives, and only then publishes it — so `release: released` fires once the
+# release is complete. See the comments on those steps for why the order matters.
+#
 # These archives are what the downstream package managers consume: krew reads
 # them directly (see .krew.yaml), and Scoop/AUR-bin can too. PyPI
 # (`pipx install kube-q`) remains the install path for anyone who already has
@@ -118,6 +122,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write      # keyless sigstore signing via GitHub OIDC
+      attestations: write  # write the build-provenance attestation for each tarball
     steps:
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
@@ -129,9 +135,54 @@ jobs:
           cd dist
           sha256sum *.tar.gz | tee checksums.txt
 
+      # Supply chain (A13). checksums.txt detects a corrupted download and nothing else:
+      # it is published on the same release page, by the same writer, as the tarballs it
+      # checksums, so anyone able to replace one can replace the other. The attestation
+      # binds each tarball's digest to this workflow, this commit and this run, and lives
+      # in a public transparency log rather than beside the artifact.
+      # `gh release upload` needs a release that already exists, and until 2026-08-28 nothing
+      # in CI created one. The documented procedure was to push the tag and then run
+      # `gh release create` by hand fast enough to beat this job to its upload step — a race
+      # whose losing side fails the release *after* the image, the chart and PyPI have already
+      # published, leaving a half-shipped version behind.
+      #
+      # It is created as a DRAFT deliberately. Publishing a release fires `release: released`,
+      # which is the event krew.yml waits for, and krew resolves the four archives out of that
+      # release. A release published before the assets are attached therefore makes krew fail
+      # every single time — which is exactly what the old procedure did, and then repaired by
+      # hand. Draft, upload, publish: krew first sees a release that is already complete.
+      - name: Create the draft release
+        id: create
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "Release ${GITHUB_REF_NAME} already exists - uploading into it, leaving its state alone."
+            echo "created=false" >> "$GITHUB_OUTPUT"
+          else
+            gh release create "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" \
+              --title "${GITHUB_REF_NAME}" --generate-notes --draft
+            echo "created=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Attest the binaries
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*.tar.gz
+
       - name: Upload to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "${GITHUB_REF_NAME}" dist/*.tar.gz dist/checksums.txt \
             --repo "${GITHUB_REPOSITORY}" --clobber
+
+      # Only now does `release: released` fire, with every archive and checksums.txt attached.
+      # A release this job did not create is left alone: an existing one may be deliberately a
+      # draft or a prerelease, and publishing someone else's draft is not this job's decision.
+      - name: Publish the release
+        if: steps.create.outputs.created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --draft=false

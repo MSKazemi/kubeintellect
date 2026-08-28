@@ -211,16 +211,45 @@ def _event_observation(doc: dict, cluster_id: str) -> Observation | None:
     )
 
 
-_WATCHES: tuple[tuple[list[str], Callable[[dict, str], Observation | None]], ...] = (
-    (
-        ["get", "pods", "-A", "--watch", "--output-watch-events=true", "-o", "json"],
-        _pod_observation,
-    ),
-    (
-        ["get", "events", "-A", "--watch", "--output-watch-events=true", "-o", "json"],
-        _event_observation,
-    ),
+_RESOURCES: tuple[tuple[str, Callable[[dict, str], Observation | None]], ...] = (
+    ("pods", _pod_observation),
+    ("events", _event_observation),
 )
+
+_WATCH_TAIL = ["--watch", "--output-watch-events=true", "-o", "json"]
+
+
+def watch_namespaces() -> tuple[str, ...]:
+    """Namespaces the sensorium is scoped to. Empty means every namespace (`-A`).
+
+    Read at start, and again by the perception surfaces, from the same setting — so what the
+    watcher actually covers and what the product SAYS it covers cannot drift apart.
+    """
+    from app.core.config import settings
+
+    raw = (settings.SENSORIUM_WATCH_NAMESPACES or "").strip()
+    return tuple(ns for ns in (part.strip() for part in raw.split(",")) if ns)
+
+
+def _watch_specs() -> list[tuple[str, list[str], Callable[[dict, str], Observation | None]]]:
+    """`(stream name, kubectl args, normaliser)` — one stream per resource per namespace.
+
+    Scoping multiplies the number of subprocesses (2 x namespaces). That is the intended
+    trade: several small watches over the namespaces that matter cost far less than one
+    `-A` watch that relists a whole large cluster on every reconnect. The name carries the
+    namespace so `stream_health()` names WHICH scope dropped, not just "get pods".
+    """
+    namespaces = watch_namespaces()
+    specs = []
+    for resource, normalise in _RESOURCES:
+        if not namespaces:
+            specs.append((f"get {resource} -A", ["get", resource, "-A", *_WATCH_TAIL], normalise))
+            continue
+        for ns in namespaces:
+            specs.append(
+                (f"get {resource} -n {ns}", ["get", resource, "-n", ns, *_WATCH_TAIL], normalise)
+            )
+    return specs
 
 
 async def _watch_loop(
@@ -228,10 +257,11 @@ async def _watch_loop(
     normalise: Callable[[dict, str], Observation | None],
     cluster_id: str,
     sink: Callable[[Observation], object],
+    name: str | None = None,
 ) -> None:
     import time
 
-    name = " ".join(args[:3])
+    name = name or " ".join(args[:3])
     health = _streams.setdefault(name, StreamHealth(name))
     backoff = _BACKOFF_INITIAL
     while True:
@@ -332,14 +362,28 @@ _shed_total = 0
 _queue_high_water = 0
 
 
+#: Fraction of `SENSORIUM_QUEUE_MAXSIZE` at which the queue is reported as under pressure. The
+#: shed counter only ever speaks AFTER perception has already been lost; this is the signal that
+#: exists before it, which is the one an operator can still act on.
+_PRESSURE_RATIO = 0.8
+_pressure_warned = False
+
+
 def queue_stats() -> dict:
     """Observation-queue state. `shed_total > 0` means the sensorium is dropping perception."""
-    return {"shed_total": _shed_total, "high_water": _queue_high_water}
+    from app.core.config import settings
+
+    return {
+        "shed_total": _shed_total,
+        "high_water": _queue_high_water,
+        "maxsize": settings.SENSORIUM_QUEUE_MAXSIZE,
+    }
 
 
 def reset_queue_stats() -> None:
-    global _shed_total, _queue_high_water
+    global _shed_total, _queue_high_water, _pressure_warned
     _shed_total = _queue_high_water = 0
+    _pressure_warned = False
 
 
 def _enqueue(queue: "asyncio.Queue", obs: Observation) -> None:
@@ -354,6 +398,7 @@ def _enqueue(queue: "asyncio.Queue", obs: Observation) -> None:
         try:
             queue.put_nowait(obs)
             _queue_high_water = max(_queue_high_water, queue.qsize())
+            _warn_if_under_pressure(queue)
             return
         except asyncio.QueueFull:
             try:
@@ -366,6 +411,27 @@ def _enqueue(queue: "asyncio.Queue", obs: Observation) -> None:
                     )
             except asyncio.QueueEmpty:  # pragma: no cover — drained concurrently
                 pass
+
+
+def _warn_if_under_pressure(queue: "asyncio.Queue") -> None:
+    """Say the queue is filling up while there is still time to do something about it.
+
+    Once per fill: the point is a single actionable line in the log, not a per-observation
+    stream that would itself become load. It re-arms on the next (re)connect, because a fresh
+    relist is a new chance to fall behind.
+    """
+    global _pressure_warned
+    if _pressure_warned or not queue.maxsize:
+        return
+    if queue.qsize() < queue.maxsize * _PRESSURE_RATIO:
+        return
+    _pressure_warned = True
+    logger.warning(
+        "sensorium: observation queue at %d/%d (>= %d%%) and nothing has been shed YET. "
+        "Narrow SENSORIUM_WATCH_NAMESPACES or raise SENSORIUM_QUEUE_MAXSIZE — past the limit "
+        "the oldest observation is dropped and detection becomes lossy. See ADR-020.",
+        queue.qsize(), queue.maxsize, int(_PRESSURE_RATIO * 100),
+    )
 
 
 async def _drain_queue(queue: "asyncio.Queue", sink: Callable[[Observation], object]) -> None:
@@ -405,9 +471,16 @@ async def start_watchers(
     def queued_sink(obs: Observation) -> None:
         _enqueue(queue, obs)
 
+    specs = _watch_specs()
+    scope = watch_namespaces()
+    logger.info(
+        "sensorium: watching %s (%d stream(s))",
+        f"{len(scope)} namespace(s): {', '.join(scope)}" if scope else "ALL namespaces (-A)",
+        len(specs),
+    )
     tasks = [
-        loop.create_task(_watch_loop(args, normalise, cluster_id, queued_sink))
-        for args, normalise in _WATCHES
+        loop.create_task(_watch_loop(args, normalise, cluster_id, queued_sink, name=name))
+        for name, args, normalise in specs
     ]
     tasks.append(loop.create_task(_drain_queue(queue, sink)))
     return tasks

@@ -10,8 +10,15 @@ name: krew
 # Ordering matters: .krew.yaml points at release assets built by
 # release-binaries.yml, which runs off the same tag. If this fires before those
 # assets finish uploading, the bot would compute a sha256 for a file that is not
-# there yet, so the guard step below fails loudly instead — re-run this workflow
-# manually once the binaries job is green.
+# there yet.
+#
+# Since 2026-08-28 release-binaries.yml creates the release as a draft, attaches
+# the four archives, and publishes it last — so `released` fires on a release that
+# is already complete and this workflow succeeds on its first run. Before that the
+# release was created by hand at tag-push time and krew failed EVERY time, then was
+# re-run manually. The guard below stays regardless: it is what turns "the bot
+# hashed a file that was not there" into a legible failure, and it still fires if a
+# release is published by hand ahead of the binaries job.
 #
 # Note for contributors: workflows only run when they live in the repository
 # ROOT .github/workflows/.

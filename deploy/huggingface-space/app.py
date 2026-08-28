@@ -7,9 +7,11 @@ OpenAI-compatible SSE endpoint.
 
 The Space renders the `ki_event` side channel (status / plan / tool_call /
 tool_result) as collapsible activity blocks, and the assistant's tokens as the
-answer. The demo key carries the `readonly` role, so a write operation is
-refused by RBAC before it executes: the transcript shows the exact command the
-agent wanted to run and the denial it got back.
+answer. What the agent is allowed to do is decided by the role the configured
+key holds, so this page asks the server for that role (`GET /v1/auth/whoami`)
+and states it rather than asserting one: on the public demo it comes back
+`readonly`, and a write is refused by RBAC before it executes — the transcript
+shows the exact command the agent wanted to run and the denial it got back.
 """
 
 from __future__ import annotations
@@ -77,6 +79,43 @@ def _session_id(request: gr.Request | None) -> str:
     return sid
 
 
+# ── What this key may actually do ─────────────────────────────────────────────
+# The page used to assert `readonly` in fixed HTML. `KI_API_KEY` is configurable and the
+# prefix is only a naming convention, so a self-hoster pointing this app at their own
+# deployment with an operator key got a page stating the opposite of the truth, next to an
+# agent that would then execute writes. Ask the server instead; if it will not answer, say
+# that, and never fall back to the flattering assumption.
+
+_ROLE_UNKNOWN = "unknown"
+_role_cache: str | None = None
+
+
+def key_role() -> str:
+    """Return the role the configured key holds, or `_ROLE_UNKNOWN`.
+
+    Cached on success only: the key does not change while the process lives, but a probe
+    that failed because the backend was restarting must be retried rather than frozen into
+    the page. A server too old to serve `/v1/auth/whoami` answers 404 and lands here too.
+    """
+    global _role_cache
+    if _role_cache is not None:
+        return _role_cache
+    try:
+        with httpx.Client(timeout=httpx.Timeout(15.0, connect=8.0)) as client:
+            response = client.get(
+                f"{API_BASE}/v1/auth/whoami",
+                headers={"Authorization": f"Bearer {API_KEY}"},
+            )
+        response.raise_for_status()
+        role = str(response.json().get("role") or "").strip()
+    except (httpx.HTTPError, ValueError):
+        return _ROLE_UNKNOWN
+    if not role:
+        return _ROLE_UNKNOWN
+    _role_cache = role
+    return role
+
+
 # ── Live cluster panel ────────────────────────────────────────────────────────
 # Ground truth only. `/v1/namespaces` is a real, LLM-free read of the cluster, so
 # it is safe to present as status. Anything the model *says* (pod counts, health)
@@ -102,13 +141,16 @@ def cluster_panel() -> str:
             "</div>"
         )
 
+    role = key_role()
+    # "read-only" here was the same unchecked claim as the footer's, in three fewer words.
+    access = "read-only" if role == "readonly" else html.escape(role)
     chips = "".join(f'<code class="ki-ns">{html.escape(ns)}</code>' for ns in namespaces)
     return (
         '<div class="ki-cluster">'
         '<div class="ki-cluster-head">'
         '<span class="ki-dot"></span>'
         f"<strong>Live demo cluster</strong>"
-        f'<span class="ki-muted">{len(namespaces)} namespaces · read-only</span>'
+        f'<span class="ki-muted">{len(namespaces)} namespaces · {access}</span>'
         "</div>"
         f'<div class="ki-ns-row">{chips}</div>'
         "</div>"
@@ -344,18 +386,71 @@ HEADER = f"""
 </div>
 """
 
-FOOTER = """
-<div class="ki-footer">
-  <p><strong>Read-only, shared cluster.</strong> This demo key holds the <code>readonly</code>
-     role, so a write is refused by RBAC before it runs — with an operator key on your own
-     deployment, that same command stops at a <strong>human approval</strong> prompt instead.
-     Please don't paste secrets: your question goes to the demo backend and on to an LLM provider.</p>
-  <p>Run it on <strong>your own</strong> cluster: <code>pip install kube-q</code> ·
-     <a href="https://github.com/MSKazemi/kubeintellect#quick-start" target="_blank"
-        rel="noopener">quick start</a> · AGPL-3.0 · built by
-     <a href="https://github.com/MSKazemi" target="_blank" rel="noopener">Mohsen Seyedkazemi Ardebili</a></p>
-</div>
-"""
+# One sentence per role, each matching the four-tier model documented in the server's
+# app/api/v1/auth.py. A role this table does not know is described in the words the server
+# used and nothing more — inventing permissions for an unrecognised role is how the original
+# defect worked.
+ROLE_SENTENCES = {
+    "readonly": (
+        "<strong>Read-only, shared cluster.</strong> This deployment's key holds the "
+        "<code>readonly</code> role, so a write is refused by RBAC before it runs — with an "
+        "operator key on your own deployment, that same command stops at a "
+        "<strong>human approval</strong> prompt instead."
+    ),
+    "operator": (
+        "<strong>Write-capable deployment.</strong> This key holds the <code>operator</code> "
+        "role: create, apply, scale and exec are allowed and stop at a "
+        "<strong>human approval</strong> prompt; delete, drain, replace and taint are refused "
+        "by RBAC."
+    ),
+    "admin": (
+        "<strong>Write-capable deployment.</strong> This key holds the <code>admin</code> "
+        "role: high- and medium-risk operations are allowed, every one behind a "
+        "<strong>human approval</strong> prompt, and writes to protected infrastructure "
+        "namespaces are still blocked."
+    ),
+    "superadmin": (
+        "<strong>Write-capable deployment.</strong> This key holds the <code>superadmin</code> "
+        "role: every operation is allowed, each behind a <strong>human approval</strong> "
+        "prompt, including writes to protected infrastructure namespaces."
+    ),
+}
+
+_ROLE_UNAVAILABLE = (
+    "<strong>Permissions unconfirmed.</strong> This deployment's backend did not report which "
+    "role its key holds, so this page makes no claim about what the agent may do here — treat "
+    "it as write-capable."
+)
+
+
+def role_sentence(role: str) -> str:
+    """Describe what the key may do, in terms the server itself supplied."""
+    if role == _ROLE_UNKNOWN:
+        return _ROLE_UNAVAILABLE
+    known = ROLE_SENTENCES.get(role)
+    if known:
+        return known
+    return (
+        "<strong>Permissions unconfirmed.</strong> This deployment's key holds the "
+        f"<code>{html.escape(role)}</code> role, which this page has no description for — "
+        "treat it as write-capable."
+    )
+
+
+def footer_panel() -> str:
+    """Render the footer, naming the role the key actually holds."""
+    return (
+        '<div class="ki-footer">'
+        f"<p>{role_sentence(key_role())} "
+        "Please don't paste secrets: your question goes to the demo backend and on to an "
+        "LLM provider.</p>"
+        "<p>Run it on <strong>your own</strong> cluster: <code>pip install kube-q</code> · "
+        '<a href="https://github.com/MSKazemi/kubeintellect#quick-start" target="_blank" '
+        'rel="noopener">quick start</a> · AGPL-3.0 · built by '
+        '<a href="https://github.com/MSKazemi" target="_blank" rel="noopener">'
+        "Mohsen Seyedkazemi Ardebili</a></p>"
+        "</div>"
+    )
 
 EXAMPLES = [
     ("🔎 Any unhealthy pods?", "Are any pods unhealthy, pending or restarting right now?"),
@@ -442,7 +537,7 @@ with gr.Blocks(
                 stream_bot, chatbot, chatbot
             )
 
-    gr.HTML(FOOTER)
+    footer = gr.HTML(footer_panel)
 
     msg.submit(submit_user, [msg, chatbot], [msg, chatbot], queue=False).then(
         stream_bot, chatbot, chatbot
@@ -453,6 +548,9 @@ with gr.Blocks(
     # `show_progress="hidden"` keeps Gradio's elapsed-time counter from flashing
     # over the panel while the (sub-second) namespace fetch runs.
     demo.load(cluster_panel, None, cluster, show_progress="hidden")
+    # The footer states the key's role, so it is re-probed on load like the panel above:
+    # a key rotated on the running Space must not leave a stale claim on the page.
+    demo.load(footer_panel, None, footer, show_progress="hidden")
 
 
 if __name__ == "__main__":

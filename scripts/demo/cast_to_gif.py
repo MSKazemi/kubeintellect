@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 import pyte
 from PIL import Image, ImageDraw, ImageFont
@@ -35,9 +36,14 @@ ANSI: dict[str, tuple[int, int, int]] = {
 # Explicit (regular, bold) pairs rather than one template with a slot: the four families name
 # their weights four different ways, and a template that guesses wrong does not fail loudly --
 # the pair just never loads and that family silently leaves the chain.
+#: Per-user fonts live under the running user's home, never a hardcoded one. The absolute
+#: path baked in here worked on exactly one machine and silently dropped this family -- the
+#: preferred one -- out of the chain for everybody else, with no error anywhere.
+_USER_FONTS = f"{Path.home()}/.local/share/fonts"
+
 FONT_CANDIDATES = [
-    ("/home/mohsen/.local/share/fonts/JetBrainsMonoNerd/JetBrainsMonoNerdFontMono-Regular.ttf",
-     "/home/mohsen/.local/share/fonts/JetBrainsMonoNerd/JetBrainsMonoNerdFontMono-Bold.ttf"),
+    (f"{_USER_FONTS}/JetBrainsMonoNerd/JetBrainsMonoNerdFontMono-Regular.ttf",
+     f"{_USER_FONTS}/JetBrainsMonoNerd/JetBrainsMonoNerdFontMono-Bold.ttf"),
     ("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
      "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"),
     ("/usr/share/fonts/opentype/freefont/FreeMono.otf",

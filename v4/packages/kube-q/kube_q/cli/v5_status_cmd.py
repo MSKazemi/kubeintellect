@@ -8,7 +8,8 @@ a setting with no effect is visible instead of being quietly absent from `active
 `degraded_experimental_flags`, the same outcome one level out — the code does read the flag, but
 the subsystem it lives in is not running; and `unenforceable_guard_config`, the same idea for the
 guard settings — a blocked-namespace entry that cannot match any namespace, or an autonomy
-override the parser drops.
+override the parser drops; and `autonomy_promotion`, the ADR-102 brake on the autonomous-write
+path, whose row separates "the flag is on" from "the brake can actually act".
 
 Usage:
   kq v5-status
@@ -22,6 +23,59 @@ from rich.table import Table
 
 from kube_q.core.config import load_config
 from kube_q.core.transport import build_headers, explain, make_client
+
+#: How `memory.chain.state` reads to an operator. The server's five states exist because none of
+#: the four non-`intact` ones means "fine", and a CLI that collapsed them back into a tick or a
+#: cross would undo the distinction the server was changed to make (2026-08-28).
+_CHAIN_ROWS: dict[str, tuple[str, str]] = {
+    "TAMPERED": (
+        "red",
+        "the stored memory-audit rows no longer hash to what they carry, or the chain is "
+        "shorter than its own head anchor — treat memory-derived answers as untrusted",
+    ),
+    "unverified": (
+        "yellow",
+        "a check ran and could not conclude (the audit rows or the anchor were unreadable). "
+        "This is NOT a tamper signal — nobody looked is not evidence of anything",
+    ),
+    "never-checked": (
+        "yellow",
+        "hardening is on and no verification has completed yet — nothing has asked this chain",
+    ),
+    "off": (
+        "dim",
+        "MEMORY_SECURITY_HARDENING is off, so no audit chain is being written and there is "
+        "nothing to verify. Not a clean bill of health",
+    ),
+    "intact": ("green", "verified — nothing contradicted the stored memory-audit rows"),
+}
+
+
+def _add_chain_row(table: Table, chain: dict) -> None:
+    """Render the memory audit chain's last recorded verdict, and how old it is.
+
+    Always rendered when the server sent one, including `off` and `intact`. A tamper surface
+    that appears only when it has something bad to say is one an operator cannot use to confirm
+    anything: the absence of a row is indistinguishable from an older server that never had it.
+
+    The age is not decoration. The server reports the LAST RECORDED verdict, never a fresh one —
+    so `intact` without an age would read as "checked just now" when it may be a verdict from a
+    verifier that stopped hours ago. `stale` says exactly that, and it is shown in red because a
+    stopped verifier looks identical to one that keeps agreeing with itself.
+    """
+    state = str(chain.get("state") or "")
+    if not state:
+        return
+    colour, note = _CHAIN_ROWS.get(state, ("yellow", "unrecognised state"))
+    age = chain.get("age_s")
+    when = "never checked" if age is None else f"last checked {float(age):.0f}s ago"
+    if chain.get("stale"):
+        when = f"[red]{when} — STALE, the verifier may have stopped[/red]"
+    label = "memory_chain" if colour in ("green", "dim") else "[red]memory_chain[/red]"
+    table.add_row(
+        label,
+        f"[{colour}]{state}[/{colour}] — {when}\n[dim]{note}[/dim]",
+    )
 
 
 def run(argv: list[str]) -> int:
@@ -98,6 +152,7 @@ def run(argv: list[str]) -> int:
                 f"[red]{state}[/red] — {memory.get('reason') or 'no reason recorded'}\n"
                 f"[dim]{dropped} observation(s) dropped since this process started[/dim]",
             )
+        _add_chain_row(table, memory.get("chain") or {})
     # Guard settings that parse cleanly and protect nothing — the same idea one level down.
     # `KUBECTL_BLOCKED_NAMESPACES` is the security control an operator is most likely to get
     # subtly wrong (a glob, a slash), and every parser for it discards silently.
@@ -108,5 +163,33 @@ def run(argv: list[str]) -> int:
             "[red]" + "\n".join(guard) + "[/red]\n[dim]these guard entries are configured but "
             "cannot match anything — the protection you think you have is not in force[/dim]",
         )
+    # The fourth brake on the autonomous-write path (ADR-102). Always shown when the flag is on,
+    # because the two failure modes are quiet ones: a flag named *statistical promotion* reported
+    # under `active_flags` reads as "rungs are being earned here" — the direction row says
+    # otherwise — and a deployment that set the flag without an outcome store has the brake
+    # enabled and not operating, which is a brake reported as on that is not in the write path.
+    promotion = data.get("autonomy_promotion") or {}
+    if promotion.get("enabled"):
+        revoked = promotion.get("authority_revoked")
+        operating = promotion.get("operating")
+        reason = promotion.get("reason") or "no reason recorded"
+        if not operating:
+            table.add_row(
+                "[red]autonomy_promotion[/red]",
+                f"[red]enabled but NOT operating[/red] — {reason}\n"
+                "[dim]A3 auto-fix is governed by the allowlist alone[/dim]",
+            )
+        elif revoked:
+            table.add_row(
+                "[red]autonomy_promotion[/red]",
+                f"[red]A3 auto-fix REVOKED[/red] for {promotion.get('action_class')}\n"
+                f"[dim]{reason} — {promotion.get('samples')} sample(s) in the window[/dim]",
+            )
+        else:
+            table.add_row(
+                "autonomy_promotion",
+                f"holding ({promotion.get('samples')} sample(s) in the window)\n"
+                f"[dim]revoke-only: this brake can close the A3 gate, never open it[/dim]",
+            )
     console.print(table)
     return 0

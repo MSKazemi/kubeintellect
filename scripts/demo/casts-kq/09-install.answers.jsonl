@@ -1,0 +1,6 @@
+{"step": 1, "expect": "Choose [1/2] [1]", "sent": "1"}
+{"step": 2, "expect": "OPENAI_API_KEY:", "sent": ""}
+{"step": 3, "expect": "Create a local Kind cluster", "sent": "n"}
+{"step": 4, "expect": "Choose [1/2] (default: 1)", "sent": "1"}
+{"step": 5, "expect": "Install as background service", "sent": "n"}
+{"step": 6, "expect": "Start server and open kq now", "sent": "n"}

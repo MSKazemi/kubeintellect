@@ -103,6 +103,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write      # keyless sigstore signing via GitHub OIDC
+      attestations: write  # write the build-provenance attestation for the chart
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -138,9 +140,28 @@ jobs:
             --app-version "${{ steps.version.outputs.version }}" \
             --destination /tmp/chart
 
+      # `helm push` prints the pushed digest to stderr; it is captured because the
+      # attestation must bind the DIGEST, not the version tag, which is mutable.
       - name: Push
+        id: push
         run: |
-          helm push "/tmp/chart/kubeintellect-${{ steps.version.outputs.version }}.tgz" "${OCI_REPO}"
+          helm push "/tmp/chart/kubeintellect-${{ steps.version.outputs.version }}.tgz" \
+            "${OCI_REPO}" 2>&1 | tee /tmp/helm-push.log
+          digest="$(awk '/^Digest: /{print $2}' /tmp/helm-push.log)"
+          if [ -z "${digest}" ]; then
+            echo "::error::helm push printed no Digest line — refusing to attest an unknown digest."
+            exit 1
+          fi
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
+      # Supply chain (A13). The chart is the enterprise install path, so leaving it the one
+      # unsigned artifact would have signed everything except what most operators run.
+      - name: Attest the chart
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/mskazemi/charts/kubeintellect
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
 
       # Prove the published artifact is actually installable, rather than
       # trusting that the push returned zero.

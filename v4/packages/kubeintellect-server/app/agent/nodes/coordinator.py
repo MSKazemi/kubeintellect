@@ -1214,11 +1214,11 @@ def _maybe_record_direct_outcome(state: AgentState, messages: list[BaseMessage])
             created_by_role=state.get("user_role"),
         ))
         # V4 hippocampus: the same outcome becomes an L1 episode.
-        from app.memory.episodes import write_episode
+        from app.memory.episodes import trigger_kind_for, write_episode
         _asyncio.create_task(write_episode(
             cluster_id=cluster_id,
             namespace=namespace,
-            trigger_kind="user_query",
+            trigger_kind=trigger_kind_for(state.get("trigger_source")),
             trigger_detail=_last_user_text(state)[:300],
             summary=f"Direct fix in ns={namespace}: {key[:200]}",
             root_cause=key[:240],
@@ -1334,10 +1334,10 @@ Synthesize these into a single root-cause analysis. Respond with ONLY a JSON obj
                 outcome_feedback=None,
             ))
             from app.cluster_id import get_cluster_id as _gcid
-            from app.memory.episodes import write_episode
+            from app.memory.episodes import trigger_kind_for, write_episode
             _asyncio.create_task(write_episode(
                 cluster_id=state.get("cluster_id") or _gcid(),
-                trigger_kind="user_query",
+                trigger_kind=trigger_kind_for(state.get("trigger_source")),
                 trigger_detail=_last_user_text(state)[:300],
                 summary=summary[:1200],
                 root_cause=rca.root_cause,

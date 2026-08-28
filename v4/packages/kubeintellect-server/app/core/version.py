@@ -76,8 +76,14 @@ UNWIRED_EXPERIMENTAL_FLAGS = frozenset({
     "KI_V5_STAGED_PROPAGATION",
     "KI_V5_STAGE_SIZE",
     "KI_V5_STAGE_WINDOW_SECONDS",
-    "KI_V5_STATISTICAL_PROMOTION",
+    # KI_V5_STATISTICAL_PROMOTION was wired 2026-08-28: `memory/episodes.write_episode`
+    # records a graded autonomous fix into `promotion_outcomes` when it is on.
 })
+
+
+#: Flags that are wired, do NOT carry the ``MEMORY_`` prefix, and still cannot act unless the
+#: memory hierarchy is ready — every one of their consumers reads through its pool.
+_HIERARCHY_DEPENDENT = frozenset({"KI_V5_STATISTICAL_PROMOTION"})
 
 
 def code_version() -> str:
@@ -161,6 +167,14 @@ def degraded_experimental_flags() -> list[str]:
     ``ready`` none of them can act — including the case where the operator turned a slice on and
     left ``MEMORY_HIERARCHY_ENABLED`` off, where there is no hierarchy to run inside.
 
+    ``KI_V5_STATISTICAL_PROMOTION`` is here for the same reason despite not carrying the prefix:
+    both halves of it — `episodes.write_episode` recording an attempt, and the watchtower asking
+    whether that record has revoked A3 — go through the hierarchy's pool. Without it the flag is
+    on and *neither* half runs, which on the A3 path means an operator is told a brake is active
+    while the gate is governed by the allowlist alone. The prefix tuple, not the dependency, was
+    the reason it was missed; the name is listed explicitly rather than by pattern so that adding
+    a second non-``MEMORY_*`` consumer is a deliberate edit.
+
     These flags stay in :func:`active_experimental_flags`. That list is *rollout identity* — which
     arm this pod was configured as — and a Postgres blip must not make it flap; an unwired flag is
     excluded there because it can never do anything, which is not true here: the hierarchy retries
@@ -172,7 +186,7 @@ def degraded_experimental_flags() -> list[str]:
     if memory_status()["state"] == "ready":
         return []
     return sorted(f for f in _on_booleans() - UNWIRED_EXPERIMENTAL_FLAGS
-                  if f.startswith("MEMORY_"))
+                  if f.startswith("MEMORY_") or f in _HIERARCHY_DEPENDENT)
 
 
 def set_but_unwired_flags() -> list[str]:

@@ -380,9 +380,42 @@ async def verify_memory_chain(pool, cluster_id: str) -> ChainVerdict:
          "payload": r["payload"], "prev_hash": r["prev_hash"], "hash": r["hash"]}
         for r in rows
     ]
-    if not _fr.verify_chain(adapted):
-        # A performed check with a positive finding: the rows recompute to a different hash
-        # than they carry. Nothing about the anchor changes that.
+    if _fr.verify_chain(adapted):
+        return await _head_verdict(pool, cluster_id, adapted)
+    # A link mismatch is a performed check with a positive finding — the rows recompute to a
+    # different hash than they carry — *except* in the one case the links cannot distinguish
+    # from it: entries removed from the FRONT of the chain on purpose. Nothing below is
+    # reached by a chain that still starts at seq 0, so the ordinary verdict is unchanged and
+    # a missing `chain_truncation` table cannot soften it.
+    if not adapted or int(adapted[0]["seq"]) == 0:
+        return ChainVerdict(False, True)
+    from app.db import chain_truncation
+
+    declared = await chain_truncation.declared_start(
+        pool, chain="memory_audit", scope_id=cluster_id)
+    if not declared.read:
+        logger.warning(
+            f"security: memory chain for {cluster_id!r} does not start at seq 0 and the "
+            f"truncation record could not be read — NOT verified, which is neither an "
+            f"accusation nor an all-clear"
+        )
+        return ChainVerdict(True, False)
+    if not declared.found:
+        logger.warning(
+            f"security: memory chain for {cluster_id!r} starts at seq={adapted[0]['seq']} "
+            f"with no recorded truncation — its earliest entries were removed"
+        )
+        return ChainVerdict(False, True)
+    if (int(adapted[0]["seq"]) != declared.seq
+            or str(adapted[0]["prev_hash"]) != declared.prev_hash):
+        logger.warning(
+            f"security: memory chain for {cluster_id!r} has a truncation record resuming at "
+            f"seq={declared.seq} but the surviving chain starts at seq={adapted[0]['seq']} — "
+            f"the record does not describe these rows"
+        )
+        return ChainVerdict(False, True)
+    if not _fr.verify_chain(adapted, start_seq=declared.seq,
+                            start_prev_hash=declared.prev_hash):
         return ChainVerdict(False, True)
     return await _head_verdict(pool, cluster_id, adapted)
 

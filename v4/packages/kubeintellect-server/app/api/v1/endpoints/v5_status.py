@@ -18,6 +18,7 @@ from app.core.version import (
     degraded_experimental_flags,
     set_but_unwired_flags,
 )
+from app.memory import service as memory_service
 from app.memory.service import memory_status
 
 router = APIRouter()
@@ -44,6 +45,35 @@ class V5Status(BaseModel):
     kill_switch_engaged: bool                       # ⇒ all autonomous writes denied
     change_freeze: bool                             # ⇒ deny-by-default change window
     spend_cap_usd: float                            # 0 = unlimited
+    # the fourth brake on the same path (ADR-102). `enabled` is the flag; `operating` is
+    # whether it can actually act — they differ whenever the flag is on and there is no
+    # outcome store to read, which is a brake reported as on that is not in the path.
+    autonomy_promotion: dict = Field(default_factory=dict)
+
+
+async def _autonomy_promotion() -> dict:
+    """The A3 statistical brake's live state, or why it is not acting. Never raises.
+
+    A read failure is reported as *not operating* with the error in ``reason`` — the same
+    distinction the watchtower makes when it decides whether to revoke. What this must never do
+    is answer "clean" for a store it could not read: this is the surface an operator checks to
+    confirm a brake, and `promotion_engine.read_outcomes` already records what an unreadable
+    source reading as a clean one does to fast-down-slow-up.
+    """
+    import time
+
+    from app.autonomy.promotion_source import autofix_status, autofix_status_unavailable
+
+    if not settings.KI_V5_STATISTICAL_PROMOTION:
+        return autofix_status_unavailable("flag off")
+    pool = memory_service._pool
+    if pool is None:
+        return autofix_status_unavailable(
+            "no outcome store — the brake is not operating; A3 is governed by the allowlist alone")
+    try:
+        return await autofix_status(pool, time.time() / 86400.0)
+    except Exception as exc:
+        return autofix_status_unavailable(f"outcome store unreadable: {exc}")
 
 
 @router.get("/v5/status", response_model=V5Status)
@@ -60,4 +90,5 @@ async def v5_status():
         kill_switch_engaged=kill_switch_engaged(),
         change_freeze=change_freeze_active(),
         spend_cap_usd=settings.KI_V5_SPEND_CAP_USD,
+        autonomy_promotion=await _autonomy_promotion(),
     )

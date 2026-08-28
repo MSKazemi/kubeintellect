@@ -1,4 +1,4 @@
-"""POST /v1/auth/demo-keys — mint a readonly HMAC demo key (admin-gated).
+"""Auth-facing routes: mint a demo key, and tell a caller which role its key holds.
 
 Mint flow:
   1. Caller authenticates with an admin or superadmin Bearer key.
@@ -8,6 +8,13 @@ Mint flow:
 
 The HMAC secret never leaves this server — keys are validated stateless by
 the same secret in app/api/v1/auth.py::_verify_hmac_demo_key.
+
+`GET /v1/auth/whoami` exists because a client cannot infer its own privileges. The key
+prefix is a naming convention, not a grant: `ki-op-…` in `KUBEINTELLECT_READONLY_KEYS` is
+readonly, an unrecognised key is readonly, and with no keys configured at all every caller
+is admin. A UI that states what its key may do — the Hugging Face Space says so in its
+footer — has to ask the server rather than guess, or it will eventually print a false
+claim next to an agent that can act.
 """
 from __future__ import annotations
 
@@ -22,6 +29,20 @@ from app.core.config import settings
 router = APIRouter()
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+class WhoAmIResponse(BaseModel):
+    role: str
+
+
+@router.get("/auth/whoami", response_model=WhoAmIResponse)
+def whoami(request: Request) -> WhoAmIResponse:
+    """Return the role the caller's own key holds — never another caller's.
+
+    The route sits on the authenticated router, so an absent or invalid key is rejected
+    upstream and never reaches this handler.
+    """
+    return WhoAmIResponse(role=get_user_role(request))
 
 
 class DemoKeyMintRequest(BaseModel):

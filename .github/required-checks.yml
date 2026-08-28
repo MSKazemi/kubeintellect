@@ -1,0 +1,61 @@
+# Which CI checks `main` actually requires — and why each one it does not require is not
+# required. This file is a RECORD, not a control: GitHub branch protection lives in the
+# repository settings and only an admin can change it. What this file buys is that the two
+# cannot drift apart quietly.
+#
+# The gap it exists to close: `ci.yml` produces 15 named checks, branch protection requires 9,
+# and nothing anywhere connected the two lists. A job could be added, renamed, or quietly left
+# out of the required set and every PR would keep merging green — which is exactly what a
+# required-check list is supposed to prevent.
+#
+# Verify this record against the live setting:  make check-required
+# (needs an authenticated `gh` with repo scope; the check is not part of CI, which has no
+# token for it.)
+
+# ── Required. A PR cannot merge while one of these is red. ────────────────────────────────
+required:
+  - Lint (ruff)                     # also carries the doc-claims step (2026-08-28)
+  - Types (mypy)
+  - File modes
+  - Syntax warnings                 # also carries the encoding and roster steps
+  - Tests (server)
+  - Tests (kube-q CLI)
+  - Tests (server · py3.13)
+  - Tests (kube-q CLI · py3.13)
+  - Install smoke test
+
+# ── Not required, each with a dated reason. A CI check in neither list fails the gate. ────
+not_required:
+  "Tests (server · py3.14)":
+    "2026-08-28: `continue-on-error: true` in ci.yml — a forward-looking run against an
+     interpreter the project does not support yet. Requiring a check that cannot fail the job
+     would be theatre."
+  "Tests (kube-q CLI · py3.14)":
+    "2026-08-28: `continue-on-error: true`, as with the server suite above — advisory against
+     an interpreter the project does not support yet, so requiring it would be theatre."
+  "Tests (v2 · frozen)":
+    "2026-08-28: ⚠️ NOT a deliberate decision — recorded here as an open question. v2 is a
+     frozen generation cited by the published paper, and its suite has been silently empty
+     before now. A red or empty frozen suite currently blocks nothing."
+  "Tests (v3 · frozen)":
+    "2026-08-28: ⚠️ NOT a deliberate decision — the same open question as v2. v3 is an abandoned
+     spike rather than a cited generation, so it is the weaker half of that question."
+  "Web (lint + build)":
+    "2026-08-28: ⚠️ NOT a deliberate decision — recorded as an open question. The web surface
+     can go red and merge."
+  "Container image (build + serve)":
+    "2026-08-28: ⚠️ NOT a deliberate decision, and the sharpest of these. This job builds the
+     image and probes /healthz against a real Postgres — it is the ONLY check that proves the
+     published artifact starts at all, and every image published before it existed could not.
+     A PR that breaks the image merges green today."
+
+# ── Settings this record also pins, because each one changes what 'green' means. ──────────
+settings:
+  # false = a PR does NOT have to be up to date with main before merging. Two individually
+  # green PRs can therefore turn main red on their SUM — which has already happened here, on
+  # the documented test counts. Now that the doc-claims checker is a required-job step
+  # (2026-08-28), that drift fails a build rather than merely being wrong.
+  strict: false
+  # false = an admin can push straight to main past every check above. Deliberate for a solo
+  # maintainer; written down so it is never mistaken for "main is protected from everyone".
+  enforce_admins: false

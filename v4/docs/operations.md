@@ -94,6 +94,96 @@ psql -v ON_ERROR_STOP=1 --single-transaction "$DATABASE_URL" -f kubeintellect-20
 In SQLite mode, the entire database is a single file — copy
 `~/.kubeintellect/kubeintellect.db` while the server is stopped.
 
+#### Prove the restore was complete
+
+A dump tells you a backup was taken. It does not tell you a restore brought everything back — and
+for two tables the difference is dangerous. `decision_log` and `memory_audit` are hash chains, and
+a restore that silently drops their **newest** rows breaks no link: the surviving rows hash
+correctly, chain verification returns intact, and the postmortem prints its intact-chain banner
+over a record that is quietly short. That is what `decision_log_head` and `memory_chain_head` are
+for, and they only work if something compares them.
+
+So take a **manifest** with every dump, and verify against it after every restore:
+
+```bash
+# At backup time, beside the pg_dump
+kubeintellect backup-manifest --out kubeintellect-$(date +%F).manifest.json --note nightly
+pg_dump "$DATABASE_URL" > kubeintellect-$(date +%F).sql
+
+# After the restore — exits 1 if anything is missing, so it is safe to run in a rehearsal
+kubeintellect verify-restore kubeintellect-2026-01-01.manifest.json
+```
+
+The manifest records the schema version and DDL fingerprint, exact row counts for every table
+whose loss is a data-loss event, and how far each hash chain got. `verify-restore` re-measures and
+reports **every** discrepancy, not the first — mid-incident, a list of three things to fix beats
+one error and a re-run. A short table, a table the restore never created and a truncated chain are
+three different messages, because they need three different responses.
+
+#### RPO and RTO
+
+These are **your** numbers, set by the schedule you choose — KubeIntellect does not take backups
+for you and does not ship a scheduled backup in the Helm chart. What follows is the reference
+deployment, so the figures are concrete rather than aspirational:
+
+| | Reference value | What sets it |
+|---|---|---|
+| **RPO** (data you can lose) | **24 h** | A nightly `pg_dump`. Hourly gets you 1 h; continuous WAL archiving (`pg_basebackup` + `archive_command`) gets you minutes, and is the right answer if losing a day of incident history is not acceptable. |
+| **RTO** (time to be serving again) | **minutes** | `psql --single-transaction` restore time, which is dominated by database size, plus a rollout. The server needs no warm-up: memory, the recorder and the sensorium all reattach on their own. |
+| **Verified?** | Only if you run it | `kubeintellect verify-restore` is the check. A backup nobody has ever restored is an untested assumption, not a recovery plan — rehearse it on a scratch database on the same cadence you claim the RPO on. |
+
+!!! warning "What is not automated"
+    There is no scheduled backup in the chart, no off-site copy, and no automated restore
+    rehearsal. Those are deliberate gaps, not oversights — where the dump goes and who may read it
+    is a decision only the operator can make, and it usually belongs to a platform-wide backup
+    system rather than to one application. Wire `backup-manifest` + `pg_dump` into whatever takes
+    your other backups, and store the manifest **beside** the dump.
+
+### Archiving a hash chain
+
+`decision_log` and `memory_audit` are the two fastest-growing tables in the schema and the two
+retention will never prune (see below). Before either can ever be truncated, the rows have to
+leave the box in a form that can still be *checked*:
+
+```bash
+kubeintellect chain-export memory_audit "$CLUSTER_ID" --out memory-audit-$(date +%F).json
+kubeintellect chain-verify-export memory-audit-2026-01-01.json    # exits 1 if anything is wrong
+```
+
+The archive carries the rows verbatim, the head anchor as it stood, the link verdict at export
+time and a SHA-256 over all of it, so `chain-verify-export` can check it years later **with no
+database present**. A truncated source chain is visible in the archive even though every archived
+link verifies — the anchor is what says rows are missing, which is the whole reason it is in
+there.
+
+Two limits worth stating plainly. The hash proves the archive has not been *edited*; it does not
+prove who wrote it, so store the archive where this database's operators cannot silently replace
+it. And the archive is not itself the prune — it is the thing that makes one legible.
+
+### Pruning a hash chain, once it is archived
+
+```bash
+kubeintellect chain-truncate memory-audit-2026-01-01.json               # dry run
+kubeintellect chain-truncate memory-audit-2026-01-01.json --yes --note "90-day retention"
+```
+
+This is the only command that deletes chain rows, and it does two things in one transaction: it
+records the gap in `chain_truncation` — scope, `through_seq`, where the chain resumes and from
+which hash, and the archive's hash — and then removes the archived rows. After it, the verifier
+reports the chain **intact**; the same rows deleted in `psql` are reported **TAMPERED**, which is
+the point and is not a bug you have found. It refuses on a stale archive, a chain that changed
+since the export, a truncation that would leave nothing, or a surviving chain that does not link
+to the archive's last hash. Full list in the CLI reference.
+
+Three operational consequences:
+
+- **Re-run `kubeintellect db-init` first.** `chain_truncation` is schema version 2. Until then
+  the truncation fails cleanly (nothing is deleted) and `kq v5-status` reports a stale schema.
+- **Keep the archive.** It is the only copy of what was removed, and the truncation record points
+  at its hash. Losing it does not break verification; it loses the evidence.
+- **Retention still never does this on a schedule.** `RETENTION_*` will not prune either ledger.
+  Deciding that a chain may be shortened stays a human act, per chain, with an archive in hand.
+
 ### Retention / purge
 
 The reflexion data grows over time. A built-in SQL function prunes it:

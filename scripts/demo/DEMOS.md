@@ -168,6 +168,21 @@ spec.template.metadata.annotations
 payments-api-56f659864c   2   2   0   (new ReplicaSet, created at the moment of approval)
 ```
 
+**And the restart did not fix it — 06 says so, in the session.** The turn after the approval asks
+*"did the restart change anything?"*, and the answer is a negative:
+
+```
+You: did the restart change anything?
+The restart of the payments-api deployment did not resolve the issue. The pods are still failing
+with the same error: … the DATABASE_URL environment variable is not set …
+```
+
+That is the most valuable frame in the corpus and it is easy to mistake for a failed demo. A
+rollout restart *cannot* fix a missing environment variable; an agent that reported success after
+its own approved action ran would be the failure. The in-session evidence that the action really
+executed is the new ReplicaSet in that same output (`payments-api-56f659864c-…`); the
+`restartedAt` annotation above was read from the cluster afterwards, not from the recording.
+
 This cast is also the README hero image. `.github/assets/kubeintellect-demo.gif` is rendered
 directly from `casts-kq/06-approval-gate.cast` — the whole story, diagnosis through gate through
 verification, with no frame removed. Before this corpus existed the hero was assembled by
@@ -216,7 +231,14 @@ by user impact. It stops at *"likely due to pod label mismatch or pod readiness 
 the diagnosis as a next step. Found is not the same as solved.
 
 This is the one place the two corpora disagree outright: **the first corpus missed `inventory`
-entirely**, in all three turns, checked by grep. Two recordings of the same prompt against two
+entirely**, in all three turns — it never names it in an answer. Be precise about how that is
+checked, because the obvious check gives the wrong answer:
+`grep -c inventory transcripts/08-complex-triage.txt` returns **4**, not 0, and all four are raw
+`kubectl` output the session pasted in (`inventory-5c7489cd6d-…`, `deployment.apps/inventory`,
+`endpoints/inventory <none>`). The agent's own prose contains none of them. The check that means
+something is over the **answer text only** — which is what
+`evaluation/test_a_demo_that_only_ever_approves_has_not_shown_a_gate.py` does, via `_answer_only`.
+Re-verified 2026-08-28. Two recordings of the same prompt against two
 deployments, one finding it and one not, is worth more than either on its own — unprompted
 discovery of a fault with no pod-level signal is not something to state as a capability.
 
@@ -225,6 +247,82 @@ Prometheus; both URLs are empty in the ConfigMap. 04 asks a question that sends 
 and the answer reports them unavailable and falls back to what `kubectl` can show. An agent that
 answered the metrics question anyway would be the worst failure in the corpus, because an invented
 number is indistinguishable from a real one.
+
+## The chat interface — 2026-08-28
+
+Everything above is the CLI. It is not the surface most people meet first: the public
+Hugging Face Space serves `deploy/huggingface-space/app.py`, a browser chat UI, and nothing in
+this corpus showed it. `chat-ui/` is one recorded session of that UI, driving the **same**
+incident scenario 01 uses — `payments-api` crash-looping in `shop`, asked with the same words —
+so the demo follows one fault across both surfaces instead of showing two unrelated sessions.
+
+| | |
+|---|---|
+| Recorded | 2026-08-28, against the same local `kind` cluster `ki-demo` |
+| Geometry | viewport pinned to **1280×800**, the way the casts pin 100×34 |
+| Recorder | `scripts/demo/record_chat_ui.py` (Playwright, headless Chromium) |
+| Key role | **`readonly`** — see below, this is not a detail |
+| Length | 60.9 s of playback for 59.6 s of session: **real time, not compressed** |
+| Answer latency | 15.3 s for the diagnosis, 3.1 s and 5.9 s for the two short turns |
+
+The latencies are measured by the recorder and written to `chat-ui-crashloop.json`. Quote those,
+not a stopwatch held to the video, whose length also covers typing, reading and scrolling.
+
+**Why the key must be `readonly`.** The page's own footer states, in fixed text, that the demo key
+holds the `readonly` role. It does not check — run the same app with an operator key and that
+sentence on screen becomes false while everything else still looks right. The recording is made
+with a readonly key so that every word visible in the frame is true.
+
+**Why the session has a second turn.** Clicking the page's own *"🔒 Try a write → blocked"* button
+does **not** produce a refusal. The agent answers with the command it *would* run and asks
+*"Shall I proceed?"* — no RBAC denial appears anywhere on screen, because nothing was attempted.
+The denial arrives only after the human says go ahead and `run_kubectl` is actually called:
+
+```
+🛠 run_kubectl          Running: kubectl scale deployment nginx --replicas=3 -n default
+📄 run_kubectl output   [Permission Denied] Your API key has read-only access.
+                        The 'scale' operation requires an operator or admin API key.
+```
+
+That is the same failure mode as the A2 trap in [Reproducing](#reproducing): a run that proves
+nothing exits 0 and looks fine. A demo that stops at the button shows a proposal and calls it a
+block. `record_chat_ui.py` fails loudly if the refusal text is missing, so the recording cannot
+quietly become the weaker one.
+
+**What the recording does not show.** The status blocks (`Targeting …`, `Investigating …`) expand
+to nothing; only the tool blocks carry a body. The page's promise that expanding the grey blocks
+reveals *"the real `kubectl` calls behind it"* is kept by the tool blocks and not by the status
+blocks, and the recording expands the tool blocks by name for that reason.
+
+**Not a screen recording.** `x11grab` captures the physical display, so it records the lock screen
+whenever the workstation is locked — a first attempt on 2026-08-28 produced 238 s of a clock and
+nothing else. Playwright records from the renderer, which is also what pins the viewport.
+
+## Verification — 2026-08-28
+
+Every claim in the table above was re-checked against `transcripts-kq/` on 2026-08-28, independently
+of the session that recorded it. Each verdict below is backed by a line from that scenario's own
+transcript; the line numbers are into `transcripts-kq/<scenario>.txt`.
+
+| # | Verdict | Evidence in the transcript |
+|---|---|---|
+| 01 | ✅ ship | `:71` `"FATAL: DATABASE_URL is not set; refusing to start"` and `:72` `hint: the value is provisioned by the 'payments-db' Secret` — both quoted back by the agent, not just present in the pod spec |
+| 02 | ✅ ship | `:3-5` three `checkout-…` pods in `ImagePullBackOff`; the bad tag is the injected `nginx:5.1.0-does-not-exist` |
+| 03 | ✅ ship | `:59` `Limit: 64Mi` · `:62` `Reason: OOMKilled` · `:63` `Exit Code: 137` |
+| 04 | ✅ ship, **with the caveat already on this page** | `:25` `endpoints/inventory <none>` · `:45` `kubectl get pods -n shop --show-labels` · `:58` `"The service selector is likely misconfigured"`. `grep -c inventory-api` on this transcript is **0** — it never read the offending value. It is **1** in the first corpus, which named it outright. |
+| 05 | ✅ ship | `:113` the operator asks *"is this a cluster capacity problem or a manifest problem?"* → `:114` `"This is primarily a manifest problem."` |
+| 06 | ✅ ship | `:112` `🟡 Approval Required — risk level: MEDIUM` · `:127` `HITL> approve` · then the honest negative above. `casts-kq/06-approval-gate.gates.jsonl` records it machine-readably: `{"turn": 2, "gate": 1, "human_summary": "kubectl rollout restart deployment payments-api -n shop", "answered_with": "approve"}` |
+| 07 | ✅ ship — **the strongest of the eight** | `:84` `HITL> deny`, and the proof is *inside* the session: `:91` `You: how many replicas does web have now?` → `:93` `"currently has 2 replicas."` The gate record agrees: `"answered_with": "deny"`. |
+| 08 | ✅ ship | all five faulted workloads appear in the answers — `payments-api` ×8, `checkout` ×10, `report-worker` ×7, `inventory` ×9, `ml-scorer` ×6 — with `:89` `1 inventory:` as its own incident and `:135` `Ranking by User Impact` placing it second (`:143` `Impact: High`). |
+
+**Eight of eight are fit to publish**, on the kq corpus. Two things a viewer must be told rather
+than left to infer, both already written up above and neither a defect in the recording: **04**
+inferred the selector instead of reading it, and **06** ends in a *negative* — the approved restart
+did not fix the fault, which is the correct outcome and looks like a failed demo if unexplained.
+
+The first corpus (`casts/`, `transcripts/`) is **not** fit to publish alongside these as an equal:
+it disagrees with the current corpus on 08 and shows the raw SSE stream (literal `###` and
+`**bold**`) rather than what a user sees. Keep it as the record it is.
 
 ## Files
 
@@ -241,4 +339,14 @@ scripts/demo/
   transcripts-kq/         plain-text renderings, for reading and grepping
   gifs-kq/                regenerated from the casts
   casts/, transcripts/, gifs/    the first corpus, recorded off the SSE stream
+
+  record_chat_ui.py       records the browser chat UI (needs a cluster + the Gradio app)
+  render_chat_ui.sh       rebuilds the mp4/GIFs/poster from the recording (needs nothing)
+  chat-ui/
+    chat-ui-crashloop.webm    the recording, 1280×800, real time — the source of record
+    chat-ui-crashloop.json    geometry, key role, and the measured answer latencies
+    chat-ui-crashloop.gif     turn 1, the diagnosis            (0–31 s)
+    chat-ui-rbac-denied.gif   turn 2, the write and the denial (31–61 s)
+    chat-ui-crashloop.png     the closing frame, full resolution
+    chat-ui-crashloop.mp4     H.264 master for the narrated video — derived, not committed
 ```

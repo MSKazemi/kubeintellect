@@ -86,12 +86,57 @@ def _should_auto_fix(finding: Finding, level: str) -> bool:
     return True
 
 
+async def _autofix_revoked() -> str | None:
+    """ADR-102 brake: has `watchtower-autofix`'s recorded record taken its write authority away?
+
+    Behind `KI_V5_STATISTICAL_PROMOTION` (default off), and **revocation only** — the recorded
+    outcomes can close the A3 gate, never open it. See `promotion_source.autofix_revocation` for
+    why that asymmetry is the only honest reading of these samples. Off ⇒ A3 is unchanged.
+
+    Three outcomes, and the difference between the last two matters:
+
+    * flag off ⇒ ``None``. Nothing changes.
+    * no store configured (`MEMORY_HIERARCHY_ENABLED` off, or the pool not up yet) ⇒ ``None``,
+      with a warning. Failing closed here would silently disable A3 on any deployment that turned
+      on a *promotion* flag without Postgres — an outcome nobody would attribute to this flag.
+      The warning is the point: the operator learns the brake is not operating.
+    * the store exists and could not be read ⇒ **revoke**. A brake whose evidence cannot be read
+      is not a brake, and `promotion_engine.read_outcomes` already records what happens when an
+      unreadable source is allowed to read as a clean one: fast-down-slow-up means a class whose
+      agreement has collapsed is held at its rung, silently, by the read failure itself.
+    """
+    if not settings.KI_V5_STATISTICAL_PROMOTION:
+        return None
+    from app.memory import service as _memory_service
+
+    pool = _memory_service._pool
+    if pool is None:
+        logger.warning(
+            "watchtower: KI_V5_STATISTICAL_PROMOTION is on but there is no outcome store — "
+            "the A3 statistical brake is NOT operating; A3 is governed by the allowlist alone")
+        return None
+    try:
+        from app.autonomy.promotion_source import autofix_revocation
+
+        return await autofix_revocation(pool, time.time() / 86400.0)
+    except Exception as exc:
+        logger.warning("watchtower: could not read the promotion outcome store (%s) — "
+                       "revoking A3 auto-fix for this finding rather than assuming a clean record",
+                       exc)
+        return f"outcome store unreadable: {exc}"
+
+
 async def _investigate(finding: Finding, level: str) -> None:
     global _semaphore
     if _semaphore is None:
         _semaphore = asyncio.Semaphore(_MAX_CONCURRENT)
 
     auto_fix = _should_auto_fix(finding, level)
+    if auto_fix:
+        revocation = await _autofix_revoked()
+        if revocation is not None:
+            logger.warning("watchtower: A3 auto-fix revoked by the recorded record: %s", revocation)
+            auto_fix = False
     predicted = getattr(finding, "severity", "warning") == "predicted"
     session_id = f"auto-{finding.id}"
     if predicted:

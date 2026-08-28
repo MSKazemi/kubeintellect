@@ -1,0 +1,25 @@
+{
+  "recorded_at": "2026-08-28T05:58:09Z",
+  "url": "http://127.0.0.1:7861",
+  "viewport": {
+    "width": 1280,
+    "height": 800
+  },
+  "api_key_role": "readonly",
+  "wall_seconds": 59.6,
+  "turns": [
+    {
+      "question": "why is payments-api crash-looping?",
+      "answer_seconds": 15.3
+    },
+    {
+      "question": "scale the nginx deployment in the default namespace to 3 replicas",
+      "answer_seconds": 3.1
+    },
+    {
+      "question": "yes, go ahead and run it",
+      "answer_seconds": 5.9
+    }
+  ],
+  "note": "Playback runs at wall-clock rate \u2014 the file length matches wall_seconds. answer_seconds is measured from pressing Enter to the answer settling; quote that, not a stopwatch on the video, which also carries typing and scrolling."
+}

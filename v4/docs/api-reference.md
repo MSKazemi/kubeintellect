@@ -26,10 +26,14 @@ Send your API key as a Bearer token:
 Authorization: Bearer ki-admin-xxxxxxxxxxxxxxxx
 ```
 
-The key's prefix determines the role and therefore what the agent may do
-(`ki-admin-*`, `ki-op-*`, `ki-ro-*`). If no keys are configured server-side, auth
-is disabled and every caller is treated as `admin` (intended for localhost only).
-See [Security](security.md) for the full role model.
+The role — and therefore what the agent may do — comes from **which configured list the
+key appears in**, not from its prefix. `ki-admin-*`, `ki-op-*` and `ki-ro-*` are a naming
+convention we recommend, and nothing enforces them: a key named `ki-op-…` that sits in
+`KUBEINTELLECT_READONLY_KEYS` is `readonly`, and an unrecognised key is rejected. If no keys
+are configured server-side, auth is disabled and every caller is treated as `admin` (intended
+for localhost only). A client that needs to *state* what it may do must ask
+[`GET /v1/auth/whoami`](#get-v1authwhoami) rather than read the prefix. See
+[Security](security.md) for the full role model.
 
 ---
 
@@ -439,7 +443,12 @@ Response:
   "unenforceable_guard_config": [],
   "kill_switch_engaged": false,
   "change_freeze": false,
-  "spend_cap_usd": 0.0
+  "spend_cap_usd": 0.0,
+  "autonomy_promotion": {
+    "enabled": false, "operating": false, "direction": "revoke-only",
+    "action_class": "watchtower-autofix", "samples": 0,
+    "authority_revoked": false, "reason": "flag off"
+  }
 }
 ```
 
@@ -456,6 +465,7 @@ Response:
 | `kill_switch_engaged` | `true` ⇒ all autonomous writes are denied (fail-closed). Binds regardless of `KI_V5_BLAST_RADIUS_BUDGET` — see [stopping the agent](autonomy.md#stopping-the-agent-break-glass). |
 | `change_freeze` | `true` ⇒ deny-by-default change window. Also independent of `KI_V5_BLAST_RADIUS_BUDGET`. |
 | `spend_cap_usd` | Per-scope spend ceiling (`0` = unlimited). |
+| `autonomy_promotion` | The fourth brake on the autonomous-write path (ADR-102), behind `KI_V5_STATISTICAL_PROMOTION`. **`direction` is always `revoke-only`**: the recorded record can close the A3 gate, never open it — the samples come from writes the allowlist already permitted, so promoting on them would be circular. Read **`operating`, not `enabled`**: they differ exactly when the flag is on and there is no outcome store to read, which is a brake reported as on that is not in your write path (the flag is then also listed in `degraded_experimental_flags`). `authority_revoked: true` means A3 auto-fix is currently shut, and `reason` says which trigger fired; `samples` is the count inside the ADR-102 rolling window, not the table size. A store that exists and cannot be read reports `operating: false` with the error in `reason` — never a clean record. |
 
 ---
 
@@ -712,6 +722,29 @@ statelessly and expire after their TTL.
 
 ---
 
+## `GET /v1/auth/whoami`
+
+Return the role the **caller's own** key holds — never another caller's. Authenticated like
+every other `/v1` route, so a request with no key, or an unrecognised one, is rejected before
+the handler runs.
+
+```bash
+curl http://localhost:8000/v1/auth/whoami -H "Authorization: Bearer $KUBE_Q_API_KEY"
+# → {"role": "readonly"}
+```
+
+`role` is one of `superadmin`, `admin`, `operator`, `readonly` — see
+[Security](security.md) for what each may do.
+
+This exists because a client cannot infer its own privileges, and one that guesses will
+eventually say something untrue. The Hugging Face Space used to print *"this demo key holds
+the `readonly` role"* as fixed text next to an agent that could act; its backend URL and key
+are both environment variables, so the sentence was true only for the deployment it was
+written for. The footer now renders what this endpoint returns, and says it could not confirm
+when the probe fails rather than assuming the safe-sounding answer.
+
+---
+
 ## `GET|PUT|DELETE /v1/preferences`
 
 Operator-preference memory (the MemoryAgent surface). Preferences are per-user —
@@ -764,8 +797,18 @@ curl http://localhost:8000/healthz
 #    "reason":""},"audit":{"enabled":true,"state":"ready",
 #    "reason":"","dropped":0},"memory":{"enabled":true,"state":"ready","reason":"",
 #    "observations_dropped":0},"recorder":{"enabled":true,"state":"ready","reason":"",
-#    "lost_while_down":0}}
+#    "lost_while_down":0},"db_schema":{"state":"current","expected_version":1,
+#    "applied_version":1,"matches":true,"reason":""}}
 ```
+
+`db_schema` answers whether the **database** is the shape this build writes to — `current`,
+`stale` (run `kubeintellect db-init`), `ahead` (the deployment was rolled back and the database
+was not), `unrecorded`, or `unknown` (the check could not run — not a verdict). It is read once
+when the memory pool opens and cached; this endpoint never queries Postgres. A non-`current`
+schema deliberately does **not** move the top-level `status`: every memory, recorder and audit
+write is fire-and-forget, so the failure is silent rather than fatal, and failing liveness would
+turn a fixable database into a restart loop. See
+[CLI reference → `db-init`](cli-reference.md#kubeintellect-db-init).
 
 `experimental_flags` lists the default-off toggles actually in force. `set_but_unwired_flags`
 lists toggles you set that **no code reads** — it is normally empty, and a non-empty value means
@@ -871,6 +914,7 @@ curl -i http://localhost:8000/readyz
 | `200` | Stream opened successfully (errors during streaming are reported in-band as an error event, then `[DONE]`). |
 | `401` / `403` | Missing or insufficient credentials (when auth is enabled). |
 | `422` | No `user` message, or `stream` is not `true`. |
+| `429` | Rate limit exceeded for this caller. Carries `Retry-After` (seconds until one request will succeed) and `X-RateLimit-Limit`. Tunable with `RATE_LIMIT_PER_MIN` / `RATE_LIMIT_BURST`; the probe and `/metrics` paths are never limited. |
 
 ---
 

@@ -13,6 +13,385 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **The narrated demo's sources are tracked, and its claims are now checked** (`scripts/demo/
+  video/`, `v4/tests/test_the_video_says_only_what_the_product_does.py`). The scene spec called
+  itself the single source of truth and said every claim in it was checked against a file in
+  this repository — true of the terminal scenes, which name their transcript and line numbers,
+  and untrue of the cards, where the product claims live. The audit found the video saying
+  **"read-only by default"** twice, which is false: with no keys configured the server treats
+  every unauthenticated caller as `admin` (`REQUIRE_AUTH` is off), and what is actually true is
+  that it reads before it writes and stops every mutating command at a gate. Also corrected: a
+  role claim naming three of the four roles, and four card citations resolving one directory
+  too high. The palette and mark were a second kind of unchecked claim — an accent belonging to
+  no stylesheet or brand asset, and a placeholder logo drawn as a hexagon with a `K` in it. Both
+  now come from the shipped mark and the site's own tokens, each recorded beside the file it
+  came from. `scripts/check-text-encoding.py` gained `wave` to its non-text `open()` owners: the
+  gate was asking an audio decoder for an encoding parameter it does not have.
+
+- **A hash chain can now be pruned without the prune looking like an attack** (`kubeintellect
+  chain-truncate`, `app/db/chain_truncation.py`, schema `chain_truncation`, **schema version
+  2**). The export half above stopped at a written refusal whose last item was a change to the
+  verifier: `verify_chain` starts at `seq 0` with an empty `prev_hash`, so a legitimately
+  truncated chain failed it — shipping the DELETE first would have turned every pruned
+  install's housekeeping into a permanent tamper alarm. So a truncation is now *declared*: one
+  transaction writes a `chain_truncation` row — scope, `through_seq`, the seq the chain resumes
+  at, the hash it resumes from, and the verified archive's hash — and only then deletes.
+  Interrupted between the two you get a declared gap that does not exist yet, which verifies
+  fine; the opposite order does not. Both verifiers (`flight_recorder.verify_episode`,
+  `security.verify_memory_chain`) consult it, and only when a chain no longer starts at `seq
+  0` — a whole chain takes the old path exactly, so a missing or unreadable table cannot soften
+  an existing verdict. Without a matching record a short chain is still **TAMPERED**; a record
+  that contradicts the surviving rows is TAMPERED too; a record that cannot be read is
+  `unverified`, never `intact`. `chain-truncate` refuses, before writing anything, on a stale
+  archive, a chain that changed since the export, a truncation leaving nothing, or a surviving
+  chain that does not link to the archive's last hash — that seam is why a forged record cannot
+  launder an edit, only a deletion an operator could have made legitimately anyway. Proved
+  against a real Postgres, across both drivers (the CLI truncates through psycopg, the server
+  verifies through asyncpg). Retention still refuses to prune either ledger on a schedule: this
+  is a manual, per-chain act with an archive in hand. **Operators must re-run `kubeintellect
+  db-init`**; until then the command fails cleanly and `kq v5-status` reports a stale schema.
+
+- **A hash chain can now be archived in a form that still verifies** (`kubeintellect
+  chain-export`, `kubeintellect chain-verify-export`, `app/db/chain_export.py`). Retention
+  refuses to prune `decision_log` and `memory_audit` — correctly, since deleting their newest
+  rows breaks no link and would make an install's own housekeeping indistinguishable from an
+  attack — and its written reason ended *"needs a signed export-then-truncate flow"*. No such
+  flow existed, so the refusal was permanent and the two fastest-growing tables in the schema
+  were the two nothing could ever bound. This is the export half, useful on its own: `pg_dump`
+  gives you a copy of a chain, and a copy of tamper-evidence that cannot itself be checked is
+  not evidence. An archive carries the rows verbatim, the head anchor as it stood, the link
+  verdict computed at export time and a SHA-256 over all of it, so it can be checked years
+  later with no database present. Segment-aware: an archive need not start at `seq 0`, which is
+  why it does not reuse the whole-chain verifier. Exporting a broken chain is allowed and says
+  so — the archive is how you keep the evidence of a break. Nothing deletes anything:
+  `TRUNCATION_PREREQUISITES` lists what a truncation must record first, and the last item is a
+  change to the *verifier*, not the data. Documented limit, carried inside every archive: a
+  content hash proves the file has not been edited, not who wrote it.
+
+- **The memory tamper verdict now reaches a human, and is proved against a real database**
+  (`kq v5-status` `memory_chain` row). The verifier shipped earlier the same day put its verdict
+  under `memory.chain` on `/healthz` and `/v1/v5/status` and stopped there — `/healthz` is a
+  kubelet probe endpoint, and an operator asking whether this product's memory can be trusted
+  types `kq v5-status`, which said nothing. All five states are rendered, including the two that
+  are not faults: a row that appeared only on bad news cannot be used to confirm anything, and
+  its absence would be indistinguishable from an older server. `off` is not styled as healthy
+  and `unverified` is not styled as a tamper. The age is always shown, with a red `STALE` marker
+  when the last verdict is older than the interval allows — the server reports the last
+  *recorded* verdict, so `intact` from a verifier that died reads as reassurance otherwise.
+  Separately, every test of the verifier until now drove a fake pool that accepted any SQL and
+  returned what the test handed it — the same hole that hid a hybrid-recall channel returning
+  zero rows on 225 of 225 real queries. Twelve new tests run the real append path against a real
+  Postgres and then tamper with it in SQL: an edited payload, an interior delete and a reorder
+  break a link; deleting the two newest rows breaks **no** link (asserted directly) and is
+  caught only by the head anchor; a renamed table reads as `unverified`, never as tampered. One
+  test pins the documented limit rather than hiding it — forging the head *as well as* the rows
+  does restore an `intact` verdict, which is what tamper-evidence rather than prevention means.
+
+- **The memory tamper detector is now actually run** (`MEMORY_CHAIN_VERIFY_INTERVAL_S`,
+  `memory.chain` on `GET /healthz`). `verify_memory_chain` — the hash-chain check that detects a
+  silent edit, a reorder or a truncation of the memory audit log — was written, tested in four
+  test modules, specified in ADR-018 and documented in `docs/security.md`, and **nothing in a
+  running server ever called it**: the only callers were the test suite and an offline probe
+  script. A hash chain accuses nobody on its own, so a verifier nobody asks detects nothing, and
+  the difference between that and having no tamper-evidence is documentation. The server now
+  verifies once at startup and then on an interval (default 900s), records the verdict, and
+  reports it. `chain.state` is deliberately five-valued, not a boolean: `off` (hardening
+  disabled, so nothing writes the chain), `never-checked`, `unverified` (a check ran and could
+  not conclude — an unreachable database), `intact`, `TAMPERED`. Only `TAMPERED` sets
+  `memory.healthy` false; `unverified` does not, because a detector that cries tamper when its
+  own database is down teaches operators to ignore it. A verdict older than 2.5 intervals is
+  reported `stale`, so a verifier that stopped does not look like one that keeps agreeing with
+  itself. The check is periodic rather than on-demand because verifying reads every audit row
+  for the cluster while `/healthz` is probed every few seconds. Off by default, with
+  `MEMORY_SECURITY_HARDENING`.
+
+- **The required-checks list is now recorded next to the workflow that produces it**
+  (`.github/required-checks.yml`, `make check-required`). `ci.yml` produces **15** named checks
+  and `main` requires **9**, and nothing joined the two lists — a job could be added, renamed or
+  left out of the required set and every PR would keep merging green, which is the one thing a
+  required-check list exists to prevent. The record names all 15: the nine required, and six
+  that are not, each with a dated reason. Three of those six are marked as what they actually
+  are — **gaps nobody chose**, not policy. The sharpest: **`Container image (build + serve)` is
+  not a required check**, and it is the only check that proves the published image starts at all
+  against a real Postgres, so a PR that breaks the image merges green today. The two frozen-suite
+  checks (v2, v3) and the web build are unrequired for no recorded reason either. The comparator
+  runs offline (CI and the record must partition each other exactly) and, with an authenticated
+  `gh`, against the live setting in both directions — a context required in the settings but no
+  longer produced by CI leaves every PR pending forever, which is as broken as the reverse. It is
+  deliberately not a CI job: a workflow reading its own branch protection would be a repo-scoped
+  credential added to produce a report. The record also pins `strict: false` (a PR need not be up
+  to date with `main`, which is how two individually green PRs once turned `main` red on their
+  sum) and `enforce_admins: false`, so neither is mistaken for something it is not.
+
+- **The contributor gate is now the same gate CI runs, and what only CI can see is written
+  down.** `scripts/dev-setup.sh` printed *"Gate 1/8 — ruff check (this IS the CI lint gate)"*
+  while running `ruff check` over two packages; CI had been linting `packages/kube-q/`, `tests/`
+  and `scripts/` since 2026-08-24. A contributor could pass `make setup` on a branch CI would
+  reject for a lint error in the very test file they had just added — a setup script that
+  converts a real failure into a surprise is worse than none. The scope now matches CI exactly.
+  Separately, `v4/scripts/check_doc_claims.py` — which recollects every documented count (both
+  suite totals, playbooks, detectors, providers, v5 flags, CLI exit codes) — **ran in no CI job
+  at all**, so numbers that one new playbook moves six of were enforced only by memory. It now
+  runs in CI, riding inside the existing **Lint (ruff)** job rather than a new one, because
+  branch protection matches required checks by name and a new name would leave every open PR
+  unmergeable until the settings caught up (#167). `make setup` runs nine gates, and its summary
+  now states the honest arithmetic: CI is 10 jobs expanding to **15 named checks**, a laptop
+  reproduces **six**, and the other nine are listed individually with the reason each is CI-only
+  — including that the two py3.14 checks are `continue-on-error` and cannot block a merge. A new
+  suite fails if any of that drifts: same ruff scope in both places, the doc-claims step present,
+  every CI check either mapped to a local command or carrying a dated reason, and the gate count
+  identical in `dev-setup.sh`, `AGENTS.md` and the `Makefile`.
+
+- **One tag now ships a complete release, in an order that cannot half-publish it.** The tag
+  fan-out was five workflows that never speak to each other, and `release-binaries.yml` ended in
+  `gh release upload <tag>` — which requires a release that already exists, and **nothing in CI
+  created one.** The written procedure was to push the tag and then run `gh release create` by
+  hand fast enough to beat the build to its upload step: lose that race and the binaries job
+  fails *after* the image, the chart and PyPI have already published, leaving a version that
+  exists everywhere except the page people download from; win it, and the release is published
+  while the archives are still building, which fires `release: released` at `krew.yml` before its
+  four assets exist — so krew failed on **every** release by construction and was repaired by
+  hand afterwards. The release job now **creates the release itself, as a draft**, attests and
+  attaches the archives, and **publishes last**, so the downstream event fires on a release that
+  is already complete and krew succeeds on its first run. A release created by hand is left
+  alone — it may be a deliberate draft or prerelease, which is not this job's decision. A new
+  suite gates the ordering, refuses any `gh release upload` in a job that does not first ensure
+  the release exists, and requires every distribution channel to be either produced by the tag or
+  **written down as manual with a dated reason** — Snap (needs an explicit dispatch and a store
+  credential that can expire; a tag trigger would add a channel that silently no-ops), the
+  Homebrew tap (a separate repository, no cross-repo token) and the demo Space (not an install
+  path). That channel list is checked against the supply-chain module's, because two independent
+  lists of where a project publishes is exactly how one of them goes quiet unnoticed.
+
+- **The sensorium can be scoped to fit a large cluster — and says so when it is** (enterprise A5,
+  **ADR-020**). Perception runs two `kubectl get … -A --watch` subprocesses, and the structural
+  problem is not throughput but the relist: a watch that drops is replaced by one that emits the
+  *entire* current state before it emits any change, and that recurs on every disconnect. The
+  bounded queue added earlier converts what would be unbounded memory growth into a counted loss;
+  it does not make the firehose smaller. ADR-020 therefore keeps the transport and makes **scope**
+  the supported lever: new `SENSORIUM_WATCH_NAMESPACES` (comma-separated, empty = `-A`) starts one
+  named stream per resource per namespace, so `stream_health()` reports *which* scope failed.
+  Scoping is the dangerous kind of fix — it works by creating a blind spot — so it is **disclosed
+  rather than silent**: `perception_state()` carries the scope and `perception_gaps()` reports it,
+  in the one classifier `GET /v1/findings`, `kq findings` and the morning digest all read, because
+  an empty findings list from a scoped sensorium is not a statement about the cluster and the
+  person reading it is usually not the person who set the flag. The observation queue also warns
+  once at 80% of its depth, naming both levers, while nothing has been shed yet — until now the
+  first signal an operator got was `shed_total`, which only ever speaks *after* perception has
+  already been lost. **Not green:** the ceiling itself is unchanged, no supported cluster size is
+  claimed because none has ever been measured, and the real answer — a shared informer with
+  server-side field selection — is deferred to v5 with a benchmark attached rather than swapped
+  in blind under every detector, the staleness filter and the RBAC story at once.
+
+- **Signed provenance on every released artifact** (enterprise A13). Nothing this project
+  published could be checked by whoever installed it. The `kq` release job wrote a
+  `checksums.txt` and uploaded it to the **same release page** as the tarballs it checksums —
+  which detects a corrupted download and nothing else, since anyone able to replace a tarball can
+  replace the checksums beside it in the same breath. Each publishing workflow now emits a keyless
+  sigstore **build attestation**, minted under GitHub's OIDC issuer and recorded in a public
+  transparency log, binding the artifact's **digest** (never a tag — a tag is a mutable pointer)
+  to the commit, workflow and run that produced it: the container image plus an SPDX **SBOM
+  generated from the built image** rather than from the lockfile, the OCI Helm chart, the frozen
+  `kq` binaries, and PEP 740 attestations on the PyPI wheels. New `app/core/supply_chain.py` and
+  `kubeintellect provenance` print the exact verification commands and the signer identity each
+  must pin to — generated from the same constants the workflows are named by, because a
+  verification command is worth only as much as the identity it names, that identity is a *file
+  path*, and dropping `--signer-workflow` still "verifies" while accepting an attestation from
+  **any** workflow in the repository. 33 tests assert that every workflow firing on a `v*` tag
+  either attests or appears in `UNATTESTED_WORKFLOWS` with a dated reason (a new distribution
+  channel cannot inherit silence), that the attesting jobs hold the `id-token`/`attestations:
+  write` permissions their step needs — otherwise a tag build discovers that at its last step,
+  after publishing — that the chart job refuses to attest when `helm push` prints no digest, and
+  that every action in every workflow is pinned to a commit SHA, since a floating tag on the
+  action that mints your provenance makes the provenance only as good as whoever can move it.
+  Snap, the Homebrew tap, the krew index and the Hugging Face Space are recorded as deliberately
+  un-attested, each with a dated reason. Documented in `docs/security.md` § 8. **Not green:** no
+  release has been signed yet — these steps fire on the next `v*` tag, so every artifact published
+  to date carries nothing; attestation is not a reproducible build; and there is no
+  dependency-level provenance.
+
+- **A backup that can be proved to have restored** (enterprise A12). `docs/operations.md` already
+  carried the right `pg_dump` / `psql` commands and the right `ON_ERROR_STOP=1` warning; what no
+  operator could answer afterwards was *did everything come back*. For most tables a wrong answer
+  is lost data — for `decision_log` and `memory_audit` it is worse. They are hash chains, and a
+  restore that drops their **newest** rows breaks no link: the surviving rows hash correctly, chain
+  verification returns intact, and the postmortem prints its intact-chain banner over a record that
+  is quietly short. `decision_log_head` and `memory_chain_head` exist to catch that, and nothing
+  compared them. New `app/db/backup.py` and two commands: `kubeintellect backup-manifest` records
+  the schema version and DDL fingerprint, exact row counts for every table whose loss is a
+  data-loss event, and how far each hash chain got; `kubeintellect verify-restore` re-measures a
+  restored database against it and **exits 1** if anything is missing, so it can be wired into a
+  rehearsal. It reports every discrepancy rather than the first — mid-incident, a list of three
+  things to fix beats one error and a re-run — and a short table, a table the restore never
+  created, and a truncated chain are three different messages. A manifest taken from an already
+  damaged source is recorded as such rather than adopted as the definition of correct. Both
+  functions are read-only and driver-agnostic. `docs/operations.md` now states RPO and RTO for the
+  reference deployment, and states plainly what is not automated: no scheduled backup in the Helm
+  chart, no off-site copy, no automated rehearsal.
+
+- **The database now says which schema it has, and drift is loud** (enterprise A11). `schema.sql`
+  is idempotent (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) and applied by hand, and
+  nothing recorded that it had ever been run — so "upgraded the image and forgot `db-init`",
+  "rolled the Deployment back while the database kept the newer schema" and "correct" were
+  indistinguishable. The first two do not fail loudly: every memory, recorder and audit write is
+  fire-and-forget by design, so a missing column is a logged warning inside a swallowed exception —
+  memory quietly stops recording while `/healthz` keeps reporting `enabled: true`. New
+  `schema_migrations` ledger plus `app/db/schema_version.py`: `db-init` stamps the version, its
+  fingerprint and the time, and `schema.sql` stamps the version itself as well, because the Helm
+  chart's db-init Job pipes the file into psql and never runs the Python CLI. The server reads the
+  ledger once when the memory pool opens and reports `db_schema` on `GET /healthz` as `current`,
+  `stale`, `ahead` (a rollback — the direction re-running the DDL cannot fix), `unrecorded`, or
+  `unknown` when the check itself could not run, which is never reported as a verdict. A non-current
+  schema deliberately does not move the top-level `status`: failing liveness would turn a fixable
+  database into a restart loop. A **pinned DDL fingerprint** fails the test suite if `schema.sql`
+  changes without a version bump, so the version is enforced rather than remembered. Not a
+  migration tool: there are still no ordered revisions, no down-migrations, and idempotent DDL
+  cannot express a rename, a type change or a backfill — that gap is stated in the module and
+  dated.
+
+- **Every route can now say no** (enterprise A16). There was no rate limiter anywhere: one
+  caller — a retry loop, a misconfigured CI job, a stolen readonly key — could issue unbounded
+  `POST /v1/chat/completions`, and each of those is an LLM call against the operator's spend and a
+  `kubectl` fan-out against their API server. The spend guard in `autonomy/budget.py` bounds what
+  the *watchtower* does on its own; nothing bounded what a client asked for. New
+  `app/api/rate_limit.py`: a token bucket per caller, on by default at `RATE_LIMIT_PER_MIN` 120 /
+  `RATE_LIMIT_BURST` 30, answering `429` with a `Retry-After` that is the real time until one
+  request will succeed. Keyed by a SHA-256 of the bearer token, never the key itself and never an
+  IP — behind an Ingress every request shares one address, so an address-keyed limiter throttles
+  the whole tenancy when one client misbehaves. `/healthz`, `/readyz`, `/v1/healthz`, `/v1/readyz`
+  and `/metrics` are never limited: a 429 to the kubelet's probe would restart the pod under
+  exactly the load the limiter exists to survive, and a throttled scrape target silently becomes
+  an unmonitored one. Mounted inside `CORSMiddleware` so a browser client can read the 429 instead
+  of an opaque network error, and inside `RequestLoggingMiddleware` so a rejection appears in the
+  access log. The bucket table is capped (`RATE_LIMIT_MAX_TRACKED`) with least-recently-seen
+  eviction, because the limiter runs before route authentication and arbitrary bearer tokens can
+  otherwise turn it into a memory-exhaustion vector. Two limits are documented rather than tuned
+  away: the counters are **per replica**, so N replicas admit up to N× the limit, and this is fair
+  use rather than DDoS defence — volumetric abuse belongs at the ingress.
+
+- **Data retention, and a written refusal for the tables that must not have it** (enterprise
+  A10). Nothing in the tree deleted a row on a clock: twenty append-only tables, `request_log`
+  growing by one row per chat completion, no prune and no setting to ask for one. New
+  `app/memory/retention.py` runs inside the consolidation loop under `MEMORY_RETENTION_DAYS`
+  (default `0` = keep everything — a data-deleting default would discard history on upgrade),
+  ageing out `request_log`, `session_notes`, `fleet_signals`, terminal `prospective_memory` rows
+  and `promotion_outcomes`, at most 5 000 rows per table per pass so it never holds a lock.
+  What it refuses is the point: `decision_log` and `memory_audit` are hash-chained
+  tamper-evidence whose own schema comments record that deleting the newest rows breaks no link
+  and is therefore invisible to chain verification — a prune there would ship a tamper-evidence
+  bypass as housekeeping and leave the head anchors contradicting the chain for ever. Those two,
+  their head anchors and `episodes` (what the agent recalls; deliberate deletion already has an
+  RTBF path) each carry a dated reason in `retention.REFUSED`, asserted by the test suite so a
+  later rule cannot quietly start deleting one. `promotion_outcomes` has a hard floor at the
+  ADR-102 90-day window: a shorter retention setting is clamped up rather than honoured, because
+  pruning inside that window would delete the failures the A3 statistical brake demotes on and
+  so would quietly widen what the watchtower may do unattended.
+
+- **The fourth brake on the autonomous-write path is now visible to an operator, and the module
+  that would deliver "earned autonomy" stopped claiming it does.** `/v1/v5/status` promises "which
+  v5 slices are active, and whether the fail-closed brakes are engaged"; it listed three (kill
+  switch, change freeze, spend cap) and could not show the ADR-102 revocation gate at all. Two
+  quiet failures followed. First, `KI_V5_STATISTICAL_PROMOTION` appeared under `active_flags` with
+  nothing anywhere saying which direction it acts in — a switch named *statistical promotion*
+  reported as active reads as *rungs are being earned here*, which is the one thing this build does
+  not do. Second, `degraded_experimental_flags()` — the function that exists precisely to catch
+  "you set it and nothing happened, because the subsystem is dead" — filtered on the `MEMORY_`
+  prefix, and **both** halves of this flag read through the memory hierarchy's pool; flag on and
+  hierarchy down, the surface said active while the A3 gate was governed by the allowlist alone.
+  `/v1/v5/status` now carries an `autonomy_promotion` block and `kq v5-status` renders it (the
+  CLI-parity guard in `test_v5_flag_wiring.py` caught the omission). `enabled` and `operating` are
+  deliberately separate fields: they differ exactly when the flag is on and there is no store to
+  read. A store that exists and cannot be read reports `operating: false` with the error — never a
+  clean record. `samples` is the count inside the ADR-102 rolling window, not the table size, since
+  every threshold in `promotion_stats` is measured against that window.
+
+  `promotion_engine`'s module docstring described itself as *"the 'earned, not configured' autonomy
+  no published tool ships (C5)"* — a product claim, in the source of the module that would deliver
+  it, and untrue of what ships: the only production caller can revoke `watchtower-autofix`'s A3
+  authority and never grant it. The docstring now states which half ships and why the other cannot
+  be fed from these samples. Autonomy here is configured and can be taken away statistically; it is
+  not granted statistically.
+
+- **A collapsed record can now take the watchtower's write authority back — and can never hand it
+  out.** Pass 269 gave `promotion_outcomes` a writer; nothing read it, so ADR-102's *fast down, slow
+  up* had no down at all: a class whose agreement had collapsed kept auto-fixing forever. Behind
+  `KI_V5_STATISTICAL_PROMOTION` (default off), the watchtower now asks the store whether
+  `watchtower-autofix` still holds its unattended-write authority before letting an investigation fix
+  anything, and closes the A3 gate when a demotion trigger has fired — two postcondition failures
+  within 24 h will do it. The direction is deliberately one-way: **revoke, never grant.** Every
+  sample in the store comes from a fix the allowlist already permitted, so earning authority from
+  them would be circular — the grant producing the evidence for the grant — and gating the write on
+  earned rungs would deadlock a class with no samples out of ever producing one. ADR-102 earns rungs
+  from *shadow* agreement, which this system does not run yet, so the allowlist stays the only way
+  up. Flag on with no outcome store ⇒ the brake abstains and logs that it is not operating (failing
+  closed there would silently disable A3 on any deployment that enabled a promotion flag without
+  Postgres); a store that exists and cannot be read ⇒ auto-fix is revoked rather than assumed clean.
+
+- **The scheduled post-fix re-check now reads the cluster before it records that it re-checked.**
+  Prospective memory (ADR-017, `MEMORY_PROSPECTIVE`, default off) exists to answer the one question
+  an operator asks after an autonomous fix — *did it hold?* Its dispatcher was pluggable "so the
+  watchtower can wire a real investigation", and nothing outside the tests ever called
+  `set_dispatch`, so production always ran the fallback: it logged the row, returned `"rechecked"`
+  without looking at anything, and `_TERMINAL` mapped that to `status='done'`. Every scheduled
+  re-check therefore closed as a completed verification of a cluster nobody had read, and the row
+  was indistinguishable from one that genuinely passed. The fix makes the default *be* the
+  verifier rather than keep waiting for a caller that was never written: two read-only `kubectl
+  get` reads of the row's namespace (pods + Warning events, off-thread so a slow cluster cannot
+  stall the consolidation loop), scanned by the same `_scan_snapshot` that
+  `coordinator._verify_resolution` uses — so the codebase's two post-fix graders cannot disagree
+  about the word "resolved", lingering warnings over healthy pods included. Outcomes are now
+  `resolved` / `still_broken`, and a read that *failed* is `unverified`, which is deliberately
+  absent from `_TERMINAL`: the row returns to `pending` and retries next pass instead of closing on
+  an answer nobody obtained. `set_dispatch` stays as the injection seam for a richer (LLM-driven)
+  re-check and for tests — it is no longer load-bearing. `"rechecked"` is retained in `_TERMINAL`
+  only so pre-existing rows still read as terminal; nothing produces it any more.
+
+- **The ADR-102 promotion store has a production writer, and the column that identifies its
+  samples now holds the right value.** `promotion_outcomes` is the evidence an action class needs
+  to *earn* a rung — the "earned, not configured" autonomy the project claims as a
+  differentiator. `record_outcome` was called only from its own tests, so `outcomes_from_store`
+  returned `[]` for every class, `decide()` answered `hold` with the honest reason *"n 0 < n_min
+  20"*, and every class sat at its configured rung permanently. The demotion direction is the
+  sharp end: ADR-102 is *fast down, slow up*, so a class whose agreement had collapsed could not
+  be demoted either. Wiring a writer first needed a way to tell an autonomous attempt from a
+  human-driven one, and the column that exists for that was wrong — `write_episode(trigger_kind=…)`
+  had three call sites, and while `cortex/graph.py` read `state["trigger_source"]`, **both** V2
+  coordinator writers hardcoded `"user_query"`. `CORTEX_V4_ENABLED` is off by default, so in the
+  shipped configuration every watchtower investigation was stored as a user query: the digest
+  could not ask the column and fell back to matching *"autonomous investigation"* in
+  `trigger_detail`, and provenance drives write-admission trust (`security._TRUST`: detector 1.0,
+  user_query 0.4), so detector-derived episodes were validated as if a chat client had typed them.
+  All three writers now share one `episodes.trigger_kind_for`. On top of it,
+  `promotion_source.record_autonomous_attempt` records one sample per autonomously-attempted,
+  cluster-verified fix, behind `KI_V5_STATISTICAL_PROMOTION` (default off) and fire-and-forget
+  like every other memory side effect. Three cases are deliberately **not** recorded, because each
+  would be a sample the store invented: a fix a human asked for, a report-only investigation, and
+  an outcome whose post-fix cluster read failed — `_verify_resolution` reports that as `None` for
+  the same reason it reports verification-disabled as `None`, and a read is most likely to fail
+  right after the disruptive change being graded. `critical` is always `False` here: nothing on
+  this path attributes a Sev-1/Sev-2 to an action, so the M4 demotion trigger is not fed from it.
+  Nothing acts on the evidence yet — `earned_rung` is still read only at the ACI chokepoint, which
+  has no production caller — and `docs/how-it-works.md` says exactly that.
+
+- **A page that states its own permissions now has to have asked: `GET /v1/auth/whoami`.** The
+  Hugging Face Space printed, in fixed HTML, *"This demo key holds the `readonly` role, so a
+  write is refused by RBAC before it runs"*. Nothing read the key's role. `KI_API_KEY` and
+  `KI_API_BASE` are both environment variables, and the `ki-ro-`/`ki-op-` prefix is a naming
+  convention rather than a grant — a key called `ki-op-…` sitting in
+  `KUBEINTELLECT_READONLY_KEYS` is `readonly`, an unrecognised key is rejected, and a
+  deployment with no keys configured makes every caller `admin`. The sentence was therefore
+  true only for the one deployment it was written for, and it cost a real take: the first
+  chat-UI recording was made with an operator key, under a footer asserting the opposite, next
+  to an agent that would have executed the write. The new route returns the **caller's own**
+  role and nothing else; it sits on the authenticated router, so an absent or unrecognised key
+  never reaches the handler. The Space renders what comes back, one sentence per role matched
+  to the four-tier model in `app/api/v1/auth.py`, and when the probe fails — including against
+  a server too old to serve the route — it says the permissions are unconfirmed and tells the
+  visitor to treat the deployment as write-capable, rather than falling back to the
+  flattering answer. The live-cluster chip carried the same unchecked claim in three fewer
+  words (`N namespaces · read-only`) and now names the role too. `docs/api-reference.md`'s
+  *"the key's prefix determines the role"* is corrected in the same pass.
+
 - **A detector predicate that matches a *healthy* object is refused when it is authored.** The
   dead-predicate family got three gates because a predicate that can never fire contributes
   silence, and silence reads as a healthy cluster. The mirror image had none: a Pod predicate
@@ -91,6 +470,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `TRIAGE.md` say so.
 
 ### Fixed
+
+- **The anti-flap band demoted classes for being young, and its audit line said their agreement had
+  fallen.** A Wilson lower bound is driven by sample size as well as by failures, and
+  `hysteresis_breach` compared it to `θ − 0.05` at any n. Measured: at θ=0.95 a class with a
+  **flawless 15-for-15** record scored 0.8472, breached the band, and `evaluate_demotion` dropped it
+  a rung with the reason *"hysteresis: last-50 LCB < θ − 0.05"* — a recorded statement that a class
+  which had never failed was getting worse. A perfect record needs n ≥ 16 (θ=0.90), 25 (θ=0.95) or
+  43 (θ=0.99) before the band is even reachable. The resulting order was backwards: a class with
+  **zero** events was not demotable (the empty-window early-out), while the same class became
+  demotable the moment it succeeded once and stayed so through its first two dozen consecutive
+  successes — evidence of competence was strictly worse than no evidence. The band now abstains
+  wherever a perfect record at that sample size could not clear it, so a breach is always
+  attributable to failures. `cusum_trip` — two postcondition failures within 24 h, at any sample
+  size — is untouched and remains the trigger for a class that is genuinely going wrong early.
+
+- **`kubeintellect init` no longer declares a Prometheus, Loki and Grafana it has never seen —
+  and no longer discards the ones it detected.** Two bugs in the same three lines of the
+  generated `.env`. The template called `_line("PROMETHEUS_URL", "http://172.18.0.2:30090")`,
+  and `_line` reads its second argument as a *value*, not an example — so the line was written
+  **active** for every install. `172.18.0.2` is the first address of Docker's default `kind`
+  bridge, so a user who declined the Kind cluster, or pointed at EKS, met three red ✗ on their
+  first `kubeintellect status` for services they had never installed; the comment directly above
+  those lines already claimed they were "set automatically … when observability stack is
+  installed", which is what the code was meant to do and did not. The mirror-image bug hid
+  behind it: `_setup_observability()` detects the real node IP and appends it to the config
+  file, but it runs *after* `existing` is loaded, so the template rewrite at the end of
+  `cmd_init` overwrote the detected value with the hardcoded guess — and on a default `kind`
+  bridge the guess is frequently the same address, which is why it survived. `_line` now
+  separates `hint` from `default`, and the observability keys are re-read from the file before
+  the rewrite. Pinned in both directions by
+  `v4/tests/test_init_does_not_invent_an_observability_endpoint.py`. The documented behaviour
+  (`v4/docs/configuration.md` — default `""`, set only when the stack is installed) was correct
+  throughout; it is the code that has caught up.
+
 
 - **A dead predicate took the detector's live predicates down with it.** The load-time liveness
   gate refused any stored detector carrying a predicate that could never fire — and refused the

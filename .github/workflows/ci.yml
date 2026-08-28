@@ -53,6 +53,19 @@ jobs:
           packages/kubeintellect-server/app/ packages/ki-protocol/ packages/kube-q/
           tests/ scripts/
 
+      # Rides in the lint job on purpose. Branch protection matches required checks BY NAME, so
+      # a new job name would be missing from the required list and every open PR would sit
+      # unmergeable until the settings caught up — the same argument as the roster check in the
+      # syntax job (#167). This job already runs `uv sync`, which the checker needs: it collects
+      # both suites and imports the app.
+      #
+      # Until 2026-08-28 this ran NOWHERE in CI. Every documented count — the two test totals,
+      # playbooks, detectors, providers, v5 flags, CLI exit codes — was enforced only if someone
+      # remembered to run it locally, and adding a single playbook moves six of those numbers at
+      # once. A wrong count is worse than no count, which is why the checker exists at all.
+      - name: Doc claims match the code
+        run: uv run python scripts/check_doc_claims.py
+
   file-modes:
     name: File modes
     runs-on: ubuntu-latest
