@@ -256,13 +256,27 @@ app.add_middleware(RequestLoggingMiddleware)
 # token is a target that silently stops being scraped when the token rotates. It exposes request
 # counts and latencies only -- no cluster data, no prompts, no credentials. Restrict it with the
 # NetworkPolicy, which is the layer that can actually express "only the monitoring namespace".
+# The import is guarded because it was NOT guarded, and that cost a release: 2.4.0 shipped
+# with `prometheus-fastapi-instrumentator` declared only under the `metrics` extra while
+# METRICS_ENABLED defaults to True, so `pip install kubeintellect` followed by
+# `kubeintellect serve` died here with ModuleNotFoundError before uvicorn ever bound a port.
+# It is now a core dependency as well, but the guard stays: a control plane must not refuse
+# to boot because a telemetry package is absent. Missing metrics is a degradation; missing
+# server is an outage.
 if settings.METRICS_ENABLED:
-    from prometheus_fastapi_instrumentator import Instrumentator
-
-    Instrumentator(
-        should_group_status_codes=False,      # 401 vs 403 vs 500 are different operational facts
-        excluded_handlers=["/metrics", "/healthz", "/readyz"],
-    ).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+    try:
+        from prometheus_fastapi_instrumentator import Instrumentator
+    except ImportError:
+        logger.warning(
+            "metrics: prometheus-fastapi-instrumentator is not installed — /metrics will not "
+            "be served. Install it (pip install 'kubeintellect[metrics]'), or set "
+            "METRICS_ENABLED=false to stop asking for it."
+        )
+    else:
+        Instrumentator(
+            should_group_status_codes=False,  # 401 vs 403 vs 500 are different operational facts
+            excluded_handlers=["/metrics", "/healthz", "/readyz"],
+        ).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 from app.api.v1.endpoints.health import router as health_router
 
