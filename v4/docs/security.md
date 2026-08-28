@@ -1070,10 +1070,22 @@ make vm-deploy
 
 ## 8. Supply chain — verifying what you installed
 
-Every release artifact carries a **signed build attestation**: a keyless
-[sigstore](https://www.sigstore.dev/) signature, minted by the GitHub workflow that produced it
-under `https://token.actions.githubusercontent.com`, binding the artifact's **digest** to the
-commit, workflow and run it came from, and recorded in a public transparency log.
+Each publishing workflow mints a **signed build attestation** for what it releases: a keyless
+[sigstore](https://www.sigstore.dev/) signature, minted by the GitHub workflow that produced the
+artifact under `https://token.actions.githubusercontent.com`, binding the artifact's **digest** to
+the commit, workflow and run it came from, and recorded in a public transparency log.
+
+!!! warning "No published release is signed yet (as of 2026-08-28)"
+
+    The attest steps were added to the four publishing workflows **after `v2.3.1` was tagged**, so
+    they have never run: `git show v2.3.1:.github/workflows/docker-publish.yml | grep -c attest`
+    is `0`, and GitHub's attestations API returns nothing for the published image digest. The
+    workflows ran on that tag and succeeded — they simply had no attest step yet.
+
+    Every command in this section is therefore **correct and unexercised**. Run one against
+    `2.3.1` and it will fail to find an attestation. That failure means "never signed", not
+    "signature missing" — which is the reading that should alarm you. Signing begins with the
+    next `v*` tag; `kubeintellect provenance` reports which releases carry one.
 
 Digest, not tag. A tag is a mutable pointer — an attestation bound to `:latest` would say nothing
 about what `:latest` returns tomorrow.

@@ -172,6 +172,49 @@ UNATTESTED_WORKFLOWS: dict[str, str] = {
 }
 
 
+#: The first release tag whose build actually ran the attest steps — ``None`` while no release
+#: has been signed at all.
+#:
+#: This exists because the claim `kubeintellect provenance` makes to a user has to be *derived*
+#: from a recorded fact rather than written into a print statement, where nothing can check it and
+#: it does not age. It did not age: the command opened with "Each artifact carries a keyless
+#: sigstore attestation", unconditionally, while the attest steps were added *after* `v2.3.1` was
+#: tagged. The four publishing workflows ran on that tag and succeeded — they simply had no attest
+#: step yet — so `git show v2.3.1:.github/workflows/docker-publish.yml | grep -c attest` is `0`,
+#: and GitHub's attestations API 404s the subresource for this repository where a repo that has
+#: published one returns `{"attestations": []}`. Every command the CLI printed would fail.
+#:
+#: Set this to the first `v*` tag pushed after the attesting workflows exist. A test asserts the
+#: current value, so flipping it is a deliberate act taken against a release that really is signed.
+FIRST_ATTESTED_TAG: str | None = None
+
+
+def _version_tuple(tag: str) -> tuple[int, ...]:
+    """`v2.10.0` → `(2, 10, 0)`.
+
+    Numeric, because as strings `"v2.10.0" < "v2.9.0"` — which would quietly report a signed
+    release as unsigned for every minor version past the ninth.
+    """
+    core = tag.removeprefix("v").split("-", 1)[0].split("+", 1)[0]
+    parts: list[int] = []
+    for piece in core.split("."):
+        if not piece.isdigit():
+            break
+        parts.append(int(piece))
+    return tuple(parts)
+
+
+def attestation_expected(tag: str) -> bool:
+    """Whether a release at `tag` is expected to carry build attestations.
+
+    False is the honest answer for every tag until the first signed release exists, and remains
+    the honest answer for every tag published before it.
+    """
+    if FIRST_ATTESTED_TAG is None:
+        return False
+    return _version_tuple(tag) >= _version_tuple(FIRST_ATTESTED_TAG)
+
+
 def signer_identity(workflow: str, tag: str) -> str:
     """The sigstore certificate SAN a release from `tag` will carry.
 

@@ -1716,13 +1716,34 @@ def cmd_verify_restore(args: argparse.Namespace) -> None:
 
 
 def cmd_provenance(args: argparse.Namespace) -> None:
-    """Print how to verify that a released artifact came from this project's build."""
+    """Print how to verify that a released artifact came from this project's build.
+
+    Whether this release *is* signed is read from `supply_chain.FIRST_ATTESTED_TAG` rather than
+    asserted here. Said flatly, the opening line claimed a signature for `--tag`'s default — this
+    build's own version — while no release had ever been attested, and then printed four commands
+    that could only fail. A user who cannot tell "never signed" from "signature missing" has been
+    handed the alarming reading of the two.
+    """
+    from app.core import supply_chain as _sc
     from app.core.supply_chain import NOT_ATTESTED, OIDC_ISSUER, verify_commands
 
     tag = args.tag if args.tag.startswith("v") else f"v{args.tag}"
     print(f"\n  {_bold('Verifying a KubeIntellect release')} — {tag}\n")
-    print(_dim("  Each artifact carries a keyless sigstore attestation minted by the workflow"))
-    print(_dim(f"  that built it, under {OIDC_ISSUER}."))
+    if _sc.attestation_expected(tag):
+        print(_dim("  Each artifact carries a keyless sigstore attestation minted by the workflow"))
+        print(_dim(f"  that built it, under {OIDC_ISSUER}."))
+    else:
+        print(_err(f"  {tag} is not signed — it carries no attestation of any kind."))
+        if _sc.FIRST_ATTESTED_TAG is None:
+            print(_warn("  No release has been signed yet: the attest steps were added to the"))
+            print(_warn("  publishing workflows after the most recent tag was cut, so they have"))
+            print(_warn("  never run. The workflows themselves are correct and tested."))
+        else:
+            print(_warn(f"  Signing began at {_sc.FIRST_ATTESTED_TAG}; this tag predates it."))
+        print(_warn("  The commands below will therefore fail to find an attestation for this"))
+        print(_warn("  tag. That failure is expected here and is NOT evidence of tampering,"))
+        print(_warn("  which is the one reading of a failed verification that should alarm you."))
+        print(_dim(f"\n  The identities they pin are under {OIDC_ISSUER}."))
     print(_dim("  Nothing below runs here: these are the commands YOU run, on the machine that"))
     print(_dim("  pulled the artifact. `gh attestation verify` needs gh >= 2.49.\n"))
 
