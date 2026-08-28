@@ -24,6 +24,7 @@ from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from ki_protocol import wire
 from pydantic import BaseModel
 
 from app.agent.workflow import run_session
@@ -252,7 +253,17 @@ async def _stream(
         # `finish_reason` still sees it — and it is emitted even when every count is zero,
         # because "the model was called 40 times and reported no tokens" is an instrumentation
         # gap the caller needs to be able to tell apart from a cheap request.
-        yield _make_ki_event_chunk(completion_id, {"type": "usage", **meter.as_dict()})
+        _usage = meter.as_dict()
+        yield _make_ki_event_chunk(
+            completion_id,
+            wire.UsageEvent(
+                session_id=session_id,
+                prompt_tokens=_usage["prompt_tokens"],
+                completion_tokens=_usage["completion_tokens"],
+                total_tokens=_usage["total_tokens"],
+                llm_calls=_usage["llm_calls"],
+            ).model_dump(),
+        )
         yield _make_chunk(completion_id, "", finish_reason="stop")
         yield _done_chunk()
 

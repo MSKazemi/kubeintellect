@@ -187,7 +187,10 @@ class TestTheStreamActuallyCarriesIt:
         # The FIRST finish_reason in the function is the normal-completion one; the other is in
         # the error path below it. Searching from an offset (as an earlier version of this test
         # did) can skip past the one that matters and make the assertion vacuous.
-        assert src.index('"type": "usage"') < src.index('finish_reason="stop"'), (
+        # The marker is `wire.UsageEvent` since 2026-08-28: the frame used to be a hand-written
+        # `{"type": "usage", ...}` dict, which is why nothing validated it and why the wire
+        # module did not describe it. The ordering this asserts is unchanged.
+        assert src.index("wire.UsageEvent(") < src.index('finish_reason="stop"'), (
             "usage must be emitted before the finish_reason frame, or a client that stops "
             "reading at the terminator never sees what the request cost"
         )
@@ -201,4 +204,54 @@ class TestTheStreamActuallyCarriesIt:
         src = inspect.getsource(chat_completions._stream)
         assert src.index("start_request_meter()") < src.index("asyncio.create_task("), (
             "create_task copies the context, so the meter must exist before the task does"
+        )
+
+
+class TestTheUsageFrameGoesOutThroughTheDeclaredModel:
+    """The usage frame was the one event built by hand instead of by a wire model.
+
+    `ki_protocol/__init__.py` calls `wire` "canonical for what the server sends", and
+    `chat_completions.py` emitted `{"type": "usage", **meter.as_dict()}` directly — so the one
+    module making that claim did not describe the ninth thing the server sends. The cost was not
+    cosmetic: the frame was validated by nothing, and `packages/kube-q/tests/core/
+    test_the_wire_has_two_halves.py` is generative over `wire`, so an event outside `wire` was
+    invisible to the very sweep that exists to catch this. `llm_calls` was dropped on arrival and
+    the client's `model` field was never populated, both unnoticed for that reason.
+    """
+
+    def test_the_endpoint_does_not_hand_build_the_usage_frame(self):
+        import inspect
+
+        from app.api.v1.endpoints import chat_completions
+
+        assert '{"type": "usage"' not in inspect.getsource(chat_completions), (
+            "emit through wire.UsageEvent so the payload is validated and the wire module "
+            "actually describes what the server sends"
+        )
+
+    def test_the_meter_output_validates_against_the_wire_model(self):
+        from ki_protocol import wire
+
+        from app.core.usage import UsageMeter
+
+        meter = UsageMeter()
+        meter.input_tokens, meter.output_tokens, meter.llm_calls = 7, 3, 2
+        event = wire.UsageEvent(session_id="s", **meter.as_dict())
+        assert (event.total_tokens, event.llm_calls) == (10, 2)
+
+    def test_every_meter_field_has_a_home_on_the_wire(self):
+        # `as_dict()` gaining a key that `UsageEvent` does not declare would silently drop it
+        # again — pydantic ignores extras — which is precisely how `llm_calls` was lost.
+        from ki_protocol import wire
+
+        from app.core.usage import UsageMeter
+
+        produced = set(UsageMeter().as_dict())
+        declared = set(wire.UsageEvent.model_fields)
+        assert produced <= declared, f"the meter produces {sorted(produced - declared)}, unwired"
+        # And the reverse: the endpoint names these fields explicitly, so a count the model
+        # declares but the meter stopped producing would ship as a silent default instead.
+        assert declared - produced == {"type", "session_id", "ts"}, (
+            f"UsageEvent declares {sorted(declared - produced - {'type','session_id','ts'})} "
+            f"that the meter does not produce"
         )

@@ -66,6 +66,15 @@ def summarise_record(kind: str, payload: dict[str, Any]) -> str:
         )
     if kind == "error":
         return f"error: {str(p.get('error', '')).strip()[:160]}"
+    if kind == "usage":
+        # Calls are named alongside tokens on purpose: `core/usage.py` keeps `llm_calls` so that
+        # "called 40 times, reported no tokens" — an instrumentation gap — stays legible next to
+        # a genuinely cheap request, and a summary showing only tokens erases that distinction
+        # again for every reader of the record.
+        return (
+            f"{p.get('total_tokens', 0)} token(s) over {p.get('llm_calls', 0)} LLM call(s) "
+            f"({p.get('prompt_tokens', 0)} in / {p.get('completion_tokens', 0)} out)"
+        )
     if kind == "status":
         return str(p.get("message") or p.get("status") or "status update")[:120]
     if kind in ("plan", "plan_transition"):

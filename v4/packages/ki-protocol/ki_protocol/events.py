@@ -68,9 +68,22 @@ class HitlRequestData(BaseModel):
 
 
 class UsageData(BaseModel):
+    """Counts for one request.
+
+    `llm_calls` was added 2026-08-28: the server had been sending it since the meter existed and
+    this model had no field for it, so it was dropped on arrival — and it is the count that keeps
+    "called 40 times, reported no tokens" distinguishable from a cheap request.
+
+    ⚠️ `model` is declared here and the server has **never** sent it, so it reads `""` for every
+    caller. It is left in place rather than quietly filled: a request can span the coordinator and
+    subagent tiers, so there is no single honest value to put in it, and inventing one would make
+    this field lie rather than merely stay empty.
+    """
+
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    llm_calls: int = 0
     model: str = ""
 
 

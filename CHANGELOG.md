@@ -13,65 +13,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
-- **The rate limiter's address fallback was inert behind the Ingress the chart ships**
-  (`v4/packages/kubeintellect-server/app/api/rate_limit.py`, `app/core/config.py`,
-  `v4/docs/configuration.md`). The limiter argues its central decision as *"keyed by identity, not
-  by IP — behind an Ingress every request arrives from one address, so an IP-keyed limiter would
-  throttle the whole tenancy the moment one client misbehaved."* That is right, and it covers only
-  requests carrying a bearer token; without one, `caller_key` fell back to `request.client.host`,
-  which behind an Ingress **is** the one address the paragraph warns about. Measured 2026-08-28
-  against the real ASGI app: three clients sent as `X-Forwarded-For: 203.0.113.9 / 198.51.100.4 /
-  192.0.2.77` all landed in the single bucket `ip:10.42.0.7`, and 20 requests from the second were
-  answered `404×10, 429×10` purely because the first had spent the burst. The chart ships an
-  Ingress at `/`, and `RATE_LIMIT_ENABLED` defaults to on — so on a deployment reached without
-  credentials, every anonymous caller on the internet shared one 120/min bucket and any one of
-  them could shut out the rest.
+- **The ninth event the server sends was the one its wire module never declared**
+  (`v4/packages/ki-protocol/ki_protocol/wire.py`, `ki_protocol/events.py`,
+  `app/api/v1/endpoints/chat_completions.py`). `ki_protocol/__init__.py` calls `wire` "canonical
+  for what the server sends". It was not: `chat_completions.py` emitted the usage frame as a
+  hand-written `{"type": "usage", **meter.as_dict()}` dict, validated by nothing.
 
-  `X-Forwarded-For` is written by the client, so honouring it unconditionally is worse than
-  ignoring it — a caller would mint a fresh bucket per request and fill the bucket table on the
-  way. New `RATE_LIMIT_TRUSTED_PROXY_HOPS`, **default `0`, which is exactly the previous
-  behaviour**: set it to the number of proxies in front and the client address is read that many
-  entries from the *right* of the header, the end proxies append to and a client cannot forge. A
-  header shorter than the declared depth is ignored rather than half-believed. Reachable on the
-  bundled chart through the existing passthrough
-  (`--set-string config.extraEnv.RATE_LIMIT_TRUSTED_PROXY_HOPS=1`), so no chart surface was added.
+  There **is** a guard for this seam — `packages/kube-q/tests/core/test_the_wire_has_two_halves.py`,
+  written after the 2026-08-20 audit that found five of eight emission models arriving stripped.
+  Re-measured 2026-08-28, that fix holds: all eight round-trip losslessly. But the guard is
+  *generative over `ki_protocol.wire`* — it builds a sample per declared model — so an event that
+  never enters `wire.py` has no sample to generate from and is invisible to it. Being outside the
+  wire module is exactly what exempted `usage` from the check designed to catch this, and both
+  halves then drifted unobserved: the server sent `llm_calls` and the client had no field for it,
+  so it was dropped on arrival, while the client declared a `model` the server has never sent,
+  which read `""` for every caller. `llm_calls` is the count `core/usage.py` keeps deliberately,
+  so that "called 40 times, reported no tokens" stays distinguishable from a genuinely cheap
+  request — that distinction was being discarded at the wire.
 
-  Also corrected, in the module docstring and in `docs/configuration.md`: both said the address
-  fallback applies *"only when auth is disabled (local development)"*. It does not — `caller_key`
-  never consults the auth settings, and the measurement above ran with `settings.auth_enabled`
-  True. 13 tests, all red first, including that a client prepending a forged entry stays in its
-  own bucket.
+  `wire.UsageEvent` now declares the frame, the endpoint emits through it, and `UsageData` carries
+  `llm_calls`. Adding the model to `wire.py` made the existing generative guard cover `usage`
+  automatically — it failed on the next run until a sample was added, which is the mechanism
+  working. Four tests were added for the direction that guard structurally cannot see: a type the
+  *client* declares that no server model emits. `model` is left empty and documented rather than
+  filled — a request can span the coordinator and subagent tiers, so there is no single honest
+  value, and inventing one would make the field lie instead of merely stay blank.
 
-  Verified unchanged while measuring this: a burst is shed at exactly `RATE_LIMIT_BURST` (30
-  allowed, then 429 with an honest `Retry-After`), and the throttled caller still receives 200
-  on `/healthz` — the probe exemption the module calls a safety property holds.
-
-- **`kubeintellect provenance` promised a signature no release carries**
-  (`v4/packages/kubeintellect-server/app/core/supply_chain.py`, `app/cli.py`, `docs/security.md`).
-  The command opened, unconditionally and in the present indicative, with *"Each artifact carries
-  a keyless sigstore attestation minted by the workflow that built it"* — with `--tag` defaulting
-  to this build's own version, so the bare `kubeintellect provenance` said it about `v2.3.1`. It
-  is not true of `v2.3.1` and never was: the attest steps were added to the four publishing
-  workflows **after** that tag was cut, so `git show v2.3.1:.github/workflows/docker-publish.yml
-  | grep -c attest` is `0`, and GitHub's attestations API 404s the subresource for this repository
-  where a repo that has published one returns `{"attestations": []}`. The workflows did run on the
-  tag and did succeed; they had no attest step yet. So the command handed every user four commands
-  that could only fail, and a failed verification has two readings — "never signed" and "signature
-  missing" — of which it had silently selected the alarming one.
-
-  The existing 28 tests all proved the workflows were *written* right, which was true and is a
-  different claim from the one on the screen. The module's own docstring already said the accurate
-  thing (*"every artifact published to date carries no attestation at all"*): the truth was in a
-  docstring the maintainer reads and the falsehood was on the surface the user reads. The claim is
-  now **derived** from a recorded constant, `FIRST_ATTESTED_TAG` (`None` while nothing is signed),
-  compared numerically so that `v2.10.0` does not sort below `v2.9.0`; the commands are still
-  printed, because they are correct and unexercised rather than wrong. `docs/security.md` § 8 made
-  the identical claim on the public surface with its correction buried three subsections down under
-  *What this does not prove*; the warning now sits above the commands it qualifies, and a test
-  ties it to the same constant so signing the first release fails until the page is updated too.
-
-  Verified while measuring this: the section's claim that the GHCR and Docker Hub copies share one
-  digest **holds** — both are `sha256:631a1dd…b54d`, so one attestation will cover both.
+  Also: `packages/kube-q/scripts/check-event-parity.py` calls itself a CI guard and has had no
+  target since the web app became a PTY terminal wrapper — `web/lib/` does not exist, nothing
+  under `web/` parses `ki_event`, and no workflow or Makefile invokes it, so it died without ever
+  failing and produced a `FileNotFoundError` traceback when run by hand. It now reports that
+  plainly and points at the test that does run.
 
 ### Added
 

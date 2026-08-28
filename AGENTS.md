@@ -91,10 +91,10 @@ uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/ packa
 # 2. Types — the workspace is at ZERO errors; keep it there.
 uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q
 
-# 3. Server suite (5411 tests)
+# 3. Server suite (5419 tests)
 uv run python -m pytest tests/ -q
 
-# 4. kq CLI suite (740 tests)
+# 4. kq CLI suite (749 tests)
 cd packages/kube-q && uv run python -m pytest tests/ -q
 
 # 5. Doc claims — every documented count is recollected from the code and compared.

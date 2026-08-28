@@ -116,6 +116,20 @@ SKIP_PY_FIELDS: set[str] = set()
 # ── Check ─────────────────────────────────────────────────────────────────────
 
 def main() -> int:
+    # This guard has had no target since the web app became a PTY terminal wrapper: `web/lib/`
+    # does not exist, nothing under `web/` parses `ki_event` at all, and no workflow or Makefile
+    # invokes this script — so it died without failing, and running it produced a FileNotFoundError
+    # traceback rather than a verdict. Saying so beats a stack trace, and points at the check that
+    # does run: the server/client halves of the protocol are compared by
+    # `v4/tests/test_the_two_halves_of_the_wire_contract_agree.py`, which is in the server suite.
+    if not TS_EVENTS.exists():
+        print(f"SKIP: {TS_EVENTS} does not exist — there is no TypeScript event client to")
+        print("      compare against, so this guard has nothing to check.")
+        print()
+        print("      The live protocol guard is the server/client parity test:")
+        print("      v4/tests/test_the_two_halves_of_the_wire_contract_agree.py")
+        return 0
+
     py_models  = extract_py_models(PY_EVENTS)
     ts_ifaces  = extract_ts_interfaces(TS_EVENTS)
     errors: list[str] = []
