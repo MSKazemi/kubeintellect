@@ -185,8 +185,14 @@ class TestTheQueueWarnsBeforeItLoses:
 
 class TestTheDecisionIsWrittenDown:
     def test_the_adr_exists_and_states_the_ceiling_is_unchanged(self):
+        # `design/` is the private tier and is deliberately absent from the published tree, so
+        # this assertion can only run where the ADR exists. Skipping there beats either
+        # publishing the ADR or deleting a guard that does bite in the tree that holds it —
+        # the alternative is a test that is green only on a maintainer's machine.
         adr = Path(__file__).resolve().parents[1] / "design" / "adr" / \
             "020-v4-perception-at-scale.md"
+        if not adr.is_file():
+            pytest.skip(f"{adr.name} lives in the private tier and is not in this checkout")
         text = adr.read_text(encoding="utf-8")
         assert "relists the world" in text
         assert "🔴 → 🟡, not 🟢" in text
