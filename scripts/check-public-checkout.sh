@@ -117,6 +117,29 @@ if [ -n "$export_only" ]; then
 fi
 
 # ── 4. the gates, exactly as a contributor runs them ─────────────────────────
+#
+# With a NEUTRAL HOME, because the export alone is not enough to make this
+# faithful. `app/core/config.py` reads `~/.kubeintellect/.env` — a machine-global
+# file written by `kubeintellect init`, outside the repo and outside any git —
+# and the project `.env` only overrides it where both name the same key. The
+# export has no project `.env`, so the home file wins outright in here.
+#
+# Measured 2026-08-29: a self-host walk-through wrote `USE_SQLITE=true` into that
+# file, and `tests/test_digest.py::TestDigestBuilder::test_empty_window` went red
+# in the export while passing in the working tree — where the repo's own
+# `v4/.env` happened to set it back to false. Neither result was CI's: a runner
+# has no home config at all. An instrument whose whole claim is "this is what
+# GitHub will see" cannot read the developer's home directory.
+#
+# The uv cache and interpreter store are pointed back at the real home on
+# purpose — they are content-addressed build artifacts, not configuration, and
+# discarding them would turn a 4-minute check into a download.
+fake_home="$target/.public-checkout-home"
+mkdir -p "$fake_home"
+export UV_CACHE_DIR="${UV_CACHE_DIR:-$HOME/.cache/uv}"
+export UV_PYTHON_INSTALL_DIR="${UV_PYTHON_INSTALL_DIR:-$HOME/.local/share/uv/python}"
+export HOME="$fake_home"
+
 echo "running \`make setup\` in the export — this is the public checkout's verdict"
 cd "$target"
 make setup
