@@ -32,7 +32,8 @@ No install, no terminal. Open **[kubeintellect.com/demo](https://kubeintellect.c
 ## Option A — kube-q CLI
 
 Install only the thin CLI client and connect it to our hosted KubeIntellect instance.
-`kq` already defaults to `https://api.kubeintellect.com`, so there is nothing to configure.
+`kq` already defaults to `https://api.kubeintellect.com`; the one thing you pass is the
+shared read-only demo key, `ki-ro-dev`.
 
 **Requirements:** Python 3.12+
 
@@ -50,32 +51,19 @@ pip install kube-q
 ### 2. Connect
 
 ```bash
-kq
+kq --api-key ki-ro-dev
 ```
 
-That is the whole setup — `kq`'s default backend is the hosted demo.
+That is the whole setup. `kq`'s default backend is the hosted demo, and `ki-ro-dev`
+is the shared read-only key for it.
 
-!!! info "The hosted demo issues no API key"
-    This page used to describe fetching a personal `ki-ro-…` key. There is no such
-    flow: the demo is open, and `KUBE_Q_API_KEY` is what you set once you run your
-    own server —
+!!! info "`ki-ro-dev` is public on purpose — and is not yours"
+    It is a **shared** read-only key for one shared demo cluster, published here and in
+    the README so that trying KubeIntellect needs no sign-up. It is rate-limited, and
+    every write is rejected. There is no flow that issues you a personal key.
 
-    ```bash
-    mkdir -p ~/.kube-q
-    echo "KUBE_Q_API_KEY=<your key>" >> ~/.kube-q/.env
-    echo "KUBE_Q_URL=http://localhost:8000" >> ~/.kube-q/.env
-    ```
-
-    Keys for your own server are configured with `KUBEINTELLECT_ADMIN_KEYS` /
-    `_OPERATOR_KEYS` / `_READONLY_KEYS` — see
-    [configuration](../configuration.md) and [security](../security.md).
-
-!!! note "Read-only access"
-    The demo cluster is shared. Destructive operations (delete, restart, scale) are disabled.
-    For full access use [Option B](#option-b-local-cluster) or
-    [connect to your own cluster](existing-cluster.md).
-
----
+    `KUBE_Q_API_KEY` in `~/.kube-q/.env` is what you set once you run your **own**
+    server — `kubeintellect init` writes it for you.
 
 ## Option B — Local Cluster
 
