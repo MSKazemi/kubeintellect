@@ -471,6 +471,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **One observation stream had two bounded queues and only one knob.** The sensorium sink calls
+  `engine.process()` and `enqueue_observation()`; the second feeds a queue drained onto the
+  knowledge graph, and it was created with a hardcoded `maxsize=10_000` while the queue directly
+  upstream took `SENSORIUM_QUEUE_MAXSIZE` from configuration. An operator on a busy cluster could
+  raise the sensorium buffer, watch `shed_total` stop climbing, and conclude the loss was fixed —
+  while the memory queue behind it kept dropping at the old depth. Both losses were always
+  reported (`shed_total`, and `observations_dropped` on `/healthz`); what was missing was the
+  ability to do anything about the second one. Now `MEMORY_OBS_QUEUE_MAXSIZE`, defaulting to its
+  twin and documented beside it.
+
 - **The demos page documented eighteen recordings and showed none of them.**
   `scripts/demo/DEMOS.md` describes eight recorded scenarios across 352 lines, and embedded no
   image at all: the sixteen rendered GIFs and the two browser-UI GIFs were committed to the

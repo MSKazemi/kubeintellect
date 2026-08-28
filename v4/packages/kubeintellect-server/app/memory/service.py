@@ -224,7 +224,10 @@ def _activate(pool: asyncpg.Pool) -> None:
         task.cancel()
     _tasks.clear()
 
-    _obs_queue = asyncio.Queue(maxsize=10_000)
+    # Sized by MEMORY_OBS_QUEUE_MAXSIZE, not a literal: this is the twin of
+    # SENSORIUM_QUEUE_MAXSIZE on the same observation stream, and widening one without the
+    # other leaves the narrower queue dropping at the old depth.
+    _obs_queue = asyncio.Queue(maxsize=settings.MEMORY_OBS_QUEUE_MAXSIZE)
     _ingest_failures = 0
 
     loop = asyncio.get_running_loop()
