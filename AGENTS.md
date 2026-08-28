@@ -91,7 +91,7 @@ uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/ packa
 # 2. Types — the workspace is at ZERO errors; keep it there.
 uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q
 
-# 3. Server suite (5338 tests)
+# 3. Server suite (5343 tests)
 uv run python -m pytest tests/ -q
 
 # 4. kq CLI suite (740 tests)
