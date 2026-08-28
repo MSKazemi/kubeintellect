@@ -37,7 +37,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   difference: six assertions are guarded on a private-tier file being present and simply do not
   run in CI.
 
-  Nine tests pin the instrument itself, including the index-fidelity property and — derived from
+  Then the instrument failed its own test on `main`, in exactly the class it is named for. Its
+  export commits as the source repository's own identity, so the guard hook passes on it rather
+  than being bypassed — and `git var GIT_AUTHOR_IDENT` resolves on any developer machine (git
+  falls back to the passwd GECOS name) but exits 128 on a runner, which has none. Green here, red
+  there. Two things were needed and both are pinned by a test that reproduces a runner exactly, by
+  emptying `GIT_AUTHOR_NAME` rather than merely scrubbing config: a synthetic author when git has
+  no identity to offer, and passing that author as *environment* rather than `-c user.name`, since
+  an empty `GIT_AUTHOR_NAME` in the caller's environment overrides any config the script sets.
+
+  Ten tests pin the instrument itself, including the index-fidelity property and — derived from
   the private index at runtime rather than enumerated in a published file — that no private-tier
   path reaches the export. Also corrected: `make help` said `setup` ran "all eight CI gates"; it
   runs nine.
