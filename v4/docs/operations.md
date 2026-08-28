@@ -114,6 +114,12 @@ pg_dump "$DATABASE_URL" > kubeintellect-$(date +%F).sql
 kubeintellect verify-restore kubeintellect-2026-01-01.manifest.json
 ```
 
+A manifest describes PostgreSQL tables, so there is nothing to take in SQLite mode — that file
+holds the LangGraph checkpointer and none of the counted tables. `backup-manifest --out FILE`
+therefore **exits 1** there rather than printing advice and returning 0, so a
+`backup-manifest --out … && cp …` chain stops instead of recording a backup as having proof
+beside it. Without `--out` it just prints the advisory and exits 0.
+
 The manifest records the schema version and DDL fingerprint, exact row counts for every table
 whose loss is a data-loss event, and how far each hash chain got. `verify-restore` re-measures and
 reports **every** discrepancy, not the first — mid-incident, a list of three things to fix beats

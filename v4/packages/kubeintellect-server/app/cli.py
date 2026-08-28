@@ -1490,6 +1490,22 @@ def cmd_backup_manifest(args: argparse.Namespace) -> None:
     if os.environ.get("USE_SQLITE", "").lower() == "true":
         print(_warn("  SQLite mode — the whole database is one file; copy it while stopped."))
         print("  See docs/operations.md § Backup & restore.")
+        # The advisory above is correct — none of COUNTED_TABLES exists on the SQLite path (that
+        # file holds the LangGraph checkpointer; the recorder, audit and memory writers all
+        # report state "sqlite" and write nothing), so there is genuinely no manifest to build.
+        # Reporting that as SUCCESS was the defect. `--out` is a request for a file, and
+        #     kubeintellect backup-manifest --out m.json && cp kubeintellect.db backups/
+        # printed advice, wrote nothing, exited 0 — so the `&&` fired and the backup was
+        # recorded as having proof beside it. The missing manifest then surfaces at restore
+        # time, which is exactly when it can no longer be taken.
+        if args.out:
+            print(_err(f"\n  Nothing was written to {args.out} — there is no manifest to take "
+                       f"in SQLite mode.\n"), file=sys.stderr)
+            print(f"  {_bold('How to fix:')}\n"
+                  "  Drop --out and copy the SQLite file itself while the server is stopped,\n"
+                  "  or run this against the PostgreSQL deployment whose tables a manifest "
+                  "measures.\n", file=sys.stderr)
+            sys.exit(1)
         return
     dsn = _build_dsn()
     print(f"  Reading: {_redact_dsn(dsn)}")

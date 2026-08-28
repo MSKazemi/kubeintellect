@@ -471,6 +471,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **`backup-manifest --out FILE` exited 0 without writing FILE** (`app/cli.py`,
+  `v4/tests/test_a_manifest_that_was_never_written_is_not_a_success.py`). In SQLite mode the
+  command printed its "the whole database is one file, copy it while stopped" advisory and
+  returned — before `args.out` was read at all. The advisory is right (none of the counted
+  tables exists there; that file holds the LangGraph checkpointer), but reporting it as success
+  meant the documented chain `backup-manifest --out m.json && pg_dump …` ran its second half
+  believing the first half had produced proof. The manifest is the *only* thing that can see a
+  restore which silently dropped the newest rows of `decision_log` or `memory_audit` — such a
+  restore breaks no hash link, so the shortened record still verifies — and its absence is
+  discovered at restore time, exactly when it can no longer be taken. A request for a file that
+  produces no file now exits 1 and says what to do instead; with no `--out`, nothing was
+  promised and the advisory still exits 0.
+
 - **One observation stream had two bounded queues and only one knob.** The sensorium sink calls
   `engine.process()` and `enqueue_observation()`; the second feeds a queue drained onto the
   knowledge graph, and it was created with a hardcoded `maxsize=10_000` while the queue directly
