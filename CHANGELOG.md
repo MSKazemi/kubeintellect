@@ -11,6 +11,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [2.4.0] – 2026-08-29
+
+> **This release also delivers 2.3.0 and 2.3.1, which were tagged but never published.**
+> Both tags were cut on 2026-08-15, when `publish.yml` still carried only a
+> `workflow_dispatch` trigger; the `push: tags: v*` trigger was added afterwards. GitHub
+> evaluates a workflow file at the tag's own ref, so neither tag could ever start a PyPI
+> upload, and PyPI stayed on `kubeintellect` 2.2.0 while the repository moved 89 commits
+> ahead. Anyone who ran `pip install kubeintellect` between 2026-08-15 and this release got
+> 2.2.0, whose `kubeintellect --version` exits 2 with an argparse error — fixed in `77a8728`,
+> inside the unpublished v2.3.1. Installing 2.4.0 is the fix.
+
 ### Fixed
 
 - **The quickstart's first step could not be followed** (`v4/docs/quickstart.md`,

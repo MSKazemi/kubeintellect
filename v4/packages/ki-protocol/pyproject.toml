@@ -1,6 +1,6 @@
 [project]
 name = "ki-protocol"
-version = "1.0.0"
+version = "1.1.0"
 description = "KubeIntellect wire protocol — single source of truth for the typed SSE event format shared by server and clients."
 readme = "README.md"
 license = "AGPL-3.0-or-later"
