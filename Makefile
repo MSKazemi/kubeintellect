@@ -10,7 +10,7 @@
 # All versions share ONE Langfuse project; each tags its traces with version:vN, so
 # per-version cost is a tag filter (per-version projects need Langfuse Enterprise).
 # ═══════════════════════════════════════════════════════════════════════════════
-.PHONY: help setup check-modes fix-modes check-syntax check-encoding check-roster kind-cluster-create kind-cluster-create-vm kind-cluster-stop kind-cluster-start \
+.PHONY: help setup check-modes fix-modes check-syntax check-encoding check-roster check-required kind-cluster-create kind-cluster-create-vm kind-cluster-stop kind-cluster-start \
         kind-cluster-cleanup monitoring-install monitoring-uninstall \
         langfuse-provision langfuse-install langfuse-clean hosts-entry helm-package \
         opsmembench opsmembench-demo opsmembench-driver-check opsmembench-test
@@ -52,7 +52,7 @@ help: ## Show shared-infra targets
 	@printf "    cd v4 && make kind-build-kubeintellect && make kind-deploy-kubeintellect\n\n"
 
 # ── Kind cluster ──────────────────────────────────────────────────────────────
-setup: ## Contributor setup — install the v4 workspace and run all six CI gates (no cluster needed)
+setup: ## Contributor setup — install the v4 workspace and run the nine locally-runnable CI gates (no cluster needed)
 	@./scripts/dev-setup.sh
 
 check-modes: ## Check the file-mode CI gate — a tracked file is executable iff it has a shebang
@@ -69,6 +69,9 @@ check-encoding: ## Check the encoding CI gate — every text-mode read/write nam
 
 check-roster: ## Check the roster CI gate — .all-contributorsrc and the README table name the same people
 	@./scripts/check-contributor-roster.py
+
+check-required: ## Compare main's required checks against what ci.yml produces (needs an authed `gh`)
+	@./scripts/check-required-checks.py
 
 kind-cluster-create: ## Create the shared Kind cluster (2-node, hot-reload mounts) — run once
 	KIND_CLUSTER_NAME=$(KIND_CLUSTER_NAME) bash scripts/kind/create-kind-cluster.sh

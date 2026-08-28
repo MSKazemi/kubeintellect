@@ -42,65 +42,80 @@ uv sync
 ok "workspace installed into v4/.venv"
 
 # ---------------------------------------------------------------------------
-# Run the eight gates CI runs. Keep these in lockstep with:
-#   .github/workflows/ci.yml, CONTRIBUTING.md, AGENTS.md
+# Run the nine gates CI runs that can run on a normal laptop. Keep these in
+# lockstep with: .github/workflows/ci.yml, CONTRIBUTING.md, AGENTS.md — and with
+# v4/tests/test_the_gates_say_what_they_cannot_see.py, which fails if they drift.
 #
-# Gates 1-4 need the virtualenv. Gates 5-8 deliberately do not — see the header
-# comments in the four scripts they call. Gates 7-8 ride inside the CI job
-# named "Syntax warnings", so they add no new required check.
+# Gates 1-5 need the virtualenv. Gates 6-9 deliberately do not — see the header
+# comments in the four scripts they call. Gate 5 rides inside the CI job named
+# "Lint (ruff)" and gates 8-9 inside "Syntax warnings", so none of the three adds
+# a new required check (branch protection matches by name — see #167).
 # ---------------------------------------------------------------------------
 STATUS=0
 
-say "Gate 1/8 — ruff check (this IS the CI lint gate)"
-if uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/; then
+say "Gate 1/9 — ruff check (this IS the CI lint gate)"
+# The scope must match .github/workflows/ci.yml exactly. Until 2026-08-28 it named only
+# app/ and ki-protocol/ while CI had been linting kube-q, tests/ and scripts/ since
+# 2026-08-24 — so this script could print "lint clean" on a checkout whose new test file
+# CI would reject, which is precisely the failure a setup script exists to prevent.
+if uv run ruff check \
+     packages/kubeintellect-server/app/ packages/ki-protocol/ packages/kube-q/ \
+     tests/ scripts/; then
   ok "lint clean"
 else
   fail "ruff check failed"; STATUS=1
 fi
 
-say "Gate 2/8 — mypy (the workspace sits at zero errors)"
+say "Gate 2/9 — mypy (the workspace sits at zero errors)"
 if uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q; then
   ok "types clean"
 else
   fail "mypy failed"; STATUS=1
 fi
 
-say "Gate 3/8 — server test suite"
+say "Gate 3/9 — server test suite"
 if uv run python -m pytest tests/ -q; then
   ok "server suite passed"
 else
   fail "server suite failed"; STATUS=1
 fi
 
-say "Gate 4/8 — kq CLI test suite"
+say "Gate 4/9 — kq CLI test suite"
 if (cd packages/kube-q && uv run python -m pytest tests/ -q); then
   ok "kq suite passed"
 else
   fail "kq suite failed"; STATUS=1
 fi
 
-say "Gate 5/8 — file modes (executable iff shebang)"
+say "Gate 5/9 — doc claims match the code"
+if uv run python scripts/check_doc_claims.py >/dev/null; then
+  ok "every documented count matches what the code collects"
+else
+  fail "doc claims are stale — run: cd v4 && uv run python scripts/check_doc_claims.py --fix"; STATUS=1
+fi
+
+say "Gate 6/9 — file modes (executable iff shebang)"
 if (cd "$ROOT" && ./scripts/check-file-modes.sh); then
   ok "file modes clean"
 else
   fail "file-mode check failed"; STATUS=1
 fi
 
-say "Gate 6/8 — syntax warnings"
+say "Gate 7/9 — syntax warnings"
 if (cd "$ROOT" && ./scripts/check-syntax-warnings.py); then
   ok "no syntax warnings"
 else
   fail "syntax-warning check failed"; STATUS=1
 fi
 
-say "Gate 7/8 — text-mode calls name an encoding"
+say "Gate 8/9 — text-mode calls name an encoding"
 if (cd "$ROOT" && ./scripts/check-text-encoding.py); then
   ok "every text-mode call names an encoding"
 else
   fail "encoding check failed"; STATUS=1
 fi
 
-say "Gate 8/8 — contributor rosters agree"
+say "Gate 9/9 — contributor rosters agree"
 if (cd "$ROOT" && ./scripts/check-contributor-roster.py); then
   ok "both contributor rosters name the same people"
 else
@@ -111,24 +126,31 @@ echo
 if [ "$STATUS" -eq 0 ]; then
   cat <<'EOF'
 ────────────────────────────────────────────────────────────────────────────
- You are ready to contribute. All eight locally-runnable gates pass on a
+ You are ready to contribute. All nine locally-runnable gates pass on a
  clean checkout.
 
- `main` requires NINE checks. The eight gates above cover six of them —
- the encoding and roster gates ride inside the "Syntax warnings" check
- rather than adding one of their own. The other three run only in CI,
- because they need a clean machine or another interpreter, so a green run
- here does not guarantee a green PR:
-   • Install smoke test
-   • Tests (server · py3.13)
-   • Tests (kube-q CLI · py3.13)
- If your PR is red on one of those alone, it is a real failure, not flake.
+ Be clear about what that does and does not prove. CI runs 10 jobs, which
+ expand to 15 named checks; the nine gates above cover SIX of those names —
+ doc-claims rides inside "Lint (ruff)", and the encoding and roster gates
+ ride inside "Syntax warnings", rather than adding names of their own.
+ The other NINE run only in CI, so a green run here is not a green PR:
+   • Tests (v2 · frozen) and Tests (v3 · frozen) — runnable locally, but this
+     script does not install those two older workspaces
+   • Tests (server · py3.13) and Tests (kube-q CLI · py3.13) — another interpreter
+   • Tests (server · py3.14) and Tests (kube-q CLI · py3.14) — ADVISORY only
+     (continue-on-error), so a red one of these does not block a merge
+   • Install smoke test — builds the distributions and installs them clean
+   • Web (lint + build) — needs Node
+   • Container image (build + serve) — needs Docker and a Postgres container
+ If your PR is red on one of the first five alone, it is a real failure, not flake.
 
- Re-run the four workspace gates any time from v4/:
-   uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/
+ Re-run the five workspace gates any time from v4/:
+   uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/ \
+       packages/kube-q/ tests/ scripts/
    uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q
    uv run python -m pytest tests/ -q
    cd packages/kube-q && uv run python -m pytest tests/ -q
+   uv run python scripts/check_doc_claims.py      # add --fix to rewrite the numbers
 
  …and the four that need no virtualenv, from the repo root:
    make check-modes

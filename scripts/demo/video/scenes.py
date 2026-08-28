@@ -1,0 +1,346 @@
+"""Scene + narration spec for the KubeIntellect narrated demo.
+
+Single source of truth, in the shape proven by `nova/experiments/azure-2026-08-27/video/`:
+the builder reads this to synthesise narration, render frames and assemble the video, and
+`make_script_md.py` renders it as a readable script.
+
+**Every factual claim below is checked against a file in this repository.** Terminal scenes
+name the transcript they replay and the line numbers the narration refers to; card scenes
+carry a `sources` list. Nothing on screen is typed by hand or reconstructed — the transcripts
+in `../transcripts-kq/` are verbatim renderings of the asciinema casts in `../casts-kq/`,
+recorded against a live cluster and independently re-verified on 2026-08-28 (see
+`../DEMOS.md` § *Verification*).
+
+kind:
+  card      -- full-screen text card (title, bullets)
+  terminal  -- animated replay of a real captured transcript in ../transcripts-kq/
+  shot      -- a screenshot with a slow pan, under a caption bar
+
+`enabled=False` marks a scene whose footage does not exist yet or is known to show something
+false. It stays here, with its reason, so the gap is visible rather than forgotten.
+
+Narration is written **phonetically** so Piper pronounces things correctly
+(`kube control`, `A G P L three`). Subtitles are read rather than heard, so the
+`SUBS` table below is applied before writing the .srt.
+"""
+
+# Colours are the website's own tokens, not a palette invented here. `render.py` carries the
+# mapping and names the file each value comes from. Until 2026-08-28 the accent was `#7c8cf8`,
+# commented "KubeIntellect indigo" — a colour that appears in no brand asset, no stylesheet and
+# no mark; it came from the upstream build this one was adapted from.
+ACCENT = "#00e07a"   # v4/docs/assets/brand/ki-c-green.svg — the mark gradient, mid-stop
+TEAL = "#14b8a6"     # website app/globals.css --teal-soft (what the site uses on dark panels)
+CORAL = "#e87d7d"    # no brand red exists; kept, and recorded here as unsourced
+AMBER = "#f59e0b"    # website app/globals.css --amber-soft = "human-in-the-loop / approval gate"
+
+WEBSITE = "kubeintellect.com"
+REPO = "github.com/MSKazemi/kubeintellect"
+
+# Written form for subtitles, keyed by the phonetic form used in narration.
+SUBS = {
+    "kube control": "kubectl",
+    "kube Q": "kq",
+    "A G P L three": "AGPL-3.0",
+    "R B A C": "RBAC",
+    "S R E": "SRE",
+    "A I": "AI",
+    "O O M killed": "OOMKilled",
+    "sixty four mebibytes": "64Mi",
+    "Exit code one three seven": "Exit code 137",
+    "sixty four C P Us and five hundred and twelve gibibytes": "64 CPUs and 512Gi",
+    "A P I key": "API key",
+    "kubeintellect dot com": "kubeintellect.com",
+}
+
+SCENES = [
+    # ------------------------------------------------------------------ ACT I
+    dict(
+        id="01-title", kind="card", act="", enabled=True,
+        title="KubeIntellect",
+        subtitle="Human-governed AI SRE for Kubernetes",
+        bullets=[],
+        links=[WEBSITE, REPO],
+        caption="",
+        logo=True,
+        sources=["../../../README.md (tagline, links)"],
+        narration=(
+            "KubeIntellect. Human governed A I S R E for Kubernetes. "
+            "Everything you are about to see is a real recording against a real cluster. "
+            "No mock ups, no fixtures, no output typed by hand."
+        ),
+    ),
+    dict(
+        id="02-problem", kind="card", act="THE PROBLEM", enabled=True,
+        title="A pod is failing.\nThe person who knows why\nis asleep.",
+        subtitle="",
+        bullets=[
+            ("The signal is scattered", "pod status, events, logs, the deployment spec, a Secret"),
+            ("The method is in someone's head", "the order you look in is the whole skill"),
+            ("The cost of guessing is production", "the wrong fix is one command away"),
+        ],
+        caption="Why this is hard",
+        sources=["../DEMOS.md § The scenarios"],
+        narration=(
+            "A pod is failing, and the person who knows why is asleep. "
+            "The evidence is scattered across pod status, events, logs, the deployment spec "
+            "and, often, a Secret that is not there. "
+            "None of that is difficult. Knowing the order to look in is the whole skill, "
+            "and it lives in somebody's head."
+        ),
+    ),
+    dict(
+        id="03-two-failures", kind="card", act="THE PROBLEM", enabled=True,
+        title="Two ways this goes wrong",
+        subtitle="",
+        bullets=[
+            ("It recites", "fluent, generic, and never actually looked at your cluster"),
+            ("It acts", "confident, unasked, and now your cluster is different"),
+        ],
+        caption="The two failure modes of an AI cluster tool",
+        sources=["../DEMOS.md § The approval gate, in both directions"],
+        narration=(
+            "Point a language model at this and it fails in one of two ways. "
+            "Either it recites. Fluent, generic advice that never actually looked at your cluster. "
+            "Or it acts. It runs the command it thought of, without asking, "
+            "and now your cluster is different and nobody decided that."
+        ),
+    ),
+    dict(
+        id="04-answer", kind="card", act="THE ANSWER", enabled=True,
+        title="Ask in English.\nIt reads the cluster.\nIt stops before it changes it.",
+        subtitle="",
+        bullets=[
+            ("Investigate", "real kube control against your real cluster — it reads before it writes"),
+            ("Explain", "quoting the evidence it read, not a plausible story"),
+            ("Ask", "a mutating command pauses at a gate a human answers"),
+        ],
+        caption="What KubeIntellect is",
+        sources=["../../../README.md", "../DEMOS.md"],
+        narration=(
+            "KubeIntellect is the third thing. You ask in plain English. "
+            "It investigates with real kube control against your real cluster, reading before it "
+            "writes. "
+            "It explains by quoting what it read. "
+            "And the moment it wants to change anything, it stops and asks a human."
+        ),
+    ),
+
+    # ----------------------------------------------------------------- ACT II
+    dict(
+        id="05-crashloop", kind="terminal", act="IT DIAGNOSES", enabled=True,
+        source="01-crashloop.txt", lines=(59, 86),
+        caption="A pod that will not stay up",
+        evidence="transcripts-kq/01-crashloop.txt:71 (the command), :84-85 (the previous-container logs)",
+        sources=["../DEMOS.md § Verification, row 01"],
+        narration=(
+            "Here is the first one, unedited. A pod that will not stay up. "
+            "It does not guess from the pod name. It reads the log, "
+            "and it quotes the line back: fatal, DATABASE underscore U R L is not set, "
+            "refusing to start. Then it finds where that value was supposed to come from. "
+            "A Secret called payments dash D B. "
+            "That is the difference between diagnosing and describing."
+        ),
+    ),
+    dict(
+        id="06-oomkill", kind="terminal", act="IT DIAGNOSES", enabled=True,
+        source="03-oomkill.txt", lines=(43, 64),
+        caption="A worker the kernel keeps killing",
+        evidence="transcripts-kq/03-oomkill.txt:59,62,63",
+        sources=["../DEMOS.md § Verification, row 03"],
+        narration=(
+            "The same again, on a different kind of failure. "
+            "A worker the kernel keeps killing. "
+            "Limit, sixty four mebibytes. Reason, O O M killed. Exit code one three seven. "
+            "Three facts, all read from the cluster, and the conclusion follows from them."
+        ),
+    ),
+    dict(
+        id="07-pending", kind="terminal", act="IT DIAGNOSES", enabled=True,
+        source="05-pending-pod.txt", lines=(113, 133),
+        caption="Capacity problem, or manifest problem?",
+        evidence="transcripts-kq/05-pending-pod.txt:113-114",
+        sources=["../DEMOS.md § Verification, row 05"],
+        narration=(
+            "This one is the question an operator actually asks. "
+            "A pod that will never schedule. Is this a cluster capacity problem, "
+            "or a manifest problem? "
+            "The honest answer is the second one. A pod asking for sixty four C P Us "
+            "and five hundred and twelve gibibytes of memory is not a cluster that is too small. "
+            "It is a manifest that is wrong."
+        ),
+    ),
+    dict(
+        id="08-triage", kind="terminal", act="IT DIAGNOSES", enabled=True,
+        source="08-complex-triage.txt", lines=(134, 155),
+        caption="One namespace, six workloads, five faults, one healthy control",
+        evidence="transcripts-kq/08-complex-triage.txt:89 (found), :135 + :143 (ranked, on screen)",
+        sources=["../DEMOS.md § Verification, row 08"],
+        narration=(
+            "Now the whole namespace at once. Six workloads. Five of them broken, "
+            "one deliberately healthy, and the healthy one must not be named. "
+            "It finds all five, including the one with no pod level symptom at all, "
+            "and here it is ranking them by user impact rather than listing them. "
+            "The silent Service, the one with no failing pod, comes second."
+        ),
+    ),
+
+    # ---------------------------------------------------------------- ACT III
+    dict(
+        id="09-gate-card", kind="card", act="ATTACK IT", enabled=True,
+        title="A gate that is only ever approved\nhas not been shown to gate anything",
+        subtitle="",
+        bullets=[
+            ("Both directions were recorded", "approved, and denied"),
+            ("Checked against the cluster", "not against the transcript"),
+            ("A real prompt, not a sentence", "the recording checks for the HITL prompt"),
+        ],
+        caption="How the gate was tested",
+        sources=["../DEMOS.md § The approval gate, in both directions"],
+        narration=(
+            "Everything so far was read only. This is the part that matters. "
+            "A gate that is only ever approved has not been shown to gate anything, "
+            "so both directions were recorded, and both were checked against the cluster "
+            "afterwards rather than against the transcript."
+        ),
+    ),
+    dict(
+        id="10-deny", kind="terminal", act="ATTACK IT", enabled=True,
+        source="07-approval-denied.txt", lines=(65, 95),
+        caption="Denied — and then proved denied, in the same session",
+        evidence="transcripts-kq/07-approval-denied.txt:84-87,91-93",
+        sources=["../DEMOS.md § Verification, row 07"],
+        narration=(
+            "Scale the web deployment to ten replicas. It stops. A human types deny. "
+            "Watch the next line carefully, because it looks wrong. "
+            "The client echoes the command it was asked to run, and then says: cancelled. "
+            "The proof is the question after it. "
+            "How many replicas does web have now? Two. "
+            "The refusal is verified inside the session, against the cluster."
+        ),
+    ),
+    dict(
+        id="11-approve", kind="terminal", act="ATTACK IT", enabled=True,
+        source="06-approval-gate.txt", lines=(108, 140),
+        caption="Approved — and it did not fix the fault",
+        evidence="transcripts-kq/06-approval-gate.txt:112 (gate), :127 (approve), :135 + :138 (it did not fix it)",
+        sources=["../DEMOS.md § Verification, row 06", "../casts-kq/06-approval-gate.gates.jsonl"],
+        narration=(
+            "The other direction. Medium risk. A human types approve. "
+            "The restart runs, and it works. "
+            "And then the follow up question: did the restart change anything? "
+            "No. The pods fail with the same error, because a restart was never going to "
+            "supply a missing environment variable. "
+            "It says so. That is the most valuable thirty seconds in this video, "
+            "and it is the one a demo normally cuts."
+        ),
+    ),
+
+    # ----------------------------------------------------------------- ACT IV
+    dict(
+        id="12-how", kind="card", act="HOW IT WORKS", enabled=True,
+        title="How it works",
+        subtitle="",
+        bullets=[
+            ("A coordinator, and subagents", "plan, fetch in parallel, then conclude"),
+            ("A cluster snapshot first", "a healthy cluster biases the answer toward the snapshot"),
+            ("The gate is at the tool boundary", "not in the prompt, and not advisory"),
+            ("A role per A P I key", "read only, operator, admin, superadmin — once keys are set"),
+            ("A hash chained decision log", "every step replayable after the fact"),
+        ],
+        caption="The parts that matter",
+        sources=[
+            "../../../v4/CLAUDE.md § V2 Agent Behaviors / V4 Platform Layers",
+            "app/db/flight_recorder.py",
+        ],
+        narration=(
+            "Briefly, how. A coordinator plans, subagents fetch in parallel, and only then "
+            "does it conclude. A cluster snapshot is taken first, which biases a healthy cluster "
+            "toward answering from the snapshot rather than fanning out. "
+            "The approval gate sits at the tool boundary, not in the prompt, "
+            "which is why it cannot be talked around. "
+            "Once you configure keys, each one carries a role: read only, operator, admin or "
+            "superadmin. "
+            "And every decision is written to a hash chained log, so a run can be replayed "
+            "after the fact rather than remembered."
+        ),
+    ),
+    dict(
+        id="13-chat-ui", kind="shot", act="HOW IT WORKS", enabled=False,
+        blocked_on=(
+            "the footage now exists — ../chat-ui/chat-ui-crashloop.webm, recorded "
+            "2026-08-28 — but render.py composites terminal transcripts and title cards "
+            "only. Compositing a video inset is the remaining work, not the recording."
+        ),
+        source="../chat-ui/chat-ui-crashloop.mp4",
+        caption="The same fault, in the chat interface",
+        sources=["../DEMOS.md", "../chat-ui/chat-ui-crashloop.json"],
+        narration=(
+            # Not "same gate": that recording is made with a read-only key, so what it shows
+            # is an RBAC refusal, not the approval gate scenes 09 to 11 show.
+            "The same incident, in the browser. Same server, same evidence — and with a "
+            "read-only key, the write is refused before it runs."
+        ),
+    ),
+    dict(
+        id="14-install", kind="terminal", act="HOW IT WORKS", enabled=False,
+        blocked_on=(
+            "T2b — the cast installs 2.2.0 from PyPI while the tree is 2.3.1, and on 2.2.0 "
+            "the demo's own pre-flight `kubeintellect --version` exits 2. Publish 2.3.1 and "
+            "re-record before this scene may be used."
+        ),
+        source="09-install.txt", lines=(1, 60),
+        caption="Install it",
+        sources=["../DEMOS.md", "../scenarios/09-install.txt"],
+        narration=(
+            "Installing it is one command, and a wizard that asks six questions."
+        ),
+    ),
+
+    # ------------------------------------------------------------------ ACT V
+    dict(
+        id="15-limits", kind="card", act="HONEST LIMITS", enabled=True,
+        title="What it did not do",
+        subtitle="",
+        bullets=[
+            ("It inferred one root cause", "right answer, reached without reading the value"),
+            ("Found is not solved", "it ranked the silent Service, then filed it as a next step"),
+            ("No metrics backend, and it said so", "an invented number is the worst failure there is"),
+            ("The cold gate varies by deployment", "which is why the recording checks for the prompt"),
+        ],
+        caption="The most useful section of the docs",
+        sources=["../DEMOS.md § What it did not do"],
+        narration=(
+            "What it did not do. In one run it reached the right root cause "
+            "without ever reading the value it was diagnosing. Correct, but not confident. "
+            "In another it found the silent Service and then stopped at a next step, "
+            "rather than solving it. Found is not solved. "
+            "This cluster ships no metrics backend, and when asked a metrics question "
+            "it reported the backend unavailable instead of inventing a number, "
+            "which is the failure that would matter most. "
+            "All of that is written down, in the same page as the demos."
+        ),
+    ),
+
+    # ----------------------------------------------------------------- ACT VI
+    dict(
+        id="16-close", kind="card", act="WHO IT IS FOR", enabled=True,
+        title="Self-hosted. Your cluster,\nyour keys, your gate.",
+        subtitle="",
+        bullets=[
+            ("A G P L three, self hosted", "it runs where your cluster runs"),
+            ("Published", "an earlier version is described in a peer reviewed paper"),
+            ("Nothing changes without you", "every mutating command stops at a gate you answer"),
+        ],
+        links=[WEBSITE, REPO],
+        caption="",
+        logo=True,
+        sources=["../../../README.md (licence badge, DOI badge)"],
+        narration=(
+            "KubeIntellect is A G P L three and self hosted. It runs where your cluster runs, "
+            "with your keys, and it does not change anything without a human answering a gate. "
+            "The recordings in this video, and the page listing everything they did not do, "
+            "are both in the repository. "
+            "It is all at kubeintellect dot com — the repository link is on screen."
+        ),
+    ),
+]

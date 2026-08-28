@@ -1,0 +1,32 @@
+# 09-install -- the no-cluster path: install the client, run the wizard, see what is configured.
+#
+# Format is `expect :: send`, driven by install_pty_driver.py. Unlike the eight diagnosis
+# scenarios (which are prompts for the kq REPL), these are answers to `kubeintellect init`, a
+# wizard built on plain input(). The driver matches the prompt text and fails non-zero if one
+# never arrives -- a wizard that silently took a default for a question this file meant to answer
+# is exactly the failure that still records a demo that looks fine.
+#
+# This sequence was verified end to end on 2026-08-28 against a pristine HOME: 6/6 prompts
+# answered in order, driver exit 0. Re-verify after any change to cmd_init's prompts.
+#
+# RECORD IT LIKE THIS, and not any other way:
+#   HOME=$(mktemp -d)   the wizard only offers to create a Kind cluster when ~/.kube/config is
+#                       MISSING. On any machine that has ever touched a cluster it skips that
+#                       branch entirely, so recording as yourself records a different wizard.
+#   OPENAI_API_KEY=<throwaway>
+#                       the key is echoed. `_mask` shows first-4 + last-4 (`sk-d***0000`), so a
+#                       real key leaks 8 characters into the cast. Never record with a live key.
+
+# LLM provider: 1 = OpenAI, 2 = Azure.
+Choose [1/2] [1]              :: 1
+# Empty = keep the value already in the environment. The wizard says so itself
+# ("Found API keys in your environment -- press Enter to use them") and it is the only path
+# that does not type a secret into the recording.
+OPENAI_API_KEY:               ::
+# 09 is deliberately the NO-CLUSTER path -- the "explore in minutes, no Kubernetes needed"
+# route the docs advertise. 10-install-kind answers y here.
+Create a local Kind cluster   :: n
+# Postgres is not running, so the wizard offers SQLite (1) or a Docker postgres (2).
+Choose [1/2] (default: 1)     :: 1
+Install as background service :: n
+Start server and open kq now  :: n

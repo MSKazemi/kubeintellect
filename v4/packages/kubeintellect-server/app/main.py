@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.middleware import RequestLoggingMiddleware
+from app.api.rate_limit import RateLimitMiddleware
 from app.api.v1.router import api_router, public_router
 from app.core.config import settings
 from app.utils.logger import logger, setup_logging
@@ -226,6 +227,14 @@ app = FastAPI(
 
 # Middleware is applied in reverse order (last added = outermost).
 # RequestLogging must wrap CORS so the request_id is set before CORS runs.
+#
+# The rate limiter is added FIRST, which makes it the INNERMOST of the three, and both
+# neighbours are load-bearing (enterprise A16):
+#   * inside CORS, so a 429 still carries Access-Control-Allow-Origin — outside it, a browser
+#     client sees an opaque network error instead of the status that explains the rejection;
+#   * inside RequestLogging, so a rejected request still appears in the access log — a limiter
+#     nobody can see firing is a limiter nobody can operate.
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,

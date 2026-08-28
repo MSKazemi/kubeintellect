@@ -12,6 +12,7 @@ catches, logs, and returns a safe empty value.
 from __future__ import annotations
 
 import json
+import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -59,6 +60,28 @@ def _is_low_value(verified: bool | None, outcome: str | None) -> bool:
     """Low audit value = unverified AND (no outcome | report_only). Only these are
     ever gated by surprise; anything verified or actioned is always retained."""
     return not verified and (outcome or "").strip().lower() in ("", "report_only")
+
+
+# ── Provenance ───────────────────────────────────────────────────────────────
+# `trigger_kind` is the durable record of WHERE an episode came from, and three writers
+# were deriving it independently: the cortex path read `state["trigger_source"]`, and both
+# V2 coordinator writers hardcoded `"user_query"`. `CORTEX_V4_ENABLED` is off by default, so
+# in the shipped configuration every watchtower investigation was stored as a user query —
+# the column that exists to answer "which of these were autonomous?" could not, and the
+# digest had to fall back to a substring match on `trigger_detail`. Provenance also drives
+# the write-admission trust score (`security._TRUST`: detector 1.0, user_query 0.4), so the
+# same episodes were being validated as if a chat client had typed them.
+#
+# One function, so the three call sites cannot drift apart again.
+
+
+def trigger_kind_for(trigger_source: str | None) -> str:
+    """Map a session's provenance to the episode's durable ``trigger_kind``.
+
+    Only the in-process value `"detector"` earns detector provenance; `trigger_source` is an
+    `AgentState` field set by `run_session`, never read from request input.
+    """
+    return "detector" if (trigger_source or "").strip() == "detector" else "user_query"
 
 
 def _imp_weight(col: str) -> str:
@@ -186,6 +209,23 @@ async def write_episode(
             # the "nothing has ever been written" symptom would hide exactly the failure that
             # symptom is for — a store that looks populated but is not being fed.
             liveness.record_episode_written()
+        if episode_id and settings.KI_V5_STATISTICAL_PROMOTION:
+            # ADR-102 P3: the promotion store's production writer. Fire-and-forget like every
+            # other memory side effect — a statistics write must never break the episode write,
+            # let alone the response it hangs off.
+            try:
+                from app.autonomy.promotion_source import record_autonomous_attempt
+                await record_autonomous_attempt(
+                    _pool,
+                    episode_id=episode_id,
+                    trigger_kind=trigger_kind,
+                    outcome=outcome,
+                    verified=verified,
+                    playbooks=playbooks,
+                    at_seconds=(ended_at or started_at or time.time()),
+                )
+            except Exception as exc:
+                logger.warning(f"episodes: promotion outcome write failed: {exc}")
         if episode_id and settings.MEMORY_SECURITY_HARDENING:
             # Tamper-evidence (R8.2): chain each admitted write so a later silent edit is detectable.
             from app.memory import security

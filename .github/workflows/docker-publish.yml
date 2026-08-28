@@ -42,6 +42,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write      # keyless sigstore signing via GitHub OIDC
+      attestations: write  # write the build-provenance and SBOM attestations
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -124,6 +126,7 @@ jobs:
       # 20 minutes — add setup-qemu-action and platforms: linux/amd64,linux/arm64
       # if arm64 images are wanted.
       - name: Build and push
+        id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: v4
@@ -137,6 +140,45 @@ jobs:
             GIT_SHA=${{ steps.version.outputs.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # ── Supply chain (A13) ────────────────────────────────────────────────
+      # Everything below signs the DIGEST, not a tag: a tag is a mutable pointer, so an
+      # attestation bound to one would say nothing about what a `:latest` pull returns
+      # tomorrow. The same digest is pushed to both registries, so one attestation covers
+      # the Docker Hub copy too.
+      #
+      # Skipped on a dry run for a substantive reason, not for speed: nothing was pushed,
+      # so there is no published digest for anyone to verify, and signing an unpublished
+      # one would put an entry in a public transparency log for an artifact that does not
+      # exist.
+      - name: Attest build provenance
+        if: ${{ !inputs.dry_run }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.GHCR_IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      # Generated FROM the built image, not from the lockfile: an SBOM derived from the
+      # manifest describes what was meant to be installed, and the CVE that matters is
+      # usually in the base-image package that no manifest mentions.
+      - name: Generate SBOM from the built image
+        if: ${{ !inputs.dry_run }}
+        uses: anchore/sbom-action@aa80c8c5bd439a416a62804f2151ab38c671a638 # v0.24.1
+        with:
+          image: ${{ env.GHCR_IMAGE }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: false
+
+      - name: Attest the SBOM
+        if: ${{ !inputs.dry_run }}
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-name: ${{ env.GHCR_IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: sbom.spdx.json
+          push-to-registry: true
 
       - name: Summary
         run: |

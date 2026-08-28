@@ -65,7 +65,11 @@ TEXT_IO_NAMES = ("read_text", "write_text", "open")
 # raise TypeError if a contributor followed it — the one thing a gate must never
 # do. Matched on the receiver name, which is how these modules are always called.
 NON_TEXT_OPEN_OWNERS = frozenset(
-    {"webbrowser", "os", "zipfile", "tarfile", "shelve", "dbm", "Image", "ImageFont"}
+    {"webbrowser", "os", "zipfile", "tarfile", "shelve", "dbm", "Image", "ImageFont",
+     # `wave.open(f, mode)` is a RIFF container reader: no encoding parameter exists, and
+     # adding one raises TypeError. Added 2026-08-28 when the narrated-demo build scripts
+     # became tracked and the gate asked them to pass an encoding to an audio decoder.
+     "wave"}
 )
 
 # These do take an encoding, but their open() defaults to BINARY, unlike the

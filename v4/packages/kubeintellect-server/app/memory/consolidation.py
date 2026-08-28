@@ -113,6 +113,12 @@ async def run_consolidation_once(startup: bool = False) -> dict:
     if settings.CORTEX_V5_ENABLED and settings.KI_V5_CHANGE_WATCHDOG:
         stats["watchdogs_fired"] = await _sweep_change_watchdogs()
 
+    # Retention (enterprise A10): the only pass that DELETES. Bounded per table per pass, and
+    # it refuses the hash-chained ledgers outright — see `retention.REFUSED`.
+    if settings.MEMORY_RETENTION_DAYS > 0:
+        from app.memory import retention
+        stats["rows_pruned"] = await retention.prune_once()
+
     # Every pass above returns 0 for "nothing to do" AND for "it raised and I caught it", so the
     # counters alone cannot tell a healthy idle cluster from a dead subsystem — measured, they are
     # byte-identical. The register is what separates them; see `app.memory.pass_health`.
