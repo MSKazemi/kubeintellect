@@ -471,6 +471,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **The security page described the Homebrew tap and the krew index inaccurately.** The tap's
+  formula does pin a `sha256` and it verifies — the pinned digest matches the file byte for byte
+  — but what it pins is the **PyPI sdist** published by `publish.yml`, not a GitHub release
+  archive and not the PyInstaller binaries `release-binaries.yml` attests; and the file it
+  resolves to carries no PEP 740 attestation, because those were only enabled on 2026-08-28. The
+  krew row implied a live channel: nothing is installable with `kubectl krew` today. Both rows now
+  say what was measured.
+- **`.krew.yaml`'s `caveats` carried usage strings the krew maintainers had asked us to remove** —
+  an `export`, a `kubectl kq` invocation and a `helm install` command. Krew already tells users
+  how to run a plugin and links the homepage, so the block now states what the client needs and
+  points at the documentation.
+
 - **`kubeintellect status` described a configuration assembled from a file it never named, and
   the documented precedence was wrong for every non-CLI launch.** Two `.env` files are read —
   `~/.kubeintellect/.env` and a `./.env` in the working directory — and the two loaders disagree

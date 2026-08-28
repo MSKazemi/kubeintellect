@@ -34,19 +34,12 @@ spec:
     self-host — see the Helm chart at
     oci://ghcr.io/mskazemi/charts/kubeintellect.
   caveats: |
-    kq needs a KubeIntellect server to talk to. Point it at one with:
+    kq is a client. It talks to a KubeIntellect server that you self-host; set
+    KUBE_Q_URL to yours (default: a local server on http://localhost:8000), plus
+    KUBE_Q_API_KEY when that server has authentication enabled.
 
-      export KUBE_Q_URL=https://your-kubeintellect-server
-      export KUBE_Q_API_KEY=...      # if the server has auth enabled
+    Deployment and setup instructions: https://mskazemi.github.io/kubeintellect/
 
-    Then run `kubectl kq`. Without KUBE_Q_URL it defaults to a local server on
-    http://localhost:8000.
-
-    Deploy a server with:
-      helm install kubeintellect oci://ghcr.io/mskazemi/charts/kubeintellect \
-        --namespace kubeintellect --create-namespace
-
-    Documentation: https://mskazemi.github.io/kubeintellect/
   platforms:
   - selector:
       matchLabels:

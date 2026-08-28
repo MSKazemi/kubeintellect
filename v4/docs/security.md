@@ -1125,6 +1125,6 @@ download.
 | Channel | Why |
 |---|---|
 | Snap | The Snap Store signs and distributes under its own key and revision chain; a second GitHub-issued signature over those bytes would be one nobody checks. |
-| Homebrew tap | The formula pins the release tarball's `sha256`, so it installs exactly the artifact `release-binaries.yml` attests. `brew install` checks no attestation — tap users get checksum integrity, and the provenance lives on the release the formula resolves to. |
-| krew index | The plugin manifest is submitted to the upstream krew-index repository, which is not ours to attest; it resolves to the same attested tarballs. |
+| Homebrew tap | The formula pins a `sha256`, and it verifies: the pinned digest matches the file byte for byte (checked 2026-08-28). What it pins is the **PyPI sdist** `kube_q-<version>.tar.gz`, published by `publish.yml` — not a GitHub release archive, and not the PyInstaller binaries `release-binaries.yml` attests. Tap users therefore get checksum integrity and no attestation: PEP 740 attestations were only enabled for PyPI on 2026-08-28, so releases published before then carry none. |
+| krew index | **Not a live channel yet** — nothing is installable with `kubectl krew` today. The bot-submitted PR for `v2.3.1` was closed by the krew maintainers on 2026-08-15: an initial plugin submission has to be made by a human. When it does land, the index is upstream and not ours to attest; it resolves to the same tarballs `release-binaries.yml` attests. |
 | Hugging Face Space | Hugging Face builds the public demo in their own runner. It is a hosted demo with a readonly key, not a distribution channel — nothing is installed from it. |
