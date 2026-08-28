@@ -14,15 +14,18 @@ point it at the hosted demo server (read-only):
 # 1. Install the CLI (Python 3.12+)
 pip install kube-q
 
-# 2. Start the REPL — kq already defaults to the hosted server,
-#    https://api.kubeintellect.com, and the demo needs no key
-kq
+# 2. Ask a question. `ki-ro-dev` is the shared read-only demo key — it is
+#    published on purpose, and kq already defaults to the hosted server,
+#    https://api.kubeintellect.com
+kq --api-key ki-ro-dev
 ```
 
-!!! info "No key to fetch — and none to set"
-    The hosted demo does not issue API keys today, so there is nothing to paste
-    here. `KUBE_Q_API_KEY` in `~/.kube-q/.env` is what you set once you point `kq`
-    at **your own** server:
+!!! info "About that key"
+    `ki-ro-dev` is a **shared, public, read-only** key for the demo cluster — the same
+    one the browser demo and the Hugging Face Space use. Do not build anything on it:
+    it is rate-limited, everyone shares one cluster, and every write is rejected.
+
+    Set your own key once you point `kq` at **your own** server:
 
     ```bash
     mkdir -p ~/.kube-q
