@@ -291,15 +291,29 @@ class TestTheGatesDoNotReadTheDevelopersHome:
                 f"{var} is set after HOME moves, so it resolves into the throwaway home"
             )
 
-    def test_the_home_config_really_can_decide_a_setting(self, tmp_path):
-        """The hazard is real, not theoretical — the file format is read."""
+    def test_the_home_config_really_can_decide_a_setting(self, tmp_path, monkeypatch):
+        """The hazard is real, not theoretical — the file format is read.
+
+        The baseline is the DECLARED default, not ``Settings().USE_SQLITE``. Reading
+        the live value here would make this test do the very thing it exists to
+        catch: a fresh clone carries no project ``.env`` (it is gitignored), so on a
+        machine where ``kubeintellect init`` has written ``USE_SQLITE=true`` into
+        ``~/.kubeintellect/.env`` the live value is ``True`` and the assertion fails
+        for a reason that has nothing to do with the code. Measured 2026-08-29: it
+        does.
+        """
         from app.core.config import Settings
 
         home_env = tmp_path / ".kubeintellect" / ".env"
         home_env.parent.mkdir(parents=True)
         home_env.write_text("USE_SQLITE=true\n", encoding="utf-8")
 
-        assert Settings().USE_SQLITE is False, "the default this test stands on has moved"
+        assert Settings.model_fields["USE_SQLITE"].default is False, (
+            "the declared default this test stands on has moved"
+        )
+        # An ambient USE_SQLITE would satisfy the assertion below for the wrong
+        # reason, so the environment is cleared rather than trusted.
+        monkeypatch.delenv("USE_SQLITE", raising=False)
         assert Settings(_env_file=(str(home_env),)).USE_SQLITE is True
 
     def test_the_config_still_reads_the_home_file(self):

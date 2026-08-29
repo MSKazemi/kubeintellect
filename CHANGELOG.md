@@ -13,6 +13,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **The test that catches home-directory leakage was leaking from the home directory**
+  (`v4/tests/test_a_test_can_be_green_only_where_the_private_tier_exists.py`). Its baseline read
+  `Settings().USE_SQLITE` and asserted `False` — a live value, which on any machine where
+  `kubeintellect init` has written `USE_SQLITE=true` into `~/.kubeintellect/.env` is `True`. It
+  passed here only because the repo's own gitignored `v4/.env` sets it back; a fresh clone carries
+  no such file, so a contributor who had run `init` would have seen it fail for a reason unrelated
+  to their change. Measured 2026-08-29 by pointing `HOME` at a directory carrying that key. The
+  baseline is now the **declared** default (`Settings.model_fields["USE_SQLITE"].default`), which no
+  environment can move, and the behavioural half clears an ambient `USE_SQLITE` rather than trusting
+  it. Same defect the file exists to catch, in the file itself.
+
 - **The docs pinned container image tags that were three releases stale, one of which could not
   start** (`README.md`, `v4/docs/deploy/alibaba.md`, `v4/docs/security.md`,
   `v4/scripts/check_doc_claims.py`, `v4/tests/test_doc_claims.py`). Found by pulling and running
