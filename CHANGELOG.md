@@ -9,6 +9,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 > generations keep their own history: **v3** has `v3/CHANGELOG.md`; **v1** and **v2** are
 > versioned by their git tags (`v1.0`, `v2.0.x`). See the root `README.md` for the v1→v5 lineage.
 
+## [Unreleased]
+
+### Fixed
+
+- **Three video claim tests measured pixels that no checkout can hold**
+  (`v4/tests/test_the_video_says_only_what_the_product_does.py`). `49b42ae` added checks
+  that decode `scripts/demo/video/shots-dark/` into frames, and `.gitignore:188` excludes
+  `scripts/demo/video/shots-*/` — so they passed on the machine that had rendered the
+  video and failed on every runner. `main` went red on run 33223883217 with
+  `FileNotFoundError: .../shots-dark/chatui` and a `TypeError` from `shot_frames()`
+  returning `None` three frames away from the cause. This is the same "green here, absent
+  there" class as the metrics extra that made 2.4.0 unstartable, and it was reproduced in
+  a clean clone under a throwaway `HOME` before being fixed. The three now skip on a
+  condition that names the missing directory, and two new tests keep that skip
+  conditional — an unconditional skip is a deleted test wearing a disguise. Where the
+  footage exists the checks still run: 49 passed here, 43 passed and 6 skipped in a
+  footage-free clone.
+
 ## [2.4.1] – 2026-08-29
 
 > **2.4.0 on PyPI cannot start the server.** It installs and `kubeintellect --version`
