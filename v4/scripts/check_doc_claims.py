@@ -607,6 +607,59 @@ def _check_exit_codes() -> list[str]:
     return errors
 
 
+# ── Pinned container image tags ──────────────────────────────────────────────
+#
+# A documented `docker pull ghcr.io/mskazemi/kubeintellect:<v>` is an instruction,
+# not a description, and nothing checked it until 2026-08-29. It had drifted three
+# ways at once: the README handed newcomers `2.2.0` (three releases old, and its
+# own /healthz answers `"version":"0+unknown"`), while `deploy/alibaba.md` pinned
+# `2.3.1` FOUR times — an image that cannot start at all:
+#
+#     $ docker run --rm --entrypoint python ghcr.io/mskazemi/kubeintellect:2.3.1 \
+#           -c "import uvicorn"
+#     ModuleNotFoundError: No module named 'uvicorn'
+#
+# (that is issue #158, fixed 08-21, after every image those tags point at was
+# built). `2.4.1` starts and answers `/healthz` in 10 s, measured. A pinned tag
+# goes stale silently and by default, so it needs a gate rather than a habit.
+#
+# CHANGELOG.md is excluded on purpose: its old tags are history, and history is
+# supposed to name the version it happened to.
+
+_IMAGE_TAG_RE = re.compile(r"ghcr\.io/mskazemi/(?:charts/)?kubeintellect:(\d+\.\d+\.\d+)")
+
+
+def _current_version() -> str | None:
+    """The version this tree ships, from the server distribution's metadata."""
+    pyproject = _V4 / "packages" / "kubeintellect-server" / "pyproject.toml"
+    m = re.search(r'(?m)^version\s*=\s*"([^"]+)"', pyproject.read_text(encoding="utf-8"))
+    return m.group(1) if m else None
+
+
+def _check_image_tags() -> list[str]:
+    version = _current_version()
+    if version is None:
+        return ["SKIP image tags: could not read the version from the server pyproject"]
+
+    surfaces = [_ROOT / "README.md"]
+    surfaces += sorted(_DOCS.rglob("*.md"))
+    surfaces += sorted((_V4 / "packages" / "kube-q" / "docs").rglob("*.md"))
+
+    errors: list[str] = []
+    for path in surfaces:
+        if path.name == "CHANGELOG.md" or not path.is_file():
+            continue
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for tag in _IMAGE_TAG_RE.findall(line):
+                if tag != version:
+                    rel = path.relative_to(_ROOT)
+                    errors.append(
+                        f"{rel}:{n}: pins the image tag {tag}, but this tree ships "
+                        f"{version} — a reader runs the old image, which may not start"
+                    )
+    return errors
+
+
 def run_checks() -> list[str]:
     c = _canonical()
     errors: list[str] = []
@@ -614,6 +667,7 @@ def run_checks() -> list[str]:
         errors += _check_number(doc, pattern, expected, label)
     errors += _check_providers(c)
     errors += _check_exit_codes()
+    errors += _check_image_tags()
     test_claims, notes = _measured_claims()
     errors += notes
     for doc, pattern, expected, label in test_claims:
