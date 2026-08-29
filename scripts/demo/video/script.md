@@ -150,7 +150,7 @@ Every terminal scene replays a verbatim transcript from `../transcripts-kq/`, re
 
 > None of this is a laptop demo. This is a two node cluster running in Azure, and it has been up for one hundred and twenty five days. The server, its Postgres, and the ingress in front of them have been running for four months without attention. That endpoint, api dot kubeintellect dot com, is what the public demo talks to, and it answers health Z right now. One honest note while it is on screen: it reports version two point zero. That deployment has not been updated since April. The code you have been watching is newer than the box serving that URL.
 
-### `6:30` — 14-install  (terminal, 42.3s)
+### `6:30` — 14-install  (terminal, 41.9s)
 
 **On screen:** Install it
 
@@ -161,7 +161,7 @@ Every terminal scene replays a verbatim transcript from `../transcripts-kq/`, re
 
 ## HONEST LIMITS
 
-### `7:13` — 15-limits  (card, 29.5s)
+### `7:12` — 15-limits  (card, 29.5s)
 
 **On screen:** The most useful section of the docs
 
