@@ -150,10 +150,18 @@ Every terminal scene replays a verbatim transcript from `../transcripts-kq/`, re
 
 > None of this is a laptop demo. This is a two node cluster running in Azure, and it has been up for one hundred and twenty five days. The server, its Postgres, and the ingress in front of them have been running for four months without attention. That endpoint, api dot kubeintellect dot com, is what the public demo talks to, and it answers health Z right now. One honest note while it is on screen: it reports version two point zero. That deployment has not been updated since April. The code you have been watching is newer than the box serving that URL.
 
+### `6:30` — 14-install  (terminal, 42.3s)
+
+**On screen:** Install it
+
+**Source:** live transcript `../transcripts-kq/09-install.txt`, lines 1–47
+
+> Installing it is one pip command, and that one command brings both pieces: the server, and the kq client you have been watching. Use pip rather than uv tool here, because uv tool links only the executable of the package you name, and kq belongs to a different distribution. Then a wizard asks four questions. Which model provider. Your key, and it offers the one it already found in the environment. Whether to create a local cluster. And whether to start the server now. Notice that it finds kubectl missing and installs that itself, without being asked. At the end it writes two configuration files and mints an admin key. Everything on this screen is a clean container that had nothing installed on it a minute earlier.
+
 
 ## HONEST LIMITS
 
-### `6:30` — 15-limits  (card, 29.5s)
+### `7:13` — 15-limits  (card, 29.5s)
 
 **On screen:** The most useful section of the docs
 
@@ -164,7 +172,7 @@ Every terminal scene replays a verbatim transcript from `../transcripts-kq/`, re
 
 ## WHO IT IS FOR
 
-### `7:00` — 16-close  (card, 21.1s)
+### `7:42` — 16-close  (card, 21.1s)
 
 **Checked against:** `../../../README.md (licence badge, DOI badge)`
 
@@ -172,7 +180,7 @@ Every terminal scene replays a verbatim transcript from `../transcripts-kq/`, re
 
 ---
 
-**Total (enabled scenes):** 7m21s
+**Total (enabled scenes):** 8m03s
 
 
 ### Reveal rate
@@ -188,12 +196,4 @@ A terminal scene is revealed over its narration, so the transcript window has to
 | `10-deny` | 1.3 |
 | `11-approve` | 0.8 |
 | `13b-azure` | 0.5 |
-
-
-## Not in the cut yet
-
-Each of these has a slot, a caption and narration written; what is missing is the footage. They are listed here rather than deleted so the gap stays visible.
-
-- **`14-install`** (terminal) — Install it
-  - ⛔ T2b — the cast installs 2.2.0 from PyPI, and on 2.2.0 the demo's own pre-flight `kubeintellect --version` exits 2. Re-measured 2026-08-29 against the PUBLISHED artifacts: the release gate is now CLEAR — a clean-venv `pip install kubeintellect==2.4.1` gives `--version` exit 0 and a server whose `/healthz` returns 200 with version 2.4.1, no ModuleNotFoundError. One gate remains: the cast itself (`09-install.cast`) still installs 2.2.0, so it must be re-recorded before this scene may be used.
-  - narration: _Installing it is one command, and a wizard that asks six questions._
+| `14-install` | 1.1 |

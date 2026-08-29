@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import os
 import secrets
+import shutil
 import subprocess
 import sys
 from collections import namedtuple
@@ -661,10 +662,22 @@ _SERVICE_FILE = _SERVICE_DIR / f"{_SERVICE_NAME}.service"
 
 
 def _systemd_available() -> bool:
-    return subprocess.run(
-        ["systemctl", "--user", "is-system-running"],
-        capture_output=True,
-    ).returncode in (0, 1)  # 0=running, 1=degraded — both mean systemd is present
+    """Third of a family: a predicate named "available" must not raise because the thing is
+    absent. `systemctl` does not exist in a container, on macOS, or on a non-systemd Linux,
+    and the exec raised `FileNotFoundError` before any return code existed — which escaped
+    out of `kubeintellect init` *after* it had printed "Setup complete" and written both
+    `.env` files. Measured on a clean `python:3.12-slim` container, 2026-08-29, and
+    identical in shape to `_docker_available()` below. A wedged systemd trips the timeout
+    instead; every one of these means "no service manager here".
+    """
+    try:
+        return subprocess.run(
+            ["systemctl", "--user", "is-system-running"],
+            capture_output=True,
+            timeout=5,
+        ).returncode in (0, 1)  # 0=running, 1=degraded — both mean systemd is present
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def _service_installed() -> bool:
@@ -894,7 +907,10 @@ def cmd_init(_args: argparse.Namespace) -> None:
     # kubectl check — install automatically if missing ────────────────────────
     if subprocess.run(["which", "kubectl"], capture_output=True).returncode != 0:
         print("  kubectl not found — installing automatically...")
-        _ensure_tool("kubectl", _install_kubectl)
+        # Not required: kubectl is how the server talks to a cluster, and `init` only writes
+        # configuration. `status` already reports a missing kubectl as a warning, so failing
+        # to fetch it must not stop the wizard from saving the settings the user came to set.
+        _ensure_tool("kubectl", _install_kubectl, required=False)
 
     # LLM provider ─────────────────────────────────────────────────────────────
     print(f"\n  {_bold('LLM Provider')}")
@@ -2070,7 +2086,16 @@ def cmd_set(args: argparse.Namespace) -> None:
 
 # ── tool installers ───────────────────────────────────────────────────────────
 
-def _ensure_tool(name: str, installer: Callable[[], None]) -> None:
+def _ensure_tool(name: str, installer: Callable[[], None], *, required: bool = True) -> None:
+    """Install *name* if it is missing.
+
+    `required=False` warns and returns instead of exiting. A convenience install is not
+    allowed to end the caller: `kubeintellect init` auto-installs kubectl, and on a machine
+    with no `sudo` the exec raised `FileNotFoundError` before anything could report a return
+    code, so `_ensure_tool` exited 1 and the wizard died before its first question. Measured
+    on a clean `python:3.12-slim` container, 2026-08-29, against the published 2.4.1 — the
+    same shape as `_docker_available()` raising because Docker was absent.
+    """
     if subprocess.run(["which", name], capture_output=True).returncode == 0:
         return
     print(f"  '{name}' not found — installing...")
@@ -2078,8 +2103,32 @@ def _ensure_tool(name: str, installer: Callable[[], None]) -> None:
         installer()
         print(f"  {_ok('✓')}  '{name}' installed.")
     except Exception as exc:
+        if not required:
+            print(_warn(f"  Could not install '{name}': {exc}"))
+            print(_dim(f"     Continuing without it — install '{name}' yourself to use "
+                       "cluster features."))
+            return
         print(_err(f"  Failed to install '{name}': {exc}"), file=sys.stderr)
         sys.exit(1)
+
+
+def _privileged_mv(src: str, dst: str) -> None:
+    """Move *src* to *dst*, elevating only when we are not already root.
+
+    Unconditional `sudo` raises `FileNotFoundError` wherever it is not installed — which is
+    every slim container image, and the reason `kubeintellect init` could not finish on one.
+    Root does not need it; a non-root machine without it gets a sentence naming the manual
+    command rather than a traceback.
+    """
+    if os.geteuid() == 0:
+        subprocess.run(["mv", src, dst], check=True)
+        return
+    if shutil.which("sudo") is None:
+        raise RuntimeError(
+            f"need root to write {dst} and 'sudo' is not installed — "
+            f"move it yourself with: mv {src} {dst}"
+        )
+    subprocess.run(["sudo", "mv", src, dst], check=True)
 
 
 def _install_kind() -> None:
@@ -2090,7 +2139,7 @@ def _install_kind() -> None:
     url = f"https://kind.sigs.k8s.io/dl/v0.23.0/kind-{system}-{arch}"
     urllib.request.urlretrieve(url, "/tmp/kind")
     subprocess.run(["chmod", "+x", "/tmp/kind"], check=True)
-    subprocess.run(["sudo", "mv", "/tmp/kind", "/usr/local/bin/kind"], check=True)
+    _privileged_mv("/tmp/kind", "/usr/local/bin/kind")
 
 
 def _install_kubectl() -> None:
@@ -2102,7 +2151,7 @@ def _install_kubectl() -> None:
     url = f"https://dl.k8s.io/release/{stable}/bin/{system}/{arch}/kubectl"
     urllib.request.urlretrieve(url, "/tmp/kubectl")
     subprocess.run(["chmod", "+x", "/tmp/kubectl"], check=True)
-    subprocess.run(["sudo", "mv", "/tmp/kubectl", "/usr/local/bin/kubectl"], check=True)
+    _privileged_mv("/tmp/kubectl", "/usr/local/bin/kubectl")
 
 
 def _install_helm() -> None:
