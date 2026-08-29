@@ -59,6 +59,15 @@ def state_key(sc, t, dur, lines):
         reveal = min(1.0, t / (dur * 0.82) if dur else 1.0)
         shown = max(1, int(round(reveal * len(lines))))
         return ("t", shown, int(t * 2.4) % 2 if reveal < 1.0 else 2)
+    if sc["kind"] == "flow":
+        # only the lit-stage count and the fade change; everything else is static
+        span = dur * 0.62
+        active = min(len(R.FLOW_NODES) - 1, int(t / span * len(R.FLOW_NODES))) if span else 0
+        return ("f", min(1.0, round(t / 0.5, 2)), active)
+    seq = R.shot_frames(sc["source"])
+    if seq:
+        # a clip advances per source frame; rounding scene-time to 0.1 s would drop it to 10 fps
+        return ("s", R.shot_frame_index(sc, t, dur, len(seq)))
     return ("s", round(t, 1))
 
 
@@ -102,6 +111,8 @@ def main() -> None:
                     base = R.render_card(sc, t, dur, 0.0)
                 elif sc["kind"] == "terminal":
                     base = R.render_terminal(sc, t, dur, 0.0, lines)
+                elif sc["kind"] == "flow":
+                    base = R.render_flow(sc, t, dur, 0.0)
                 else:
                     base = R.render_shot(sc, t, dur, 0.0)
                 last_key = key

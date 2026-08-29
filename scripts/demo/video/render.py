@@ -145,6 +145,7 @@ def chrome(im: Image.Image, progress: float, act: str, caption: str) -> None:
         d.text((96, 66), " ".join(act.upper()), font=f, fill=FAINT)
     wordmark(im, W - 96 - 200, 60, 24)
     if caption:
+        caption = written(caption)
         d.rectangle((0, H - 108, W, H), fill=BG_SUNKEN)
         d.line((0, H - 108, W, H - 108), fill=BORDER, width=2)
         d.rectangle((96, H - 84, 100, H - 36), fill=ACCENT)
@@ -153,6 +154,23 @@ def chrome(im: Image.Image, progress: float, act: str, caption: str) -> None:
 
 
 # ------------------------------------------------------------------ cards
+def written(text: str) -> str:
+    """Restore the written form of anything spelled phonetically for the voice.
+
+    `scenes.py` writes narration phonetically so Piper says `kubectl` and `AGPL-3.0`
+    correctly, and `SUBS` maps those forms back for the subtitles. Card text was never put
+    through the same map, so a phonetic spelling written into a bullet reached the *screen*
+    verbatim — the closing frame read "A G P L three, self hosted", and the answer card said
+    "real kube control against your real cluster". Every string a card draws now goes
+    through here, which makes that whole class of defect impossible rather than caught.
+
+    Longest key first: "A P I key" has to win over "A P I".
+    """
+    for phonetic in sorted(S.SUBS, key=len, reverse=True):
+        text = text.replace(phonetic, S.SUBS[phonetic])
+    return text
+
+
 def wrap(text: str, font, maxw: int) -> list[str]:
     out: list[str] = []
     m = ImageDraw.Draw(Image.new("RGB", (1, 1)))
@@ -187,13 +205,13 @@ def render_card(sc: dict, t: float, dur: float, progress: float) -> Image.Image:
         y += int(tf.size * 1.24)
     else:
         tf = sans(84 if len(sc["title"]) < 34 else 66, "SemiBold", display=True)
-        for line in wrap(sc["title"], tf, W - 2 * x - 320):
+        for line in wrap(written(sc["title"]), tf, W - 2 * x - 320):
             d.text((x, y), line, font=tf, fill=TEXT)
             y += int(tf.size * 1.22)
 
     if sc.get("subtitle"):
         y += 18
-        d.text((x, y), sc["subtitle"], font=sans(38, "Regular"), fill=MUTED)
+        d.text((x, y), written(sc["subtitle"]), font=sans(38, "Regular"), fill=MUTED)
         y += 74
 
     if sc.get("links"):
@@ -215,7 +233,8 @@ def render_card(sc: dict, t: float, dur: float, progress: float) -> Image.Image:
         y += 54
         d.line((x, y - 28, x + 150, y - 28), fill=BORDER_HARD, width=2)
         n = len(sc["bullets"])
-        for i, (head, sub) in enumerate(sc["bullets"]):
+        for i, (head, sub) in enumerate(
+                (written(h), written(b)) for h, b in sc["bullets"]):
             # stagger each bullet in over the first 60% of the scene
             start = 0.7 + i * (dur * 0.45 / max(1, n))
             a = max(0.0, min(1.0, (t - start) / 0.5))
@@ -311,7 +330,12 @@ def render_terminal(sc: dict, t: float, dur: float, progress: float, lines: list
     d.line((bx0 + 2, by0 + 52, bx1 - 2, by0 + 52), fill=BORDER, width=2)
     for i, c in enumerate(((232, 125, 125), (232, 184, 102), ACCENT)):
         d.ellipse((bx0 + 26 + i * 26, by0 + 20, bx0 + 38 + i * 26, by0 + 32), fill=c)
-    d.text((bx0 + 130, by0 + 15), "kq  \u00b7  shop @ ki-demo  \u00b7  AUTONOMY_LEVEL=A2",
+    # The title bar is a factual claim about where the footage came from, so a scene that
+    # was not captured in the `kq` demo session has to be able to say so. The default is
+    # the eight kq casts' own session; `13b-azure` is a plain kubectl capture against the
+    # Azure box and would otherwise be labelled as something it is not.
+    d.text((bx0 + 130, by0 + 15),
+           sc.get("term_title", "kq  \u00b7  shop @ ki-demo  \u00b7  AUTONOMY_LEVEL=A2"),
            font=mono(21), fill=FAINT)
 
     # reveal lines over the first 82% of the scene, then hold
@@ -344,23 +368,68 @@ def render_terminal(sc: dict, t: float, dur: float, progress: float, lines: list
 # ------------------------------------------------------------------ shots
 SHOTS = V / "shots-dark"
 _shot_cache: dict = {}
+_seq_cache: dict = {}
+
+
+def shot_frames(source: str) -> list[pathlib.Path] | None:
+    """A `shot` whose source is a directory is a *clip*, not a still.
+
+    `ffmpeg` decodes the recording into a numbered PNG sequence once; this returns that
+    sequence so `render_shot` can advance through it with the scene clock. A file source
+    keeps the old still-with-a-slow-pan behaviour, so nothing that existed changes.
+    """
+    if source in _seq_cache:
+        return _seq_cache[source]
+    d = SHOTS / source
+    seq = sorted(d.glob("*.png")) if d.is_dir() else None
+    _seq_cache[source] = seq
+    return seq
+
+
+def shot_frame_index(sc: dict, t: float, dur: float, n: int) -> int:
+    """Which source frame this scene-time shows.
+
+    The clip is longer than the narration it sits under, so it is *retimed* onto the scene
+    rather than truncated: the whole recording plays, end to end, at whatever rate makes it
+    fit. `speed` in the scene records the resulting factor so the script can state it — a
+    clip shown at 4x has to say so, or the video is claiming a latency it did not measure.
+    """
+    if n <= 0 or dur <= 0:
+        return 0
+    return min(n - 1, int(t / dur * n))
 
 
 def render_shot(sc: dict, t: float, dur: float, progress: float) -> Image.Image:
     im = canvas()
     key = sc["source"]
-    if key not in _shot_cache:
-        _shot_cache[key] = Image.open(SHOTS / key).convert("RGB")
-    src = _shot_cache[key]
+    seq = shot_frames(key)
+    if seq:
+        path = seq[shot_frame_index(sc, t, dur, len(seq))]
+        if path not in _shot_cache:
+            _shot_cache.clear()          # a clip is streamed; only the current frame is held
+            _shot_cache[path] = Image.open(path).convert("RGB")
+        src = _shot_cache[path]
+    else:
+        if key not in _shot_cache:
+            _shot_cache[key] = Image.open(SHOTS / key).convert("RGB")
+        src = _shot_cache[key]
 
-    # gentle whole-frame scale — nothing is ever cropped away
-    grow = 1.0 + 0.018 * (t / dur if dur else 0)
-    vw = int(1400 * grow)
-    vh = int(round(vw * src.height / src.width))
+    # gentle whole-frame scale — nothing is ever cropped away. A clip already moves, so
+    # it is held still; panning a moving image reads as a wobble.
+    grow = 1.0 if seq else 1.0 + 0.018 * (t / dur if dur else 0)
     bar = 46
+
+    # Fit inside the safe area rather than assuming the source is 16:9. A 1280x800 capture
+    # scaled to a fixed 1400 width is 921 px tall with its title bar, which ran under the
+    # act label at the top and beneath the caption bar at the bottom.
+    TOP, BOTTOM = 124, H - 132
+    max_w, max_h = 1400, (BOTTOM - TOP) - bar
+    vw = int(min(max_w, max_h * src.width / src.height) * grow)
+    vh = int(round(vw * src.height / src.width))
+
     fw, fh = vw, vh + bar
     bx0 = (W - fw) // 2
-    by0 = 124 - int((fh - (786 + bar)) / 2)
+    by0 = TOP + max(0, ((BOTTOM - TOP) - fh) // 2)
 
     shadow = Image.new("RGB", (W, H), BG)
     sd = ImageDraw.Draw(shadow)
@@ -372,7 +441,8 @@ def render_shot(sc: dict, t: float, dur: float, progress: float) -> Image.Image:
     for i, c in enumerate(((232, 125, 125), (232, 184, 102), ACCENT)):
         d.ellipse((bx0 + 20 + i * 24, by0 + 17, bx0 + 31 + i * 24, by0 + 28), fill=c)
     rrect(d, (bx0 + 130, by0 + 12, bx0 + 610, by0 + 34), 11, fill=BG_SUNKEN)
-    d.text((bx0 + 148, by0 + 14), "127.0.0.1:4380/dashboard", font=mono(17), fill=FAINT)
+    d.text((bx0 + 148, by0 + 14), sc.get("url", "127.0.0.1:4380/dashboard"),
+           font=mono(17), fill=FAINT)
 
     im.paste(src.resize((vw, vh), Image.LANCZOS), (bx0, by0 + bar))
     d = ImageDraw.Draw(im)
@@ -411,6 +481,8 @@ def main() -> None:
                 im = render_card(sc, t, dur, progress)
             elif sc["kind"] == "terminal":
                 im = render_terminal(sc, t, dur, progress, lines)
+            elif sc["kind"] == "flow":
+                im = render_flow(sc, t, dur, progress)
             else:
                 im = render_shot(sc, t, dur, progress)
             im.save(frames / f"f{n:06d}.png", compress_level=1)
@@ -425,3 +497,127 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+# ------------------------------------------------------------------- flow
+# The architecture scene. Every node, zone and edge below is the pipeline described in
+# `v4/docs/how-it-works.md`, whose own words are "the stage names are the actual modules …
+# not a simplified teaching diagram" — so this animates that diagram rather than inventing
+# a friendlier one. The module path under each node is what the doc names.
+
+FLOW_NODES = [
+    # (key, title, subtitle, module)
+    ("cluster",   "Cluster",          "kubectl watch\nPromQL · LogQL",  ""),
+    ("sensorium", "Sensorium",        "normalise → Observation",        "app/sensorium/"),
+    ("detectors", "Detectors",        "compiled predicates · no model", "app/detectors/"),
+    ("investig",  "Investigation",    "correlate evidence → root cause", "app/agent/"),
+    ("ladder",    "Autonomy ladder",  "A0 · A1 · A2 · A3",              "app/autonomy/"),
+    ("gate",      "Write chokepoint", "decide_write()",                 "app/tools/aci/mutating.py"),
+]
+FLOW_OUTS = [("auto", GREEN), ("approve → human", AMBER), ("deny", CORAL)]
+
+
+def _flow_geom():
+    """Six nodes on one row; the row is centred and the outcomes sit under the gate."""
+    n = len(FLOW_NODES)
+    bw, bh, gap = 262, 132, 26
+    total = n * bw + (n - 1) * gap
+    x0 = (W - total) // 2
+    y0 = 404
+    return [(x0 + i * (bw + gap), y0, bw, bh) for i in range(n)]
+
+
+def render_flow(sc: dict, t: float, dur: float, progress: float) -> Image.Image:
+    im = canvas()
+    d = ImageDraw.Draw(im)
+    ease = min(1.0, t / 0.5)
+
+    d.text((160, 150), written(sc.get("title", "")),
+           font=sans(62, "SemiBold", display=True), fill=TEXT)
+    if sc.get("subtitle"):
+        d.text((160, 232), written(sc["subtitle"]), font=sans(30), fill=MUTED)
+
+    boxes = _flow_geom()
+
+    # Two zones, exactly as the doc draws them: perception costs nothing, and the model is
+    # only ever entered through a firing detector.
+    z_pad = 22
+    zx0 = boxes[0][0] - z_pad
+    zx1 = boxes[2][0] + boxes[2][2] + z_pad
+    zy0, zy1 = boxes[0][1] - 58, boxes[0][1] + boxes[0][3] + z_pad
+    rrect(d, (zx0, zy0, zx1, zy1), 16, outline=BORDER_HARD, width=2)
+    d.text((zx0 + 20, zy0 + 16), "ALWAYS ON  ·  ZERO TOKENS", font=mono(18, "Medium"), fill=GREEN)
+
+    lx0 = boxes[3][0] - z_pad
+    lx1 = boxes[5][0] + boxes[5][2] + z_pad
+    rrect(d, (lx0, zy0, lx1, zy1), 16, outline=BORDER_HARD, width=2)
+    d.text((lx0 + 20, zy0 + 16), "LLM INVOKED", font=mono(18, "Medium"), fill=AMBER)
+
+    # A stage lights when the narration reaches it. The last third of the scene holds every
+    # stage lit so the finished shape is readable as a whole.
+    span = dur * 0.62
+    active = min(len(FLOW_NODES) - 1, int(t / span * len(FLOW_NODES))) if span else 0
+
+    for i, ((x, y, bw, bh), (key, title, sub, mod)) in enumerate(zip(boxes, FLOW_NODES)):
+        lit = i <= active
+        accent = AMBER if key == "gate" else (GREEN if i < 3 else ACCENT)
+        fill = BG_RAISED if lit else BG_SUNKEN
+        rrect(d, (x, y, x + bw, y + bh), 12, fill=fill,
+              outline=accent if lit else BORDER, width=2 if lit else 1)
+        if lit:
+            d.rectangle((x, y, x + bw, y + 4), fill=accent)
+        tf = sans(27, "SemiBold")
+        d.text((x + 18, y + 22), title, font=tf, fill=TEXT if lit else FAINT)
+        # Split on an authored newline before measuring: the Cluster line is 30 characters
+        # against a box that holds ~22, and letting wrap() choose put `· LogQL` alone on the
+        # second line — a line that opens with a separator. Authored breaks beat measured ones.
+        detail = [w for part in sub.split("\n") for w in wrap(part, mono(16), bw - 36)]
+        for j, ln in enumerate(detail):
+            d.text((x + 18, y + 60 + j * 21), ln, font=mono(16), fill=MUTED if lit else FAINT)
+        if mod:
+            d.text((x + 18, y + bh - 28), mod, font=mono(14), fill=accent if lit else FAINT)
+
+        if i:
+            px, _, pbw, _ = boxes[i - 1]
+            ax0, ax1 = px + pbw + 4, x - 4
+            ay = y + bh // 2
+            on = i <= active
+            d.line((ax0, ay, ax1, ay), fill=accent if on else BORDER, width=3 if on else 2)
+            d.polygon([(ax1, ay), (ax1 - 11, ay - 7), (ax1 - 11, ay + 7)],
+                      fill=accent if on else BORDER)
+
+    # "a detector fires — only now —": the threshold the whole design turns on.
+    gx = (boxes[2][0] + boxes[2][2] + boxes[3][0]) // 2
+    f = mono(17, "Medium")
+    lbl = "a detector fires — only now —"
+    d.text((gx - d.textlength(lbl, font=f) / 2, zy0 - 34), lbl,
+           font=f, fill=AMBER if active >= 3 else FAINT)
+    d.line((gx, zy0 - 8, gx, zy1 + 8), fill=AMBER if active >= 3 else BORDER, width=2)
+
+    # The three outcomes, and the log that records whichever one happened.
+    gx0, gy, gbw, gbh = boxes[5]
+    oy = gy + gbh + 96
+    if active >= 5:
+        ow, ogap = 236, 22
+        row = 3 * ow + 2 * ogap
+        ox = (W - row) // 2                       # centred on the canvas, not on the gate,
+        gcx = gx0 + gbw // 2                      # which sits at the far right of the row
+        elbow = gy + gbh + 44
+        d.line((gcx, gy + gbh, gcx, elbow), fill=AMBER, width=3)
+        d.line((ox + ow // 2, elbow, gcx, elbow), fill=AMBER, width=3)
+        for k in range(3):
+            cx = ox + k * (ow + ogap) + ow // 2
+            d.line((cx, elbow, cx, oy - 2), fill=AMBER, width=3)
+        for k, (label, col) in enumerate(FLOW_OUTS):
+            bx = ox + k * (ow + 18)
+            rrect(d, (bx, oy, bx + ow, oy + 58), 10, fill=BG_SUNKEN, outline=col, width=2)
+            f = sans(25, "Medium")
+            d.text((bx + (ow - d.textlength(label, font=f)) / 2, oy + 14), label, font=f, fill=col)
+        rec = "every outcome → hash-chained flight recorder  ·  app/db/flight_recorder.py"
+        f = mono(20)
+        d.text(((W - d.textlength(rec, font=f)) / 2, oy + 96), rec, font=f, fill=MUTED)
+
+    if ease < 1.0:
+        im = Image.blend(canvas(), im, ease)
+    chrome(im, progress, sc.get("act", ""), sc.get("caption", ""))
+    return im
