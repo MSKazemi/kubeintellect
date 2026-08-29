@@ -356,11 +356,12 @@ SCENES = [
         id="14-install", kind="terminal", act="HOW IT WORKS", enabled=False,
         blocked_on=(
             "T2b — the cast installs 2.2.0 from PyPI, and on 2.2.0 the demo's own pre-flight "
-            "`kubeintellect --version` exits 2. Re-measured 2026-08-29: PyPI now serves 2.4.0, "
-            "which matches this tree, so 'no current version' is no longer the blocker — but "
-            "released 2.4.0 cannot start from a plain `pip install` (fixed in-tree by c871fbf, "
-            "unreleased), so filming it today films a broken install. Needs a release carrying "
-            "that fix AND a re-recorded cast before this scene may be used."
+            "`kubeintellect --version` exits 2. Re-measured 2026-08-29 against the PUBLISHED "
+            "artifacts: the release gate is now CLEAR — a clean-venv `pip install "
+            "kubeintellect==2.4.1` gives `--version` exit 0 and a server whose `/healthz` "
+            "returns 200 with version 2.4.1, no ModuleNotFoundError. One gate remains: the "
+            "cast itself (`09-install.cast`) still installs 2.2.0, so it must be re-recorded "
+            "before this scene may be used."
         ),
         source="09-install.txt", lines=(1, 60),
         caption="Install it",
