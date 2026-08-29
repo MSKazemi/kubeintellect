@@ -84,10 +84,10 @@ Pulling GHCR from China-region nodes is slow/unreliable, so mirror the image to
 # 1. create an ACR namespace + repo `kubeintellect` in the console
 # 2. log in and mirror:
 docker login registry-intl.<region>.aliyuncs.com
-docker pull ghcr.io/mskazemi/kubeintellect:2.3.1
-docker tag  ghcr.io/mskazemi/kubeintellect:2.3.1 \
-            registry-intl.<region>.aliyuncs.com/<namespace>/kubeintellect:2.3.1
-docker push registry-intl.<region>.aliyuncs.com/<namespace>/kubeintellect:2.3.1
+docker pull ghcr.io/mskazemi/kubeintellect:2.4.1
+docker tag  ghcr.io/mskazemi/kubeintellect:2.4.1 \
+            registry-intl.<region>.aliyuncs.com/<namespace>/kubeintellect:2.4.1
+docker push registry-intl.<region>.aliyuncs.com/<namespace>/kubeintellect:2.4.1
 ```
 
 Pin an explicit version rather than a floating tag. `latest` also resolves if you

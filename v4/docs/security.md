@@ -1103,9 +1103,9 @@ from what actually signs. Needs `gh` ≥ 2.49 to run the checks it prints.
 
 | Artifact | Check |
 |---|---|
-| Container image (GHCR **and** Docker Hub — one build, one digest) | `gh attestation verify oci://ghcr.io/mskazemi/kubeintellect:2.3.1 --repo MSKazemi/kubeintellect --signer-workflow MSKazemi/kubeintellect/.github/workflows/docker-publish.yml` |
+| Container image (GHCR **and** Docker Hub — one build, one digest) | `gh attestation verify oci://ghcr.io/mskazemi/kubeintellect:2.4.1 --repo MSKazemi/kubeintellect --signer-workflow MSKazemi/kubeintellect/.github/workflows/docker-publish.yml` |
 | Image SBOM (SPDX, generated **from the built image**) | the same command plus `--predicate-type https://spdx.dev/Document` |
-| Helm chart (OCI) | `gh attestation verify oci://ghcr.io/mskazemi/charts/kubeintellect:2.3.1 --repo MSKazemi/kubeintellect --signer-workflow MSKazemi/kubeintellect/.github/workflows/helm-publish.yml` |
+| Helm chart (OCI) | `gh attestation verify oci://ghcr.io/mskazemi/charts/kubeintellect:2.4.1 --repo MSKazemi/kubeintellect --signer-workflow MSKazemi/kubeintellect/.github/workflows/helm-publish.yml` |
 | `kq` binaries | `gh attestation verify kq_linux_amd64.tar.gz --repo MSKazemi/kubeintellect --signer-workflow MSKazemi/kubeintellect/.github/workflows/release-binaries.yml` |
 | PyPI wheels (PEP 740) | `pypi-attestations verify pypi --repository https://github.com/MSKazemi/kubeintellect pypi:kubeintellect-2.3.1-py3-none-any.whl` |
 
