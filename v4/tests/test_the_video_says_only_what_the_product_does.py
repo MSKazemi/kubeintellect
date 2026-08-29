@@ -37,6 +37,20 @@ ROOT = Path(__file__).resolve().parents[2]
 VIDEO = ROOT / "scripts" / "demo" / "video"
 BRAND = ROOT / "v4" / "docs" / "assets" / "brand" / "ki-c-green.svg"
 CONFIG = (ROOT / "v4" / "packages" / "kubeintellect-server" / "app" / "core" / "config.py")
+SHOTS = VIDEO / "shots-dark"
+
+# The shot sources are build *inputs*, not source: `.gitignore` excludes
+# `scripts/demo/video/shots-*/`, so a fresh checkout has no footage at all. Three checks
+# added on 2026-08-29 measured decoded pixels and so passed on the machine that rendered
+# the video and failed on every runner — `FileNotFoundError: .../shots-dark/chatui`, and a
+# `TypeError` from `shot_frames()` returning `None` three frames from the cause. They are
+# real where the footage exists and cannot run where it does not, so they skip loudly
+# rather than redden `main` for everyone. `test_the_footage_guard_is_conditional` below
+# keeps this from quietly becoming a permanent skip.
+needs_footage = pytest.mark.skipif(
+    not SHOTS.is_dir(),
+    reason=f"no rendered footage at {SHOTS} — shots-*/ is gitignored, so CI never has it",
+)
 
 
 def _load(name: str):
@@ -370,6 +384,7 @@ class TestTheNewScenesClaimOnlyWhatWasCaptured:
         n = len((TRANSCRIPTS / sc["source"]).read_text(encoding="utf-8").splitlines())
         assert sc["lines"] == (1, n), (sc["lines"], n)
 
+    @needs_footage
     def test_the_chat_ui_clip_was_decoded_into_frames(self, scenes, render):
         sc = self._scene(scenes, "13-chat-ui")
         assert len(render.shot_frames(sc["source"])) > 0
@@ -430,6 +445,7 @@ class TestTheShotFitsTheFrame:
     with its title bar and landed at y=80..1001, over the act label and through the caption
     bar. Neither the build nor any test noticed — the frames simply looked wrong."""
 
+    @needs_footage
     def test_the_shot_stays_between_the_act_label_and_the_caption_bar(self, scenes, render):
         from PIL import Image
         top, bottom, bar = 124, render.H - 132, 46
@@ -443,6 +459,7 @@ class TestTheShotFitsTheFrame:
             y0 = top + max(0, ((bottom - top) - fh) // 2)
             assert y0 >= top and y0 + fh <= bottom, (sc["id"], y0, y0 + fh)
 
+    @needs_footage
     def test_a_directory_source_plays_the_whole_recording(self, scenes, render):
         """A clip is retimed, never truncated: the last scene-frame must land on the last
         source frame, or the video quietly stops the recording early."""
@@ -450,6 +467,29 @@ class TestTheShotFitsTheFrame:
         n = len(render.shot_frames(sc["source"]))
         assert render.shot_frame_index(sc, 0.0, 30.0, n) == 0
         assert render.shot_frame_index(sc, 30.0, 30.0, n) == n - 1
+
+
+class TestTheFootageGuardStaysHonest:
+    """A skip that can never turn back on is a deleted test wearing a disguise.
+
+    `needs_footage` exists so three pixel checks stop reddening `main` on a checkout that
+    cannot hold the footage. That is only acceptable while the skip is genuinely
+    conditional — it must key off the footage directory and nothing else, and it must let
+    the checks run on the machine that has rendered the video.
+    """
+
+    def test_the_guard_keys_off_the_footage_directory_and_nothing_else(self):
+        source = Path(__file__).read_text(encoding="utf-8")
+        assert "not SHOTS.is_dir()" in source, "the guard no longer reads the footage directory"
+        assert "@pytest.mark.skip\n" not in source, "an unconditional skip crept in"
+        assert SHOTS == VIDEO / "shots-dark", SHOTS
+
+    def test_the_guarded_checks_run_wherever_the_footage_exists(self):
+        """The condition is the directory, so the skip lifts the moment a render happens."""
+        marked = [m for m in (needs_footage,) if m.args or m.kwargs]
+        assert marked, "needs_footage carries no condition"
+        assert needs_footage.kwargs["reason"].startswith("no rendered footage at")
+        assert needs_footage.args[0] is (not SHOTS.is_dir())
 
 
 class TestNothingIsSpelledPhoneticallyOnScreen:
