@@ -110,7 +110,7 @@ SCENES = [
         title="Ask in English.\nIt reads the cluster.\nIt stops before it changes it.",
         subtitle="",
         bullets=[
-            ("Investigate", "real kube control against your real cluster — it reads before it writes"),
+            ("Investigate", "real kubectl against your real cluster — it reads before it writes"),
             ("Explain", "quoting the evidence it read, not a plausible story"),
             ("Ask", "a mutating command pauses at a gate a human answers"),
         ],
@@ -220,7 +220,12 @@ SCENES = [
     ),
     dict(
         id="11-approve", kind="terminal", act="ATTACK IT", enabled=True,
-        source="06-approval-gate.txt", lines=(108, 140),
+        # (108, 140) ended on "with the same error:" — a colon. The narration calls this
+        # "the most valuable thirty seconds ... the one a demo normally cuts", and the window
+        # cut it: the evidence for *why* the restart failed (DATABASE_URL not set, exit code
+        # 1) is on :143-:145 and never reached the screen. Extended to :145, and the
+        # narration lengthened to match so the reveal rate stays readable.
+        source="06-approval-gate.txt", lines=(108, 145),
         caption="Approved — and it did not fix the fault",
         evidence="transcripts-kq/06-approval-gate.txt:112 (gate), :127 (approve), :135 + :138 (it did not fix it)",
         sources=["../DEMOS.md § Verification, row 06", "../casts-kq/06-approval-gate.gates.jsonl"],
@@ -231,7 +236,14 @@ SCENES = [
             "No. The pods fail with the same error, because a restart was never going to "
             "supply a missing environment variable. "
             "It says so. That is the most valuable thirty seconds in this video, "
-            "and it is the one a demo normally cuts."
+            "and it is the one a demo normally cuts. "
+            "So watch what it actually returns, rather than taking my word for it. "
+            "It re-reads the pods. It re-reads the events. "
+            "And it names the same root cause it found at the very beginning: "
+            "the DATABASE underscore U R L environment variable is not set, "
+            "so the container exits with code one. "
+            "The restart was a reasonable thing to try and the wrong thing to fix it — "
+            "and the system is the one telling you that, not me."
         ),
     ),
 
@@ -244,7 +256,7 @@ SCENES = [
             ("A coordinator, and subagents", "plan, fetch in parallel, then conclude"),
             ("A cluster snapshot first", "a healthy cluster biases the answer toward the snapshot"),
             ("The gate is at the tool boundary", "not in the prompt, and not advisory"),
-            ("A role per A P I key", "read only, operator, admin, superadmin — once keys are set"),
+            ("A role per API key", "read only, operator, admin, superadmin — once keys are set"),
             ("A hash chained decision log", "every step replayable after the fact"),
         ],
         caption="The parts that matter",
@@ -266,28 +278,89 @@ SCENES = [
         ),
     ),
     dict(
-        id="13-chat-ui", kind="shot", act="HOW IT WORKS", enabled=False,
-        blocked_on=(
-            "the footage now exists — ../chat-ui/chat-ui-crashloop.webm, recorded "
-            "2026-08-28 — but render.py composites terminal transcripts and title cards "
-            "only. Compositing a video inset is the remaining work, not the recording."
+        id="12a-flow", kind="flow", act="HOW IT WORKS", enabled=True,
+        title="How a signal becomes an action",
+        subtitle="The stage names are the modules",
+        caption="Perception is free; the model is the expensive part, so it is entered last",
+        sources=[
+            "../../../v4/docs/how-it-works.md",
+            "../../../v4/docs/security.md § 2. Role capabilities",
+        ],
+        narration=(
+            "Here is the whole pipeline. Signals arrive from the cluster — kube control "
+            "watches, Prometheus queries, log queries — and the sensorium normalises each "
+            "one into a single observation shape. "
+            "Detectors are compiled predicates. They are always on, they run on every "
+            "observation, and they cost zero tokens, because no model is involved. That is the "
+            "point of the design: watching your cluster is free. "
+            "Only when a detector actually fires is the L L M invoked at all, and only then does "
+            "an investigation correlate the evidence into a root cause. "
+            "If that investigation wants to change something, it does not simply change it. The "
+            "proposal goes to the autonomy ladder, A zero through A three, and then through one "
+            "write chokepoint — decide underscore write — which returns exactly three "
+            "answers: do it, ask a human, or refuse. "
+            "Every one of those outcomes is appended to a hash chained flight recorder, so the "
+            "run can be replayed afterwards instead of remembered."
         ),
-        source="../chat-ui/chat-ui-crashloop.mp4",
-        caption="The same fault, in the chat interface",
+    ),
+    dict(
+        # `source` is a directory, so this is a clip rather than a still: ffmpeg decoded
+        # ../chat-ui/chat-ui-crashloop.mp4 into shots-dark/chatui/ once, and render.py walks
+        # that sequence with the scene clock. The whole recording plays, retimed onto the
+        # narration rather than truncated — which is why the caption says so out loud.
+        id="13-chat-ui", kind="shot", act="HOW IT WORKS", enabled=True,
+        source="chatui",
+        url="127.0.0.1:7861",
+        speed=1.74,
+        caption="The same server, in the browser — replayed faster than real time",
         sources=["../DEMOS.md", "../chat-ui/chat-ui-crashloop.json"],
         narration=(
             # Not "same gate": that recording is made with a read-only key, so what it shows
             # is an RBAC refusal, not the approval gate scenes 09 to 11 show.
-            "The same incident, in the browser. Same server, same evidence — and with a "
-            "read-only key, the write is refused before it runs."
+            "Not everyone lives in a terminal, so the same server answers in a browser. This is "
+            "a real recording, replayed here faster than it happened. "
+            "The first question is the crash loop you already saw, and it settled in fifteen "
+            "point three seconds — measured from pressing enter, not timed off this video. "
+            "Then watch what happens on the second one. The user asks it to scale a deployment "
+            "to three replicas. This session is holding a read only key, so the write is refused "
+            "at the role boundary — before it is ever proposed, let alone run. "
+            "Same evidence, same server, a different door."
+        ),
+    ),
+    dict(
+        # Captured live over ssh while this video was being built. Every command is a read,
+        # and `term_title` says which cluster this is: labelling this footage with the local
+        # demo cluster's prompt would be a false caption on true footage. It deliberately does
+        # NOT name the login or the host IP — this repo and the video are both public, and
+        # publishing the SSH account of a live production box buys nothing a viewer needs.
+        id="13b-azure", kind="terminal", act="HOW IT WORKS", enabled=True,
+        source="10-azure-live.txt", lines=(1, 17),
+        term_title="kubectl  ·  production cluster in Azure  ·  read-only",
+        caption="A real cluster in Azure — captured live while this video was built",
+        sources=[
+            "../transcripts-kq/10-azure-live.txt",
+            "https://api.kubeintellect.com/healthz",
+        ],
+        narration=(
+            "None of this is a laptop demo. This is a two node cluster running in Azure, and it "
+            "has been up for one hundred and twenty five days. The server, its Postgres, and the "
+            "ingress in front of them have been running for four months without attention. "
+            "That endpoint, api dot kubeintellect dot com, is what the public demo talks to, and "
+            "it answers health Z right now. "
+            "One honest note while it is on screen: it reports version two point zero. That "
+            "deployment has not been updated since April. The code you have been watching is "
+            "newer than the box serving that URL."
         ),
     ),
     dict(
         id="14-install", kind="terminal", act="HOW IT WORKS", enabled=False,
         blocked_on=(
-            "T2b — the cast installs 2.2.0 from PyPI while the tree is 2.3.1, and on 2.2.0 "
-            "the demo's own pre-flight `kubeintellect --version` exits 2. Publish 2.3.1 and "
-            "re-record before this scene may be used."
+            "T2b — the cast installs 2.2.0 from PyPI, and on 2.2.0 the demo's own pre-flight "
+            "`kubeintellect --version` exits 2. Re-measured 2026-08-29: PyPI now serves 2.4.0, "
+            "which matches this tree, so 'no current version' is no longer the blocker — but "
+            "released 2.4.0 cannot start from a plain `pip install` (fixed in-tree by c871fbf, "
+            "unreleased), so filming it today films a broken install. Needs a release carrying "
+            "that fix AND a re-recorded cast before this scene may be used."
         ),
         source="09-install.txt", lines=(1, 60),
         caption="Install it",
@@ -328,7 +401,7 @@ SCENES = [
         title="Self-hosted. Your cluster,\nyour keys, your gate.",
         subtitle="",
         bullets=[
-            ("A G P L three, self hosted", "it runs where your cluster runs"),
+            ("AGPL-3.0, self-hosted", "it runs where your cluster runs"),
             ("Published", "an earlier version is described in a peer reviewed paper"),
             ("Nothing changes without you", "every mutating command stops at a gate you answer"),
         ],

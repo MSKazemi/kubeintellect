@@ -63,7 +63,7 @@ def spoken(scenes) -> str:
     """Everything the video says or shows on a card, lowercased."""
     parts = []
     for sc in scenes.SCENES:
-        if not sc.get("enabled"):
+        if not sc.get("enabled", True):
             continue
         parts += [sc.get("narration", ""), sc.get("title", ""), sc.get("subtitle", "")]
         for head, sub in sc.get("bullets") or []:
@@ -244,3 +244,249 @@ class TestTheVideoAndThePapersDoNotContradictEachOther:
         if not arch.exists():
             pytest.skip("the published paper's source is not in this checkout")
         assert "conversational confirmation step" in arch.read_text(encoding="utf-8")
+
+
+class TestThePayoffIsNotCut:
+    """Scene `11-approve` narrates: *"That is the most valuable thirty seconds in this video,
+    and it is the one a demo normally cuts."* Its transcript window was `(108, 140)`, which
+    ended on `with the same error:` — a colon. The evidence for the claim the narration
+    makes (a restart cannot supply a missing environment variable) is on :143-:145 and never
+    reached the screen. The video asserted the conclusion and cut the proof, in the one scene
+    that boasts about not doing that. Found 2026-08-29 by dumping each window's last line."""
+
+    @pytest.fixture(scope="class")
+    def video(self):
+        return _load("render")
+
+    def _tail(self, render, sc):
+        lines = render.load_transcript(sc["source"], sc.get("lines"))
+        return [ln for ln in lines if ln.strip()][-1]
+
+    def test_no_terminal_scene_ends_mid_thought(self, scenes, video):
+        """A window that stops on a colon or a comma has cut a sentence in half."""
+        bad = []
+        for sc in scenes.SCENES:
+            if not sc.get("enabled", True) or sc.get("kind") != "terminal":
+                continue
+            tail = self._tail(video, sc)
+            if tail.rstrip().endswith((":", ",")):
+                bad.append((sc["id"], tail))
+        assert bad == [], bad
+
+    def test_the_approved_fix_scene_shows_why_the_fix_failed(self, scenes, video):
+        """Not just that it failed — the root cause it names, on screen."""
+        sc = next(s for s in scenes.SCENES if s["id"] == "11-approve")
+        lines = video.load_transcript(sc["source"], sc.get("lines"))
+        assert any("DATABASE_URL" in ln for ln in lines), \
+            "the evidence for the narration's claim is outside the window"
+        assert any("exit with code 1" in ln for ln in lines)
+
+    def test_the_narration_walks_the_viewer_to_that_evidence(self, scenes):
+        said = next(s for s in scenes.SCENES if s["id"] == "11-approve")["narration"]
+        assert "DATABASE underscore U R L" in said, "spoken phonetically for Piper"
+        assert "rather than taking my word for it" in said
+
+    def test_the_reveal_stays_readable(self, scenes, video):
+        """A longer window under the same narration just scrolls faster. Each terminal
+        scene reveals its lines over 82% of its duration; past ~2 lines/s it is unreadable,
+        which would trade one defect for another."""
+        import json
+        durs = VIDEO / "durations.json"
+        if not durs.exists():
+            pytest.skip("durations.json is a build artifact")
+        d = json.loads(durs.read_text(encoding="utf-8"))
+        too_fast = []
+        for sc in scenes.SCENES:
+            if not sc.get("enabled", True) or sc.get("kind") != "terminal":
+                continue
+            if sc["id"] not in d:
+                continue
+            n = len(video.load_transcript(sc["source"], sc.get("lines")))
+            rate = n / ((d[sc["id"]] + 1.3) * 0.82)
+            if rate > 2.0:
+                too_fast.append((sc["id"], round(rate, 2)))
+        assert too_fast == [], too_fast
+
+
+SERVER = ROOT / "v4" / "packages" / "kubeintellect-server"
+TRANSCRIPTS = ROOT / "scripts" / "demo" / "transcripts-kq"
+CHATUI = ROOT / "scripts" / "demo" / "chat-ui"
+
+
+class TestTheNewScenesClaimOnlyWhatWasCaptured:
+    """Three scenes were added on 2026-08-28 — an architecture diagram, the chat UI, and a
+    live capture from the production cluster in Azure. Two of them make claims that no
+    transcript backs, because they are not terminal scenes: the diagram names modules, and
+    the chat-UI scene quotes a latency measured somewhere else. These tie each one to the
+    artifact it came from."""
+
+    def test_every_stage_in_the_diagram_names_a_module_that_exists(self, render):
+        missing = [n[3] for n in render.FLOW_NODES if n[3] and not (SERVER / n[3]).exists()]
+        assert missing == [], missing
+
+    def test_the_chokepoint_names_the_function_the_code_actually_calls_it(self, render):
+        gate = [n for n in render.FLOW_NODES if n[0] == "gate"][0]
+        src = (SERVER / "app" / "tools" / "aci" / "mutating.py").read_text(encoding="utf-8")
+        assert "decide_write" in gate[2]
+        assert "def decide_write(" in src
+
+    def test_the_three_outcomes_are_the_three_the_gate_returns(self, render):
+        """`decide_write` returns exactly `auto`, `approve` or `deny`. The diagram draws three
+        outcomes; if the code ever grows a fourth, the diagram is a lie by omission."""
+        src = (SERVER / "app" / "tools" / "aci" / "mutating.py").read_text(encoding="utf-8")
+        verdicts = set(re.findall(r'MutationProposal\(command, rc, "(\w+)"', src))
+        drawn = {label.split()[0] for label, _ in render.FLOW_OUTS}
+        assert drawn == verdicts, (drawn, verdicts)
+
+    def test_the_zero_token_claim_holds_for_the_path_that_evaluates_detectors(self):
+        """The diagram says detectors are "compiled predicates · no model". That is a claim
+        about *evaluation*, and `engine.py` is where evaluation happens. `authoring.py` in the
+        same package does call a model — it is the natural-language detector *authoring*
+        feature — so the claim is scoped to the engine rather than to the package."""
+        engine = (SERVER / "app" / "detectors" / "engine.py").read_text(encoding="utf-8")
+        assert not re.search(r"\bopenai\b|langchain|ChatOpenAI", engine)
+
+    def test_the_azure_scene_replays_a_capture_that_is_in_the_repo(self, scenes):
+        sc = self._scene(scenes, "13b-azure")
+        assert (TRANSCRIPTS / sc["source"]).exists()
+
+    def test_the_uptime_it_states_is_the_uptime_in_the_capture(self, scenes):
+        sc = self._scene(scenes, "13b-azure")
+        cap = (TRANSCRIPTS / sc["source"]).read_text(encoding="utf-8")
+        assert "one hundred and twenty five days" in sc["narration"]
+        assert "125d" in cap
+
+    def test_it_admits_the_version_the_endpoint_actually_returned(self, scenes):
+        """The deployed server answers 2.0.0 while the code in this video is newer. The scene
+        says so out loud; this fails if someone quietly drops the admission."""
+        sc = self._scene(scenes, "13b-azure")
+        cap = (TRANSCRIPTS / sc["source"]).read_text(encoding="utf-8")
+        assert '"version":"2.0.0"' in cap.replace(" ", "")
+        assert "version two point zero" in sc["narration"]
+        assert "newer than the box" in sc["narration"]
+
+    def test_the_azure_window_covers_the_whole_capture(self, scenes):
+        sc = self._scene(scenes, "13b-azure")
+        n = len((TRANSCRIPTS / sc["source"]).read_text(encoding="utf-8").splitlines())
+        assert sc["lines"] == (1, n), (sc["lines"], n)
+
+    def test_the_chat_ui_clip_was_decoded_into_frames(self, scenes, render):
+        sc = self._scene(scenes, "13-chat-ui")
+        assert len(render.shot_frames(sc["source"])) > 0
+
+    def test_the_replay_speed_it_declares_matches_the_footage(self, scenes, render):
+        """The clip is retimed onto the narration, so it runs faster than it happened. The
+        scene states the factor; the caption says so on screen. Both have to be true."""
+        import json
+        durs = VIDEO / "durations.json"
+        if not durs.exists():
+            pytest.skip("durations.json is a build artifact")
+        sc = self._scene(scenes, "13-chat-ui")
+        dur = json.loads(durs.read_text(encoding="utf-8"))[sc["id"]] + 1.3
+        actual = len(render.shot_frames(sc["source"])) / 15 / dur   # decoded at fps=15
+        assert abs(sc["speed"] - actual) < 0.1, (sc["speed"], actual)
+        assert "faster than" in sc["caption"]
+
+    def test_the_settle_time_it_quotes_comes_from_the_recording(self, scenes):
+        sc = self._scene(scenes, "13-chat-ui")
+        meta = (CHATUI / "chat-ui-crashloop.json").read_text(encoding="utf-8")
+        assert "fifteen point three seconds" in sc["narration"]
+        assert "15.3" in meta
+
+    def test_the_chat_ui_scene_does_not_call_the_rbac_refusal_an_approval_gate(self, scenes):
+        """That session holds a read-only key, so the write is refused at the role boundary —
+        a different mechanism from the approval gate scenes 09 to 11 demonstrate."""
+        sc = self._scene(scenes, "13-chat-ui")
+        assert "read only key" in sc["narration"]
+        assert "approval gate" not in sc["narration"].lower()
+
+    @staticmethod
+    def _scene(scenes, sid):
+        return [sc for sc in scenes.SCENES if sc["id"] == sid][0]
+
+
+class TestTheTerminalChromeDoesNotMislabelFootage:
+    """The terminal title bar is itself a claim about where the footage came from. It was
+    hard-coded to `kq · shop @ ki-demo · AUTONOMY_LEVEL=A2`, which put the local demo
+    cluster's prompt above a capture taken against the production cluster in Azure."""
+
+    def test_footage_from_another_host_carries_its_own_title(self, scenes):
+        for sc in scenes.SCENES:
+            if not sc.get("enabled", True) or sc.get("kind") != "terminal":
+                continue
+            body = (TRANSCRIPTS / sc["source"]).read_text(encoding="utf-8")
+            if "20.119.62.10" in body or "api.kubeintellect.com" in body:
+                assert sc.get("term_title"), f"{sc['id']} uses the default local-cluster title"
+                assert "ki-demo" not in sc["term_title"], sc["term_title"]
+
+    def test_the_title_is_a_scene_property_rather_than_a_constant(self, render):
+        src = (VIDEO / "render.py").read_text(encoding="utf-8")
+        assert 'sc.get("term_title"' in src
+
+
+class TestTheShotFitsTheFrame:
+    """`render_shot` scaled every source to a fixed 1400 px width and derived the height,
+    which is only correct for 16:9. The chat-UI capture is 1280x800: it came out 921 px tall
+    with its title bar and landed at y=80..1001, over the act label and through the caption
+    bar. Neither the build nor any test noticed — the frames simply looked wrong."""
+
+    def test_the_shot_stays_between_the_act_label_and_the_caption_bar(self, scenes, render):
+        from PIL import Image
+        top, bottom, bar = 124, render.H - 132, 46
+        for sc in scenes.SCENES:
+            if not sc.get("enabled", True) or sc.get("kind") != "shot":
+                continue
+            seq = render.shot_frames(sc["source"])
+            src = Image.open(seq[0] if seq else render.SHOTS / sc["source"])
+            vw = int(min(1400, (bottom - top - bar) * src.width / src.height))
+            fh = int(round(vw * src.height / src.width)) + bar
+            y0 = top + max(0, ((bottom - top) - fh) // 2)
+            assert y0 >= top and y0 + fh <= bottom, (sc["id"], y0, y0 + fh)
+
+    def test_a_directory_source_plays_the_whole_recording(self, scenes, render):
+        """A clip is retimed, never truncated: the last scene-frame must land on the last
+        source frame, or the video quietly stops the recording early."""
+        sc = [s for s in scenes.SCENES if s["id"] == "13-chat-ui"][0]
+        n = len(render.shot_frames(sc["source"]))
+        assert render.shot_frame_index(sc, 0.0, 30.0, n) == 0
+        assert render.shot_frame_index(sc, 30.0, 30.0, n) == n - 1
+
+
+class TestNothingIsSpelledPhoneticallyOnScreen:
+    """The narration is spelled for Piper: it has to say "A G P L three" to be pronounced
+    correctly. `SUBS` existed to undo that for the subtitle track, and nothing undid it for
+    the cards — so the closing card shipped reading "A G P L three, self hosted"."""
+
+    def test_no_card_is_authored_in_the_voices_spelling(self, scenes):
+        leaks = []
+        for sc in scenes.SCENES:
+            if not sc.get("enabled", True):
+                continue
+            shown = [sc.get("title", ""), sc.get("subtitle", ""), sc.get("caption", ""),
+                     sc.get("term_title", "")]
+            for head, sub in sc.get("bullets") or []:
+                shown += [head, sub]
+            shown += list(sc.get("links") or [])
+            leaks += [(sc["id"], k) for txt in shown for k in scenes.SUBS if k in txt]
+        assert leaks == [], leaks
+
+    def test_the_normaliser_rewrites_the_form_that_shipped(self, render):
+        assert render.written("A G P L three") == "AGPL-3.0"
+        assert render.written("kube control get pods") == "kubectl get pods"
+
+    def test_every_kind_of_on_screen_text_runs_through_the_normaliser(self):
+        """Belt and braces: the source strings are written form now, and the renderer
+        normalises anyway, so a card authored phonetically tomorrow still renders correctly."""
+        src = (VIDEO / "render.py").read_text(encoding="utf-8")
+        assert 'written(sc["title"])' in src
+        assert 'written(sc["subtitle"])' in src
+        assert "written(h), written(b)" in src
+        assert "caption = written(caption)" in src
+
+    def test_the_narration_keeps_the_phonetic_spelling(self, scenes):
+        """The fix must not reach the narration — Piper reads that, and `AGPL-3.0` is
+        pronounced as a mess. The two forms are supposed to differ."""
+        narration = " ".join(sc.get("narration", "") for sc in scenes.SCENES
+                             if sc.get("enabled", True))
+        assert "A G P L three" in narration
+        assert "kube control" in narration

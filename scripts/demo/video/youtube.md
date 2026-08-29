@@ -3,7 +3,7 @@
 Uploading is outward-facing and needs an explicit go-ahead. Everything below is ready to
 paste; nothing here contacts YouTube.
 
-**File:** `out/kubeintellect-demo.mp4` · 4:52 · 1920×1080 · H.264 / AAC 48 kHz · `+faststart`
+**File:** `out/kubeintellect-demo.mp4` · 7:21 · 1920×1080 · H.264 / AAC 48 kHz · `+faststart`
 **Subtitles:** `out/kubeintellect-demo.srt`
 **Thumbnail:** `out/thumbnail.png` (1280×720)
 
@@ -35,6 +35,6 @@ paste; nothing here contacts YouTube.
     0:48  The Answer
     1:05  It Diagnoses
     2:27  Attack It
-    3:29  How It Works
-    4:02  Honest Limits
-    4:31  Who It Is For
+    3:53  How It Works
+    6:30  Honest Limits
+    7:00  Who It Is For

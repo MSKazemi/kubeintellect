@@ -1,0 +1,17 @@
+$ kubectl get nodes -o wide
+NAME                          STATUS   ROLES           AGE    VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE                         KERNEL-VERSION     CONTAINER-RUNTIME
+kubeintellect-control-plane   Ready    control-plane   125d   v1.31.0   172.18.0.3    <none>        Debian GNU/Linux 12 (bookworm)   6.8.0-1051-azure   containerd://1.7.18
+kubeintellect-worker          Ready    <none>          125d   v1.31.0   172.18.0.2    <none>        Debian GNU/Linux 12 (bookworm)   6.8.0-1051-azure   containerd://1.7.18
+
+$ kubectl -n kubeintellect get pods,svc
+NAME                                 READY   STATUS      RESTARTS   AGE
+pod/kubeintellect-575fb8b99b-n8vjj   1/1     Running     0          119d
+pod/kubeintellect-db-init-kbtn8      0/1     Completed   0          124d
+pod/kubeintellect-postgres-0         1/1     Running     0          125d
+
+NAME                             TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+service/kubeintellect            ClusterIP   10.96.159.241   <none>        8000/TCP   125d
+service/kubeintellect-postgres   ClusterIP   10.96.225.69    <none>        5432/TCP   125d
+
+$ curl -s https://api.kubeintellect.com/healthz
+{"status":"ok","version":"2.0.0"}

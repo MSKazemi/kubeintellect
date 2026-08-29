@@ -5,24 +5,29 @@ hand-over text all exist. Nothing has been uploaded, and nothing is committed.
 
 | | |
 |---|---|
-| **Video** | `out/kubeintellect-demo.mp4` — **4:52**, 19 MB, 1920×1080, 30 fps, H.264 high, AAC stereo 48 kHz, `+faststart`, −14 LUFS, 1 s fade in / 1.2 s out |
-| **Subtitles** | `out/kubeintellect-demo.srt` — 77 cues, generated from the script |
+| **Video** | `out/kubeintellect-demo.mp4` — **7:21** (441.53 s, 13,246 frames), 30 MB, 1920×1080, 30 fps, H.264 high, AAC stereo 48 kHz, `+faststart`, −14 LUFS, 1 s fade in / 1.2 s out |
+| **Subtitles** | `out/kubeintellect-demo.srt` — 117 cues, generated from the script |
 | **Thumbnail** | `out/thumbnail.png` — 1280×720 (plus a 320×180 feed preview) |
 | **Script** | [`script.md`](script.md) — what is said and when, timings measured |
 | **Scene spec** | [`scenes.py`](scenes.py) — the single source of truth |
+| **Clip frames** | `shots-dark/chatui/` — the chat recording, decoded to a PNG sequence |
 | **Hand-over** | [`youtube.md`](youtube.md) — title, description, 8 chapters |
 | **Narration** | `audio/*.wav` + `out/narration.wav`, synthesised offline |
 
 Rebuild any of it with `python3 tts.py && python3 build.py && python3 make_srt.py &&
 python3 thumbnail.py && python3 make_script_md.py && python3 make_youtube_md.py`.
 
-### It is 4:52, not 7 minutes
+### Why the runtime is what it is
 
 A scene lasts `narration + 1.3 s` and nothing else — a terminal scene's transcript is
 revealed *over* the narration, so replaying a longer transcript does not add a second of
-runtime. The video is exactly as long as the words. The two blocked scenes add roughly 40 s
-when they land. Reaching nova's 7 minutes would mean writing more script, which is a
-decision to take on merit rather than to reach a number.
+runtime. The video is exactly as long as the words.
+
+It was 4:52 when this note first said so, and reaching seven minutes was described as
+"writing more script, which is a decision to take on merit rather than to reach a number".
+Three scenes were then written on merit — the architecture diagram, the chat UI, and the
+live Azure capture — and the payoff scene was extended to stop cutting its own evidence.
+The runtime followed from that; it was not aimed at.
 
 ## Structure
 
@@ -35,6 +40,9 @@ decision to take on merit rather than to reach a number.
 | It diagnoses | 01 crashloop · 03 OOMKill · 05 pending pod · 08 whole-namespace triage |
 | Attack it | A gate only ever approved has not been shown to gate anything → 07 **denied**, proved denied in-session → 06 **approved**, and the approved fix **did not work** |
 | How it works | Coordinator + subagents · snapshot first · the gate at the tool boundary · a role per API key · hash-chained decision log |
+| | **The pipeline as a diagram** — signal → sensorium → detectors → investigation → ladder → write chokepoint → three outcomes |
+| | **The same server in a browser** — a real recording, retimed 1.74× |
+| | **A real cluster in Azure**, 125 days up, captured live while this video was built |
 | Honest limits | It inferred one root cause · found is not solved · no metrics backend and it said so |
 | Who it is for | AGPL-3.0, self-hosted, links |
 
@@ -59,18 +67,152 @@ The two gate scenes are the point of the video and are genuinely live:
   going to supply a missing environment variable. That is the correct outcome and it looks
   like a failed demo if left unexplained, so the narration explains it.
 
-## Two scenes are written but cannot be filmed yet
+## One scene is written and still cannot be filmed
 
-Both are in `scenes.py` with `enabled=False` and a reason, and both are listed at the
-bottom of `script.md` so the gap stays visible:
+`14-install` is in `scenes.py` with `enabled=False` and its reason, and it is listed at the
+bottom of `script.md` so the gap stays visible. `../casts-kq/09-install.cast` exists, but it
+installs **2.2.0** from PyPI, and on 2.2.0 the demo's own pre-flight `kubeintellect
+--version` exits **2**.
 
-- `13-chat-ui` — no live recording of the chat interface exists. The CLI corpus is eight
-  terminal casts; the browser surface, which is what a website visitor actually meets, has
-  never been recorded.
-- `14-install` — `../casts-kq/09-install.cast` exists, but it installs **2.2.0** from PyPI
-  while this tree is **2.3.1**, and on 2.2.0 the demo's own pre-flight
-  `kubeintellect --version` exits **2**. Publishing 2.3.1 and re-recording comes first;
-  shipping this scene as it stands would demonstrate a broken first impression.
+**The blocker moved; it did not go away, and the earlier note here was out of date twice
+over.** It said live PyPI still reported 2.2.0 as latest. Re-measured 2026-08-29 at 01:40:
+`pypi.org/pypi/kubeintellect/json` reports **2.4.0**, which is the version this tree carries.
+
+That is not enough to film the scene. The released 2.4.0 **cannot start from a plain `pip
+install`** — a default-on feature was declared as an optional extra — which commit `c871fbf`
+fixes in this tree and which is *not yet released*. So filming the install today would film
+a broken install, honestly captured and useless. Two things now gate this scene: a release
+carrying that fix, and a re-recorded cast against it. `../casts-kq/09-install.cast` installs
+2.2.0 and cannot be reused for either.
+
+Until both exist the scene stays `enabled=False`, because the alternative is narrating an
+install the video never shows.
+
+`13-chat-ui` **was** the second entry here and is now filmed; see below.
+
+## The chat scene: a clip, not a screenshot
+
+`kind="shot"` used to mean one still under a slow pan. It now also means a *clip*: when
+`source` names a directory rather than a file, `render_shot` walks the PNG sequence in it
+with the scene clock, and the pan is switched off because panning a moving image reads as a
+wobble. `ffmpeg` decodes `../chat-ui/chat-ui-crashloop.mp4` into `shots-dark/chatui/` once.
+
+The recording is ~61 s and the narration under it is ~34 s, so the clip is **retimed, not
+truncated** — the whole session plays, end to end, at about 1.7x. That is a claim in itself,
+so the caption says *replayed faster than real time* out loud and the narration quotes the
+**measured** answer time from `../chat-ui/chat-ui-crashloop.json` (15.3 s) rather than
+anything a viewer could stopwatch off the video. The file's own note warns about exactly that
+confusion.
+
+One wording trap, caught and pinned by a test: that session holds a **read-only key**, so the
+refusal it shows is an **RBAC refusal at the role boundary**, not the human approval gate of
+scenes 09–11. Calling it "the same gate" would be a small false claim about the mechanism.
+
+## The architecture scene: `kind="flow"`
+
+`12a-flow` animates the pipeline in [`v4/docs/how-it-works.md`](../../../v4/docs/how-it-works.md),
+whose own words are *"the stage names are the actual modules … not a simplified teaching
+diagram"* — so the scene draws that diagram rather than a friendlier one. Each node carries
+the module path the doc names, and a test asserts every one of those paths still exists, so
+the diagram cannot quietly become a picture of a system that has moved. Stages light in
+narration order; the two zones (`ALWAYS ON · ZERO TOKENS` and `LLM INVOKED`) and the three
+outcomes `decide_write()` returns are the doc's own structure.
+
+## Three defects the frame audit found
+
+After the first full render, one frame was extracted from every enabled scene at 78% of its
+duration and looked at. That is how all three of these were found — **each had passed the
+build, the tests and a green pipeline.**
+
+### The screen was reading the narration's phonetic spelling out
+
+Narration is written phonetically so Piper says `kubectl` and `AGPL-3.0` correctly, and
+`SUBS` maps those forms back **for the subtitles**. Card text was never put through the same
+map. So a phonetic form written into a bullet reached the *screen* verbatim, and three cards
+were affected — including the closing frame, the last thing a viewer sees:
+
+| Scene | Was on screen | Now |
+|---|---|---|
+| `16-close` | `A G P L three, self hosted` | `AGPL-3.0, self-hosted` |
+| `12-how` | `A role per A P I key` | `A role per API key` |
+| `04-answer` | `real kube control against your real cluster` | `real kubectl against your real cluster` |
+
+Fixed twice over: the three source strings are corrected, **and** every string a card draws
+now goes through `render.written()`, which applies `SUBS` longest-key-first. That makes the
+class impossible rather than merely fixed. Two tests cover it — one scans every display
+string of every enabled scene for a phonetic key, one checks the renderer normalises anyway.
+
+## Two more defects the first render of these scenes exposed
+
+Both were visible only by extracting a frame from the finished mp4 and looking at it — the
+scenes rendered, the tests passed, and the pipeline reported success:
+
+- **the terminal title bar lied.** It was hard-coded to `kq · shop @ ki-demo ·
+  AUTONOMY_LEVEL=A2` for *every* terminal scene. True for the eight kq casts, and false the
+  moment `13b-azure` put Azure `kubectl` output under it — the bar claimed footage came from
+  a session and a cluster it did not. It is now `term_title`, per scene, and a test asserts
+  the Azure scene overrides it while the kq scenes do not.
+- **a `shot` assumed a 16:9 source.** The window was sized to a fixed 1400 px width; the chat
+  capture is 1280x800, so its window came out 921 px tall and ran under the act label at the
+  top and beneath the caption bar at the bottom. It is now fitted to the safe area with the
+  aspect ratio preserved, and a test recomputes the geometry from the real capture's
+  dimensions and asserts it clears both ends.
+
+## The Azure scene: captured live, and honest about what it shows
+
+`13b-azure` replays `../transcripts-kq/10-azure-live.txt`, captured **read-only** on
+2026-08-29 against the Azure VM that serves the public demo (RG `kubeintellect`, 20.119.62.10):
+`kubectl get nodes -o wide`, `kubectl -n kubeintellect get pods,svc`, and a `curl` of
+`https://api.kubeintellect.com/healthz`. Nothing was created, changed or deleted.
+
+It is the strongest scene in the video and the easiest to overstate. The endpoint answers
+`{"status":"ok","version":"2.0.0"}` — that deployment has not been updated since April, and
+**the narration says so on screen while the version is visible**, because a viewer who reads
+`2.0.0` after six minutes of 2.3.1 behaviour is owed the explanation rather than left to
+assume. Four tests pin it: the transcript exists, the uptime spoken matches the `125d` in the
+captured output, the version spoken matches the captured JSON, and the two sentences that do
+the disclosing cannot be deleted without going red.
+
+## The demo was cutting its own payoff
+
+`11-approve`'s narration calls the moment after an approved restart *"the most valuable
+thirty seconds in this video, and it is the one a demo normally cuts"*. It was cutting it.
+
+The window was `lines=(108, 140)` and line 140 is `with the same error:` — a colon. It was
+the only terminal scene in the video that ended mid-sentence. The evidence the sentence was
+pointing at lives on lines 143–145 of `06-approval-gate.txt`: the restarted pod comes back
+up, crashes again, and the agent names the same root cause it named at the start —
+`DATABASE_URL` is not set, so the container exits with code 1. None of that reached the
+screen. The video said "watch this" and then changed the subject.
+
+The window is now `(108, 145)` and the narration was lengthened to match, so the reveal rate
+stays inside the 1.5 lines/second readability ceiling the rest of the file is held to. The
+scene grew from 22.4 s to 46.7 s, which is most of the runtime this pass added.
+
+`TestThePayoffIsNotCut` pins it: no terminal window may end on a dangling colon, this
+window must reach the line naming `DATABASE_URL`, and the reveal rate must stay readable.
+
+### The test fixture would have hidden all of it
+
+While pinning that, the `spoken` fixture in the test file turned out to read
+`sc.get("enabled")` with no default. Every scene written before this pass spells
+`enabled=True` out in full, so the fixture worked — by coincidence. The three new scenes
+were written the way `build.py` reads them, `sc.get("enabled", True)`, which meant they were
+**silently excluded from every claim check in the file**: the diagram, the chat UI and the
+Azure capture could have claimed anything at all and the suite would still have been green.
+
+The fixture now defaults to `True`, so a scene has to be explicitly switched off to escape
+the checks, and the three scenes carry `enabled=True` explicitly to match the house style.
+The lesson is the same one the frame audit taught: a green suite is only as wide as what it
+actually looks at.
+
+## Known cosmetic nit
+
+In the flow diagram the Cluster node's line `kubectl watch · PromQL · LogQL` is 22 characters
+and the box holds exactly 22, so it wraps with `· LogQL` alone on the second line — a line
+that starts with a separator. It is legible and it is true; it just reads slightly untidy.
+Left as-is rather than triggering a 15-minute re-encode for it, and recorded here so it is a
+decision rather than something nobody noticed.
 
 ## Voice
 
