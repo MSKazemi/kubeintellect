@@ -283,3 +283,84 @@ class TestEveryCountClaimIsCovered:
         """`changelog.md` is excluded by name. A pattern would eventually swallow a live doc."""
         assert self._HISTORICAL == {"changelog.md"}
         assert all(name.endswith(".md") for name in self._HISTORICAL)
+
+
+class TestAPinnedImageTagIsAClaimToo:
+    """`docker pull ghcr.io/…:2.3.1` is an instruction, and nothing checked it.
+
+    Measured 2026-08-29 by pulling every tag the docs name. The README handed
+    newcomers `2.2.0` — three releases old, and its own `/healthz` answers
+    `"version":"0+unknown"` — while `deploy/alibaba.md` pinned `2.3.1` four times,
+    an image that cannot start at all:
+
+        $ docker run --rm --entrypoint python \
+              ghcr.io/mskazemi/kubeintellect:2.3.1 -c "import uvicorn"
+        ModuleNotFoundError: No module named 'uvicorn'
+
+    That is #158, fixed 08-21 — after every image those tags point at was built.
+    `2.4.1` starts and answers `/healthz` in 10 s. A pinned tag goes stale silently
+    and by default, which is precisely the shape of claim this gate exists for.
+    """
+
+    def test_the_tree_reports_a_version_to_check_against(self):
+        mod = _load_checker()
+        version = mod._current_version()
+        assert version is not None, "the server pyproject no longer yields a version"
+        assert re.fullmatch(r"\d+\.\d+\.\d+", version), version
+
+    def test_no_documented_image_tag_is_stale(self):
+        mod = _load_checker()
+        assert mod._check_image_tags() == []
+
+    def test_the_check_is_wired_into_the_gate(self):
+        # A check nothing calls is a check that does not exist.
+        source = _SCRIPT.read_text(encoding="utf-8")
+        run_checks = source[source.index("def run_checks("):]
+        assert "_check_image_tags()" in run_checks[:run_checks.index("\n\n\ndef ")]
+
+    def test_a_stale_tag_in_a_live_doc_is_caught(self, tmp_path, monkeypatch):
+        mod = _load_checker()
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "planted.md").write_text(
+            "docker pull ghcr.io/mskazemi/kubeintellect:1.0.0\n", encoding="utf-8")
+        (tmp_path / "README.md").write_text("nothing pinned here\n", encoding="utf-8")
+        monkeypatch.setattr(mod, "_DOCS", docs)
+        monkeypatch.setattr(mod, "_ROOT", tmp_path)
+        monkeypatch.setattr(mod, "_V4", tmp_path / "absent")
+        monkeypatch.setattr(mod, "_current_version", lambda: "2.4.1")
+
+        errors = mod._check_image_tags()
+        assert len(errors) == 1, errors
+        assert "1.0.0" in errors[0] and "2.4.1" in errors[0]
+
+    def test_the_chart_tag_is_checked_as_well_as_the_image(self, tmp_path, monkeypatch):
+        # The chart is published to a different path under the same registry, and
+        # `security.md` pins it in a `gh attestation verify` example a reader runs.
+        mod = _load_checker()
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "planted.md").write_text(
+            "oci://ghcr.io/mskazemi/charts/kubeintellect:1.0.0\n", encoding="utf-8")
+        (tmp_path / "README.md").write_text("\n", encoding="utf-8")
+        monkeypatch.setattr(mod, "_DOCS", docs)
+        monkeypatch.setattr(mod, "_ROOT", tmp_path)
+        monkeypatch.setattr(mod, "_V4", tmp_path / "absent")
+        monkeypatch.setattr(mod, "_current_version", lambda: "2.4.1")
+
+        assert len(mod._check_image_tags()) == 1
+
+    def test_the_changelog_keeps_its_history(self, tmp_path, monkeypatch):
+        # History is supposed to name the version it happened to.
+        mod = _load_checker()
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "CHANGELOG.md").write_text(
+            "shipped ghcr.io/mskazemi/kubeintellect:1.0.0\n", encoding="utf-8")
+        (tmp_path / "README.md").write_text("\n", encoding="utf-8")
+        monkeypatch.setattr(mod, "_DOCS", docs)
+        monkeypatch.setattr(mod, "_ROOT", tmp_path)
+        monkeypatch.setattr(mod, "_V4", tmp_path / "absent")
+        monkeypatch.setattr(mod, "_current_version", lambda: "2.4.1")
+
+        assert mod._check_image_tags() == []

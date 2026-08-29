@@ -13,6 +13,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **The docs pinned container image tags that were three releases stale, one of which could not
+  start** (`README.md`, `v4/docs/deploy/alibaba.md`, `v4/docs/security.md`,
+  `v4/scripts/check_doc_claims.py`, `v4/tests/test_doc_claims.py`). Found by pulling and running
+  every tag the documentation names, on 2026-08-29. The README's "run the server from the container
+  image" block handed newcomers `ghcr.io/mskazemi/kubeintellect:2.2.0` — three releases old, and
+  its own `/healthz` answers `"version":"0+unknown"` — while `deploy/alibaba.md` pinned `2.3.1`
+  four times and `security.md` twice more. `2.3.1` **cannot start at all**:
+  `docker run --rm --entrypoint python ghcr.io/mskazemi/kubeintellect:2.3.1 -c "import uvicorn"`
+  raises `ModuleNotFoundError: No module named 'uvicorn'` — issue #158, fixed 2026-08-21, after
+  every image those tags point at was built. Measured against the current tag for comparison:
+  `2.4.1` imports `uvicorn` and `app.main` cleanly and answers `/healthz` with its real version in
+  10 s. Every pinned tag now names the version this tree ships, and `check_doc_claims.py` grew a
+  check for them, because a pinned tag goes stale silently and by default — the shape of claim that
+  gate exists for. `CHANGELOG.md` is excluded from the check on purpose: history is supposed to name
+  the version it happened to. Six tests, red-green proven against the stale README.
+
 - **Three video claim tests measured pixels that no checkout can hold**
   (`v4/tests/test_the_video_says_only_what_the_product_does.py`). `49b42ae` added checks
   that decode `scripts/demo/video/shots-dark/` into frames, and `.gitignore:188` excludes
