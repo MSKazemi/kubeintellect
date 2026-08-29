@@ -305,7 +305,8 @@ SCENES = [
     ),
     dict(
         # `source` is a directory, so this is a clip rather than a still: ffmpeg decoded
-        # ../chat-ui/chat-ui-crashloop.mp4 into shots-dark/chatui/ once, and render.py walks
+        # ../chat-ui/chat-ui-crashloop.webm (tracked; the .mp4 is gitignored) at fps=15
+        # into shots-dark/chatui/ once, and render.py walks
         # that sequence with the scene clock. The whole recording plays, retimed onto the
         # narration rather than truncated — which is why the caption says so out loud.
         id="13-chat-ui", kind="shot", act="HOW IT WORKS", enabled=True,

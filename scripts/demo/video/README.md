@@ -103,7 +103,19 @@ because the alternative is narrating an install the video never shows.
 `kind="shot"` used to mean one still under a slow pan. It now also means a *clip*: when
 `source` names a directory rather than a file, `render_shot` walks the PNG sequence in it
 with the scene clock, and the pan is switched off because panning a moving image reads as a
-wobble. `ffmpeg` decodes `../chat-ui/chat-ui-crashloop.mp4` into `shots-dark/chatui/` once.
+wobble.
+
+The frames are decoded once, and **from the `.webm`, not the `.mp4`** — this used to name the
+mp4, which `.gitignore` excludes in both gits, so a fresh clone could not follow it. The webm
+is the tracked original; the mp4 is a derived transcode of it. `shots-dark/` is gitignored too
+(it is 234 MB of build input, not source), so anyone rebuilding regenerates it with:
+
+```bash
+ffmpeg -i ../chat-ui/chat-ui-crashloop.webm -vf fps=15 shots-dark/chatui/f%05d.png
+```
+
+That yields **914 frames at 1280x800** — 15 fps over the recording's 60.92 s — which is what
+`13-chat-ui` retimes. Verified by re-running it against the committed webm.
 
 The recording is ~61 s and the narration under it is ~34 s, so the clip is **retimed, not
 truncated** — the whole session plays, end to end, at about 1.7x. That is a claim in itself,
