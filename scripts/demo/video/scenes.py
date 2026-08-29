@@ -354,21 +354,21 @@ SCENES = [
         ),
     ),
     dict(
-        id="14-install", kind="terminal", act="HOW IT WORKS", enabled=False,
-        blocked_on=(
-            "T2b — the cast installs 2.2.0 from PyPI, and on 2.2.0 the demo's own pre-flight "
-            "`kubeintellect --version` exits 2. Re-measured 2026-08-29 against the PUBLISHED "
-            "artifacts: the release gate is now CLEAR — a clean-venv `pip install "
-            "kubeintellect==2.4.1` gives `--version` exit 0 and a server whose `/healthz` "
-            "returns 200 with version 2.4.1, no ModuleNotFoundError. One gate remains: the "
-            "cast itself (`09-install.cast`) still installs 2.2.0, so it must be re-recorded "
-            "before this scene may be used."
-        ),
-        source="09-install.txt", lines=(1, 60),
+        id="14-install", kind="terminal", act="HOW IT WORKS", enabled=True,
+        source="09-install.txt", lines=(1, 47),
         caption="Install it",
         sources=["../DEMOS.md", "../transcripts-kq/09-install.txt"],
         narration=(
-            "Installing it is one command, and a wizard that asks six questions."
+            "Installing it is one pip command, and that one command brings both pieces: "
+            "the server, and the kq client you have been watching. Use pip rather than "
+            "uv tool here, because uv tool links only the executable of the package you "
+            "name, and kq belongs to a different distribution. Then a wizard asks four "
+            "questions. Which model provider. Your key, and it offers the one it already "
+            "found in the environment. Whether to create a local cluster. And whether to "
+            "start the server now. Notice that it finds kubectl missing and installs that "
+            "itself, without being asked. At the end it writes two configuration files and "
+            "mints an admin key. Everything on this screen is a clean container that had "
+            "nothing installed on it a minute earlier."
         ),
     ),
 

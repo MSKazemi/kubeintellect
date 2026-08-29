@@ -1,12 +1,11 @@
-$ uv tool install kubeintellect
-Resolved 82 packages in 3.45s
-Prepared 82 packages in 13.81s
-Installed 82 packages in 15ms
-Installed 1 executable: kubeintellect
+$ pip install kubeintellect
+Successfully installed kubeintellect-2.4.1 kube-q-1.6.0 ki-protocol-1.1.0 (+ dependencies)
 
 $ kubeintellect --version
-usage: kubeintellect [-h] {init,serve,db-init,status,set,service,kind-setup} ...
-kubeintellect: error: the following arguments are required: command
+kubeintellect 2.4.1
+
+$ kq --version
+kube-q 1.6.0
 
 $ kubeintellect init
 
@@ -14,76 +13,68 @@ $ kubeintellect init
 
   Found API keys in your environment — press Enter to use them.
 
+  kubectl not found — installing automatically...
+  'kubectl' not found — installing...
+  ✓  'kubectl' installed.
 
   LLM Provider
     1  OpenAI        (api.openai.com)
     2  Azure OpenAI  (your own Azure deployment)
 
-  Choose [1/2] [1]: 1
-
+  Choose [1/2] [1]:
   OPENAI_API_KEY: [sk-d***0000]
     →  platform.openai.com → API keys
-  > 
-
+  >
   No Kubernetes cluster found (~/.kube/config missing).
-  Create a local Kind cluster with sample workloads? [Y/n]: n
-
-  ✓  kubeintellect  /tmp/kubeintellect-demo-home/.kubeintellect/.env
-  ✓  kube-q         /tmp/kubeintellect-demo-home/.kube-q/.env
+  Create a local Kind cluster with sample workloads? [Y/n]:
+  ✓  kubeintellect  /root/.kubeintellect/.env
+  ✓  kube-q         /root/.kube-q/.env
   ✓  Access level:  admin  (full access)
-  ✓  API key:       ki-admin-9b73a00cc243d6730590
+  ✓  API key:       ki-admin-1e72263387fdbfbd846c
 
   Issues detected in the saved configuration:
 
-   [warn]  KUBECONFIG_PATH: Kubeconfig not found at /tmp/kubeintellect-demo-home/.kube/config
+   [warn]  KUBECONFIG_PATH: Kubeconfig not found at /root/.kube/config
            If you don't have a cluster yet:
                     kubeintellect kind-setup       # creates a local Kind cluster
                     kubectl config view --minify   # verify your current context
 
-  Edit /tmp/kubeintellect-demo-home/.kubeintellect/.env or re-run 'kubeintellect init' to fix them.
-
+  Edit /root/.kubeintellect/.env or re-run 'kubeintellect init' to fix them.
 
   ── Setup complete ───────────────────────────────────────────────────────
-  API key:     ki-admin-9b73a00cc243d6730590
-  Config file: /tmp/kubeintellect-demo-home/.kubeintellect/.env
+  API key:     ki-admin-1e72263387fdbfbd846c
+  Config file: /root/.kubeintellect/.env
   ─────────────────────────────────────────────────────────────────────────
 
-
-  Postgres is not running.
-  Options:
-    1  Use SQLite  (default — no setup needed, good for testing)
-    2  Start a postgres container via Docker
-  Choose [1/2] (default: 1): 1
-  ✓  SQLite mode enabled. Data stored at ~/.kubeintellect/kubeintellect.db
-
-  Install as background service? (server starts automatically on login) [Y/n]: n
-  Start server and open kq now? [Y/n]: n
+  Start server and open kq now? [Y/n]:
 
 $ kubeintellect status
 
   KubeIntellect status
 
-  Config:    ✓  /tmp/kubeintellect-demo-home/.kubeintellect/.env
-  LLM:       ✓  openai / gpt-4o
-  DB:        -  sqlite  /tmp/kubeintellect-demo-home/.kubeintellect/kubeintellect.db  (will be created on first start)
+  Config:    ✓  /root/.kubeintellect/.env
+  LLM:       ✓  openai / gpt-4o  configured — not verified, no request is made
+  DB:        -  sqlite  /root/.kubeintellect/kubeintellect.db  (will be created on first start)
   kubectl:   ✓  found
-  Kube:      ✗  /tmp/kubeintellect-demo-home/.kube/config  file not found — set KUBECONFIG_PATH in /tmp/kubeintellect-demo-home/.kubeintellect/.env
+  Kube:      ✗  /root/.kube/config  file not found — set KUBECONFIG_PATH in /root/.kubeintellect/.env
   Auth:      ✓  enabled
-    admin     ki-admin-9b73a00cc243d6730590
+    admin     ki-admin-1e72263387fdbfbd846c
     operator  ki-op-...
     readonly  ki-ro-...
     → set KUBE_Q_API_KEY=<key> or pass --api-key <key> to kq
-  Prometheus:✗  http://172.18.0.2:30090  unreachable
-  Loki:      ✗  http://172.18.0.2:30100  unreachable
-  Grafana:   ✗  http://172.18.0.2:30080  unreachable
+  Prometheus:-  not configured
+  Loki:      -  not configured
+  Grafana:   -  not configured
   Langfuse:  -  disabled
   kube-q:    ✓  found
 
   Configuration issues:
 
-   [warn]  KUBECONFIG_PATH: Kubeconfig not found at /tmp/kubeintellect-demo-home/.kube/config
+   [warn]  KUBECONFIG_PATH: Kubeconfig not found at /root/.kube/config
            If you don't have a cluster yet:
                     kubeintellect kind-setup       # creates a local Kind cluster
                     kubectl config view --minify   # verify your current context
 
+  ✗  Not working: kubeconfig
+  status exits 1 when any row is ✗, so it can gate a script or a healthcheck.
 
