@@ -195,5 +195,5 @@ A terminal scene is revealed over its narration, so the transcript window has to
 Each of these has a slot, a caption and narration written; what is missing is the footage. They are listed here rather than deleted so the gap stays visible.
 
 - **`14-install`** (terminal) — Install it
-  - ⛔ T2b — the cast installs 2.2.0 from PyPI while the tree is 2.3.1, and on 2.2.0 the demo's own pre-flight `kubeintellect --version` exits 2. Publish 2.3.1 and re-record before this scene may be used.
+  - ⛔ T2b — the cast installs 2.2.0 from PyPI, and on 2.2.0 the demo's own pre-flight `kubeintellect --version` exits 2. Re-measured 2026-08-29 against the PUBLISHED artifacts: the release gate is now CLEAR — a clean-venv `pip install kubeintellect==2.4.1` gives `--version` exit 0 and a server whose `/healthz` returns 200 with version 2.4.1, no ModuleNotFoundError. One gate remains: the cast itself (`09-install.cast`) still installs 2.2.0, so it must be re-recorded before this scene may be used.
   - narration: _Installing it is one command, and a wizard that asks six questions._

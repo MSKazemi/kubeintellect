@@ -5,7 +5,7 @@ hand-over text all exist. Nothing has been uploaded, and nothing is committed.
 
 | | |
 |---|---|
-| **Video** | `out/kubeintellect-demo.mp4` — **7:21** (441.53 s, 13,246 frames), 30 MB, 1920×1080, 30 fps, H.264 high, AAC stereo 48 kHz, `+faststart`, −14 LUFS, 1 s fade in / 1.2 s out |
+| **Video** | `out/kubeintellect-demo.mp4` — **7:21** (441.53 s, 13,246 frames), 30 MB, 1920×1080, 30 fps, H.264 high, AAC stereo 48 kHz, `+faststart`, −15.4 LUFS measured (loudnorm target −14), 1 s fade in / 1.2 s out |
 | **Subtitles** | `out/kubeintellect-demo.srt` — 117 cues, generated from the script |
 | **Thumbnail** | `out/thumbnail.png` — 1280×720 (plus a 320×180 feed preview) |
 | **Script** | [`script.md`](script.md) — what is said and when, timings measured |
@@ -74,19 +74,27 @@ bottom of `script.md` so the gap stays visible. `../casts-kq/09-install.cast` ex
 installs **2.2.0** from PyPI, and on 2.2.0 the demo's own pre-flight `kubeintellect
 --version` exits **2**.
 
-**The blocker moved; it did not go away, and the earlier note here was out of date twice
-over.** It said live PyPI still reported 2.2.0 as latest. Re-measured 2026-08-29 at 01:40:
-`pypi.org/pypi/kubeintellect/json` reports **2.4.0**, which is the version this tree carries.
+**This blocker moved twice in one night, and the note here was stale after each move.** It
+first claimed live PyPI still served 2.2.0 as latest; at 01:40 PyPI reported **2.4.0**; by
+03:00 it reported **2.4.1**. Each re-measurement is dated for that reason.
 
-That is not enough to film the scene. The released 2.4.0 **cannot start from a plain `pip
-install`** — a default-on feature was declared as an optional extra — which commit `c871fbf`
-fixes in this tree and which is *not yet released*. So filming the install today would film
-a broken install, honestly captured and useless. Two things now gate this scene: a release
-carrying that fix, and a re-recorded cast against it. `../casts-kq/09-install.cast` installs
-2.2.0 and cannot be reused for either.
+That was not enough to film the scene, because released 2.4.0 **could not start from a plain
+`pip install`** — a default-on feature was declared as an optional extra. Two things gated the
+scene: a release carrying the fix, and a re-recorded cast against it.
 
-Until both exist the scene stays `enabled=False`, because the alternative is narrating an
-install the video never shows.
+**The release gate is now clear.** `v2.4.1` shipped that fix, and it was re-measured here at
+03:00 against the *published* artifact rather than the tree — a clean venv with a fresh `HOME`:
+
+```
+pip install kubeintellect==2.4.1   → exit 0
+kubeintellect --version            → kubeintellect 2.4.1, exit 0   (2.2.0 exited 2 here)
+kubeintellect serve                → no ModuleNotFoundError; GET /healthz → 200
+                                     {"status":"ok","version":"2.4.1",...}
+```
+
+**One gate remains: the cast.** `../casts-kq/09-install.cast` still installs 2.2.0, so it shows
+a version whose own pre-flight fails. Until it is re-recorded the scene stays `enabled=False`,
+because the alternative is narrating an install the video never shows.
 
 `13-chat-ui` **was** the second entry here and is now filmed; see below.
 
@@ -206,13 +214,19 @@ the checks, and the three scenes carry `enabled=True` explicitly to match the ho
 The lesson is the same one the frame audit taught: a green suite is only as wide as what it
 actually looks at.
 
-## Known cosmetic nit
+## Two more things the second audit changed
 
-In the flow diagram the Cluster node's line `kubectl watch · PromQL · LogQL` is 22 characters
-and the box holds exactly 22, so it wraps with `· LogQL` alone on the second line — a line
-that starts with a separator. It is legible and it is true; it just reads slightly untidy.
-Left as-is rather than triggering a 15-minute re-encode for it, and recorded here so it is a
-decision rather than something nobody noticed.
+**The Cluster node wrapped badly.** `kubectl watch · PromQL · LogQL` is 30 characters against
+a box that fits about 22, so `wrap()` put `· LogQL` alone on the second line — a line opening
+with a separator. `render_flow` now splits on an authored `\n` before measuring, and the node
+carries its own break. An authored break beats a measured one when the text is this short.
+
+**The Azure title bar named the SSH account.** It read
+`kubectl · azureuser @ 20.119.62.10 · read-only`. The host IP is already public through DNS
+and `azureuser` is the Azure default, so this leaked nothing secret — but this repo and the
+video are both public, and publishing the login of a live production box buys a viewer
+nothing. It now reads `kubectl · production cluster in Azure · read-only`, which carries the
+same honest signal (this is not the demo cluster) with none of the detail.
 
 ## Voice
 
