@@ -13,6 +13,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **`kubeintellect init` could not finish on a machine without `sudo` or `systemd`**
+  (`app/cli.py`, `v4/tests/test_init_finishes_on_a_machine_without_sudo.py`). Found by
+  installing the published 2.4.1 into a clean `python:3.12-slim` container on 2026-08-29 —
+  the same way the 2.4.0 defect was found, and it took two rounds to get through the wizard.
+  First, `_install_kubectl` shelled out to `sudo` unconditionally, so on an image without it
+  the exec raised `FileNotFoundError`; `_ensure_tool` turned every installer failure into
+  `sys.exit(1)`, so a **convenience** install ended the wizard before its first question.
+  Second, past that, `_systemd_available()` ran `systemctl` and raised the same way — after
+  `init` had printed "Setup complete" and written both `.env` files, which is exactly where
+  the Docker predicate crashed a day earlier. `sudo` is now used only when the process is
+  not already root and the binary exists, with a sentence naming the manual `mv` when it is
+  not; the kubectl install is explicitly non-required, because `init` writes configuration
+  and `status` already reports a missing kubectl as a warning; and `_systemd_available()`
+  answers `False` for an absent or wedged `systemctl` rather than raising. Fourteen tests,
+  seven of which fail against the code that shipped — including a parametrised rule over the
+  whole predicate family, since this is the third time one of them has raised because the
+  thing it checks for was missing. `kubeintellect init` now exits 0 in a container with no
+  sudo, no systemd and no Docker.
+
+### Changed
+
+- **The video's install scene is enabled, recorded against a release that works**
+  (`scripts/demo/video/scenes.py`, `scripts/demo/transcripts-kq/09-install.txt`,
+  `scripts/demo/video/script.md`). `14-install` had been disabled since the cast installed
+  2.2.0, whose `kubeintellect --version` exits 2. The transcript is a fresh capture in a
+  clean container against 2.4.1: one `pip install` yielding both `kubeintellect 2.4.1` and
+  `kube-q 1.6.0`, the wizard auto-installing kubectl, and `Setup complete`. The narration
+  said the wizard asks **six** questions; the recording shows **four**, so it now says four
+  — and it points at `pip` rather than `uv tool`, which links only the named package's
+  executable. The window ends on the `Setup complete` box because the scene gate rejects a
+  terminal scene that ends on an unanswered prompt, and the narration is long enough to hold
+  1.1 lines/second, in line with the other terminal scenes.
+
+
 - **The test that catches home-directory leakage was leaking from the home directory**
   (`v4/tests/test_a_test_can_be_green_only_where_the_private_tier_exists.py`). Its baseline read
   `Settings().USE_SQLITE` and asserted `False` — a live value, which on any machine where
