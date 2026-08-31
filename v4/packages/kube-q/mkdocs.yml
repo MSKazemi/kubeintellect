@@ -1,6 +1,6 @@
 site_name: kube-q
 site_description: AI-powered terminal client for Kubernetes — query, debug, and manage your cluster in plain English.
-site_url: https://mskazemi.github.io/kube_q/
+site_url: https://mskazemi.com/kube_q/
 repo_url: https://github.com/MSKazemi/kubeintellect
 repo_name: MSKazemi/kubeintellect
 # Relative to repo_url. kube-q lives in the monorepo, so this must carry the
