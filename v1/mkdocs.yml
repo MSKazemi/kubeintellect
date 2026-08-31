@@ -1,6 +1,6 @@
 site_name: KubeIntellect v1
 site_description: AI-powered Kubernetes management — chat with your cluster in plain English
-site_url: https://mskazemi.com/kubeintellect/
+site_url: https://mskazemi.com/kubeintellect/v1/
 site_author: Mohsen Seyedkazemi Ardebili
 repo_name: MSKazemi/kubeintellect
 repo_url: https://github.com/MSKazemi/kubeintellect

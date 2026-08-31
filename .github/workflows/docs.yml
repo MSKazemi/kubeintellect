@@ -1,0 +1,66 @@
+name: Deploy docs
+
+# The published site is v2 at the root plus v1 under /v1/ — scripts/build-docs.sh is that
+# assembly. It used to exist only as a workflow on the pre-v1..v4 flat layout; the restructure
+# dropped it, the gh-pages branch was deleted, and Pages went on serving a frozen artifact no
+# tree here could rebuild. Keep the deploy in CI so that cannot happen again.
+#
+# This repo's Pages is build_type "workflow", so it publishes the artifact this job uploads —
+# NOT a gh-pages branch. A `mkdocs gh-deploy` here would push a branch nothing reads.
+#
+# v3 (builds nothing) and v4 (~two versions ahead of what is public) are deliberately NOT
+# published by this workflow. Shipping v4 is its own decision.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "v1/docs/**"
+      - "v1/mkdocs.yml"
+      - "v2/docs/**"
+      - "v2/mkdocs.yml"
+      - "v2/overrides/**"
+      - "scripts/build-docs.sh"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install docs dependencies
+        run: pip install "mkdocs>=1.6" "mkdocs-material>=9.5" "mkdocs-minify-plugin>=0.8" "pymdown-extensions>=10.7"
+
+      # Fails the build if any canonical tag or sitemap <loc> still names
+      # mskazemi.github.io, which 301-redirects here and serves nothing itself.
+      - name: Build the published site
+        run: ./scripts/build-docs.sh "$GITHUB_WORKSPACE/site"
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
