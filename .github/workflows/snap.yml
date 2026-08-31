@@ -86,8 +86,23 @@ jobs:
           path: ${{ steps.build.outputs.snap }}
           if-no-files-found: error
 
+  # One publish job PER ARCH, fed from the artifacts `build` already produced.
+  #
+  # Two things this deliberately does NOT do:
+  #   1. It does not rebuild. The old version ran its own `action-build` on a
+  #      single ubuntu-latest runner, so the binary that reached the store was
+  #      NOT the one the smoke test above had just validated.
+  #   2. It does not run once. `ubuntu-latest` is amd64, so a single job could
+  #      only ever publish amd64 — arm64 was built, smoke-tested, uploaded as an
+  #      artifact and then silently discarded. The store would have shown an
+  #      amd64-only snap while this file looked like it handled both.
+  #
+  # The runner architecture is irrelevant here: publishing is an upload, so both
+  # arches publish from ubuntu-latest. `fail-fast: false` because a half-published
+  # pair is recoverable by re-running, whereas cancelling a sibling mid-upload is
+  # not obviously so.
   publish:
-    name: Publish to the Snap Store
+    name: Publish to the Snap Store (${{ matrix.arch }})
     needs: build
     if: >-
       github.repository == 'MSKazemi/kubeintellect' &&
@@ -96,17 +111,33 @@ jobs:
       github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: snapstore
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131  # v7.0.0
+        with:
+          name: snap-${{ matrix.arch }}
 
-      - name: Build
-        id: build
-        uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79  # v1.3.0
+      # action-publish takes a single path, and the artifact contains exactly one
+      # .snap. Fail loudly rather than publishing a guess if that stops being true.
+      - name: Resolve the snap file
+        id: snap
+        run: |
+          shopt -s nullglob
+          snaps=(*.snap)
+          if [ ${#snaps[@]} -ne 1 ]; then
+            echo "::error::expected exactly 1 .snap in artifact snap-${{ matrix.arch }}, found ${#snaps[@]}"
+            exit 1
+          fi
+          echo "path=${snaps[0]}" >> "$GITHUB_OUTPUT"
+          echo "Publishing ${snaps[0]} to '${{ inputs.channel }}'"
 
       - name: Publish
         uses: snapcore/action-publish@214b86e5ca036ead1668c79afb81e550e6c54d40  # v1.2.0
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
         with:
-          snap: ${{ steps.build.outputs.snap }}
+          snap: ${{ steps.snap.outputs.path }}
           release: ${{ inputs.channel }}
