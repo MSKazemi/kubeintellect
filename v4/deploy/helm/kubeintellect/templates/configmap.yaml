@@ -9,6 +9,19 @@ data:
   LOG_LEVEL: {{ .Values.config.logLevel | quote }}
   LLM_PROVIDER: {{ .Values.config.llmProvider | quote }}
   AZURE_OPENAI_API_VERSION: {{ .Values.config.azureApiVersion | quote }}
+  # Auth gate. Emitted unconditionally so `helm get values` and the ConfigMap both show
+  # the posture of a running release — an absent key reads as "not configured" when what
+  # an operator needs to know during an incident is whether the API is open.
+  # Deliberately NOT guarded here against "true with no keys set". The keys legitimately
+  # arrive via `--set-string` at install time, so a shipped profile that declares
+  # requireAuth: true with blank secrets is correct, not broken — and templates/ must render
+  # every values file in this directory (test_chart_shutdown_contract.py). The pairing is
+  # enforced where it cannot be bypassed: app/main.py exits non-zero before the port opens.
+  REQUIRE_AUTH: {{ .Values.config.requireAuth | default false | toString | quote }}
+  # CORS. Empty falls through to the app default (http://localhost:3080).
+  {{- if .Values.config.allowedOrigins }}
+  ALLOWED_ORIGINS: {{ .Values.config.allowedOrigins | quote }}
+  {{- end }}
   {{- if not .Values.postgres.external.enabled }}
   # PostgreSQL — in-cluster StatefulSet connection
   POSTGRES_HOST: {{ printf "%s-postgres" (include "kubeintellect.fullname" .) | quote }}

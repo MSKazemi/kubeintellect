@@ -28,6 +28,7 @@ charts/kubeintellect/values-kind-secrets.yaml
 values-prod.yaml
 values-production.yaml
 values-vm.yaml
+values-hetzner.yaml
 values-aks.yaml
 values-eks.yaml
 values-gke.yaml

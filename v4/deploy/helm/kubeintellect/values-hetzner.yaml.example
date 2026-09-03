@@ -1,0 +1,91 @@
+# ── Kind on a Hetzner Cloud VM — production values ───────────────────────────
+# The profile behind api.kubeintellect.com. Copy to values-hetzner.yaml
+# (gitignored) and fill in the blanks, then deploy with: make vm-deploy
+#
+# Sized for a CX43 (8 vCPU / 16 GB / 160 GB NVMe). Two things keep it inside that
+# envelope and are not free to flip back on:
+#
+#   1. langfuse.enabled: false — the Langfuse v3 chart is six pods (postgres,
+#      clickhouse, redis, minio, web, worker) with ~36 Gi of PVCs and no resource
+#      limits on any template, so ClickHouse expands into whatever the box has.
+#      It is an evaluation tool. If you need tracing here, point config.langfuseHost
+#      at an instance running somewhere else.
+#   2. Prometheus/Loki come from the shared monitoring stack installed by the repo
+#      root `make monitoring-install`, not from this release.
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - api.kubeintellect.com      # internet access (host nginx proxies here on :18080)
+    - api.kubeintellect.local    # VM-local access (Kind direct / /etc/hosts)
+  tls: []                         # TLS terminated by host nginx + certbot, not in-cluster
+
+# No hot-reload on a server — the app runs from the built image
+hotReload:
+  enabled: false
+
+# Workloads run on the Kind worker node; ingress-nginx holds the control plane
+nodeSelector: {}
+tolerations: []
+
+rbac:
+  clusterAdmin: false
+  createNamespaced: true
+  createClusterReadOnly: true
+  createClusterOps: true
+  allowExec: false               # never enable exec in prod — protects secrets
+  enableNamespaceManagement: false
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+postgres:
+  storage: 10Gi
+  storageClass: standard         # Kind default storage class
+  password: ""                   # set via --set-string from .env
+
+config:
+  logLevel: info
+  clusterId: "hetzner-demo"      # names this cluster in memory/findings; do not leave empty
+
+  # ── LLM ──────────────────────────────────────────────────────────────────
+  llmProvider: openai            # api.openai.com — no Azure OpenAI in this deployment
+
+  # ── Auth — REQUIRED on this profile ──────────────────────────────────────
+  # This ingress is on the public internet. With requireAuth false and no keys set,
+  # the server resolves anonymous callers to `admin`. Both lines below are the fix;
+  # the chart refuses to render if this is true and no key tier is supplied.
+  requireAuth: true
+  allowedOrigins: "https://kubeintellect.com,https://www.kubeintellect.com"
+
+  # ── Observability — the shared monitoring stack in the `monitoring` namespace ──
+  prometheusUrl: "http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090"
+  lokiUrl: "http://loki.monitoring.svc.cluster.local:3100"
+
+  # ── Tracing — off by design on this box, see the header ──────────────────
+  langfuseEnabled: false
+  langfuseHost: ""
+
+  cortexV4Enabled: false
+  watchtowerEnabled: true
+  autonomyLevel: "A1"
+
+secrets:
+  openaiApiKey: ""               # sk-... — set via --set-string from .env, never committed
+  openaiBaseUrl: ""              # empty → api.openai.com
+  openaiCoordinatorModel: gpt-4o
+  openaiSubagentModel: gpt-4o-mini
+  # One key per tier. The public demo hands out the readonly key only.
+  adminApiKeys: ""               # set via --set-string
+  operatorApiKeys: ""            # set via --set-string
+  readonlyApiKeys: ""            # set via --set-string
+
+# Six pods and ~36 Gi of unbounded PVCs — see the header before changing this.
+langfuse:
+  enabled: false
