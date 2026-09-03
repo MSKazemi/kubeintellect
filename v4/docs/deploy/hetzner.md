@@ -109,12 +109,45 @@ config:
   llmProvider: openai
 secrets:
   openaiBaseUrl: "https://bedrock-runtime.eu-central-1.amazonaws.com/openai/v1"
-  openaiCoordinatorModel: openai.gpt-oss-120b
-  openaiSubagentModel: openai.gpt-oss-20b
+  openaiCoordinatorModel: eu.anthropic.claude-<version>
+  openaiSubagentModel: eu.anthropic.claude-<smaller-version>
 ```
 
 and pass the Bedrock API key as `secrets.openaiApiKey`. Choose a region near the server —
 this box is in Falkenstein, so `eu-central-1` keeps the round trip inside Europe.
+
+!!! warning "Two Bedrock traps that both fail at the first request"
+    **1. Claude on-demand needs a cross-Region inference profile, not the bare model id.**
+    Calling `anthropic.claude-...` directly in an EU Region fails with *"Invocation with
+    on-demand throughput isn't supported"*. Use the profile id — the base id with the
+    geography prefix, e.g. `eu.anthropic.claude-...`. Valid prefixes are `us`, `eu`,
+    `apac`, `jp`, `au` and `global`.
+
+    **2. That rules out the `bedrock-mantle` endpoint for this setup.** Cross-Region
+    inference is supported on `bedrock-runtime` and *not* on `bedrock-mantle`. Since Claude
+    on-demand requires a profile, use `bedrock-runtime`. Per-token pricing is identical
+    between the two, so nothing is lost.
+
+    Do not copy a version string from a guide — model ids move. List what your account
+    actually has, which the OpenAI-compatible endpoint supports directly:
+
+    ```bash
+    curl -s "$OPENAI_BASE_URL/models" -H "Authorization: Bearer $OPENAI_API_KEY" \
+      | python3 -c 'import json,sys; [print(m["id"]) for m in json.load(sys.stdin)["data"]]'
+    ```
+
+### Keeping Bedrock spend bounded
+
+Bedrock bills per token. The exposure here is not the API — it is the **public `/kq`
+terminal**, whose PTY websocket is unauthenticated by design and spawns a real `kq` process
+per visitor, each of which costs tokens. Three controls, in order of how much they matter:
+
+1. **The container's `KUBE_Q_API_KEY` must be the `readonly` key.** It bounds what a visitor
+   can make the agent do, and therefore how much work it will perform.
+2. **A CloudWatch billing alarm on the Bedrock service**, so spend is noticed the day it
+   moves rather than at the invoice.
+3. **`RATE_LIMIT_ENABLED`** (on by default, 120/min) caps request volume per caller on the
+   API itself.
 
 Prove it works **before** deploying. This exercises the real LLM factory, including the
 function calling the subagents depend on:
