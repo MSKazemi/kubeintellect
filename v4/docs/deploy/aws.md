@@ -32,11 +32,36 @@ LLM_PROVIDER=qwen
 DASHSCOPE_API_KEY=sk-your-dashscope-key
 ```
 
+### Amazon Bedrock
+
+Bedrock exposes an **OpenAI-compatible Chat Completions API**, so it needs no
+KubeIntellect-specific provider — point the `openai` path at it and supply a Bedrock API
+key as the bearer token:
+
+```env
+LLM_PROVIDER=openai
+OPENAI_BASE_URL=https://bedrock-runtime.<region>.amazonaws.com/openai/v1
+OPENAI_API_KEY=<your Bedrock API key>
+OPENAI_COORDINATOR_MODEL=openai.gpt-oss-120b
+OPENAI_SUBAGENT_MODEL=openai.gpt-oss-20b
+```
+
+Two things to get right:
+
+- **Model ids are Bedrock ids**, not bare OpenAI names — `openai.gpt-oss-120b`,
+  `anthropic.claude-...`. A bare `gpt-4o` will not resolve.
+- **The model must support client-side tool use**, and it must be enabled for your account.
+  The subagents cannot investigate without function calling.
+
+Use `bedrock-runtime` unless you specifically need something only `bedrock-mantle`
+offers; per-token pricing is identical between the two endpoints.
+
 Verify before touching the cluster (exercises the real factory incl. tool-calling):
 
 ```bash
 cd v4 && set -a && source .env && set +a
-uv run python scripts/verify_qwen.py     # for Qwen; other providers: a quick `kq` query
+uv run python scripts/verify_llm.py      # any provider — OpenAI, Bedrock, Azure, Qwen, Ollama
+uv run python scripts/verify_qwen.py     # the older DashScope-specific check
 ```
 
 ## 2. (Optional) Mirror the image to ECR

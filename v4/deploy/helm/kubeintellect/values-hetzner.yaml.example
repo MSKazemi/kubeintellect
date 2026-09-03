@@ -55,7 +55,13 @@ config:
   clusterId: "hetzner-demo"      # names this cluster in memory/findings; do not leave empty
 
   # ── LLM ──────────────────────────────────────────────────────────────────
-  llmProvider: openai            # api.openai.com — no Azure OpenAI in this deployment
+  # `openai` covers any OpenAI-compatible endpoint, so this one value serves both
+  # api.openai.com and AWS Bedrock. For Bedrock set secrets.openaiBaseUrl to
+  #   https://bedrock-runtime.<region>.amazonaws.com/openai/v1
+  # and use Bedrock model ids (openai.gpt-oss-120b, anthropic.claude-...), not bare
+  # OpenAI names. Pick a region near the server: this box is in Falkenstein, so
+  # eu-central-1 keeps the round trip inside Europe. No Azure OpenAI in this deployment.
+  llmProvider: openai
 
   # ── Auth — REQUIRED on this profile ──────────────────────────────────────
   # This ingress is on the public internet. With requireAuth false and no keys set,
@@ -77,8 +83,8 @@ config:
   autonomyLevel: "A1"
 
 secrets:
-  openaiApiKey: ""               # sk-... — set via --set-string from .env, never committed
-  openaiBaseUrl: ""              # empty → api.openai.com
+  openaiApiKey: ""               # sk-... (or a Bedrock API key) — via --set-string, never committed
+  openaiBaseUrl: ""              # empty → api.openai.com; or the Bedrock endpoint above
   openaiCoordinatorModel: gpt-4o
   openaiSubagentModel: gpt-4o-mini
   # One key per tier. The public demo hands out the readonly key only.

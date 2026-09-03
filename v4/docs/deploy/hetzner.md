@@ -12,7 +12,8 @@ cluster. Everything runs on **one** server:
 - **Compute** → one Hetzner Cloud CX43 (8 vCPU / 16 GB / 160 GB NVMe)
 - **Cluster** → Kind, two nodes, ingress on host port `18080`
 - **TLS** → nginx on the host with certbot, not in-cluster
-- **LLM** → OpenAI (`api.openai.com`) through the standard `openai` provider
+- **LLM** → any OpenAI-compatible endpoint through the standard `openai` provider —
+  `api.openai.com`, or **AWS Bedrock** (see below). No inference runs on this box.
 
 It is the profile behind `api.kubeintellect.com`. If you want managed
 Kubernetes instead, see [Cloud / VM (Helm)](cloud.md); the Helm values here are
@@ -97,6 +98,33 @@ config:
     curl -s -o /dev/null -w '%{http_code}\n' https://<your-api-host>/v1/namespaces
     # expect 401 — a 200 means the API is open
     ```
+
+### Using AWS Bedrock instead of OpenAI
+
+Bedrock speaks the OpenAI Chat Completions API, so it is a configuration change, not a code
+one. In `values-hetzner.yaml`:
+
+```yaml
+config:
+  llmProvider: openai
+secrets:
+  openaiBaseUrl: "https://bedrock-runtime.eu-central-1.amazonaws.com/openai/v1"
+  openaiCoordinatorModel: openai.gpt-oss-120b
+  openaiSubagentModel: openai.gpt-oss-20b
+```
+
+and pass the Bedrock API key as `secrets.openaiApiKey`. Choose a region near the server —
+this box is in Falkenstein, so `eu-central-1` keeps the round trip inside Europe.
+
+Prove it works **before** deploying. This exercises the real LLM factory, including the
+function calling the subagents depend on:
+
+```bash
+cd v4 && uv run python scripts/verify_llm.py
+```
+
+A model that chats but emits no tool call produces an agent that answers confidently and
+never reads the cluster, so treat that check as load-bearing rather than a formality.
 
 ## 5. Deploy
 
