@@ -13,6 +13,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **AWS Bedrock is a supported LLM backend, and a provider-agnostic connectivity check**
+  (`v4/scripts/verify_llm.py`, `v4/docs/deploy/aws.md`, `v4/docs/deploy/hetzner.md`).
+  Bedrock exposes an OpenAI-compatible Chat Completions API, so it needs **no new provider
+  and no code change** — `LLM_PROVIDER=openai` with `OPENAI_BASE_URL` pointed at
+  `https://bedrock-runtime.<region>.amazonaws.com/openai/v1` and a Bedrock API key as the
+  bearer token, exactly the mechanism the DashScope/Qwen path already uses. Verified against
+  the live `eu-central-1` endpoint on 2026-09-03: the existing factory reaches it and gets a
+  well-formed Bedrock error back, so the integration is configuration only.
+  `scripts/verify_llm.py` generalises `verify_qwen.py` (which still works) to any provider —
+  OpenAI, Bedrock, Azure, Qwen, Ollama, or a local proxy. It exercises the real
+  `app.core.llm` factory and checks **tool calling**, not just chat, because a model that
+  chats fine but emits no tool call yields an agent that answers confidently and never reads
+  the cluster. `docs/deploy/aws.md` previously admitted there was no verifier for anything
+  but Qwen; there is now.
+
 - **A single-VM Hetzner deployment profile, and the auth switch it needs**
   (`v4/deploy/helm/kubeintellect/values-hetzner.yaml.example`, `v4/docs/deploy/hetzner.md`,
   `v4/tests/test_a_default_install_must_not_require_azure.py`). The chart had **no named
