@@ -221,10 +221,15 @@ Hetzner's June 2026 price adjustment raised the CPX and CCX lines far more than
 CX and CAX, which makes the plain **CX** line the best value at this size — and
 cheaper than the equivalent ARM CAX, so there is no reason to take on ARM.
 
-| Item | Net | Incl. IPv4 + 19% VAT |
+Figures below are from Hetzner's own API for `fsn1`, not a price list. VAT is whatever
+applies to your billing country — the gross column here is at 22%, so adjust for yours.
+
+| Item | Net | Gross (22% VAT) |
 |---|---|---|
-| CX43 — 8 vCPU, 16 GB, 160 GB NVMe, 20 TB traffic | €15.99 | €19.62 |
-| Backups (optional, +20%) | €3.20 | €23.43 total |
+| CX43 — 8 vCPU, 16 GB, 160 GB NVMe, 20 TB traffic | €15.99 | €19.51 |
+| Primary IPv4 | €0.50 | €0.61 |
+| **Total** | **€16.49** | **€20.12** |
+| Backups (optional, +20% of the server) | €3.20 | €3.90 |
 
 OpenAI tokens are billed separately. Set a monthly usage limit on the API key.
 
