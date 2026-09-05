@@ -29,7 +29,7 @@ dependencies = [
     "rich>=14.3.3",
     "prompt_toolkit>=3.0",
     "pygments>=2.18",
-    "pydantic>=2.0",
+    "pydantic>=2.13.5",
     "ki-protocol>=1.1.0",
     # `kq export --format yaml`
     "pyyaml>=6.0.3",
