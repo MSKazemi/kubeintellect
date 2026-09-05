@@ -55,7 +55,7 @@ jobs:
       - name: Build the published site
         run: ./scripts/build-docs.sh "$GITHUB_WORKSPACE/site"
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
 
       - uses: actions/upload-pages-artifact@v3
         with:
