@@ -16,6 +16,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.errors import GraphInterrupt, GraphRecursionError
 
 from app.agent.state import AgentState, PlanStep
+from app.agent.tool_execution import fault_isolated_tool_node
 from app.core.config import settings
 from app.core.llm import get_coordinator_llm
 from app.streaming.emitter import PlanEvent, StatusEvent, emit
@@ -853,7 +854,7 @@ async def _direct_answer(state: AgentState, config: Optional[RunnableConfig] = N
         system_parts.append(_PROACTIVE_FIX_BLOCK)
 
     llm = get_coordinator_llm()
-    agent = create_react_agent(llm, tools=ALL_TOOLS)
+    agent = create_react_agent(llm, tools=fault_isolated_tool_node(ALL_TOOLS))
 
     history, history_summary = _trim_session_messages(list(state["messages"]))
     if history_summary:
