@@ -257,6 +257,12 @@ A change that violates any of these will be rejected regardless of test results.
    behavioural test while silently receiving `None`. A behavioural test cannot catch that;
    only asserting the annotation can.
 
+7. **One read-tool failure must not abort a parallel batch.** The default coordinator and
+   specialist ReAct loops must pass tools through
+   `app.agent.tool_execution.fault_isolated_tool_node`. Ordinary invocation errors become
+   per-call error `ToolMessage`s that include the failed command and reason, while
+   `GraphInterrupt` must still escape unchanged for HITL mutation approval.
+
 ## Testing expectations
 
 - Every behavioral change needs a test that **fails before your change and passes after.**
