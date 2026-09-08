@@ -1,0 +1,35 @@
+name: DnsResolutionFailure
+# DNS failures surface in APPLICATION logs ("no such host", "Temporary
+# failure in name resolution", "dial tcp: lookup ... on 10.96.0.10:53") and in
+# CoreDNS SERVFAIL logs. Neither is visible to the kubectl --watch sensorium:
+# pod STATUS stays Running and no Warning event is ever emitted, so there is
+# nothing to compile into a watch predicate. Same call NetworkPolicyBlocking
+# makes for the same reason. Detection stays prompt-side (Loki query / triage).
+detect: null
+triggers:
+  - event_message_regex: "no such host|Temporary failure in name resolution|dial tcp.*lookup|SERVFAIL|NXDOMAIN|server can't find"
+investigation_steps:
+  - "kubectl get pods -n kube-system -l k8s-app=kube-dns -o wide — confirm the CoreDNS pods are Running and Ready; if they are not, the resolver itself is down."
+  - "kubectl logs -n kube-system -l k8s-app=kube-dns --tail=50 — look for SERVFAIL or upstream timeout lines; they name the failing upstream."
+  - "kubectl get svc kube-dns -n kube-system -o yaml — confirm the Service exists and has a clusterIP; then check its endpoints: kubectl get endpoints kube-dns -n kube-system."
+  - "kubectl get pod <app-pod> -n <ns> -o yaml — inspect dnsPolicy and dnsConfig on the workload that cannot resolve; ClusterFirst is the default, None means the pod owns its resolv.conf."
+  - "kubectl get networkpolicy -A — check for an egress policy that does not admit UDP/TCP 53 to the kube-dns clusterIP; a drop here looks exactly like a dead resolver."
+  - "Probe from inside the cluster: kubectl run dns-probe --image=busybox:1.36 --restart=Never --rm -i -- nslookup kubernetes.default.svc.cluster.local — if this fails too, the problem is cluster-wide; if it succeeds, it is workload-local (dnsPolicy/dnsConfig or a policy on that namespace)."
+expected_evidence:
+  - "CoreDNS pods not Running/Ready, or CoreDNS logs containing SERVFAIL / upstream timeout"
+  - "kube-dns Service with no ready endpoints"
+  - "Workload dnsPolicy: None, or dnsConfig pointing at unreachable nameservers"
+  - "NetworkPolicy (egress or ingress) that drops traffic to port 53"
+  - "Absence check: if CoreDNS is healthy AND the Service has endpoints AND the workload uses ClusterFirst AND no policy blocks 53, look at the upstream resolvers in the Corefile and the node's /etc/resolv.conf — the fault is upstream of the cluster"
+recommended_fix_template: |
+  Pod <APP_POD> in namespace <NS> cannot resolve cluster DNS. The diagnosis
+  points at <CAUSE>:
+
+  - CoreDNS down: restore the deployment (kubectl rollout restart deployment/coredns -n kube-system, or fix whatever keeps the pods from Running).
+  - kube-dns Service broken: repair the Service selector so it matches the coredns pod labels.
+  - Workload dnsPolicy/dnsConfig wrong: patch the pod spec back to ClusterFirst (default), or fix the nameservers / ndots in dnsConfig.
+  - NetworkPolicy blocking port 53: add an egress rule to the kube-dns clusterIP, or an ingress rule to the coredns pods, scoped to the affected namespace.
+  - Upstream resolver failing: adjust the Corefile forward block or the node resolv.conf.
+
+  Remediation is NOT executed automatically — present the operator with the
+  relevant step and let the human-in-the-loop gate approve it.
