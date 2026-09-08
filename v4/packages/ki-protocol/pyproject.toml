@@ -20,7 +20,7 @@ classifiers = [
     "Topic :: System :: Systems Administration",
 ]
 dependencies = [
-    "pydantic>=2.10",
+    "pydantic>=2.13.5",
 ]
 
 [project.urls]
