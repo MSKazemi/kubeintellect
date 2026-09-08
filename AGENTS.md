@@ -194,27 +194,61 @@ Two annotations are load-bearing and mypy *cannot* verify them — see "Safety i
 - **`ruff format --check` is not a CI gate** and would reformat **127** files. `make lint` in
   `v4/` *does* run it, so `make lint` fails on a clean checkout. Use the `ruff check` command
   above to predict CI, not `make lint`.
-- **`ruff` is pinned `<0.16`** on purpose — 0.16's default rules reported 438 findings, then
-  342 after the `EXE002` family was cleared (#70), and **317 as measured with ruff 0.16.3 on
-  2026-08-18** (largest families: `BLE001` 140, `UP045` 91, `PLW1510` 25, `UP035` 17; 120 of the
-  317 are auto-fixable). Re-measure rather than quoting this number — it drifts with the code.
-  Do not bump the pin. The remaining families
-  must land as separate per-rule PRs, **tracked in [#75](https://github.com/MSKazemi/kubeintellect/issues/75)**
-  ("replaces the prematurely-closed #64"). Comment there before starting — do not open a new
-  issue. (This paragraph previously said the work was untracked and told you to file a fresh
-  one; that was wrong and would have produced a duplicate. `scripts/dev-setup.sh` had #75 right
-  all along.) Note the consequence of the pin: `ruff` here is blind to `EXE002`/`EXE001`,
-  which is why the separate `make check-modes` gate above exists.
+- **`ruff` is pinned `<0.16`** on purpose. Re-measure rather than quoting a number — it drifts
+  with the code, and every number in this bullet has already been wrong once. **As measured
+  with ruff 0.16.3 on 2026-09-09**, over the exact lint scope in the `ruff check` command
+  above (`app/`, `ki-protocol/`, `kube-q/`, `tests/`, `scripts/`): **556 findings, 233 of them
+  auto-fixable.** Largest families: `I001` 168 (auto-fixable), `BLE001` 165, `PLW1510` 61,
+  `RUF100` 21, `ISC004` 19. Narrowed to just the three packages, it is 251.
 
-  ⚠️ **`UP045` (91 of the 317, and every one of them auto-fixable) is a safety trap, not a
-  cleanup.** That combination is the hazard: a single `ruff check --fix` would apply all 91,
-  including on the tools where it disables the safety gates. It rewrites
-  `Optional[X]` → `X | None`, which on an injected `RunnableConfig` parameter is exactly the
-  change invariant #6 below forbids: the run config stops being injected, and RBAC and the
-  HITL gate silently stop being enforced *while every test still passes*. Never run
-  `ruff --fix` over that family. It needs a hand-audited PR that leaves every
-  `RunnableConfig` annotation alone (`app/tools/aci/read_verbs.py`,
-  `app/agent/nodes/coordinator.py`, `app/tools/kubectl_tool.py`).
+  (The historical series, kept because the *drift* is the point: 438 → 342 after the `EXE002`
+  family was cleared (#70) → 317 on 2026-08-18 over the three packages → 251 for the same
+  scope today. The 2026-08-18 figure was measured over a narrower scope than the one it was
+  filed under, which is how "317" and "556" can both be honest.)
+
+  Do not bump the pin. The remaining families must land as separate per-rule PRs, **tracked in
+  [#75](https://github.com/MSKazemi/kubeintellect/issues/75)** ("replaces the prematurely-closed
+  #64"). Comment there before starting — do not open a new issue. Note the consequence of the
+  pin: `ruff` here is blind to `EXE002`/`EXE001`, which is why the separate `make check-modes`
+  gate above exists.
+
+  ⚠️ **`UP045` is a safety trap — and it now reports zero, which is the thing to understand
+  before you touch it.** It is at zero *because it is suppressed*, not because the hazard is
+  gone. Three sites carry an inline `# noqa: UP045`:
+
+  ```
+  app/agent/nodes/coordinator.py:736   coordinator(...)
+  app/agent/nodes/coordinator.py:831   _direct_answer(...)
+  tests/test_injected_config_invariant.py:112   the negative-control canary
+  ```
+
+  Delete one of those comments and `UP045` fires again; `ruff check --fix` then rewrites
+  `Optional[X]` → `X | None` **and the autofix is marked safe**, so it applies without
+  `--unsafe-fixes`. Verified on 2026-09-09 by removing the two `coordinator.py` comments and
+  re-running: 2 findings, both auto-fixed to `RunnableConfig | None`. **Never run `ruff --fix`
+  over this family, and never "clean up" one of those three `# noqa` comments.**
+
+  Two corrections to what this section used to say, both verified rather than reasoned:
+
+  * It said the family "needs a hand-audited PR". **That PR already happened** — the sites are
+    suppressed and `Optional[` is down to 8 occurrences in `app/`. There is no backlog of 91
+    here to clear, and a contributor sent to clear it would find nothing to do.
+  * It listed `app/agent/nodes/coordinator.py` among the files where widening the annotation
+    disables RBAC. **It does not, and the distinction matters.** LangGraph injects a *node's*
+    config by parameter name, so all three spellings receive it — measured directly:
+
+    ```
+    Optional[RunnableConfig]   -> user_role='admin'  OK
+    RunnableConfig | None      -> user_role='admin'  OK
+    RunnableConfig (bare)      -> user_role='admin'  OK
+    ```
+
+    The RBAC/HITL hazard in invariant #6 is specific to **tools**, where `langchain_core`
+    matches `type_ is RunnableConfig` by identity. Those sites are `app/tools/kubectl_tool.py`
+    and the four ACI read verbs in `app/tools/aci/read_verbs.py`, they are all currently bare
+    and correct, and `tests/test_injected_config_invariant.py` gates them (8 passed). The
+    `coordinator.py` suppressions are worth keeping anyway — they stop a batch `--fix` from
+    sweeping the file — but do not go looking for an RBAC bug there, because there isn't one.
 
 ## Safety invariants — never weaken these
 
