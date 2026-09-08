@@ -7,6 +7,7 @@ from langchain_core.messages import SystemMessage
 from langgraph.prebuilt import create_react_agent
 
 from app.agent.state import AgentFinding, SubagentInput
+from app.agent.tool_execution import fault_isolated_tool_node
 from app.core.llm import get_subagent_llm
 from app.tools.registry import ALL_TOOLS
 from app.utils.logger import get_logger
@@ -91,7 +92,7 @@ async def run_subagent(payload: SubagentInput) -> AgentFinding:
     system_prompt = "\n".join(system_parts)
 
     llm = get_subagent_llm()
-    agent = create_react_agent(llm, tools=ALL_TOOLS)
+    agent = create_react_agent(llm, tools=fault_isolated_tool_node(ALL_TOOLS))
 
     input_messages = [SystemMessage(content=system_prompt)] + list(messages)
 
