@@ -100,8 +100,8 @@ def test_every_playbook_has_a_trigger_that_could_fire(pb):
 
 def test_the_inventory_is_actually_covered():
     """Guard the guard: an empty registry would make both tests above pass vacuously."""
-    assert len(_PLAYBOOKS) == 23, f"playbook count changed to {len(_PLAYBOOKS)}"
-    assert len(_CASES) == 41, f"trigger-regex count changed to {len(_CASES)}"
+    assert len(_PLAYBOOKS) == 24, f"playbook count changed to {len(_PLAYBOOKS)}"
+    assert len(_CASES) == 42, f"trigger-regex count changed to {len(_CASES)}"
 
 
 def test_a_mistyped_trigger_key_is_exactly_the_shape_this_file_catches():
