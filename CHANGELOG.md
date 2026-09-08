@@ -13,6 +13,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **One invalid tool call aborted an entire parallel Kubernetes investigation**
+  (`app/agent/tool_execution.py`, `app/agent/nodes/coordinator.py`,
+  `app/agent/nodes/subagent.py`, `v4/tests/test_parallel_tool_failure_isolation.py`).
+  Found and fixed by [@be-student](https://github.com/be-student) (#183, closing #174).
+  Both ReAct loops built their tool node as `create_react_agent(llm, tools=ALL_TOOLS)`, which
+  uses LangGraph's stock `ToolNode`. Its default handler returns a message only for
+  `ToolInvocationError` and **re-raises everything else**, so any exception from inside a tool
+  body — a malformed `kubectl` argument, an unresolved `<node-name>` placeholder, a timeout —
+  propagated out of the whole parallel batch. Measured against the unpatched node: a batch of
+  seven read-only commands with one bad argument returned **zero** results, discarding six
+  completed investigations. On an incident-response tool that is the worst shape of failure,
+  because the operator sees an error where six correct answers existed.
+  Tool calls now run behind `fault_isolated_tool_node`, which converts an ordinary failure into
+  a per-call error `ToolMessage` naming the failed command and reason, both passed through
+  `redact_secrets` first.
+  The boundary re-raises **`GraphBubbleUp`**, not `GraphInterrupt` — that base class covers
+  every LangGraph control-flow signal (`GraphInterrupt` for the HITL approval gate,
+  `ParentCommand` for a tool routing the parent graph, `GraphDrained`), and catching only the
+  named subclass would have converted the other two into ordinary tool errors and silently lost
+  the routing while every test still passed. Five tests, two of which fail against the narrower
+  boundary. Recorded as safety invariant #7 in `AGENTS.md`.
+
 - **`kubeintellect init` could not finish on a machine without `sudo` or `systemd`**
   (`app/cli.py`, `v4/tests/test_init_finishes_on_a_machine_without_sudo.py`). Found by
   installing the published 2.4.1 into a clean `python:3.12-slim` container on 2026-08-29 —

@@ -16,7 +16,7 @@
   "skipCi": true,
   "types": {
     "platform": {
-      "symbol": "\ud83d\udcbb",
+      "symbol": "💻",
       "description": "Verified KubeIntellect on a Kubernetes platform CI does not cover, and reported what happened",
       "link": "https://github.com/MSKazemi/kubeintellect/issues?q=label%3Aarea%2Fdeploy"
     }
@@ -116,6 +116,17 @@
       "profile": "https://github.com/AshSgDe29071999",
       "contributions": [
         "ideas",
+        "test"
+      ]
+    },
+    {
+      "login": "be-student",
+      "name": "송은우",
+      "avatar_url": "https://avatars.githubusercontent.com/u/80899085?v=4",
+      "profile": "https://github.com/be-student",
+      "contributions": [
+        "code",
+        "bug",
         "test"
       ]
     }

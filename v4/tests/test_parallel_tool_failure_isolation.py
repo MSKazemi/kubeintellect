@@ -1,10 +1,13 @@
 """One malformed read must not discard successful calls from the same batch."""
+
 from __future__ import annotations
 
+import pytest
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import tool
-from langgraph.errors import GraphInterrupt
+from langgraph.errors import GraphBubbleUp, GraphInterrupt, ParentCommand
 from langgraph.graph import END, START, MessagesState, StateGraph
+from langgraph.types import Command
 
 from app.agent.tool_execution import fault_isolated_tool_node
 
@@ -51,7 +54,9 @@ async def test_one_invalid_call_does_not_abort_parallel_read_results():
     )
 
     result = await graph.ainvoke({"messages": [batch]})
-    messages = [message for message in result["messages"] if isinstance(message, ToolMessage)]
+    messages = [
+        message for message in result["messages"] if isinstance(message, ToolMessage)
+    ]
 
     assert len(messages) == 7
     assert sum(message.status == "success" for message in messages) == 6
@@ -109,3 +114,44 @@ async def test_failed_command_and_reason_are_redacted_before_returning():
     assert len(failures) == 1
     assert secret not in failures[0].content
     assert "<redacted>" in failures[0].content
+
+
+async def test_a_tool_routing_the_parent_graph_is_not_swallowed():
+    """ParentCommand is control flow, not a tool failure.
+
+    It shares GraphBubbleUp with GraphInterrupt but is a *different* subclass, so a
+    boundary that re-raises only GraphInterrupt turns a parent-graph route into an
+    ordinary tool error and the routing is silently lost.
+    """
+
+    @tool
+    async def route_parent(command: str) -> str:
+        """Route the parent graph the way a Command-returning tool does."""
+        raise ParentCommand(Command(goto="escalate"))
+
+    graph = _compiled_tool_node([route_parent])
+    batch = AIMessage(
+        content="",
+        tool_calls=[
+            {"name": "route_parent", "args": {"command": "escalate"}, "id": "route-1"}
+        ],
+    )
+
+    # Escaping the node is the proof: a swallowed signal would come back as a
+    # ToolMessage with status="error" and the routing would be lost.
+    with pytest.raises(ParentCommand):
+        await graph.ainvoke({"messages": [batch]})
+
+
+def test_every_bubble_up_signal_is_re_raised_not_isolated():
+    """Pin the boundary to the base class, so a new LangGraph signal is covered too."""
+    import inspect
+
+    from app.agent import tool_execution
+
+    source = inspect.getsource(tool_execution._isolate_tool_failure)
+    assert "except GraphBubbleUp:" in source, (
+        "the boundary must re-raise GraphBubbleUp, not one named subclass -- "
+        f"LangGraph currently defines {sorted(c.__name__ for c in GraphBubbleUp.__subclasses__())}"
+    )
+    assert GraphInterrupt in GraphBubbleUp.__subclasses__()
