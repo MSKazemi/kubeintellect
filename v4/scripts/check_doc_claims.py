@@ -260,9 +260,11 @@ def _measured_claims() -> tuple[list[_Claim], list[str]]:
     """
     claims: list[_Claim] = []
     notes: list[str] = []
-    for label, rootdir, pattern in (
-        ("server suite", _V4, r"Server suite \((\d+) tests\)"),
-        ("kq CLI suite", _V4 / "packages" / "kube-q", r"kq CLI suite \((\d+) tests\)"),
+    for label, rootdir, pattern, contributing in (
+        ("server suite", _V4, r"Server suite \((\d+) tests\)",
+         r"# server \(~(\d+) tests\)"),
+        ("kq CLI suite", _V4 / "packages" / "kube-q", r"kq CLI suite \((\d+) tests\)",
+         r"# kq CLI \(~(\d+) tests\)"),
     ):
         actual = _collect_count(rootdir)
         if actual is None:
@@ -272,6 +274,9 @@ def _measured_claims() -> tuple[list[_Claim], list[str]]:
             )
             continue
         claims.append(("root:AGENTS.md", pattern, actual, f"{label} test count"))
+        claims.append((
+            "root:CONTRIBUTING.md", contributing, actual, f"{label} test count (CONTRIBUTING)"
+        ))
 
     drift = _format_drift_count()
     if drift is None:
