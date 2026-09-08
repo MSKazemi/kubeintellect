@@ -91,7 +91,7 @@ uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/ packa
 # 2. Types — the workspace is at ZERO errors; keep it there.
 uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q
 
-# 3. Server suite (5505 tests)
+# 3. Server suite (5510 tests)
 uv run python -m pytest tests/ -q
 
 # 4. kq CLI suite (749 tests)
@@ -260,8 +260,14 @@ A change that violates any of these will be rejected regardless of test results.
 7. **One read-tool failure must not abort a parallel batch.** The default coordinator and
    specialist ReAct loops must pass tools through
    `app.agent.tool_execution.fault_isolated_tool_node`. Ordinary invocation errors become
-   per-call error `ToolMessage`s that include the failed command and reason, while
-   `GraphInterrupt` must still escape unchanged for HITL mutation approval.
+   per-call error `ToolMessage`s that include the failed command and reason.
+
+   The boundary re-raises **`GraphBubbleUp`**, not `GraphInterrupt`. That base class is
+   LangGraph's marker for *every* control-flow signal — `GraphInterrupt` (the HITL approval
+   gate), `ParentCommand` (a tool routing the parent graph) and `GraphDrained` — and
+   narrowing it to one named subclass converts the other two into ordinary tool errors,
+   silently losing the routing while every existing test still passes. Both the command and
+   the failure reason go through `redact_secrets` before they reach the model.
 
 ## Testing expectations
 

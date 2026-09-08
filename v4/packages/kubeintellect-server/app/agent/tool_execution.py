@@ -1,11 +1,12 @@
 """Shared fault-isolation boundary for ReAct tool batches."""
+
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Sequence
 
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import BaseTool
-from langgraph.errors import GraphInterrupt
+from langgraph.errors import GraphBubbleUp
 from langgraph.prebuilt import ToolNode
 from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
@@ -20,16 +21,25 @@ async def _isolate_tool_failure(
     request: ToolCallRequest,
     execute: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command]],
 ) -> ToolMessage | Command:
-    """Convert one ordinary failure to a result without weakening HITL."""
+    """Convert one ordinary failure to a result without weakening HITL.
+
+    Only *ordinary* failures are isolated. Every LangGraph control-flow signal --
+    ``GraphInterrupt`` (the HITL approval gate), ``ParentCommand`` (a tool routing the
+    parent graph) and ``GraphDrained`` -- shares the ``GraphBubbleUp`` base class and
+    must reach the runtime unchanged. Catching only ``GraphInterrupt`` would convert
+    the other two into ordinary tool errors and silently break graph control flow.
+    """
     try:
         return await execute(request)
-    except GraphInterrupt:
+    except GraphBubbleUp:
         raise
     except Exception as exc:
         call = request.tool_call
         name = call.get("name", "")
         command = (call.get("args") or {}).get("command")
-        safe_command = redact_secrets(command, max_chars=500) if isinstance(command, str) else ""
+        safe_command = (
+            redact_secrets(command, max_chars=500) if isinstance(command, str) else ""
+        )
         invocation = f" command={safe_command!r}" if safe_command else ""
         reason = redact_secrets(str(exc), max_chars=500)
         logger.warning(
