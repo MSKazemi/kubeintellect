@@ -743,9 +743,21 @@ class Settings(BaseSettings):
                 self.OPENAI_SUBAGENT_MODEL = "qwen-plus"
         if self.LLM_PROVIDER == "anthropic":
             if not self.CORTEX_V4_ENABLED:
+                # Name the CONSEQUENCE, not just the cause. The previous wording --
+                # "anthropic is only used by the V4 cortex" -- reads as "Anthropic will not
+                # be used", i.e. it will fail or do nothing. What actually happens is that
+                # the default V2 graph builds a ChatOpenAI client and sends every prompt,
+                # cluster data included, to OpenAI using OPENAI_API_KEY. Provider choice is
+                # often a compliance decision, so a reader deciding whether to act on this
+                # line needs to know which vendor receives the data.
                 logging.warning(
-                    "LLM_PROVIDER=anthropic is only used by the V4 cortex — "
-                    "set CORTEX_V4_ENABLED=true (the V2 graph supports azure/openai only)."
+                    "LLM_PROVIDER=anthropic but CORTEX_V4_ENABLED is false. The default V2 "
+                    "graph has no Anthropic backend, so every coordinator and subagent call "
+                    "-- including the cluster data in each prompt -- will be sent to OpenAI "
+                    "at %s using OPENAI_API_KEY, not to Anthropic, and ANTHROPIC_API_KEY "
+                    "will be ignored. Set CORTEX_V4_ENABLED=true to actually use Anthropic, "
+                    "or set LLM_PROVIDER=openai to make the current behaviour explicit.",
+                    self.OPENAI_BASE_URL or "https://api.openai.com/v1",
                 )
             if not self.ANTHROPIC_API_KEY:
                 logging.warning(
