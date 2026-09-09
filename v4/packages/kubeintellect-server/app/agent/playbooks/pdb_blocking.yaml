@@ -1,0 +1,40 @@
+name: PodDisruptionBudgetBlocking
+# An eviction refusal is an API response / drain stderr, not a guaranteed Warning
+# Event. Karpenter also reports PDB blockers as Normal events, which the current
+# snapshot/watch paths do not collect. Keep this triage-only, like NetworkPolicyBlocking;
+# these triggers match when the diagnostic text is supplied to the matcher.
+# Zero allowed disruptions alone is legitimate availability policy, not an incident.
+# Sources: https://kubernetes.io/docs/concepts/scheduling-eviction/api-eviction/
+#          https://karpenter.sh/docs/concepts/disruption/
+detect: null
+triggers:
+  - event_message_regex: "Cannot evict pod as it would violate the pod's disruption budget"
+  - event_message_regex: 'pdb .*prevents pod evictions'
+investigation_steps:
+  - "Confirm an intended drain/eviction is actually blocked: capture the operator's eviction refusal and the target pod, namespace and node. A PDB with zero allowed disruptions, or a Karpenter consolidation notice alone, does not prove an incident."
+  - "kubectl get pdb -n <ns> -o yaml — inspect selectors, minAvailable/maxUnavailable, unhealthyPodEvictionPolicy, currentHealthy, desiredHealthy, disruptionsAllowed, observedGeneration and conditions. If access is denied, report the missing evidence and request an authorized operator's output."
+  - "kubectl get pods -n <ns> --show-labels -o wide — match the target pod against every PDB selector in its namespace; include matchExpressions. In policy/v1 an empty selector matches all pods in that namespace."
+  - "kubectl describe pod <pod> -n <ns> — inspect Ready conditions, owner references, termination state and events. Unready or pending replacements may consume the budget."
+  - "kubectl get deployment,statefulset,replicaset -n <ns> — compare desired and ready replicas of the identified owner; investigate why replacement pods cannot become Ready before changing the PDB."
+  - "kubectl get events -n <ns> — correlate scheduling/readiness failures with the blocked workload. Do not rerun a mutating drain merely to obtain evidence."
+  - "Verify PDB status reflects the current generation and inspect DisruptionAllowed conditions. An HTTP 429 alone can also be throttling, and overlapping PDB selectors can cause a different eviction error; preserve the exact server response."
+expected_evidence:
+  - "A requested voluntary eviction is refused with a PDB-specific message, and the affected pod matches the named budget's selector"
+  - "Current PDB status and pod readiness explain the refusal; for a healthy pod, disruptionsAllowed is zero"
+  - "The workload owner and availability requirement are known; zero allowance may be intentional (for example a single replica with minAvailable: 1)"
+  - "If the error lacks a PDB cause, status is stale, or the pod matches no budget, do not conclude that a PDB change will fix the drain"
+recommended_fix_template: |
+  Eviction of <POD> in <NS> is blocked by <PDB>, confirmed by <REFUSAL>
+  and <CURRENT_STATUS>. The budget protects <AVAILABILITY_REQUIREMENT>.
+  Prefer restoring unhealthy replicas or, where the workload supports it,
+  adding capacity and waiting for additional Ready replicas before retrying.
+  A zero-budget single-replica workload may require an owner-approved maintenance
+  window; this is not automatically a misconfiguration.
+
+  If policy must change, obtain the workload owner's agreement on the availability
+  tradeoff. For an unhealthy Running pod, review unhealthyPodEvictionPolicy rather
+  than assuming healthy-pod eviction rules apply. Any scale, policy edit or drain
+  retry must use the existing dry-run/diff and human-approval gate. Do not delete
+  the PDB, directly delete pods, or use drain --disable-eviction to bypass protection.
+  After an approved change, recheck Ready replicas and current PDB status, then
+  confirm the intended eviction progresses while application availability holds.
