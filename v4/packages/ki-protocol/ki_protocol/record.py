@@ -50,8 +50,14 @@ def summarise_record(kind: str, payload: dict[str, Any]) -> str:
         return f"result: {str(p.get('summary') or p.get('output', '')).strip()[:100]}"
     if kind == "rollback_point":
         state = p.get("restorable")
-        mark = "" if state is True else (
-            " ⚠️ NOT restorable" if state is False else " (restorability not recorded)")
+        # An incomplete capture is not restorable (#190), so say how much of the command it
+        # actually covers -- "NOT restorable" alone reads as "the bytes are damaged", which is
+        # a different and less alarming problem than "this covers 3 of the 7 objects".
+        got, want = p.get("targets_captured"), p.get("targets_intended")
+        scope = f" [{got}/{want} objects]" if isinstance(got, int) and isinstance(want, int) else ""
+        mark = scope if state is True else (
+            f" ⚠️ NOT restorable{scope}" if state is False
+            else f" (restorability not recorded){scope}")
         return (f"rollback point {p.get('rollback_id', '')}{mark} before: "
                 f"{str(p.get('command', ''))[:80]}")
     if kind == "hitl_request":
