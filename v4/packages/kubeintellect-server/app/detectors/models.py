@@ -218,7 +218,7 @@ def parse_detect_block(playbook_name: str, raw: dict | None) -> DetectBlock | No
     # pass the schema check, and then never fire. That is the same trap the
     # `kind:` warning in docs/agent-behaviors.md documents.
     #
-    # The 21 `promql:` queries in the shipped playbooks all sit alongside real
+    # The 19 `promql:` queries in the shipped playbooks all sit alongside real
     # `watch_predicates`, so nothing that fires today stops firing; what is not
     # true is the extra coverage those queries appear to claim.
     if not predicates and not trends:
