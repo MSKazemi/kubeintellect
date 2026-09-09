@@ -254,8 +254,13 @@ If KubeIntellect is useful to you, a ⭐ helps other people find it — and [#51
 
 ### Contributors
 
-People other than the maintainer whose work is in the shipped code. The list is short because
-the project is young — which is exactly why being on it is worth something.
+Everyone other than the maintainer who has moved this project forward. **A merged commit is
+not the entry fee** — a bug report, a platform verification, a review, an argument that changed
+a design decision, or work that is in progress right now all count, and several people below
+have no merged commit at all. Rows grow as people do more; nobody is ever removed.
+
+The list is short because the project is young — which is exactly why being on it is worth
+something.
 
 | | Contributed |
 |---|---|
@@ -270,6 +275,9 @@ the project is young — which is exactly why being on it is worth something.
 | **[@AshSgDe29071999](https://github.com/AshSgDe29071999)** | Independently diagnosed the terminal-sensitivity bug and submitted the fixture-only fix ([#107](https://github.com/MSKazemi/kubeintellect/pull/107)). It did not merge — #109 arrived against a claimed issue — but running it as a control is the only reason we know the `pytest_configure` hook is load-bearing rather than incidental. The `claimed` label exists because of the collision they hit. |
 | **[@be-student](https://github.com/be-student)** | Fixed the fault-isolation hole in parallel tool batches ([#183](https://github.com/MSKazemi/kubeintellect/pull/183), closing [#174](https://github.com/MSKazemi/kubeintellect/issues/174)) — one malformed `kubectl` call raised straight out of LangGraph's parallel `ToolNode` and discarded every *successful* investigation result in the same batch, so a six-command diagnosis returned nothing. They found the right seam (`awrap_tool_call`) rather than widening a `try` around the graph, and the regression builds a **real compiled LangGraph** with seven parallel calls and proves the six good results survive — a test that genuinely fails without the fix. They also kept the HITL interrupt escaping the boundary unchanged and put both the command and the failure reason through `redact_secrets`, which is the part most fault-isolation patches get wrong. |
 | **[@biggdawg320](https://github.com/biggdawg320)** | Wrote the `PodDisruptionBudgetBlocking` playbook ([#196](https://github.com/MSKazemi/kubeintellect/pull/196)) — a voluntary eviction refused by a PDB, which is one of the harder Kubernetes failures to diagnose because nothing looks broken. Two judgement calls stand out. They kept `detect: null` and said why: an eviction refusal is an API response or drain stderr, not a Warning Event, and Karpenter reports PDB blockers as **Normal** events — so there was nothing honest to compile into a watch predicate. And they encoded that **zero allowed disruptions is legitimate availability policy, not an incident**, with a negative test proving a `kubectl get pdb` table showing `0` does not fire the playbook. The fix template refuses to delete the PDB or reach for `drain --disable-eviction`. They also added read-only `policy/poddisruptionbudgets` to both shipped roles and extended the RBAC-coverage test that derives its list from the playbooks. Reported their validation honestly, explicitly **not** claiming full suites green and running the unchanged base as a control to separate their changes from pre-existing Windows failures. Then wrote the fork-PR section of [`TRIAGE.md`](TRIAGE.md) ([#198](https://github.com/MSKazemi/kubeintellect/pull/198)), which records the trap that a workflow run awaiting maintainer approval reports `status: completed` with `conclusion: action_required` — so `completed` alone does not mean success — and separates workflow approval from code-review approval, the conflation that produced [#170](https://github.com/MSKazemi/kubeintellect/issues/170). And a third: `StatefulSetRolloutStuck` ([#202](https://github.com/MSKazemi/kubeintellect/pull/202)), where they assessed the scope **before** claiming it and correctly argued that no snapshot signal distinguishes a normal rollout wait from a stalled one — so the triggers match only the StatefulSet controller's own creation-failure messages, checked against `stateful_pod_control.go` rather than invented, with a multi-line negative test proving a `successful` line for one object cannot pair with a `failed error:` from another. They ran the red-green themselves and reported both halves (3 failed before the YAML, 14 passing after). |
+| **[@1cbyc](https://github.com/1cbyc)** | Claimed the `subprocess.run(..., text=True)` encoding work ([#168](https://github.com/MSKazemi/kubeintellect/issues/168)) — and **changed the plan before writing a line of code**. The issue recorded the maintainer's inclination as *"`errors="replace"` on log/output reads and strict elsewhere"*; they argued the line belongs somewhere better: strict `utf-8` for identifiers and structured command output, because replacement can turn operational data into a **plausible wrong answer**, and `errors="replace"` only where the purpose is displaying free-form logs. That is the reasoning this project exists to protect, it is now the adopted policy, and it arrived from someone who had not yet touched the repo. They also scoped themselves — 17 shipping call sites, not a bulk rewrite — and asked for confirmation before editing. |
+| **[@Ryota-Di](https://github.com/Ryota-Di)** | Stepped forward for [#189](https://github.com/MSKazemi/kubeintellect/issues/189) — `kubeintellect service start` exiting 0 when systemd refuses to start the unit — within an hour of it being filed, and asked to be assigned rather than working in silence, which is the thing that stops two people duplicating an evening. Work in progress. |
+| **[@Lumbenlengo](https://github.com/Lumbenlengo)** | Volunteered to verify the install path on **Amazon EKS** ([#101](https://github.com/MSKazemi/kubeintellect/issues/101)) — the most common managed platform in production, and one CI has never touched, so IRSA, the AWS VPC CNI and the load-balancer controller are all genuinely unknown territory for this project. Offered a non-production cluster of their own to find out. Work in progress. |
 
 Every merged contribution is credited by name in [CHANGELOG.md](CHANGELOG.md) and in the
 release notes.
@@ -278,6 +286,13 @@ release notes.
 [All Contributors](https://allcontributors.org/) specification (`.all-contributorsrc`), so
 documentation, bug reports, reviews, ideas, triage, and **verifying KubeIntellect on a
 Kubernetes platform our CI does not cover** are all recorded — not just merged commits.
+
+**Your name goes up when you start, not when you merge.** Claim an issue and you are added to
+the table that day, marked 🛠️ as in progress, with a row saying what you took on. When the work
+lands the row is rewritten to say what you did. If it does not land — you ran out of time, the
+cluster went away, life happened — **the row stays**, because deciding to help is a real thing
+that happened and pretending otherwise is how projects teach people not to volunteer. Nobody is
+ever removed from this table.
 
 That last one is a real, open lane: CI runs on Kind only, so nobody has confirmed the install
 path on **k3s, EKS, GKE, AKS or OpenShift**. Those issues need a cluster and about an hour, and
