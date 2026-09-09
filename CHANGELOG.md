@@ -13,6 +13,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **A rollback point could be marked `restorable` while covering only some of the objects the
+  command mutates** (`app/tools/kubectl_tool.py`, `packages/ki-protocol/ki_protocol/record.py`,
+  `v4/tests/test_a_rollback_point_covers_every_object_or_says_it_does_not.py`, #190 → #195).
+  `restorable` answers two questions and only ever checked one: whether the captured YAML is
+  *faithful* (survived redaction and the size cap), and whether it *covers* every object the
+  command touches. Measured on `apply -f -` with seven ConfigMaps where one had been deleted and
+  one timed out: `restorable: true`, three objects captured, `capture_notes` empty — so
+  `record.py` printed no warning mark and the postmortem counted it as restorable, while someone
+  recovering from an incident would have restored a subset believing they restored everything.
+  Four independent holes, all now counted and named: the cap (an unnamed `[:5]`, now
+  `_ROLLBACK_MAX_TARGETS` with the overflow reported), a non-zero `kubectl get` (no `else` on the
+  success branch), a raising fetch (`except Exception: continue`), and a stdin manifest failing to
+  parse half-way (`except Exception: pass`) — the last of which was not in the report. The record
+  now carries `targets_intended`/`targets_captured`, `restorable` is false when they differ, and
+  stderr in a note is redacted first. Nine tests, five of which fail against the previous code;
+  two pin contracts that must not regress — redaction damage still costs restorability, and the
+  capture still never raises.
+
+- **`LLM_PROVIDER=anthropic` sent cluster data to OpenAI with only a warning that named the cause,
+  not the consequence** (`app/core/config.py`,
+  `v4/tests/test_the_anthropic_warning_names_the_vendor_that_gets_the_data.py`, #192 → #193).
+  On the default graph (`CORTEX_V4_ENABLED=false`) the provider builds a `ChatOpenAI` client on
+  `gpt-4o` against `api.openai.com` using `OPENAI_API_KEY`; `ANTHROPIC_API_KEY` is never read. That
+  was already warned about, but the message said only that the provider "is only used by the V4
+  cortex" — which reads as *Anthropic will not be used*, when in fact the run succeeds against a
+  different vendor. Provider choice is frequently a compliance decision, so the message now names
+  OpenAI, the resolved endpoint (honouring a custom `OPENAI_BASE_URL`), the credential actually
+  used and the one ignored. The larger question — refuse to start, or implement Anthropic in
+  `core/llm.py` as `cortex/models.py` already does — stays open on #192.
+
+- **`docs.yml` referenced five GitHub Actions by floating tag, which had `main` red** (#185).
+  `Tests (server)` is a required check and `test_every_action_is_pinned_to_a_commit_sha` was
+  failing on `main` itself, so every open PR inherited a red check and could not merge. Pinned to
+  the newest release within each currently-referenced major, deliberately behaviour-preserving on
+  a workflow that deploys the live documentation site.
+
 - **One invalid tool call aborted an entire parallel Kubernetes investigation**
   (`app/agent/tool_execution.py`, `app/agent/nodes/coordinator.py`,
   `app/agent/nodes/subagent.py`, `v4/tests/test_parallel_tool_failure_isolation.py`).
@@ -55,6 +91,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   sudo, no systemd and no Docker.
 
 ### Changed
+
+- **New playbook: `PodDisruptionBudgetBlocking`** — a voluntary eviction refused by a Pod
+  Disruption Budget, contributed by [@biggdawg320](https://github.com/biggdawg320) (#196, from
+  #13). One of the harder failures to diagnose because nothing looks broken: the workload is
+  healthy, the drain simply never completes. `detect:` is deliberately null and the playbook says
+  why — an eviction refusal is an API response or drain stderr rather than a Warning Event, and
+  Karpenter reports PDB blockers as *Normal* events, so there was nothing honest to compile into a
+  watch predicate. It also encodes that **zero allowed disruptions is legitimate availability
+  policy, not an incident**, with a negative test proving a `kubectl get pdb` table showing `0`
+  does not route to it, and the fix template refuses to delete the PDB or use
+  `drain --disable-eviction`. Read-only `policy/poddisruptionbudgets` was added to both shipped
+  roles, and the RBAC-coverage test that derives its list from the playbooks was extended to match.
 
 - **The video's install scene is enabled, recorded against a release that works**
   (`scripts/demo/video/scenes.py`, `scripts/demo/transcripts-kq/09-install.txt`,
