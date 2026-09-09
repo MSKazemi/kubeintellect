@@ -236,7 +236,7 @@ detects a matching pattern in the snapshot, the coordinator's system prompt
 includes the playbook(s) inline — guiding it to follow proven steps before
 improvising.
 
-**Playbooks shipped (25):**
+**Playbooks shipped (26):**
 
 *Pod / container lifecycle*
 
@@ -562,6 +562,15 @@ triggers:
 - `detect: null` marks a playbook as **LLM-only** (no machine signal exists,
   or the signal is owned by another playbook).
 
+`StatefulSetRolloutStuck` is a triage-only guide for investigating an ordinal
+that is not progressing. Its narrow controller Pod/Claim creation-error triggers
+offer a candidate, not a stalled-rollout verdict. It has `detect: null`: ordinary
+Pending or unready pods cannot distinguish normal waiting from a stall. For PVC
+or readiness stalls without creation errors, use the guide during investigation
+after establishing StatefulSet ownership and comparing progress over time; this
+change does not add automatic routing for those cases. Check intentional
+partitions, OnDelete strategy and minReadySeconds before recommending a change.
+
 `PodDisruptionBudgetBlocking` is a triage-only guide for a confirmed blocked
 voluntary eviction. Its text triggers recognize a PDB-specific eviction refusal
 or Karpenter's PDB blocker message when supplied to the matcher. The default
@@ -694,7 +703,7 @@ change; zero allowed disruptions by itself can be intentional availability polic
     threshold on the first scrape. That depends on runtime values, so it belongs to a
     shadow period and a human, not to a validator.
 
-Of the 25 shipped playbooks, **20 compile to detectors**; 4 are LLM-only
+Of the 26 shipped playbooks, **20 compile to detectors**; 4 are LLM-only
 (`CommandHardcodedFailure` — disambiguated from CrashLoopBackOff only by
 reading the pod spec — `ServiceUnreachable`, `NetworkPolicyBlocking`,
 where the packet is discarded in the CNI datapath so no machine signal
