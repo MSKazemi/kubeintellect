@@ -236,7 +236,7 @@ detects a matching pattern in the snapshot, the coordinator's system prompt
 includes the playbook(s) inline — guiding it to follow proven steps before
 improvising.
 
-**Playbooks shipped (24):**
+**Playbooks shipped (25):**
 
 *Pod / container lifecycle*
 
@@ -545,6 +545,14 @@ triggers:
 - `detect: null` marks a playbook as **LLM-only** (no machine signal exists,
   or the signal is owned by another playbook).
 
+`PodDisruptionBudgetBlocking` is a triage-only guide for a confirmed blocked
+voluntary eviction. Its text triggers recognize a PDB-specific eviction refusal
+or Karpenter's PDB blocker message when supplied to the matcher. The default
+Warning-only snapshot does not collect drain stderr or Karpenter's Normal events,
+so this playbook does **not** provide automatic detection of every blocked drain.
+It requires current budget, selector and readiness evidence before suggesting a
+change; zero allowed disruptions by itself can be intentional availability policy.
+
 !!! warning "A tuning knob set to `0` used to be read as *absent*"
     Every trend-predicate knob was parsed as `entry.get(key) or default`, which cannot tell
     "not set" from "set to zero" — so an author who wrote `0` silently got the default, and
@@ -669,7 +677,7 @@ triggers:
     threshold on the first scrape. That depends on runtime values, so it belongs to a
     shadow period and a human, not to a validator.
 
-Of the 24 shipped playbooks, **20 compile to detectors**; 4 are LLM-only
+Of the 25 shipped playbooks, **20 compile to detectors**; 4 are LLM-only
 (`CommandHardcodedFailure` — disambiguated from CrashLoopBackOff only by
 reading the pod spec — `ServiceUnreachable`, `NetworkPolicyBlocking`,
 where the packet is discarded in the CNI datapath so no machine signal
