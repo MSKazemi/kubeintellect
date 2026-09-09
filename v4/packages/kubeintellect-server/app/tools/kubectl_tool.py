@@ -975,6 +975,10 @@ _SUBCOMMAND_VERBS = frozenset({"rollout"})
 # Size cap for one captured pre-state. Anything larger is truncated, and a truncated object is
 # not a restore point — the capture records that rather than letting it pass as one.
 _ROLLBACK_MAX_CHARS = 4000
+# How many objects one rollback point will fetch. The cap bounds latency on a large
+# `apply -f -`; it was previously an unnamed `[:5]` slice, so objects past it were
+# dropped with nothing recording that the capture was partial (#190).
+_ROLLBACK_MAX_TARGETS = 5
 
 
 def _external_manifest_source(verb: str, args: list[str]) -> str | None:
@@ -1317,6 +1321,7 @@ def _capture_rollback_point(verb: str, args: list, stdin: str | None, config, en
         from app.utils.redact import redact_secrets
 
         targets: list[list[str]] = []
+        parse_error: str | None = None
         if stdin:
             try:
                 for doc in yaml.safe_load_all(stdin):
@@ -1330,8 +1335,10 @@ def _capture_rollback_point(verb: str, args: list, stdin: str | None, config, en
                         if ns:
                             target += ["-n", ns]
                         targets.append(target)
-            except Exception:
-                pass
+            except Exception as exc:
+                # A parse that dies half-way leaves `targets` covering only the documents
+                # read so far. Swallowing that produced a capture that looked whole.
+                parse_error = str(exc)[:200]
         else:
             # delete/patch/scale/label with explicit resource args:
             # swap the verb for `get ... -o yaml`, drop value-bearing flags.
@@ -1371,7 +1378,20 @@ def _capture_rollback_point(verb: str, args: list, stdin: str | None, config, en
         states = []
         notes: list[str] = []
         restorable = True
-        for target in targets[:5]:
+
+        # `restorable` answers two independent questions, and until #190 it only answered the
+        # first: is what we captured FAITHFUL (survived redaction and the cap), and does it
+        # COVER every object the command will touch. A capture can be perfectly faithful and
+        # still hold 3 of 7 objects, and the operator applying it would restore a subset while
+        # believing they restored everything. So every object that drops out is counted and
+        # named, and an incomplete capture is not restorable however clean its bytes are.
+        intended = len(targets)
+        if parse_error:
+            notes.append(f"stdin: manifest parse failed ({parse_error}) — object list is partial")
+            restorable = False
+
+        for target in targets[:_ROLLBACK_MAX_TARGETS]:
+            label = " ".join(target[2:4])
             try:
                 pre = subprocess.run(
                     target, capture_output=True, text=True, timeout=5, env=env, shell=False
@@ -1382,13 +1402,27 @@ def _capture_rollback_point(verb: str, args: list, stdin: str | None, config, en
                     # the object, so it must not cost a capture its restorable flag.
                     if kept.rstrip("\n") != pre.stdout.rstrip("\n"):
                         restorable = False
-                        notes.append(f"{' '.join(target[2:4])}: "
+                        notes.append(f"{label}: "
                                      f"{_capture_note(pre.stdout, kept, _ROLLBACK_MAX_CHARS)}")
                     states.append(kept)
-            except Exception:
-                continue
+                else:
+                    reason = (pre.stderr or "").strip().splitlines()
+                    notes.append(
+                        f"{label}: not captured — kubectl exited {pre.returncode}"
+                        + (f": {redact_secrets(reason[0], max_chars=200)}" if reason else "")
+                    )
+            except Exception as exc:
+                notes.append(f"{label}: not captured — {type(exc).__name__}")
+        if len(targets) > _ROLLBACK_MAX_TARGETS:
+            notes.append(
+                f"{len(targets) - _ROLLBACK_MAX_TARGETS} further object(s) were never attempted "
+                f"— the capture is capped at {_ROLLBACK_MAX_TARGETS}"
+            )
         if not states:
             return
+        captured = len(states)
+        if captured != intended:
+            restorable = False
         session_id = (config.get("configurable") or {}).get("thread_id", "-") if config else "-"
         rollback_id = f"rb-{_uuid.uuid4().hex[:12]}"
         flight_recorder.record(session_id, "rollback_point", {
@@ -1397,14 +1431,18 @@ def _capture_rollback_point(verb: str, args: list, stdin: str | None, config, en
             "command": " ".join(str(a) for a in args)[:300],
             "pre_state": states,
             "restorable": restorable,
+            "targets_intended": intended,
+            "targets_captured": captured,
             "capture_notes": notes,
             "session_id": session_id,
         })
         if restorable:
-            logger.info(f"rollback_point_armed id={rollback_id} targets={len(states)}")
+            logger.info(
+                f"rollback_point_armed id={rollback_id} targets={captured}/{intended}"
+            )
         else:
             logger.warning(
-                f"rollback_point_recorded id={rollback_id} targets={len(states)} — "
+                f"rollback_point_recorded id={rollback_id} targets={captured}/{intended} — "
                 f"NOT restorable, do not apply it: {'; '.join(notes)}"
             )
     except Exception as exc:
