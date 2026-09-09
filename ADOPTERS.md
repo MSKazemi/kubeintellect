@@ -7,9 +7,12 @@ platform team asks before adopting a young project — and because knowing *how*
 people run it is what tells the maintainers which parts to harden next. Adding
 yourself is the single lowest-effort, highest-value contribution to the project.
 
-> **Status: none listed yet.** KubeIntellect went public recently, so this list is
-> honestly empty rather than padded. If you're running it — even a Kind cluster on
-> a laptop — you would be the first entry.
+> **Status: one entry.** [@ybayraktarb](https://github.com/ybayraktarb) was the
+> first, in August 2026 — a k3s/k3d cluster on macOS, and the run that found the
+> README quickstart had never worked ([#151](https://github.com/MSKazemi/kubeintellect/pull/151)).
+> One is a small number and this list stays honest about that rather than padded.
+> If you're running KubeIntellect — even a Kind cluster on a laptop — you would be
+> the second entry, and "evaluating it" is a perfectly good row.
 
 ## The list
 
