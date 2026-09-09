@@ -98,10 +98,29 @@ def test_every_playbook_has_a_trigger_that_could_fire(pb):
     )
 
 
+# Adding a playbook is the project's advertised first contribution (#13), and this guard is the
+# one step in it that `make docs-fix` deliberately cannot do for you. Deliberately, because a
+# fixer that rewrote these numbers would also cheerfully rewrite them to 0 -- which is the exact
+# failure the guard exists to catch. So the numbers are bumped by hand, and the message says so
+# rather than leaving a contributor to infer it from a bare assertion.
+_BUMP_HINT = (
+    "\n\nThis assertion is updated BY HAND, on purpose. `make docs-fix` rewrites the counts in "
+    "the docs but deliberately not this one: a fixer able to rewrite it would also rewrite it to "
+    "0, and catching that is the whole point of the guard.\n"
+    "Edit the number in this test to the value above, then re-run. If you added a playbook, "
+    "expect BOTH numbers to move -- `_CASES` counts trigger REGEXES, not playbooks, so one "
+    "playbook with two `triggers:` entries moves it by two."
+)
+
+
 def test_the_inventory_is_actually_covered():
     """Guard the guard: an empty registry would make both tests above pass vacuously."""
-    assert len(_PLAYBOOKS) == 25, f"playbook count changed to {len(_PLAYBOOKS)}"
-    assert len(_CASES) == 44, f"trigger-regex count changed to {len(_CASES)}"
+    assert len(_PLAYBOOKS) == 25, (
+        f"playbook count changed to {len(_PLAYBOOKS)}{_BUMP_HINT}"
+    )
+    assert len(_CASES) == 44, (
+        f"trigger-regex count changed to {len(_CASES)}{_BUMP_HINT}"
+    )
 
 
 def test_a_mistyped_trigger_key_is_exactly_the_shape_this_file_catches():
