@@ -43,6 +43,7 @@ class Canonical:
     detector_count: int
     providers: set[str]
     flag_count: int
+    promql_count: int
 
 
 def _canonical() -> Canonical:
@@ -71,11 +72,25 @@ def _canonical() -> Canonical:
         if name.startswith(("KI_V5_", "CORTEX_V5_"))
     )
 
+    # `promql:` declarations across the shipped playbooks. Counted from the YAML the
+    # loader actually reads, because the number is quoted in a *safety* comment in
+    # `detectors/models.py` explaining why a promql-only detector is refused — and that
+    # comment said 21 while the tree carried 19, from 2026-08-23 until it was gated here.
+    # A number living in a source comment is exactly the kind no gate was watching.
+    playbook_dir = (
+        _ROOT / "v4" / "packages" / "kubeintellect-server" / "app" / "agent" / "playbooks"
+    )
+    promql_count = sum(
+        len(re.findall(r"^\s*promql:", f.read_text(encoding="utf-8"), re.M))
+        for f in sorted(playbook_dir.glob("*.yaml"))
+    )
+
     return Canonical(
         playbook_count=playbook_count,
         detector_count=detector_count,
         providers=providers,
         flag_count=flag_count,
+        promql_count=promql_count,
     )
 
 
@@ -299,6 +314,12 @@ def _numeric_claims(c: Canonical) -> list[_Claim]:
     """
     pc, dc, fc = c.playbook_count, c.detector_count, c.flag_count
     return [
+        # A safety comment, not a doc: it explains why a promql-only detector is refused.
+        # It is checked here because it is a number about the tree, and nothing else was
+        # watching it -- it read 21 against a tree of 19 for over two weeks.
+        ("root:v4/packages/kubeintellect-server/app/detectors/models.py",
+         r"The (\d+) `promql:` queries in the shipped playbooks", c.promql_count,
+         "unevaluated promql count"),
         ("agent-behaviors.md", r"Playbooks shipped \((\d+)\)", pc, "playbook count"),
         ("agent-behaviors.md", r"Of the (\d+) shipped playbooks", pc, "playbook count"),
         ("capabilities.md", r"the (\d+) most common failures", pc, "playbook count"),
