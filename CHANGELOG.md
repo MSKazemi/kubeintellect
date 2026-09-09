@@ -92,6 +92,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 
+- **`TRIAGE.md` explains what to do when a fork PR looks green but will not merge**
+  (`TRIAGE.md`, #198), contributed by [@biggdawg320](https://github.com/biggdawg320). The
+  common cause is not code scanning: a first-time fork contribution runs no CI until a
+  maintainer approves the workflow run, and such a run reports `status: completed` with
+  `conclusion: action_required` — so `completed` alone does not mean success, and anything
+  scripting the runs API will misread it. The section separates workflow approval from
+  code-review approval (two different permissions with similar UI labels, whose conflation
+  produced #170), states that the contributor cannot clear the gate and need not push an
+  empty commit, and says to read the merge panel's actual reason before assuming CodeQL —
+  and specifically not to copy the PR onto an integration branch to bypass an approval wait,
+  which is the workaround #196 retired.
+
 - **New playbook: `PodDisruptionBudgetBlocking`** — a voluntary eviction refused by a Pod
   Disruption Budget, contributed by [@biggdawg320](https://github.com/biggdawg320) (#196, from
   #13). One of the harder failures to diagnose because nothing looks broken: the workload is
