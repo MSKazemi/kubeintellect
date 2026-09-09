@@ -1,0 +1,47 @@
+name: StatefulSetRolloutStuck
+# Triage-only: neither a Pending pod nor a readiness failure distinguishes a normal
+# rollout wait from stalled progress. WatchPredicate cannot correlate ownership,
+# revisions and progress across observations. Do not invent a StatefulSet Event
+# from kubectl rollout status stdout. The controller creation failures below are
+# real candidate-selection signals, not proof that a rollout is stuck.
+# Sources: https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/
+#          kubernetes/pkg/controller/statefulset/stateful_pod_control.go
+detect: null
+triggers:
+  - event_message_regex: 'create Pod [a-z0-9.-]+ in StatefulSet [a-z0-9.-]+ failed error:'
+  - event_message_regex: 'create Claim [a-z0-9.-]+ for Pod [a-z0-9.-]+ in StatefulSet [a-z0-9.-]+ failed error:'
+investigation_steps:
+  - "Confirm the intended update with the workload owner. Record namespace, StatefulSet, desired revision and when progress stopped; a creation failure can also occur during initial deployment or scaling, not just a rollout."
+  - "kubectl get statefulset <sts> -n <ns> -o yaml — inspect generation/observedGeneration, replicas, currentRevision/updateRevision, updatedReplicas, readyReplicas, updateStrategy (including rollingUpdate.partition), podManagementPolicy, minReadySeconds and ordinals.start. An OnDelete strategy or a deliberate partition is not automatically a stalled rollout."
+  - "kubectl get pods -n <ns> -o wide — identify candidate ordinals, then kubectl get pod <pod> -n <ns> -o yaml to confirm ownerReferences UID against the StatefulSet, controller-revision-hash, volume claim names, deletionTimestamp and Ready conditions. Do not infer ownership from a name prefix or assume ordinals start at zero."
+  - "Compare at least two timestamped observations of the intended update. Check which ordinal has not advanced to the intended revision or become Ready beyond the workload's expected startup interval, including minReadySeconds. Ordered creation waits on lower ordinals, whereas rolling updates normally advance from higher ordinals; inspect the configured strategy before assuming which pod blocks the next one."
+  - "kubectl describe pod <pod> -n <ns> — inspect scheduling, mounts, container states, readiness probes and spec.readinessGates with matching status.conditions. A Running phase does not imply Ready; distinguish a failing container probe from an unmet custom readiness gate."
+  - "kubectl get pvc <claim> -n <ns> -o yaml and kubectl describe pvc <claim> -n <ns> — use the pod's actual claim reference to inspect phase, storageClassName, volumeName and provisioning events. Pending may be normal while waiting for a consumer; correlate scheduling and repeated failures before diagnosing storage. Use PvcPending or the relevant scheduling playbook for the underlying cause."
+  - "kubectl get events -n <ns> --sort-by=.lastTimestamp — correlate the named StatefulSet's creation error and its pods/PVCs. Use ReadinessProbeFailing, ImagePullBackOff or QuotaExceeded when those explain the blocking ordinal; multiple candidate playbooks are expected. If access is denied or observations are missing, state the evidence gap rather than asserting a stall."
+expected_evidence:
+  - "A known intended update and a verified StatefulSet owner; repeated observations show no expected revision/readiness progress beyond the agreed startup interval"
+  - "The blocking ordinal and specific PVC, scheduling, container or readiness-gate evidence; creation errors alone do not prove a stalled update"
+  - "OnDelete behavior, an intentional partition, minReadySeconds and normal ordered waiting have been checked before calling the rollout stuck"
+recommended_fix_template: |
+  StatefulSet <STS> in <NS> is blocked at ordinal <ORDINAL>, supported by
+  <TIMESTAMPED_PROGRESS_COMPARISON> and <PVC_OR_READINESS_OR_CREATION_EVIDENCE>.
+  If that evidence is incomplete, gather it before recommending a mutation.
+
+  Address the measured cause: repair the provisioning/scheduling constraint,
+  correct the rejected pod specification, or restore the dependency/probe/gate
+  controller that prevents readiness. Respect the workload's quorum and storage
+  requirements. Do not delete PVCs, disable readiness gates, force-delete pods,
+  or change ordering/partition merely to make the rollout appear complete.
+
+  For a bad template, propose reverting it with the workload owner. StatefulSet
+  rollback can still wait for a broken pod after the template is reverted;
+  reverting alone is not a guarantee of recovery. If recreation is necessary,
+  review the exact affected pod and data/quorum consequences with an authorized
+  operator before any normally graceful deletion. Never force it or automate it
+  from this guide. All manifest, scale, partition, rollback or pod changes retain
+  the existing dry-run/diff and explicit human-approval gate.
+
+  After approved remediation, verify the intended ordinals reach their expected
+  revision and remain Ready for minReadySeconds, PVCs retain their data, and
+  application health/quorum holds. A partitioned update may intentionally leave
+  older ordinals at their previous revision; do not demand equality everywhere.
