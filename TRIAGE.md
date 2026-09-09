@@ -134,6 +134,43 @@ welcome rather than rude — it is a backlog, not a rejection.
 - Commits need nothing signed — no DCO, no CLA.
 - A PR that only edits [ADOPTERS.md](ADOPTERS.md), docs, or a typo gets a fast lane.
 
+### A fork PR looks green but is still blocked
+
+First check whether its workflows have actually run. A first-time fork contribution
+can show green `greeting` and `label` jobs while CI is waiting for a maintainer's
+approval. Those jobs are not evidence that the required checks passed.
+
+1. Open the PR's merge status panel and look for **Awaiting approval**. Check the
+   repository's **Actions** tab for runs belonging to the PR's current head commit,
+   including both **CI** and **Publish Helm**. In the workflow-run API, a run awaiting
+   approval can have `status: completed` and `conclusion: action_required`;
+   `completed` alone does not mean success.
+2. A **maintainer with write access** reviews **Files changed**, especially changes
+   to `.github/workflows/`, before allowing the proposed code to run. If satisfied,
+   use **Approve workflows to run** in the merge status panel (also shown as
+   **Approve and run workflows** in some views). This authorizes the workflow run;
+   it does not approve the code review or merge the PR. The contributor cannot
+   clear this gate and does not need to push an empty commit.
+3. Wait for the required checks on the current revision to finish successfully.
+   Compare their names with [the required-check record](.github/required-checks.yml)
+   and the PR's merge panel. A queued run needs time; a failed job needs its logs
+   investigated; an absent required check is not a pass.
+4. If all required checks have passed and the PR is still blocked, read the merge
+   panel's specific reason: pending review, unresolved conversations, conflicts,
+   or another repository requirement. A maintainer can run `make check-required`
+   with authenticated `gh` access to compare the recorded checks against live
+   branch protection. Investigate the actual requirement before attributing the
+   block to CodeQL; do not disable protection or copy the PR onto an integration
+   branch just to bypass a workflow-approval wait.
+
+[PR #196](https://github.com/MSKazemi/kubeintellect/pull/196) demonstrated this
+distinction: after workflow approval, the cross-repository contribution passed its
+checks and merged normally. That supplied the evidence to close
+[#170](https://github.com/MSKazemi/kubeintellect/issues/170); it did not require a
+code-scanning workaround. See GitHub's
+[workflow approval instructions](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/approve-runs-from-forks)
+for the current UI steps.
+
 ## How things get closed
 
 Closing is a decision with a reason attached, never a silent cleanup:
