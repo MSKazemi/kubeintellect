@@ -45,6 +45,10 @@ rules:
     - statefulsets
     - replicasets
   verbs: ["get", "list", "watch"]
+# PodDisruptionBudgetBlocking needs selector and status evidence, never write access.
+- apiGroups: ["policy"]
+  resources: ["poddisruptionbudgets"]
+  verbs: ["get", "list", "watch"]
 # HPANotScaling reads the HPA's status conditions — the whole playbook is about them.
 - apiGroups: ["autoscaling"]
   resources: ["horizontalpodautoscalers"]
@@ -97,6 +101,9 @@ rules:
 # for. Nothing reported it: `helm install` succeeded, `kubeintellect status` was green, and
 # the playbook count said 23. `tests/test_rbac_covers_the_playbooks.py` now derives this
 # list from the playbooks instead of trusting it.
+- apiGroups: ["policy"]
+  resources: ["poddisruptionbudgets"]
+  verbs: ["get", "list", "watch"]
 - apiGroups: ["autoscaling"]
   resources: ["horizontalpodautoscalers"]
   verbs: ["get", "list", "watch"]
