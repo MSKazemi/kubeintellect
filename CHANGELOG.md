@@ -92,6 +92,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 
+- **New playbook: `StatefulSetRolloutStuck`** — a StatefulSet rollout blocked on an ordinal,
+  contributed by [@biggdawg320](https://github.com/biggdawg320) (#202, from #13). Triage-only
+  by design: **no snapshot signal distinguishes a normal rollout wait from a stalled one**, and
+  `WatchPredicate` cannot correlate ownership, revisions and progress across observations — so
+  the guide requires a verified owner and two timestamped observations before calling a rollout
+  stuck. The triggers match only the StatefulSet controller's own creation-failure messages
+  (`create Pod … in StatefulSet … failed error:` and the Claim form), taken from
+  `stateful_pod_control.go` rather than invented, with a multi-line negative test proving a
+  `successful` line for one object cannot pair with a `failed error:` from another. The steps
+  cover the traps: `ordinals.start` means ordinals need not begin at zero, ordered creation
+  waits on *lower* ordinals while rolling updates advance from *higher* ones, `Running` does not
+  imply `Ready`, and a `Pending` PVC may simply be awaiting its consumer. Underlying causes defer
+  to `PvcPending`, `ReadinessProbeFailing`, `ImagePullBackOff` and `QuotaExceeded`.
+
 - **`TRIAGE.md` explains what to do when a fork PR looks green but will not merge**
   (`TRIAGE.md`, #198), contributed by [@biggdawg320](https://github.com/biggdawg320). The
   common cause is not code scanning: a first-time fork contribution runs no CI until a
