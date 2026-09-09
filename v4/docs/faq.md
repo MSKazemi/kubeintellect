@@ -144,7 +144,7 @@ Plain ChatGPT can't see your cluster; KubeIntellect grounds every answer in live
 `kubectl` / Helm / Prometheus / Loki data. Beyond running commands, it adds
 capabilities those command-shaped tools don't combine: **parallel specialist
 subagents** (pod / metrics / logs / events) that fan out for a real root-cause
-analysis, **24 deterministic playbooks** that guide known-failure investigations,
+analysis, **25 deterministic playbooks** that guide known-failure investigations,
 a **human-in-the-loop approval gate** on every write, a **memory + reflexion**
 layer that recalls past incidents and promotes verified fixes, and an **autonomy**
 layer that opens its own investigations when a detector fires. See

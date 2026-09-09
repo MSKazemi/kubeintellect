@@ -60,6 +60,7 @@ _KINDS: dict[str, tuple[str, str]] = {
     "job": ("batch", "jobs"), "jobs": ("batch", "jobs"),
     "cronjob": ("batch", "cronjobs"),
     "hpa": ("autoscaling", "horizontalpodautoscalers"),
+    "pdb": ("policy", "poddisruptionbudgets"),
     "horizontalpodautoscaler": ("autoscaling", "horizontalpodautoscalers"),
     "networkpolicy": ("networking.k8s.io", "networkpolicies"),
     "netpol": ("networking.k8s.io", "networkpolicies"),
