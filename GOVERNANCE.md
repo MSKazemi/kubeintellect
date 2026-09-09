@@ -35,10 +35,10 @@ New maintainers are invited by existing maintainers based on a sustained track r
 high-quality contributions and good community judgment.
 
 ### Lead maintainer / BDFL (for now)
-KubeIntellect was created by **Mohsen Seyedkazemi Ardebili** and is currently led by the author,
-who also holds the copyright that makes the dual-license model possible (see below). The lead
-maintainer has final say on direction and on decisions where consensus can't be reached — a role
-we intend to dilute into a maintainer group as the project matures.
+KubeIntellect was created by **Mohsen Seyedkazemi Ardebili**, who currently leads it and holds
+the copyright that makes the dual-license model possible (see below). The lead maintainer has
+final say on direction and on decisions where consensus can't be reached — a role we intend to
+dilute into a maintainer group as the project matures.
 
 ### Stepping back, and what happens if the lead maintainer disappears
 
