@@ -292,6 +292,23 @@ A playbook matches if any of its triggers matches. The coordinator still has
 agency — it can deviate when the situation warrants — but the playbook gives it
 a strong default.
 
+**`match_playbooks` returns candidates, not a verdict, and several matching at once
+is normal.** Some shipped triggers are deliberately broad — `imagepullbackoff.yaml`
+and `createcontainerconfigerror.yaml` both carry `event_reason_regex: "Failed"` — so
+an ordinary two-line events stream showing a failed image pull and a restart back-off
+routes to `CrashLoopBackOff`, `CreateContainerConfigError`, `ImagePullBackOff` **and**
+`InitContainerFailing` together. That is the router working: it is cheaper to offer
+the coordinator one candidate too many than to stay silent on the right one.
+
+The consequence for anyone **writing** a playbook is that "mine will co-fire with
+existing ones" is not a reason to withhold it. The bar is different, and narrower:
+
+* it must not fire when **nothing is wrong** — see `pdb_blocking.yaml`, where a
+  `disruptionsAllowed: 0` budget is legitimate availability policy rather than an
+  incident, with a negative test pinning that;
+* it must not be the *only* thing pointing at a **different** failure, which is what
+  the cross-fire tests in `tests/test_playbooks.py` exist to check.
+
 **Disable:** `PLAYBOOKS_ENABLED=false`.
 
 ---
