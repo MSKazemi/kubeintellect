@@ -19,6 +19,11 @@
       "symbol": "💻",
       "description": "Verified KubeIntellect on a Kubernetes platform CI does not cover, and reported what happened",
       "link": "https://github.com/MSKazemi/kubeintellect/issues?q=label%3Aarea%2Fdeploy"
+    },
+    "inflight": {
+      "symbol": "🛠️",
+      "description": "Claimed an open issue and has work in progress",
+      "link": "https://github.com/MSKazemi/kubeintellect/issues?q=label%3Aclaimed"
     }
   },
   "contributors": [
@@ -139,6 +144,34 @@
         "code",
         "test",
         "doc"
+      ]
+    },
+    {
+      "login": "1cbyc",
+      "name": "Isaac Emmanuel",
+      "avatar_url": "https://avatars.githubusercontent.com/u/35623334?v=4",
+      "profile": "https://github.com/1cbyc",
+      "contributions": [
+        "ideas",
+        "inflight"
+      ]
+    },
+    {
+      "login": "Ryota-Di",
+      "name": "Reilly",
+      "avatar_url": "https://avatars.githubusercontent.com/u/53958043?v=4",
+      "profile": "https://github.com/Ryota-Di",
+      "contributions": [
+        "inflight"
+      ]
+    },
+    {
+      "login": "Lumbenlengo",
+      "name": "Patricio Lumbenlengo",
+      "avatar_url": "https://avatars.githubusercontent.com/u/189715619?v=4",
+      "profile": "https://github.com/Lumbenlengo",
+      "contributions": [
+        "inflight"
       ]
     }
   ]
