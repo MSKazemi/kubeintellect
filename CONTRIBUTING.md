@@ -368,7 +368,12 @@ Questions about any of this? **Open a Discussion** — we would rather adapt tha
 
 ## Recognition
 
-Every merged contributor is a real contributor, and **code is not the only kind that counts.**
+Every contributor is a real contributor, and **code is not the only kind that counts** — nor is
+merging the bar. The [contributor table](README.md#contributors) records anyone who has moved
+the project forward, including people whose work is still in progress — several people on it
+have no merged commit at all. Claim an issue and you are added that day, marked 🛠️, and nobody
+is ever removed.
+
 These are credited by name in release notes with equal weight:
 
 - Documentation, examples, and tutorials
