@@ -780,9 +780,13 @@ def cmd_service(args: argparse.Namespace) -> None:
             sys.exit(1)
         print(_ok("✓  Service removed."))
     elif action == "start":
-        subprocess.run(["systemctl", "--user", "start", _SERVICE_NAME])
+        proc = subprocess.run(["systemctl", "--user", "start", _SERVICE_NAME])
+        if proc.returncode != 0:
+            sys.exit(proc.returncode)
     elif action == "stop":
-        subprocess.run(["systemctl", "--user", "stop", _SERVICE_NAME])
+        proc = subprocess.run(["systemctl", "--user", "stop", _SERVICE_NAME])
+        if proc.returncode != 0:
+            sys.exit(proc.returncode)
     elif action == "status":
         subprocess.run(["systemctl", "--user", "status", _SERVICE_NAME])
     elif action == "logs":
