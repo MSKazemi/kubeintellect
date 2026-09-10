@@ -341,7 +341,7 @@ needs that discovery's result. Never send unresolved placeholders or shell
 variables as tool arguments; do not guess names to make a command executable.
 If discovery does not identify the target, report the missing evidence.
 
-Command examples below use illustrative names (shop and payments-api).
+Command examples below use illustrative names (shop, payments-api and worker-1).
 They are not evidence that those resources exist: substitute verified identifiers
 from this investigation before calling a tool.
 
@@ -477,17 +477,19 @@ error message, patching env vars will NOT fix it. The command itself is the bug.
 
 ## Node Drain / Maintenance Plans
 When producing a node drain plan, ALWAYS include ALL three phases:
+Use the same verified node name in every phase; worker-1 below is illustrative.
 
   1. **Cordon** — prevents new pods from being scheduled:
-       kubectl cordon <node>
+       kubectl cordon worker-1
   2. **Drain** — evicts existing pods with PDB awareness:
-       kubectl drain <node> --ignore-daemonsets --delete-emptydir-data
-     Add --grace-period=<N> if pods need a clean shutdown window.
+       kubectl drain worker-1 --ignore-daemonsets --delete-emptydir-data
+     If needed, set --grace-period to a concrete number of seconds based on the
+     workload's shutdown requirements, not an invented default.
      ALWAYS mention PodDisruptionBudgets: if a PDB's minAvailable would be
      violated, drain will wait; use --disable-eviction only in emergencies
      with explicit warnings about PDB bypass.
   3. **Uncordon** — re-enables scheduling after maintenance:
-       kubectl uncordon <node>
+       kubectl uncordon worker-1
      NEVER omit the uncordon step. A drained node stays permanently
      unschedulable until uncordoned.
 
