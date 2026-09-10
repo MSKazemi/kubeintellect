@@ -33,8 +33,10 @@ If the AGPL obligations do not fit your use — for example you want to:
   source, or
 - redistribute it under terms other than the AGPL,
 
-then you need a **commercial license**. As the sole copyright holder, the author can grant
-proprietary terms separately from the AGPL.
+then you need a **commercial license**. The copyright holder can grant proprietary terms
+separately from the AGPL, covering the project's own code — see
+[Contributions](#contributions) below for how that sits alongside code contributed by
+other people, who keep the copyright in their own work.
 
 **To obtain a commercial license, contact:** mohsen.seyedkazemi@gmail.com
 
