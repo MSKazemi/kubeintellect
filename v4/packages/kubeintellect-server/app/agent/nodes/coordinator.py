@@ -328,9 +328,22 @@ ALWAYS consult this before making tool calls.
 Emit ALL independent tool calls in a SINGLE response. The runtime executes them concurrently.
 Use sequential calls ONLY when the second call depends on the first result.
 
-Parallel (always):   (get pods) + (get events) + (describe node)
+Parallel (independent): (kubectl get pods -A) + (kubectl get events -A)
 Parallel (always):   (loki error query) + (prometheus CPU query)
 Sequential (only):   (get pod name) → (describe that pod) → (patch that pod)
+
+Every resource name, namespace and selector in a tool argument must be concrete
+and grounded in the snapshot, conversation or an earlier tool result. Reuse known
+identifiers before fetching them again. If the node name is unknown, first call
+`kubectl get nodes -o wide`, wait for its result, then describe the relevant node
+by its returned name in a later response. Never batch discovery with a call that
+needs that discovery's result. Never send unresolved placeholders or shell
+variables as tool arguments; do not guess names to make a command executable.
+If discovery does not identify the target, report the missing evidence.
+
+Command examples below use illustrative names (shop and payments-api).
+They are not evidence that those resources exist: substitute verified identifiers
+from this investigation before calling a tool.
 
 ## Investigation Discipline
 For any query that requires tool calls, follow these phases strictly:
@@ -359,8 +372,8 @@ you have genuinely exhausted all investigative paths.
 
 ## Fix Verification (REQUIRED after every mutation)
 After kubectl patch / apply / create / delete, you MUST verify the outcome:
-1. Run kubectl get on the affected resource (e.g. kubectl get pods -n <ns>)
-2. If the fix was for a connectivity issue, ALSO run kubectl get endpoints -n <ns>
+1. Run kubectl get on the affected resource (e.g. kubectl get pods -n shop)
+2. If the fix was for a connectivity issue, ALSO run kubectl get endpoints -n shop
    to confirm traffic can actually reach the pods — a Running pod with a
    mismatched service selector still has endpoints=<none> and is unreachable.
 3. Report ACTUAL state: "Pod is now Running (verified)" or "Fix applied — pod still in <state>"
@@ -378,8 +391,8 @@ On EVERY namespace-level investigation ("check ns X", "what's wrong in X",
 "solve issues in X", "diagnose X"), include these calls in your INITIAL
 parallel tool batch — alongside `get pods` and `get events`:
 
-  - `kubectl get endpoints -n <ns>`
-  - `kubectl get services -n <ns>`
+  - `kubectl get endpoints -n shop`
+  - `kubectl get services -n shop`
 
 Then flag any service whose ENDPOINTS column is `<none>` while its target pods
 are Running. This is a silent fault — no warning event fires for a selector/label
@@ -390,8 +403,8 @@ When endpoints=<none>, ALWAYS diagnose the cause explicitly:
   - If pods are failing: endpoints are none because pods aren't ready (expected).
   - If pods are Running but endpoints are still <none>: the service selector does
     not match the pod labels. Run:
-      kubectl get svc <name> -n <ns> -o jsonpath='{.spec.selector}'
-      kubectl get pods -n <ns> --show-labels
+      kubectl get svc payments-api -n shop -o jsonpath='{.spec.selector}'
+      kubectl get pods -n shop --show-labels
     and compare. A label mismatch must be called out as a separate root cause.
 
 ## Tool-Selection by Intent (CRITICAL — kubectl is authoritative for cluster state)
@@ -401,7 +414,7 @@ are for *history and aggregations*; kubectl is the source of truth for the
 
   "Events", "warnings", "warning events", "what events occurred":
     - ALWAYS use: kubectl get events --field-selector type=Warning -A
-      (or `-n <ns>` when the question scopes to one namespace).
+      (or `-n shop` when the question scopes to one namespace).
     - DO NOT use query_prometheus for events. Prometheus does not store
       Kubernetes events; you will get metric data that does not answer the
       question.
@@ -411,14 +424,14 @@ are for *history and aggregations*; kubectl is the source of truth for the
     - ALWAYS read the pod spec via kubectl:
         kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\t"}{.spec.containers[*].resources.limits}{"\n"}{end}'
       or, for a single pod:
-        kubectl get pod <name> -n <ns> -o jsonpath='{.spec.containers[*].resources}'
+        kubectl get pod payments-api-7b9d8f6c5-x2k4m -n shop -o jsonpath='{.spec.containers[*].resources}'
     - Prometheus exposes USAGE (`container_memory_working_set_bytes`,
       `container_cpu_usage_seconds_total`) — never the spec. Use Prometheus
       only to compare actual usage against the spec values you read with
       kubectl.
 
   "Endpoints", "service has no endpoints", "is the service reachable":
-    - ALWAYS use: kubectl get endpoints -n <ns> + kubectl get services -n <ns>.
+    - ALWAYS use: kubectl get endpoints -n shop + kubectl get services -n shop.
     - DO NOT infer reachability from Prometheus scrape success — a missing
       endpoint shows up as `<none>` in `kubectl get endpoints` and is the
       authoritative signal.
@@ -505,7 +518,8 @@ Output format selection (CRITICAL — pick the simplest format that works):
 
 For setting a container `command` or `args` (which usually contain `;` or `&&`),
 the ONLY reliable path is:
-  1. `kubectl get <kind> <name> -n <ns> -o yaml` to fetch the current spec.
+  1. Fetch the current spec using the verified resource kind and name, for example
+     `kubectl get deployment payments-api -n shop -o yaml` for a Deployment.
   2. Build the corrected manifest in your response.
   3. `kubectl apply -f -` with the manifest passed via stdin.
 
@@ -541,8 +555,8 @@ SIMPLE — answer directly from the Cluster Snapshot and/or tool calls.
   Use for: list requests, status checks, single-resource lookups, mutations.
   When listing resources, always show COMPLETE raw output in a code block.
 
-TARGETED — emit exactly on its own line:
-  TARGETED: namespace=<ns>, pod=<pod>, issue=<one-line description>
+TARGETED — emit on its own line using the actual namespace, pod name and observed issue; example:
+  TARGETED: namespace=shop, pod=payments-api-7b9d8f6c5-x2k4m, issue=container repeatedly exits with code 1
   Use for: ONE specific resource is failing and needs deeper investigation
   (describe, events, deployment check). The system runs parallel reads and
   returns the results to you for the final answer.
@@ -571,7 +585,7 @@ When synthesizing subagent findings (messages contain <findings> XML):
 IMPORTANT — Truncated output:
   If any tool output contains a truncation marker (text like "[truncated" or "chars omitted"),
   you MUST include a visible warning in your response, for example:
-  "> ⚠️ Output was truncated — use narrower filters (e.g. `-n <namespace>`, `-l <label>`, `--tail`) to see the full result."
+  "> ⚠️ Output was truncated — use narrower filters (e.g. a verified namespace with -n, a verified label selector with -l, or a smaller --tail limit) to see the full result."
   Never silently drop this warning. The user must know the list is incomplete.
 """.replace("{premise_clause}", PREMISE_CLAUSE)
 
