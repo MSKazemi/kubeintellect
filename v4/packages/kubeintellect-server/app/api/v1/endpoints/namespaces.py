@@ -60,7 +60,7 @@ def list_namespaces() -> NamespacesResponse:
         proc = subprocess.run(
             args,
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8",
             timeout=10,
             env=env,
             shell=False,

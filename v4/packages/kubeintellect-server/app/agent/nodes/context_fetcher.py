@@ -187,7 +187,7 @@ def _kubectl_snapshot(args: list[str]) -> tuple[bool, str]:
         proc = subprocess.run(
             ["kubectl"] + args,
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8",
             timeout=settings.KUBECTL_TIMEOUT_SECONDS,
             env=env,
             shell=False,

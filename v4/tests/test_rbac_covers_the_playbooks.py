@@ -105,7 +105,7 @@ def _granted_for_read() -> set[tuple[str, str]]:
     """(apiGroup, resource) pairs the rendered chart grants `get`/`list` on."""
     proc = subprocess.run(
         ["helm", "template", "rbac-test", str(_CHART)],
-        capture_output=True, text=True, timeout=120,
+        capture_output=True, text=True, encoding="utf-8", timeout=120,
     )
     assert proc.returncode == 0, proc.stderr
     granted: set[tuple[str, str]] = set()

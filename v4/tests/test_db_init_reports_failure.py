@@ -58,7 +58,7 @@ def _shipped_docs() -> list[Path]:
             ["git", "ls-files", "-z", "--", "docs"],
             cwd=_ROOT,
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8",
             timeout=60,
         )
         tracked = sorted(_ROOT / name for name in proc.stdout.split("\0") if name.endswith(".md"))

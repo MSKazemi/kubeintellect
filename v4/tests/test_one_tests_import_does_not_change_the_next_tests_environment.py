@@ -70,6 +70,6 @@ def test_the_suite_is_not_at_the_mercy_of_a_local_dotenv() -> None:
         [sys.executable, "-m", "pytest", "-q", "-p", "no:randomly",
          "v4/tests/test_evaluation_runner.py",
          "v4/tests/test_every_command_reads_the_same_config.py"],
-        cwd=root, capture_output=True, text=True, timeout=600,
+        cwd=root, capture_output=True, text=True, encoding="utf-8", timeout=600,
     )
     assert p.returncode == 0, p.stdout[-4000:] + p.stderr[-2000:]

@@ -137,7 +137,7 @@ class TestTheChartRefusesTheBrokenArithmetic:
     def _render(*overrides: str) -> subprocess.CompletedProcess:
         return subprocess.run(
             ["helm", "template", "contract-test", str(_CHART), *overrides],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, encoding="utf-8", timeout=120,
         )
 
     def test_a_drain_longer_than_the_grace_period_is_refused(self):
