@@ -1,0 +1,47 @@
+name: TlsCertificateExpired
+# Triage-only: client TLS errors are not necessarily Kubernetes Warning Events.
+# These text triggers select a guide when evidence is supplied to the matcher;
+# they do not add endpoint probes, log ingestion, or an automatic expiry monitor.
+# Go's combined error also covers NotBefore: require its same-line "is after" detail.
+# Sources: https://go.dev/src/crypto/x509/verify.go
+#          https://kubernetes.io/docs/concepts/services-networking/ingress/#tls
+detect: null
+triggers:
+  - event_message_regex: 'x509: certificate has expired or is not yet valid: current time [0-9T:.+Z-]+ is after '
+  - event_message_regex: '(SSL certificate problem: |certificate verify failed: |verify error:num=10:)certificate has expired'
+investigation_steps:
+  - "Record the failing hostname, port, client error and observation time. This guide covers client-to-Ingress TLS; an expiry error alone does not identify an Ingress. Establish the endpoint owner first. For webhook, kubelet, client-certificate or upstream TLS failures, investigate that connection with its owner rather than changing an Ingress Secret."
+  - "kubectl get ingress -A — find the intended hostname, then kubectl get ingress <ingress> -n <ns> -o yaml to inspect spec.rules, spec.tls hosts/secretName, ingressClassName and status.loadBalancer. Confirm the actual DNS/load-balancer route and controller. TLS may terminate at a CDN or external load balancer instead; SSL passthrough can terminate in the application. Do not assume the referenced Secret is the certificate clients receive."
+  - "Have an authorized operator inspect the certificate actually served for the exact hostname using SNI, from the affected network path. Record leaf and intermediate certificate validity, SANs, issuer, serial/fingerprint and the verification error. Check all relevant endpoint replicas if behavior is intermittent. Do not disable certificate verification as a repair or declare success from a handshake made with verification disabled."
+  - "Compare the failed certificate's notAfter with a trusted current UTC time and check the affected client's clock. A future notBefore is not expiry. Go's combined expired-or-not-yet-valid message needs its is-after detail; confirm the certificate dates independently. Unknown CA, missing intermediates and hostname mismatch require different repairs. An expired intermediate is not proof that the leaf is expired."
+  - "For confirmed Ingress termination, compare the served leaf fingerprint and dates with the certificate in the exact spec.tls Secret in the Ingress namespace. Use approved tooling to inspect only certificate metadata from tls.crt. Never dump Secret YAML/JSON, tls.key, private keys or credentials into chat/logs. If access or safe certificate extraction is unavailable, ask an authorized operator for sanitized metadata and state the evidence gap."
+  - "Determine who manages renewal (for example cert-manager, an external issuer or a manual process) from the deployment configuration. Request sanitized renewal status/errors from that owner. A renewed Secret with an old served certificate points to controller reload, routing or replica inconsistency, not necessarily failed issuance. Missing Secret, wrong hostname and stale references are separate findings; do not diagnose them solely from a TLS error."
+expected_evidence:
+  - "The exact failing endpoint and TLS termination owner, with a timestamped client verification failure"
+  - "Trusted current time is beyond the identified served leaf or intermediate certificate's notAfter; clock skew and future notBefore have been checked"
+  - "The certificate fingerprint, SANs, issuer and relevant Ingress/Secret or external-terminator relationship, with renewal/reload evidence or an explicit access limitation"
+recommended_fix_template: |
+  The certificate <FINGERPRINT> served on <HOST>:<PORT> expired at <NOT_AFTER>,
+  supported by <VERIFICATION_ERROR> at <TRUSTED_UTC_TIME>. The affected certificate
+  is <LEAF_OR_INTERMEDIATE> and TLS is terminated by <VERIFIED_OWNER>.
+  If identity, dates or ownership are unverified, gather evidence before proposing
+  a change. A generic TLS failure or HTTP 5xx is insufficient to diagnose expiry.
+
+  Propose renewal/replacement through the existing certificate owner and approved
+  issuance process, preserving hostname coverage and the required trust chain.
+  If issuance succeeded but an old certificate is still served, investigate the
+  controller's documented reload behavior and endpoint routing before requesting
+  a targeted reload. For external TLS termination, repair that terminator instead
+  of overwriting an unrelated Kubernetes Secret.
+
+  Secret updates, certificate renewal requests, routing changes and restarts require
+  explicit human approval and the existing change-review gate. Use metadata-only
+  or redacted previews; ordinary Secret diffs can disclose private keys. Do not
+  delete Secrets, weaken trust, use insecure-skip-tls-verify, or change webhook
+  failurePolicy to hide the error. This guide performs no mutation automatically.
+
+  After approved remediation, verify the intended certificate and complete chain
+  from the affected client path, with the exact hostname/SNI and verification
+  enabled. Confirm validity dates, hostname coverage, consistent endpoint results
+  and application health. A changed Secret or a healthy pod alone is not proof
+  that clients now receive a valid certificate.
