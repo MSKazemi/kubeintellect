@@ -1,0 +1,30 @@
+name: TLSCertificateExpiry
+triggers:
+  - event_reason_regex: "Failed|Unhealthy|BackOff"
+  - event_message_regex: "x509: certificate.*expired|certificate has expired|certificate verify failed|tls: failed to verify certificate|certificate signed by unknown authority|SSL: CERTIFICATE_VERIFY_FAILED"
+investigation_steps:
+  - "kubectl get pods -A -o wide — identify the affected workload and confirm whether the symptom is isolated to one pod, namespace, or cluster-wide."
+  - "kubectl describe pod <POD> -n <NS> — inspect Warning events and container messages for x509, certificate, TLS, or handshake failures."
+  - "kubectl logs <POD> -n <NS> --all-containers --tail=100 — look for certificate expiry, trust-chain, hostname/SAN, or TLS handshake errors."
+  - "If the workload uses a Kubernetes Secret for TLS, inspect its metadata without exposing the private key: kubectl get secret <TLS_SECRET> -n <NS> -o jsonpath='{.type} {.metadata.creationTimestamp} {.metadata.annotations}'"
+  - "For a TLS secret, decode only the certificate and inspect its validity: kubectl get secret <TLS_SECRET> -n <NS> -o jsonpath='{.data.tls\\.crt}' | base64 -d | openssl x509 -noout -subject -issuer -dates -ext subjectAltName"
+  - "If the certificate is issued by cert-manager, check the Certificate and CertificateRequest resources: kubectl get certificate,certificaterequest -n <NS> and kubectl describe certificate <CERTIFICATE> -n <NS>."
+  - "If the failing endpoint is external, verify the presented certificate and chain from a trusted client: openssl s_client -connect <HOST>:<PORT> -servername <HOST> -showcerts </dev/null"
+  - "Compare the certificate hostname/SAN with the endpoint the client actually uses; an unexpired certificate can still fail verification when its SAN does not cover the requested hostname."
+expected_evidence:
+  - "Certificate validity dates showing that notAfter is in the past or close to expiry"
+  - "Application or Kubernetes event containing an x509, certificate, TLS handshake, or CERTIFICATE_VERIFY_FAILED error"
+  - "TLS Secret containing an expired certificate, or cert-manager Certificate reporting a failed renewal"
+  - "Certificate SAN/hostname mismatch or an incomplete/untrusted issuer chain"
+  - "Absence check: if the certificate is valid and the chain/SAN are correct, investigate trust-store configuration, clock skew, or a different TLS endpoint before rotating credentials"
+recommended_fix_template: |
+  The workload's TLS failure points at <CAUSE>.
+
+  - Expired certificate: renew or rotate the certificate through the system that owns it (for example cert-manager), then restart/reload the affected workload only if it does not hot-reload certificates.
+  - Renewal failure: inspect the Certificate/CertificateRequest events and issuer configuration, then fix the issuer or ACME/DNS/HTTP validation path before retrying renewal.
+  - Wrong hostname/SAN: issue a certificate containing the hostname actually used by the client.
+  - Untrusted or incomplete chain: configure the server to present the required intermediate certificates and ensure the client trust store contains the intended root CA.
+  - Clock skew: correct the node or workload clock before changing certificates.
+
+  Do NOT copy private keys into logs or tickets. Certificate rotation is a
+  mutating operation and must be presented to the operator for human approval.
