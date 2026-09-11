@@ -8,6 +8,12 @@ hide:
   - toc
 ---
 
+> **This is `v1`, a frozen reference version.** The current, deployable KubeIntellect is
+> **[`v4/`](https://github.com/MSKazemi/kubeintellect/tree/main/v4)**. `v1`–`v3` are
+> deliberately frozen (ADR-001/002) to keep the published paper's results reproducible — see
+> [SECURITY.md](https://github.com/MSKazemi/kubeintellect/blob/main/SECURITY.md). Nothing here
+> is published to PyPI, Docker Hub, GHCR, or the Snap Store.
+
 <div class="hero-section" markdown>
 
 # Chat with your Kubernetes cluster in plain English
