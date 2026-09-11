@@ -5,6 +5,7 @@
 
   [![CI](https://github.com/MSKazemi/kubeintellect/actions/workflows/ci.yml/badge.svg)](https://github.com/MSKazemi/kubeintellect/actions/workflows/ci.yml)
   [![PyPI](https://img.shields.io/pypi/v/kubeintellect.svg)](https://pypi.org/project/kubeintellect/)
+  [![kubeintellect downloads](https://img.shields.io/pypi/dm/kubeintellect?label=kubeintellect%20installs)](https://pypi.org/project/kubeintellect/)
   [![kq downloads](https://img.shields.io/pypi/dm/kube-q?label=kq%20installs)](https://pypi.org/project/kube-q/)
   [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
   [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
@@ -68,6 +69,9 @@ docker run --rm -p 8000:8000 \
 curl localhost:8000/healthz          # {"status":"ok","arm":"v4",...}
 ```
 
+The same image is also mirrored to Docker Hub as `kazemi/kubeintellect:2.4.1`, if you'd rather
+not use GHCR.
+
 That starts the API with no database and no cluster attached — enough to see it come up.
 To point it at a cluster and a real database, use
 **[Docker Compose](v4/README.md#docker-compose-laptop--vm---no-cluster-required-to-run-the-server)**.
@@ -82,6 +86,10 @@ kubeintellect serve        # start the API server on :8000
 ```
 
 Full install paths (browser, CLI-only, local Kind, Docker Compose, existing cluster) are in the **[v4 README](v4/README.md)** and **[v4 docs](v4/docs/)**.
+
+**Who's actually running this?** One real adopter so far, honestly listed in
+[ADOPTERS.md](ADOPTERS.md) — if you're running KubeIntellect anywhere, even a laptop Kind
+cluster, you'd be the second entry.
 
 ## This repository
 
