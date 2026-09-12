@@ -31,7 +31,7 @@ def _kubectl(argstr: str) -> str:
     args = shlex.split(argstr)
     if args and args[0] == "kubectl":
         args = args[1:]
-    r = subprocess.run(["kubectl", *args], capture_output=True, text=True, env=env)
+    r = subprocess.run(["kubectl", *args], capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
     return (r.stdout + r.stderr).strip()
 
 

@@ -130,6 +130,25 @@ export default function Home() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <a
+            href="https://youtu.be/je-K_w3vgGY"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: "#bbb",
+              fontFamily: "var(--font-geist-mono), 'Cascadia Code', 'Fira Code', monospace",
+              fontSize: "12px",
+              padding: "3px 10px",
+              border: "1px solid #555",
+              borderRadius: "3px",
+              textDecoration: "none",
+              letterSpacing: "0.03em",
+            }}
+            title="Watch the full demo on YouTube"
+          >
+            ▶ Demo
+          </a>
+
           <button
             onClick={() => {
               setTokenDraft(token ?? "");
