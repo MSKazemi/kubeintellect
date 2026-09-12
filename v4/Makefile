@@ -133,7 +133,7 @@ kind-deploy-kubeintellect: ## Deploy (or upgrade) KubeIntellect on local Kind vi
 	  set -euo pipefail; \
 	  test -f .env || { echo "ERROR: .env not found — copy .env.example and fill in secrets"; exit 1; }; \
 	  set -a && source .env && set +a; \
-	  LLM_PROVIDER=$${LLM_PROVIDER:-azure}; \
+	  LLM_PROVIDER=$${LLM_PROVIDER:-openai}; \
 	  if [ "$$LLM_PROVIDER" = "azure" ]; then \
 	    : "$${AZURE_OPENAI_API_KEY:?ERROR: AZURE_OPENAI_API_KEY is not set in .env}"; \
 	    : "$${AZURE_OPENAI_ENDPOINT:?ERROR: AZURE_OPENAI_ENDPOINT is not set in .env}"; \
@@ -173,7 +173,7 @@ vm-deploy-kubeintellect: ## Deploy KubeIntellect to Kind-on-VM — needs .env + 
 	  test -f deploy/helm/kubeintellect/values-production.yaml || \
 	    { echo "ERROR: copy deploy/helm/kubeintellect/values-production.yaml.example → deploy/helm/kubeintellect/values-production.yaml and fill in secrets"; exit 1; }; \
 	  set -a && source .env && set +a; \
-	  LLM_PROVIDER=$${LLM_PROVIDER:-azure}; \
+	  LLM_PROVIDER=$${LLM_PROVIDER:-openai}; \
 	  if [ "$$LLM_PROVIDER" = "azure" ]; then \
 	    : "$${AZURE_OPENAI_API_KEY:?ERROR: AZURE_OPENAI_API_KEY is not set in .env}"; \
 	    : "$${AZURE_OPENAI_ENDPOINT:?ERROR: AZURE_OPENAI_ENDPOINT is not set in .env}"; \
@@ -206,7 +206,7 @@ aks-deploy-kubeintellect: ## Deploy KubeIntellect to AKS / any cloud K8s — nee
 	  test -f deploy/helm/kubeintellect/values-cloud.yaml || \
 	    { echo "ERROR: copy deploy/helm/kubeintellect/values-cloud.yaml.example → deploy/helm/kubeintellect/values-cloud.yaml and fill in secrets"; exit 1; }; \
 	  set -a && source .env && set +a; \
-	  LLM_PROVIDER=$${LLM_PROVIDER:-azure}; \
+	  LLM_PROVIDER=$${LLM_PROVIDER:-openai}; \
 	  if [ "$$LLM_PROVIDER" = "azure" ]; then \
 	    : "$${AZURE_OPENAI_API_KEY:?ERROR: AZURE_OPENAI_API_KEY is not set in .env}"; \
 	    : "$${AZURE_OPENAI_ENDPOINT:?ERROR: AZURE_OPENAI_ENDPOINT is not set in .env}"; \

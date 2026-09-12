@@ -32,11 +32,46 @@ LLM_PROVIDER=qwen
 DASHSCOPE_API_KEY=sk-your-dashscope-key
 ```
 
+### Amazon Bedrock
+
+Bedrock exposes an **OpenAI-compatible Chat Completions API**, so it needs no
+KubeIntellect-specific provider — point the `openai` path at it and supply a Bedrock API
+key as the bearer token:
+
+```env
+LLM_PROVIDER=openai
+OPENAI_BASE_URL=https://bedrock-runtime.<region>.amazonaws.com/openai/v1
+OPENAI_API_KEY=<your Bedrock API key>
+OPENAI_COORDINATOR_MODEL=openai.gpt-oss-120b
+OPENAI_SUBAGENT_MODEL=openai.gpt-oss-20b
+```
+
+Three things to get right:
+
+- **Model ids are Bedrock ids**, not bare OpenAI names — `openai.gpt-oss-120b`,
+  `anthropic.claude-...`. A bare `gpt-4o` will not resolve.
+- **Claude on-demand needs a cross-Region inference profile id**, not the bare model id:
+  the base id with a geography prefix (`us.`, `eu.`, `apac.`, `jp.`, `au.`, `global.`).
+  Without it the call fails with *"Invocation with on-demand throughput isn't supported"*.
+  Because cross-Region inference is supported on `bedrock-runtime` and **not** on
+  `bedrock-mantle`, that also means using `bedrock-runtime` here. Per-token pricing is
+  identical between the two endpoints, so nothing is lost.
+- **The model must support client-side tool use**, and it must be enabled for your account.
+  The subagents cannot investigate without function calling.
+
+Model ids move, so list what your account actually has rather than copying a version string:
+
+```bash
+curl -s "$OPENAI_BASE_URL/models" -H "Authorization: Bearer $OPENAI_API_KEY" \
+  | python3 -c 'import json,sys; [print(m["id"]) for m in json.load(sys.stdin)["data"]]'
+```
+
 Verify before touching the cluster (exercises the real factory incl. tool-calling):
 
 ```bash
 cd v4 && set -a && source .env && set +a
-uv run python scripts/verify_qwen.py     # for Qwen; other providers: a quick `kq` query
+uv run python scripts/verify_llm.py      # any provider — OpenAI, Bedrock, Azure, Qwen, Ollama
+uv run python scripts/verify_qwen.py     # the older DashScope-specific check
 ```
 
 ## 2. (Optional) Mirror the image to ECR
