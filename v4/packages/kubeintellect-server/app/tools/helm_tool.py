@@ -323,7 +323,7 @@ def run_helm(command: str) -> str:
         proc = subprocess.run(
             tokens,
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8", errors="replace",
             timeout=30,
         )
     except FileNotFoundError:

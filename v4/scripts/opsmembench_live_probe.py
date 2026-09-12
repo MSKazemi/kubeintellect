@@ -45,7 +45,7 @@ def check(name: str, cond: bool, detail: str = "") -> None:
 
 def _kubectl(cmd: str) -> str:
     env = {**os.environ, "KUBECONFIG": os.path.expanduser(os.environ["KUBECONFIG_PATH"])}
-    return subprocess.run(shlex.split(cmd), capture_output=True, text=True, env=env, timeout=30).stdout
+    return subprocess.run(shlex.split(cmd), capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, timeout=30).stdout
 
 
 def capture_snapshot() -> dict[str, str]:

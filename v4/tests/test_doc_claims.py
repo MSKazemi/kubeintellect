@@ -231,7 +231,7 @@ class TestEveryCountClaimIsCovered:
         """Tracked docs only — an untracked scratch file is not a surface anyone reads."""
         proc = subprocess.run(
             ["git", "ls-files", "-z", "--", "v4/docs/*.md", "ROADMAP.md", "README.md"],
-            cwd=_REPO_ROOT, capture_output=True, text=True, timeout=60,
+            cwd=_REPO_ROOT, capture_output=True, text=True, encoding="utf-8", timeout=60,
         )
         return [_REPO_ROOT / name for name in proc.stdout.split("\0") if name]
 

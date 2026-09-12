@@ -50,6 +50,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `Unauthorized` stderr presented as the description of a pod. It now returns an explicit
   `[unavailable]` line.
 
+- **`subprocess.run(..., text=True)` decoded child output with the platform default
+  encoding** (25 call sites across `app/`, `scripts/`, `tests/`; fixed by
+  [@1cbyc](https://github.com/1cbyc), #213, closes #168, the `subprocess` half of #136/#156
+  left standing by #161). On Windows (CP1252/CP936) or the POSIX `C` locale, a single
+  non-ASCII byte in `kubectl`/`helm`/`git` output raised `UnicodeDecodeError`. Every site now
+  names `encoding="utf-8"`; sites reading free-form content a human or the model reads
+  (`kubectl logs`/`describe`/`get`, the cluster snapshot, helm output, git/gh output) also
+  take `errors="replace"`, while identifier and structured-output sites (namespace/context
+  names, `which`, `systemctl`) stay strict, so a replaced byte can never corrupt a lookup key.
+  Three content sites the strict-only pass missed (`context_fetcher`'s cluster snapshot,
+  `gitops`, `helm_tool`) were completed on top with credit intact.
 - **The coordinator prompt taught the model to emit `<ns>` literally**
   (`app/agent/nodes/coordinator.py`, `app/tools/output_policy.py`, fixed by
   [@biggdawg320](https://github.com/biggdawg320), #207, closes the prompt half of #173).
