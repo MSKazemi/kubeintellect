@@ -5,12 +5,15 @@
 
   [![CI](https://github.com/MSKazemi/kubeintellect/actions/workflows/ci.yml/badge.svg)](https://github.com/MSKazemi/kubeintellect/actions/workflows/ci.yml)
   [![PyPI](https://img.shields.io/pypi/v/kubeintellect.svg)](https://pypi.org/project/kubeintellect/)
+  [![kubeintellect downloads](https://img.shields.io/pypi/dm/kubeintellect?label=kubeintellect%20installs)](https://pypi.org/project/kubeintellect/)
   [![kq downloads](https://img.shields.io/pypi/dm/kube-q?label=kq%20installs)](https://pypi.org/project/kube-q/)
+  [![Snap Store](https://img.shields.io/snapcraft/v/kubeintellect/latest/stable?logo=snapcraft&label=snap)](https://snapcraft.io/kubeintellect)
   [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
   [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
   [![DOI](https://img.shields.io/badge/DOI-10.1007%2Fs10723--026--09837--6-blue)](https://doi.org/10.1007/s10723-026-09837-6)
   [![arXiv](https://img.shields.io/badge/arXiv-2509.02449-b31b1b.svg)](https://arxiv.org/abs/2509.02449)
   [![Website](https://img.shields.io/badge/website-kubeintellect.com-0075C4)](https://kubeintellect.com/)
+  [![YouTube](https://img.shields.io/badge/YouTube-Demo-FF0000?logo=youtube&logoColor=white)](https://youtu.be/je-K_w3vgGY)
   [![Hugging Face Space](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/mskazemi/kubeintellect)
   [![good first issues](https://img.shields.io/github/issues/MSKazemi/kubeintellect/good%20first%20issue?label=good%20first%20issues&color=7057ff)](https://github.com/MSKazemi/kubeintellect/contribute)
   [![GitHub Stars](https://img.shields.io/github/stars/MSKazemi/kubeintellect?style=social)](https://github.com/MSKazemi/kubeintellect)
@@ -21,9 +24,13 @@
 
   <br/>
 
-  <img src=".github/assets/kubeintellect-demo.gif" alt="KubeIntellect diagnosing a crash-looping payments-api, then pausing for approval before restarting it" width="880" />
+  <a href="https://youtu.be/je-K_w3vgGY">
+    <img src=".github/assets/kubeintellect-demo.gif" alt="KubeIntellect diagnosing a crash-looping payments-api, then pausing for approval before restarting it" width="880" />
+  </a>
 
   <sub>Ask why a pod is broken → get the root cause. Ask it to <em>change</em> something → it stops and waits for you.<br/>A real session against a live cluster, recorded end to end — nothing is cut, only the waiting is compressed.</sub>
+
+  <p><strong>▶ <a href="https://youtu.be/je-K_w3vgGY">Watch the full 8-minute demo</a></strong> · <a href="https://youtu.be/lgmalgXmDfg">Architecture walkthrough (38s)</a></p>
 </div>
 
 ---
@@ -64,9 +71,14 @@ kq --api-key ki-ro-dev            # kq defaults to https://api.kubeintellect.com
 ```bash
 docker run --rm -p 8000:8000 \
   -e LLM_PROVIDER=openai -e OPENAI_API_KEY=sk-... -e USE_SQLITE=true \
-  ghcr.io/mskazemi/kubeintellect:2.4.1
+  ghcr.io/mskazemi/kubeintellect:2.5.0
 curl localhost:8000/healthz          # {"status":"ok","arm":"v4",...}
 ```
+
+The same image is also mirrored to Docker Hub as `kazemi/kubeintellect:2.5.0`, if you'd rather
+not use GHCR. Both carry a sigstore build-provenance attestation and an SBOM, and you can check
+them before you run anything — see
+**[what is signed, and how to check it](v4/docs/security.md#what-is-signed-and-how-to-check-it)**.
 
 That starts the API with no database and no cluster attached — enough to see it come up.
 To point it at a cluster and a real database, use
@@ -82,6 +94,10 @@ kubeintellect serve        # start the API server on :8000
 ```
 
 Full install paths (browser, CLI-only, local Kind, Docker Compose, existing cluster) are in the **[v4 README](v4/README.md)** and **[v4 docs](v4/docs/)**.
+
+**Who's actually running this?** One real adopter so far, honestly listed in
+[ADOPTERS.md](ADOPTERS.md) — if you're running KubeIntellect anywhere, even a laptop Kind
+cluster, you'd be the second entry.
 
 ## This repository
 

@@ -13,6 +13,80 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **`kubeintellect service start` and `service stop` exited 0 after systemd refused**
+  (`app/cli.py`, reported and fixed by [@Ryota-Di](https://github.com/Ryota-Di), #208).
+  Both called `subprocess.run(...)` and discarded the result, so a unit that failed to
+  start reported success to the caller — and to any script or CI step that trusted the
+  exit code. They now propagate systemd's own return code.
+
+  The fix is narrower than it looks, and deliberately so: `service status` and
+  `service logs` keep discarding theirs, because `systemctl status` returns non-zero for
+  a perfectly valid inactive unit and `journalctl -f` returns non-zero when the operator
+  presses Ctrl-C. Treating either as a failure would have traded one wrong answer for
+  another. Those two entries stay in the audit allowlist with that reasoning written out.
+
+  `systemctl --user start` and `stop` were added to `_MUST_STAY_CHECKED`, and the success
+  path gained a test of its own: the failure test pins the code that is propagated, but
+  nothing held the other side, so `sys.exit(proc.returncode or 1)` — the shape a later
+  cleanup reaches for — would have turned every successful start into exit 1 with the
+  suite still green.
+
+## [2.5.0] – 2026-09-12
+
+### Added
+
+- **`DISABLE_API_DOCS` closes the public `/docs`, `/redoc`, and `/openapi.json` routes by
+  default off** (`app/core/config.py`, `app/main.py`,
+  `v4/deploy/helm/kubeintellect/{values.yaml,templates/configmap.yaml}`,
+  `v4/tests/test_auth_hardening.py`). FastAPI's default docs routes were reachable on
+  `api.kubeintellect.com` with zero auth, handing anyone the full route map — including that
+  `POST /v1/auth/demo-keys` (admin-only key minting) exists and its exact request schema.
+  Every real endpoint already rejected unauthenticated calls, so this was reconnaissance
+  exposure rather than a working exploit. `DISABLE_API_DOCS` mirrors the existing
+  `REQUIRE_AUTH` config pattern exactly and defaults to `false`, so no existing deployment
+  changes behaviour on upgrade; the Hetzner production deployment sets it `true`.
+
+- **AWS Bedrock is a supported LLM backend, and a provider-agnostic connectivity check**
+  (`v4/scripts/verify_llm.py`, `v4/docs/deploy/aws.md`, `v4/docs/deploy/hetzner.md`).
+  Bedrock exposes an OpenAI-compatible Chat Completions API, so it needs **no new provider
+  and no code change** — `LLM_PROVIDER=openai` with `OPENAI_BASE_URL` pointed at
+  `https://bedrock-runtime.<region>.amazonaws.com/openai/v1` and a Bedrock API key as the
+  bearer token, exactly the mechanism the DashScope/Qwen path already uses. Verified against
+  the live `eu-central-1` endpoint on 2026-09-03: the existing factory reaches it and gets a
+  well-formed Bedrock error back, so the integration is configuration only.
+  `scripts/verify_llm.py` generalises `verify_qwen.py` (which still works) to any provider —
+  OpenAI, Bedrock, Azure, Qwen, Ollama, or a local proxy. It exercises the real
+  `app.core.llm` factory and checks **tool calling**, not just chat, because a model that
+  chats fine but emits no tool call yields an agent that answers confidently and never reads
+  the cluster. `docs/deploy/aws.md` previously admitted there was no verifier for anything
+  but Qwen; there is now.
+
+- **A single-VM Hetzner deployment profile, and the auth switch it needs**
+  (`v4/deploy/helm/kubeintellect/values-hetzner.yaml.example`, `v4/docs/deploy/hetzner.md`,
+  `v4/tests/test_a_default_install_must_not_require_azure.py`). The chart had **no named
+  value for `REQUIRE_AUTH` or `ALLOWED_ORIGINS`** — the only way to enable authentication on
+  a Helm-deployed release was `config.extraEnv`, an escape hatch whose own documentation
+  describes it as carrying additive experiment flags. An operator reading `values.yaml` to
+  find the auth switch would have concluded there wasn't one. Both are now first-class
+  `config` keys, emitted by the ConfigMap and defaulting to today's behaviour, so no existing
+  release changes. The pairing of "auth required" with "keys actually set" is deliberately
+  *not* guarded in the template — the keys legitimately arrive via `--set-string`, and every
+  values file in the chart directory has to render standalone — so it stays where it cannot
+  be bypassed, in `app/main.py`, which exits non-zero before the port opens. That refusal now
+  has a test; it previously had none.
+
+### Changed
+
+- **The default LLM provider is `openai`, not `azure`** (`app/core/config.py`,
+  `v4/deploy/helm/kubeintellect/values.yaml`, `v4/Makefile`). Azure was the one provider a
+  new user could not satisfy with a single credential: it needs a deployed Azure OpenAI
+  resource, its endpoint URL and two deployment names before the first call succeeds, and a
+  missing Azure credential is a startup *warning*, not an error — so the server came up,
+  served traffic, and failed at the first LLM call. Every provider remains first-class and
+  existing deployments set `LLM_PROVIDER` explicitly, so this changes nothing for them.
+
+### Fixed
+
 - **A rollback point could be marked `restorable` while covering only some of the objects the
   command mutates** (`app/tools/kubectl_tool.py`, `packages/ki-protocol/ki_protocol/record.py`,
   `v4/tests/test_a_rollback_point_covers_every_object_or_says_it_does_not.py`, #190 → #195).

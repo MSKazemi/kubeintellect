@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Add TLS to nginx using Let's Encrypt (certbot).
-# Run after DNS has propagated: dig api.kubeintellect.com should return 20.119.62.10
+# Run after DNS has propagated: dig api.kubeintellect.com should return this host's IP.
 # Usage: bash scripts/vm/setup-tls.sh
 set -euo pipefail
 

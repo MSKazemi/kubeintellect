@@ -6,6 +6,12 @@ hide:
   - toc
 ---
 
+> **This is `v2`, a frozen reference version.** The current, deployable KubeIntellect is
+> **[`v4/`](https://github.com/MSKazemi/kubeintellect/tree/main/v4)**. `v1`–`v3` are
+> deliberately frozen (ADR-001/002) to keep the published paper's results reproducible — see
+> [SECURITY.md](https://github.com/MSKazemi/kubeintellect/blob/main/SECURITY.md). Nothing here
+> is published to PyPI, Docker Hub, GHCR, or the Snap Store.
+
 <div class="ki-hero">
   <div class="ki-hero-inner">
     <img src="assets/brand/ki-c-indigo.svg" alt="KubeIntellect" class="ki-hero-mark" />
