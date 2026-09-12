@@ -57,6 +57,11 @@ _MUST_STAY_CHECKED = (
     "kubectl apply -f",
     "systemctl --user restart",
     "systemctl --user disable",
+    # `start` and `stop` exited 0 after systemd refused, until #208. Deleting their
+    # `_REVIEWED` entries is what stops the discarded shape returning; listing them here
+    # is what stops the entry being written back, which is the easier mistake to make.
+    "systemctl --user start",
+    "systemctl --user stop",
 )
 
 
@@ -205,6 +210,27 @@ class TestTheCommandsThemselves:
             cli.cmd_service(argparse.Namespace(action=action))
 
         assert exit_info.value.code == 5
+
+    @pytest.mark.parametrize("action", ["start", "stop"])
+    def test_service_start_and_stop_stay_silent_on_success(self, monkeypatch, action):
+        """A successful start/stop must return normally, not exit.
+
+        The failure path above pins the code that is propagated; nothing pinned the
+        success path, so `sys.exit(proc.returncode or 1)` — the shape a later cleanup
+        reaches for — would turn every successful `service start` into exit 1 with the
+        whole suite still green.
+        """
+        import argparse
+
+        from app import cli
+
+        def fake_run(cmd, **kwargs):
+            assert cmd == ["systemctl", "--user", action, cli._SERVICE_NAME]
+            return subprocess.CompletedProcess(cmd, 0)
+
+        monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+        cli.cmd_service(argparse.Namespace(action=action))  # must not raise SystemExit
 
     def test_uninstall_reports_a_refused_disable(self, tmp_path, monkeypatch, capsys):
         """`service uninstall` must not print "Service removed" when systemd refused."""
