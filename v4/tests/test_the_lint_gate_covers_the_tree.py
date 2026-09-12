@@ -36,7 +36,7 @@ def _lint_paths() -> list[str]:
 
 def _tracked_python() -> list[str]:
     proc = subprocess.run(
-        ["git", "ls-files", "-z", "--", "."], cwd=_V4, capture_output=True, text=True, timeout=60
+        ["git", "ls-files", "-z", "--", "."], cwd=_V4, capture_output=True, text=True, encoding="utf-8", timeout=60
     )
     return [name for name in proc.stdout.split("\0") if name.endswith(".py")]
 

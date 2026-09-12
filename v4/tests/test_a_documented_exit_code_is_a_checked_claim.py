@@ -113,7 +113,7 @@ def test_the_documented_usage_code_is_the_one_the_command_really_returns(command
         ],
         cwd=_CLI.parents[2],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         timeout=120,
     )
     assert proc.returncode == 2, proc.stdout + proc.stderr

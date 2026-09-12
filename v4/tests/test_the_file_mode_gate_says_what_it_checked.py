@@ -42,13 +42,13 @@ def _git(repo: Path, *args: str, git_dir: str | None = None) -> subprocess.Compl
     if git_dir is not None:
         env["GIT_DIR"] = git_dir
     return subprocess.run(
-        ["git", *args], cwd=repo, env=env, capture_output=True, text=True, check=True
+        ["git", *args], cwd=repo, env=env, capture_output=True, text=True, encoding="utf-8", check=True
     )
 
 
 def _run(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["bash", str(_SCRIPT), *args], cwd=repo, capture_output=True, text=True
+        ["bash", str(_SCRIPT), *args], cwd=repo, capture_output=True, text=True, encoding="utf-8",
     )
 
 

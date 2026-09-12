@@ -49,12 +49,12 @@ NOTE = "tracked path(s) were skipped"
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["git", *args], cwd=repo, env=dict(os.environ),
-                          capture_output=True, text=True, check=True)
+                          capture_output=True, text=True, encoding="utf-8", check=True)
 
 
 def _run(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["bash", str(_SCRIPT), *args], cwd=repo,
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, encoding="utf-8",)
 
 
 def _write(repo: Path, rel: str, body: str, *, executable: bool) -> None:

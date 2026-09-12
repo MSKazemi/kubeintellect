@@ -60,7 +60,7 @@ def live_protection() -> dict | None:
     try:
         out = subprocess.run(
             ["gh", "api", f"repos/{REPO}/branches/main/protection"],
-            capture_output=True, text=True, timeout=30, check=False,
+            capture_output=True, text=True, encoding="utf-8", timeout=30, check=False,
         )
     except (FileNotFoundError, subprocess.SubprocessError):
         return None

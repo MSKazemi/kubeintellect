@@ -81,7 +81,7 @@ SUPPORTED = [
 def test_emulated_grep_equals_real_grep(command):
     """Byte-for-byte, against the binary the emulator is standing in for."""
     import shlex
-    proc = subprocess.run(shlex.split(command), input=LOG, capture_output=True, text=True)
+    proc = subprocess.run(shlex.split(command), input=LOG, capture_output=True, text=True, encoding="utf-8",)
     # grep exits 1 when nothing matched, but `-c` still prints "0" — compare stdout, not the
     # exit code. The emulator has no exit code, so an empty stdout is its "(no matching lines)".
     expected = proc.stdout
