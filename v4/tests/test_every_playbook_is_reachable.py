@@ -18,10 +18,10 @@ passes the schema check, and `match_playbooks` iterates it forever without ever 
 `pb.triggers` is a non-empty tuple, so the `if not pb.triggers: continue` guard does not fire
 either. The loader now warns; this file makes it fail.
 
-`test_playbooks.py` checks specific playbooks against hand-written kubectl fixtures, which is
-the right test for *what* each one matches. It cannot cover a playbook nobody wrote a fixture
-for. This one derives its input from each trigger's own regex, so a new playbook is covered the
-moment it is added.
+`test_playbooks.py` checks specific playbooks against hand-written kubectl fixtures, which is the
+right test for *what* each one matches. It cannot cover a playbook nobody wrote a fixture for.
+This one derives its input from each trigger's own regex, so a new playbook is covered the moment
+it is added.
 """
 from __future__ import annotations
 
@@ -115,10 +115,10 @@ _BUMP_HINT = (
 
 def test_the_inventory_is_actually_covered():
     """Guard the guard: an empty registry would make both tests above pass vacuously."""
-    assert len(_PLAYBOOKS) == 26, (
+    assert len(_PLAYBOOKS) == 27, (
         f"playbook count changed to {len(_PLAYBOOKS)}{_BUMP_HINT}"
     )
-    assert len(_CASES) == 46, (
+    assert len(_CASES) == 48, (
         f"trigger-regex count changed to {len(_CASES)}{_BUMP_HINT}"
     )
 
