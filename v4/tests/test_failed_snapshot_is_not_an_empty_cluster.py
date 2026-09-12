@@ -72,14 +72,14 @@ class TestTheRunnerReportsFailure:
     @pytest.mark.parametrize("stderr", [REAL_CONNECTION_REFUSED, REAL_UNAUTHORIZED, REAL_FORBIDDEN])
     def test_a_non_zero_exit_is_not_ok(self, stderr):
         with patch("subprocess.run", return_value=subprocess.CompletedProcess([], 1, "", stderr)):
-            ok, text = _kubectl_snapshot(["get", "pods", "--all-namespaces"])
+            ok, text, _complete = _kubectl_snapshot(["get", "pods", "--all-namespaces"])
         assert ok is False
         assert text, "the operator still needs to see why"
 
     def test_a_zero_exit_is_ok(self):
         with patch("subprocess.run",
                    return_value=subprocess.CompletedProcess([], 0, REAL_POD_TABLE, "")):
-            assert _kubectl_snapshot(["get", "pods"]) == (True, REAL_POD_TABLE)
+            assert _kubectl_snapshot(["get", "pods"]) == (True, REAL_POD_TABLE, True)
 
     @pytest.mark.parametrize("exc", [
         FileNotFoundError(2, "No such file or directory", "kubectl"),
@@ -87,7 +87,7 @@ class TestTheRunnerReportsFailure:
     ])
     def test_a_command_that_never_ran_is_not_ok(self, exc):
         with patch("subprocess.run", side_effect=exc):
-            ok, _ = _kubectl_snapshot(["get", "pods"])
+            ok, _, _ = _kubectl_snapshot(["get", "pods"])
         assert ok is False
 
 
@@ -117,7 +117,10 @@ class TestTheScanRefusesToParseAnError:
 
 def _run_node(pods=(False, REAL_UNAUTHORIZED), events=(True, "No resources found\n")):
     def fake(args):
-        return pods if args[1] == "pods" else events
+        # `_kubectl_snapshot` gained a third element (completeness, #140); a case written
+        # as a pair is not exercising truncation, so it reads as a complete snapshot.
+        result = pods if args[1] == "pods" else events
+        return result if len(result) == 3 else (*result, True)
     async def go():
         with patch.object(cf, "_kubectl_snapshot", side_effect=fake):
             return await cf.context_fetcher({"session_id": "t"})
@@ -194,7 +197,8 @@ class TestPostFixVerificationCannotFabricateResolved:
 
     def _verify(self, pods, events=(True, "No resources found\n")):
         def fake(args):
-            return pods if args[1] == "pods" else events
+            result = pods if args[1] == "pods" else events
+            return result if len(result) == 3 else (*result, True)
         with patch("app.agent.nodes.context_fetcher._kubectl_snapshot", side_effect=fake):
             return _verify_resolution("prod", pre_state={"had_issues": True})
 
