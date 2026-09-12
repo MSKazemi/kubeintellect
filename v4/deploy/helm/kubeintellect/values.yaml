@@ -146,6 +146,13 @@ config:
   # cluster. That is not hypothetical; it was live on the public API until 2026-09.
   # The pod refuses to start if this is true and no key tier is set, so it cannot half-apply.
   requireAuth: false
+  # Serve /docs, /redoc, and /openapi.json. Those routes mount unauthenticated by construction
+  # (FastAPI wires them before any dependency runs), so on an internet-reachable ingress they
+  # hand out the full route map — including that POST /v1/auth/demo-keys exists and what it
+  # needs — before an attacker has made one authenticated call. The routes behind it still
+  # reject every unauthenticated request either way; this only removes the map. Leave true for
+  # local development, where interactive docs are worth the exposure.
+  disableApiDocs: false
   # Browser origins allowed to call the API (comma-separated, no trailing slash, no spaces).
   # Empty keeps the app default of http://localhost:3080. A value with a stray leading space
   # matches no browser Origin and fails as a CORS rejection rather than a config error.
