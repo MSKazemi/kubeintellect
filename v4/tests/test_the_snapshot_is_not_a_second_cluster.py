@@ -345,7 +345,7 @@ class TestTheCaseListDoesNotDependOnTheEnvironment:
                     __file__,
                 ],
                 capture_output=True,
-                text=True,
+                text=True, encoding="utf-8",
                 timeout=300,
                 env={**os.environ, "KUBECTL_BLOCKED_NAMESPACES": blocklist},
             )
