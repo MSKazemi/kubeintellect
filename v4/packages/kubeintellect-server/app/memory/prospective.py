@@ -84,7 +84,8 @@ async def _default_dispatch(row: dict[str, Any], level: str) -> str:
     ns_arg = ["-n", namespace] if namespace else ["--all-namespaces"]
     # `_kubectl_snapshot` is a blocking subprocess call and this runs inside the
     # consolidation loop — off-thread so one slow cluster read cannot stall the loop.
-    pods_ok, pods_out = await asyncio.to_thread(_kubectl_snapshot, ["get", "pods", *ns_arg])
+    pods_ok, pods_out, _pods_complete = await asyncio.to_thread(
+        _kubectl_snapshot, ["get", "pods", *ns_arg])
     if not pods_ok:
         logger.warning(
             f"prospective: cannot verify re-check id={row.get('id')} ns={namespace or '*'} — "
@@ -92,7 +93,7 @@ async def _default_dispatch(row: dict[str, Any], level: str) -> str:
             f"recording 'unverified', not a result"
         )
         return "unverified"
-    events_ok, events_out = await asyncio.to_thread(_kubectl_snapshot, [
+    events_ok, events_out, _events_complete = await asyncio.to_thread(_kubectl_snapshot, [
         "get", "events", *ns_arg,
         "--sort-by=.lastTimestamp",
         "--field-selector=type=Warning",
