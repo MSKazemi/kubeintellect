@@ -186,6 +186,25 @@ Closing is a decision with a reason attached, never a silent cleanup:
 Disagree with a close? Say so on the issue. Reopening after new information is
 normal and nobody has to be persuaded twice.
 
+### Closing several at once — check each one against what actually merged
+
+A batch close is where work gets lost, and it has happened here: a batch on 2026-08-15 closed an
+issue whose contribution had **never been merged**, and nobody noticed until 09-08, when it was
+recovered by cherry-pick. Every green check had passed; the batch was simply wrong about what was
+in `main`.
+
+So when closing more than one issue in a sitting, the rule is per-issue and mechanical:
+
+- **Verify the merge, do not infer it.** For each issue closed as *Completed*, confirm the commit
+  is on `main` — `git log origin/main --oneline --grep '#<issue>'`, or open the linked PR and
+  check it says *Merged*, not *Closed*. A closed-unmerged PR looks nearly identical in a list view.
+- **Read `origin/main`, not the working tree.** A stale checkout makes merged work look missing
+  and missing work look merged; `make check-roster` passes green in a stale tree.
+- **If the scope moved, say so on the issue** rather than letting the close imply it shipped.
+
+The cost of skipping this is not a tidy tracker — it is a contributor whose work silently
+vanished, which is the one outcome this project treats as unacceptable.
+
 ## Want to help with triage?
 
 Pick any issue labelled
