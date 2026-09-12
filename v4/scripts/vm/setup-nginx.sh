@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Setup nginx as reverse proxy for KubeIntellect on Azure VM.
+# Setup nginx as reverse proxy for KubeIntellect on a Linux VM.
 # Run once after Kind cluster is up.
 # Usage: bash scripts/vm/setup-nginx.sh
 set -euo pipefail

@@ -141,6 +141,19 @@ hide:
     kq
     ```
 
+=== ":material-ubuntu: Snap"
+
+    ```bash
+    sudo snap install kubeintellect
+    sudo snap connect kubeintellect:dot-kube
+    sudo snap connect kubeintellect:dot-kube-q
+    sudo snap alias kubeintellect.kq kq
+    kq
+    ```
+
+    Both `connect` steps are required — strict confinement, and `home` excludes
+    dot-directories.
+
 === ":material-docker: Docker"
 
     ```bash

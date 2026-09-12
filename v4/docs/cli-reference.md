@@ -222,7 +222,7 @@ kubeintellect verify-restore kubeintellect-2026-01-01.manifest.json
 
 This catches the failure nothing else can see: a restore that drops the newest rows of
 `decision_log` or `memory_audit` breaks no hash link, so the shortened record still verifies
-intact. See [Operations → Backup & restore](operations.md#backup--restore).
+intact. See [Operations → Backup & restore](operations.md#backup-restore).
 
 ### `kubeintellect chain-export`
 
