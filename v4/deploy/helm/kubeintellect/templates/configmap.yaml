@@ -18,6 +18,10 @@ data:
   # every values file in this directory (test_chart_shutdown_contract.py). The pairing is
   # enforced where it cannot be bypassed: app/main.py exits non-zero before the port opens.
   REQUIRE_AUTH: {{ .Values.config.requireAuth | default false | toString | quote }}
+  # Interactive API docs. Emitted unconditionally for the same reason as REQUIRE_AUTH above —
+  # an absent key reads as "not configured" when what an operator needs during an incident is
+  # whether the route map is public.
+  DISABLE_API_DOCS: {{ .Values.config.disableApiDocs | default false | toString | quote }}
   # CORS. Empty falls through to the app default (http://localhost:3080).
   {{- if .Values.config.allowedOrigins }}
   ALLOWED_ORIGINS: {{ .Values.config.allowedOrigins | quote }}

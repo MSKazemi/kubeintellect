@@ -694,6 +694,14 @@ class Settings(BaseSettings):
     # local quickstart is unchanged; the chart turns it on for any deployment that sets keys.
     REQUIRE_AUTH: bool = False
 
+    # /docs, /redoc, and /openapi.json are unauthenticated by construction (FastAPI mounts them
+    # before any dependency runs) and hand an attacker the full route map — including that
+    # POST /v1/auth/demo-keys exists and what it needs — before they've made a single
+    # authenticated call. The routes themselves still reject every unauthenticated request, so
+    # this is reconnaissance hardening, not an auth fix. Off by default so the local quickstart
+    # keeps interactive docs; the chart turns it on for any deployment that sets REQUIRE_AUTH.
+    DISABLE_API_DOCS: bool = False
+
     # ── Self-observability ────────────────────────────────────────────────────
     # Prometheus metrics about THIS process at /metrics: request rate, latency histogram, error
     # ratio. The instrumentator dependency was declared but never mounted, so the component that
