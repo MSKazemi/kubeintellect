@@ -1,0 +1,78 @@
+title: "[Show & Tell] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Running KubeIntellect somewhere? Tried it and bounced off? Both are worth posting.
+
+        This category is genuinely useful to the project and not a formality: the environments
+        people actually run are the ones that get tested, kept working, and protected from
+        breaking changes. A Kind cluster on a laptop counts. "I evaluated it for an afternoon
+        and went back to k9s" counts, and is arguably the most useful post here.
+
+        Everything below is optional.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What did you do with it?
+      description: |
+        A sentence is plenty. Screenshots, a terminal cast, or a link to your own write-up are
+        very welcome — and if you blogged or posted about it anywhere, please link that too.
+      placeholder: |
+        Pointed it at our staging cluster during an incident and asked why the ingress was 503ing…
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Where does it run?
+      description: |
+        Distribution, rough scale, LLM backend. Approximate is fine — scale is the useful part
+        (`~30 pods` vs `~4000 pods` changes what breaks).
+      placeholder: |
+        k3s on two mini PCs, ~60 pods, Ollama on a local box for the LLM.
+    validations:
+      required: false
+
+  - type: textarea
+    id: rough-edges
+    attributes:
+      label: What was worse than you expected?
+      description: |
+        **This is the most valuable field on the form, so please be blunt.** Slow, confusing,
+        wrong answer, install fight, docs that lied — it is all fair game and none of it will be
+        taken personally. The install path was broken for real users for weeks and only a
+        contributor actually trying it surfaced that; a polite "it went fine" would not have.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: adopters
+    attributes:
+      label: Add yourself to ADOPTERS.md?
+      description: |
+        [ADOPTERS.md](https://github.com/MSKazemi/kubeintellect/blob/main/ADOPTERS.md) currently
+        has **one** entry and stays honest about that rather than padded. Listing is a table
+        row, transfers no rights, implies no endorsement in either direction, and can be removed
+        any time. Individuals are as welcome as companies.
+      options:
+        - "Yes — a maintainer can add a row from this post"
+        - "Yes, but I'd rather open the PR myself"
+        - "No thanks / not publicly"
+      default: 2
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        If you'd rather the maintainer know it is used somewhere real without being listed
+        publicly, email **mohsen.seyedkazemi@gmail.com** — an anonymous "a mid-size fintech runs
+        this on EKS" is still useful signal, and nothing is published without your say-so.
+
+        Sharing a use case is a real contribution and is credited the same way as code — see
+        [GOVERNANCE.md](https://github.com/MSKazemi/kubeintellect/blob/main/GOVERNANCE.md).
