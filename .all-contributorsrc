@@ -162,7 +162,9 @@
       "avatar_url": "https://avatars.githubusercontent.com/u/53958043?v=4",
       "profile": "https://github.com/Ryota-Di",
       "contributions": [
-        "inflight"
+        "bug",
+        "code",
+        "test"
       ]
     },
     {
