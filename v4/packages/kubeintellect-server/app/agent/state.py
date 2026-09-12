@@ -106,6 +106,12 @@ class AgentState(TypedDict):
     snapshot_has_warnings: bool     # any Warning event in the snapshot
     snapshot_pod_count: int         # total pods seen in snapshot
     snapshot_read_failed: bool      # the kubectl read failed — the flags above mean nothing
+    # The read succeeded and the text is real, but it is not all of it: a listing longer
+    # than the cap was sliced. Separate from the two health flags on purpose — those say
+    # "unhealthy workloads were observed", and are shown to the user in those words, so a
+    # cluster nobody could measure must not be reported as an unhealthy one. It gates the
+    # answer-from-the-snapshot shortcut instead (#140).
+    snapshot_complete: bool
     snapshot_built_at: float        # unix timestamp when context_fetcher ran
 
     # ── Investigation plan ────────────────────────────────────────────────────

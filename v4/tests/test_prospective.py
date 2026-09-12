@@ -86,7 +86,8 @@ class TestRunProspectiveOnce:
         mocker.patch("app.agent.nodes.context_fetcher._kubectl_snapshot", side_effect=lambda a: (
             True,
             "NAMESPACE  NAME   READY  STATUS   RESTARTS  AGE\ndev  api-0  1/1  Running  0  4h\n"
-            if a[1] == "pods" else "No resources found in dev namespace.\n"))
+            if a[1] == "pods" else "No resources found in dev namespace.\n",
+            True))
         n = await prospective.run_prospective_once()
         assert n == 1
         record = next(c for c in pool.calls if c[0] == "execute")
