@@ -40,8 +40,8 @@ body:
     id: version
     attributes:
       label: Version
-      description: "`kq --version` or `kubeintellect --version`. Current releases are kube-q 1.5.0 and kubeintellect 2.2.0 — an older build explains a surprising number of reports."
-      placeholder: "kube-q 1.5.0"
+      description: "`kq --version` or `kubeintellect --version`. Compare against the [latest releases](https://github.com/MSKazemi/kubeintellect/releases) — an older build explains a surprising number of reports."
+      placeholder: "kube-q 1.6.0"
     validations:
       required: false
 
@@ -52,7 +52,9 @@ body:
       options:
         - pip install kube-q (CLI only)
         - pip install kubeintellect (server)
-        - Container image (ghcr.io)
+        - Container image (ghcr.io or Docker Hub)
+        - snap install kubeintellect
+        - Helm chart
         - From source / git clone
         - The hosted browser demo
         - Not installed yet — asking before I try

@@ -131,6 +131,33 @@ and all Memory V5 / v5 slices ship default-off as opt-in previews. The Helm char
 covers AKS / EKS / GKE with RBAC, secrets, ingress, and resource limits — see the
 [cloud deploy guide](deploy/cloud.md).
 
+### Why AGPL rather than MIT or Apache-2.0?
+
+Because of what this tool is. It holds cluster credentials and can execute changes,
+so the one thing a user most needs to be able to do is **read the code that is
+actually running against their cluster**. AGPL-3.0 §13 is the clause that
+guarantees that: if someone runs a *modified* KubeIntellect and exposes it over a
+network — a SaaS, an API product, an internal platform other teams log into —
+they have to offer those users the corresponding source. A permissive licence
+would let a vendor wrap this in a closed product and give operators an approval
+gate they cannot inspect, which would defeat the point of having one.
+
+**In practice, for most people it changes nothing:**
+
+- **Using it** — running it, unmodified or modified, inside your own company, for
+  your own team, at any scale: no obligation beyond keeping the licence and
+  notices. Internal use is not distribution.
+- **Modifying it and keeping that private to your own operators**: also fine.
+- **The obligation only triggers** when you offer a *modified* version to users
+  over a network, or redistribute it — then those users get the source.
+- **If that does not fit** (you want to ship a closed derivative or a hosted
+  product built on a modified version), a separate commercial licence exists.
+
+The full text, the exact obligations, and how contributions are licensed are in
+[LICENSING.md](https://github.com/MSKazemi/kubeintellect/blob/main/LICENSING.md).
+This answer is a plain-English summary for orientation, not legal advice — the
+licence itself governs.
+
 ### How do I upgrade or turn on experimental features?
 
 Enable one flag at a time and verify before the next. Everything risky ships
