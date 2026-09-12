@@ -1394,7 +1394,7 @@ def _capture_rollback_point(verb: str, args: list, stdin: str | None, config, en
             label = " ".join(target[2:4])
             try:
                 pre = subprocess.run(
-                    target, capture_output=True, text=True, timeout=5, env=env, shell=False
+                    target, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5, env=env, shell=False
                 )
                 if pre.returncode == 0 and pre.stdout:
                     kept = redact_secrets(pre.stdout, max_chars=_ROLLBACK_MAX_CHARS)
@@ -1677,11 +1677,16 @@ def run_kubectl(
         else settings.KUBECTL_TIMEOUT_SECONDS
     )
     try:
+        # Decode free-form content lossily to survive non-ASCII log lines;
+        # decode identifiers and structured output strictly to avoid plausible wrong answers.
+        decode_errors = "replace" if verb in ("logs", "describe", "get") else "strict"
         proc = subprocess.run(
             args,
             input=stdin,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors=decode_errors,
             timeout=timeout,
             env=env,
             shell=False,

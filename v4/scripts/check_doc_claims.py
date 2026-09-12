@@ -133,7 +133,7 @@ def _files_this_tree_ships(rootdir: Path, subdir: str, pattern: str) -> set[Path
             ["git", "ls-files", "-z", "--", subdir],
             cwd=rootdir,
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8",
             timeout=60,
         )
     except (OSError, subprocess.TimeoutExpired):
@@ -213,7 +213,7 @@ def _collect_count(rootdir: Path) -> int | None:
             [sys.executable, "-m", "pytest", "--collect-only", "-q", "tests/", *ignores],
             cwd=rootdir,
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8",
             timeout=300,
         )
     except (OSError, subprocess.TimeoutExpired):
@@ -245,7 +245,7 @@ def _format_drift_count() -> int | None:
             [sys.executable, "-m", "ruff", "format", "--check", *sorted(str(p) for p in tracked)],
             cwd=_V4,
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8",
             timeout=300,
         )
     except (OSError, subprocess.TimeoutExpired):
