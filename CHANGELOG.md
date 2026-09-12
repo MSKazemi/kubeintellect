@@ -13,6 +13,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **A truncated pod listing reported a healthy cluster, with an invented pod count**
+  (`app/agent/nodes/context_fetcher.py`, `app/agent/nodes/coordinator.py`,
+  `app/agent/state.py`; reported by [@uuzzrm](https://github.com/uuzzrm), #139, closes #140).
+  Safety invariant #1, live since the snapshot was introduced. The cluster-wide read was
+  sliced to 8 000 characters with nothing recording that it had been sliced, so on a
+  401-pod cluster whose one `CrashLoopBackOff` sorted past the cut the model was handed
+  *"85 pods, issues=false, warnings=false"* together with the instruction to prefer
+  answering "is the cluster healthy" from the snapshot. Both the verdict and the count
+  were fabricated; any real cluster exceeds that cap.
+
+  `_kubectl_snapshot` now returns `(ok, text, complete)`. Completeness is deliberately not
+  folded into `has_issues`: that flag means "unhealthy workloads were observed" and is
+  shown to the user in those words, so a cluster nobody could measure must not be
+  described as an unhealthy one. It gates the answer-from-the-snapshot shortcut instead —
+  an incomplete snapshot now renders a block telling the model never to answer a
+  whole-cluster question from it, and that absence of a pod is not evidence it is gone.
+
+  Three further defects in the same few lines, none of them in the original report:
+
+  * **The cap deleted the blocked-namespace notice.** `_filter_snapshot_output` appended
+    `[Protected] N row(s) withheld … NOT the complete set` at the end of the table and the
+    cap ran afterwards, so on any listing over the limit the sentence was sliced off and
+    the short listing read as a complete one — the exact outcome its own docstring says it
+    exists to prevent. Both notices are now appended *after* the cap.
+  * **The cap cut mid-row**, and the fragment still parsed: `default app-1 1/1 Runni` was
+    counted as a pod whose STATUS is `Runni`, which is not a healthy phase, so a listing
+    of nothing but Running pods reported an issue. The cut is now on a line boundary.
+  * **The truncation marker was itself parsed as a pod.** `_scan_snapshot` skipped policy
+    lines by a `[Protected]` prefix, and the marker begins `[truncated` — so the notice
+    saying pods were missing invented a pod and an issue of its own. Both scanners now use
+    the shared `POLICY_LINE_RE`.
+
+  `_run_kubectl_snapshot` dropped the `ok` flag, so a failed read reached
+  `targeted_investigator` fenced under a `### Pod Description` heading — kubectl's
+  `Unauthorized` stderr presented as the description of a pod. It now returns an explicit
+  `[unavailable]` line.
+
 - **The coordinator prompt taught the model to emit `<ns>` literally**
   (`app/agent/nodes/coordinator.py`, `app/tools/output_policy.py`, fixed by
   [@biggdawg320](https://github.com/biggdawg320), #207, closes the prompt half of #173).

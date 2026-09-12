@@ -54,9 +54,12 @@ class Cluster:
         self.events = events
         self.commands: list[list[str]] = []
 
-    def __call__(self, args: list[str]) -> tuple[bool, str]:
+    def __call__(self, args: list[str]) -> tuple[bool, str, bool]:
         self.commands.append(list(args))
-        return self.pods if args[1] == "pods" else self.events
+        result = self.pods if args[1] == "pods" else self.events
+        # `_kubectl_snapshot` gained a third element (completeness, #140). Cases that do
+        # not care about it keep writing a pair and get a complete read.
+        return result if len(result) == 3 else (*result, True)
 
 
 @pytest.fixture
@@ -151,7 +154,7 @@ class TestTheTwoGradersAgree:
         from app.agent.nodes import coordinator
 
         def snapshot(args):
-            return (True, pods) if args[1] == "pods" else (True, events)
+            return (True, pods, True) if args[1] == "pods" else (True, events, True)
 
         mocker.patch("app.agent.nodes.context_fetcher._kubectl_snapshot", side_effect=snapshot)
         mocker.patch.object(coordinator.settings, "REFLEXION_VERIFY_RESOLUTION", True)
@@ -166,7 +169,7 @@ class TestTheTwoGradersAgree:
         from app.agent.nodes import coordinator
 
         mocker.patch("app.agent.nodes.context_fetcher._kubectl_snapshot",
-                     side_effect=lambda args: (False, READ_FAILED))
+                     side_effect=lambda args: (False, READ_FAILED, False))
         mocker.patch.object(coordinator.settings, "REFLEXION_VERIFY_RESOLUTION", True)
         mocker.patch.object(coordinator, "_wait_for_rollout", lambda ns: None)
 
