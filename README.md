@@ -7,6 +7,7 @@
   [![PyPI](https://img.shields.io/pypi/v/kubeintellect.svg)](https://pypi.org/project/kubeintellect/)
   [![kubeintellect downloads](https://img.shields.io/pypi/dm/kubeintellect?label=kubeintellect%20installs)](https://pypi.org/project/kubeintellect/)
   [![kq downloads](https://img.shields.io/pypi/dm/kube-q?label=kq%20installs)](https://pypi.org/project/kube-q/)
+  [![Snap Store](https://img.shields.io/snapcraft/v/kubeintellect/latest/stable?logo=snapcraft&label=snap)](https://snapcraft.io/kubeintellect)
   [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
   [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
   [![DOI](https://img.shields.io/badge/DOI-10.1007%2Fs10723--026--09837--6-blue)](https://doi.org/10.1007/s10723-026-09837-6)

@@ -219,10 +219,27 @@ def _startup_hint(exc: Exception) -> str:
     )
 
 
+def api_docs_urls(disabled: bool) -> tuple[str | None, str | None, str | None]:
+    """(docs_url, redoc_url, openapi_url) for the FastAPI constructor.
+
+    All three collapse to None together — a route map is exposed or it isn't, there is no
+    partial state where e.g. openapi.json is hidden but /docs (which fetches it client-side)
+    stays reachable.
+    """
+    if disabled:
+        return None, None, None
+    return "/docs", "/redoc", "/openapi.json"
+
+
+_docs_url, _redoc_url, _openapi_url = api_docs_urls(settings.DISABLE_API_DOCS)
+
 app = FastAPI(
     title="KubeIntellect V2",
     version="2.0.0",
     lifespan=lifespan,
+    docs_url=_docs_url,
+    redoc_url=_redoc_url,
+    openapi_url=_openapi_url,
 )
 
 # Middleware is applied in reverse order (last added = outermost).
