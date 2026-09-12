@@ -11,7 +11,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [2.5.0] – 2026-09-12
+
 ### Added
+
+- **`DISABLE_API_DOCS` closes the public `/docs`, `/redoc`, and `/openapi.json` routes by
+  default off** (`app/core/config.py`, `app/main.py`,
+  `v4/deploy/helm/kubeintellect/{values.yaml,templates/configmap.yaml}`,
+  `v4/tests/test_auth_hardening.py`). FastAPI's default docs routes were reachable on
+  `api.kubeintellect.com` with zero auth, handing anyone the full route map — including that
+  `POST /v1/auth/demo-keys` (admin-only key minting) exists and its exact request schema.
+  Every real endpoint already rejected unauthenticated calls, so this was reconnaissance
+  exposure rather than a working exploit. `DISABLE_API_DOCS` mirrors the existing
+  `REQUIRE_AUTH` config pattern exactly and defaults to `false`, so no existing deployment
+  changes behaviour on upgrade; the Hetzner production deployment sets it `true`.
 
 - **AWS Bedrock is a supported LLM backend, and a provider-agnostic connectivity check**
   (`v4/scripts/verify_llm.py`, `v4/docs/deploy/aws.md`, `v4/docs/deploy/hetzner.md`).
