@@ -68,6 +68,10 @@ build-backend = "hatchling.build"
 testpaths = ["tests"]
 addopts = "-v"
 
+[tool.coverage.run]
+source = ["kube_q"]
+branch = true
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

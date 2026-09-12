@@ -1,0 +1,68 @@
+# Local mirror of the v4 CI gates that can run before a commit exists, so a
+# contributor sees the same failure locally that CI would report minutes
+# later. Deliberately does NOT duplicate every ci.yml job: the test suites
+# (pytest, ~85s+) and the container build/serve job are too slow for a
+# pre-commit hook and stay CI-only. What runs here is what's fast enough not
+# to be worth skipping.
+#
+# Install once per clone:
+#   pip install pre-commit && pre-commit install
+# Run on demand without committing:
+#   pre-commit run --all-files
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check (v4)
+        entry: bash -c 'cd v4 && uv run ruff check packages/kubeintellect-server/app/ packages/ki-protocol/ packages/kube-q/ tests/ scripts/'
+        language: system
+        files: ^v4/.*\.py$
+        pass_filenames: false
+
+      - id: mypy
+        name: mypy (v4)
+        entry: bash -c 'cd v4 && uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube-q/kube_q'
+        language: system
+        files: ^v4/.*\.py$
+        pass_filenames: false
+
+      - id: check-file-modes
+        name: file modes (shebang <=> executable)
+        entry: ./scripts/check-file-modes.sh
+        language: system
+        pass_filenames: false
+
+      - id: check-syntax-warnings
+        name: syntax warnings (compile every tracked .py)
+        entry: ./scripts/check-syntax-warnings.py
+        language: system
+        pass_filenames: false
+
+      - id: check-text-encoding
+        name: text-mode calls name an encoding
+        entry: ./scripts/check-text-encoding.py
+        language: system
+        pass_filenames: false
+
+      - id: check-doc-claims
+        name: documented counts match the code
+        entry: bash -c 'cd v4 && uv run python scripts/check_doc_claims.py'
+        language: system
+        pass_filenames: false
+        # Only the counters this hook checks change on a code edit; running it
+        # on every commit regardless of which files changed is the point —
+        # the whole failure mode is a count drifting from an UNRELATED change.
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^(v1|v2|v3)/ # frozen generations — not our formatting to fix
+      - id: end-of-file-fixer
+        exclude: ^(v1|v2|v3)/
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-yaml
+        args: ["--allow-multiple-documents"]

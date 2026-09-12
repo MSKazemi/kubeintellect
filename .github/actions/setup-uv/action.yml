@@ -1,0 +1,45 @@
+name: Set up Python and uv
+description: >-
+  Installs the given Python version, installs uv at the pinned version, and
+  restores/saves a GitHub Actions cache of uv's package cache keyed on the
+  interpreter and the resolved lockfile — so a PR that touches no dependency
+  does not re-download every wheel on every job. Assumes the caller has
+  already run actions/checkout.
+
+inputs:
+  python-version:
+    required: true
+    description: Python version to install, e.g. "3.12"
+  uv-version:
+    required: true
+    description: >-
+      Pinned uv version. Kept as a caller input rather than hardcoded here so
+      the version lives in exactly one place — ci.yml's UV_VERSION env var —
+      instead of drifting between the workflow and this action.
+  cache-dependency-path:
+    required: false
+    default: v4/uv.lock
+    description: Lockfile to key the cache on.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install uv
+      shell: bash
+      run: pip install "uv==${{ inputs.uv-version }}"
+
+    # Keyed on the lockfile content, not its path: a dependency bump changes
+    # the hash and the cache naturally misses instead of serving stale wheels.
+    # restore-keys falls back to the newest cache for this OS+Python pair so a
+    # PR that only adds one new dependency still reuses everything else.
+    - name: Cache uv package cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/uv
+        key: uv-${{ runner.os }}-py${{ inputs.python-version }}-${{ hashFiles(inputs.cache-dependency-path) }}
+        restore-keys: |
+          uv-${{ runner.os }}-py${{ inputs.python-version }}-
