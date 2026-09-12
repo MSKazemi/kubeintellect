@@ -702,3 +702,338 @@
     width: 100%;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   VIDEO FACADE — click-to-play YouTube embed
+   No iframe (no YouTube JS/cookies) loads until the viewer clicks.
+   ═══════════════════════════════════════════════════════════════ */
+
+.ki-video {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 880px;
+  margin: 1.75rem auto;
+  border-radius: var(--ki-radius-lg);
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border: 1px solid var(--ki-border);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+}
+
+.ki-video img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease, filter 0.4s ease;
+  margin: 0 !important;
+}
+
+.ki-video:hover img {
+  transform: scale(1.035);
+  filter: brightness(0.55);
+}
+
+.ki-video::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.05) 0%, rgba(0, 0, 0, 0.55) 100%);
+  pointer-events: none;
+}
+
+.ki-video-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  background: rgba(10, 10, 10, 0.55);
+  border: 1.5px solid rgba(0, 230, 118, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  backdrop-filter: blur(3px);
+  transition: transform var(--ki-transition), box-shadow var(--ki-transition), border-color var(--ki-transition);
+  animation: ki-play-pulse 2.6s ease-in-out infinite;
+}
+
+.ki-video:hover .ki-video-play {
+  transform: translate(-50%, -50%) scale(1.12);
+  border-color: var(--ki-green);
+  box-shadow: 0 0 32px rgba(0, 230, 118, 0.45);
+}
+
+.ki-video-play::before {
+  content: '';
+  border-style: solid;
+  border-width: 12px 0 12px 20px;
+  border-color: transparent transparent transparent #f2fdf6;
+  margin-left: 5px;
+}
+
+@keyframes ki-play-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 230, 118, 0.28); }
+  50%       { box-shadow: 0 0 0 14px rgba(0, 230, 118, 0); }
+}
+
+.ki-video-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  padding: 0.9rem 1.2rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+  color: #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.ki-video-caption .ki-badge {
+  flex-shrink: 0;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(0, 230, 118, 0.14);
+  border: 1px solid rgba(0, 230, 118, 0.4);
+  color: var(--ki-green);
+}
+
+.ki-video iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   EVOLUTION TIMELINE — architecture generations, v1 → v4
+   ═══════════════════════════════════════════════════════════════ */
+
+.ki-timeline {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  margin: 2.5rem 0 2rem;
+  padding: 2.25rem 1.5rem 1.75rem;
+  position: relative;
+  background:
+    radial-gradient(ellipse 70% 100% at 50% 0%, rgba(0, 230, 118, 0.06) 0%, transparent 70%),
+    linear-gradient(180deg, #0b0d0b 0%, #0a0a0a 100%);
+  border: 1px solid var(--ki-border);
+  border-radius: var(--ki-radius-lg);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+}
+
+.ki-timeline::before {
+  content: '';
+  position: absolute;
+  top: 28px;
+  left: 12.5%;
+  right: 12.5%;
+  height: 2px;
+  background: linear-gradient(90deg,
+    rgba(0, 230, 118, 0.25) 0%,
+    rgba(0, 230, 118, 0.5) 40%,
+    var(--ki-cyan) 100%);
+  z-index: 0;
+}
+
+.ki-tl-step {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  padding: 0 0.6rem;
+  opacity: 0;
+  transform: translateY(14px);
+  animation: ki-tl-in 0.6s ease forwards;
+}
+
+.ki-tl-step:nth-child(1) { animation-delay: 0.05s; }
+.ki-tl-step:nth-child(2) { animation-delay: 0.20s; }
+.ki-tl-step:nth-child(3) { animation-delay: 0.35s; }
+.ki-tl-step:nth-child(4) { animation-delay: 0.50s; }
+
+@keyframes ki-tl-in {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.ki-tl-dot {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 0.9rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: #0a0a0a;
+  background: linear-gradient(135deg, var(--ki-green), var(--ki-cyan));
+  box-shadow: 0 0 0 4px #0a0a0a, 0 0 22px rgba(0, 230, 118, 0.35);
+  transition: box-shadow var(--ki-transition), transform var(--ki-transition);
+}
+
+.ki-tl-step:hover .ki-tl-dot {
+  box-shadow: 0 0 0 4px #0a0a0a, 0 0 32px rgba(0, 230, 118, 0.65);
+  transform: scale(1.08);
+}
+
+.ki-tl-step.ki-tl-current .ki-tl-dot {
+  box-shadow: 0 0 0 4px #0a0a0a, 0 0 0 6px rgba(0, 230, 118, 0.5), 0 0 26px rgba(0, 230, 118, 0.5);
+}
+
+.ki-tl-title,
+.ki-tl-title p {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #e8edf3 !important;
+  margin: 0 0 0.3rem;
+}
+
+.ki-tl-status,
+.ki-tl-status p {
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.14rem 0.5rem;
+  border-radius: 999px;
+  margin: 0 0 0.55rem;
+  color: var(--ki-text-dim) !important;
+  border: 1px solid var(--ki-border-soft);
+}
+
+.ki-tl-step.ki-tl-current .ki-tl-status,
+.ki-tl-step.ki-tl-current .ki-tl-status p {
+  color: var(--ki-green) !important;
+  border-color: rgba(0, 230, 118, 0.4);
+  background: rgba(0, 230, 118, 0.08);
+}
+
+.ki-tl-desc,
+.ki-tl-desc p {
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: var(--ki-text-mid) !important;
+  margin: 0;
+}
+
+.ki-tl-arrow {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .ki-timeline {
+    grid-template-columns: 1fr;
+    gap: 1.6rem;
+  }
+
+  .ki-timeline::before {
+    top: 0;
+    bottom: 0;
+    left: 27px;
+    right: auto;
+    width: 2px;
+    height: auto;
+    background: linear-gradient(180deg,
+      rgba(0, 230, 118, 0.25) 0%,
+      rgba(0, 230, 118, 0.5) 40%,
+      var(--ki-cyan) 100%);
+  }
+
+  .ki-tl-step {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    gap: 1rem;
+    text-align: left;
+    align-items: start;
+  }
+
+  .ki-tl-dot {
+    margin: 0;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   COMPARISON TABLES — .ki-compare wraps a normal markdown table
+   ═══════════════════════════════════════════════════════════════ */
+
+.ki-compare {
+  margin: 1.75rem 0;
+  border-radius: var(--ki-radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--ki-border);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+}
+
+.ki-compare table {
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  width: 100%;
+}
+
+.ki-compare thead th {
+  background: linear-gradient(180deg, rgba(0, 230, 118, 0.14), rgba(0, 230, 118, 0.05)) !important;
+  position: sticky;
+  top: 0;
+}
+
+.ki-compare tbody tr {
+  opacity: 0;
+  transform: translateX(-8px);
+  animation: ki-row-in 0.45s ease forwards;
+}
+
+.ki-compare tbody tr:nth-child(1) { animation-delay: 0.05s; }
+.ki-compare tbody tr:nth-child(2) { animation-delay: 0.12s; }
+.ki-compare tbody tr:nth-child(3) { animation-delay: 0.19s; }
+.ki-compare tbody tr:nth-child(4) { animation-delay: 0.26s; }
+.ki-compare tbody tr:nth-child(5) { animation-delay: 0.33s; }
+.ki-compare tbody tr:nth-child(6) { animation-delay: 0.40s; }
+.ki-compare tbody tr:nth-child(7) { animation-delay: 0.47s; }
+.ki-compare tbody tr:nth-child(8) { animation-delay: 0.54s; }
+.ki-compare tbody tr:nth-child(n+9) { animation-delay: 0.6s; }
+
+@keyframes ki-row-in {
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.ki-compare tbody tr td:first-child {
+  font-weight: 600;
+}
+
+/* Highlight KubeIntellect's own column when it is the 2nd column */
+.ki-compare table td:nth-child(2),
+.ki-compare table th:nth-child(2) {
+  background: rgba(0, 230, 118, 0.045);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ki-tl-step,
+  .ki-compare tbody tr,
+  .ki-video-play,
+  .ki-hero::after,
+  .ki-hero-mark {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

@@ -19,6 +19,7 @@ hide:
     <div class="ki-ctas">
       <a href="quickstart/" class="md-button md-button--primary">Get Started →</a>
       <a href="https://github.com/MSKazemi/kubeintellect" class="md-button">View on GitHub</a>
+      <a href="https://youtu.be/je-K_w3vgGY" class="md-button">▶ Watch Demo</a>
     </div>
   </div>
 </div>

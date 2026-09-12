@@ -8,6 +8,8 @@ description: >-
 
 System-level reference for KubeIntellect: how the FastAPI app, LangGraph graph, tools, HITL gate, and streaming layer fit together. Read this first; then drill into per-subsystem deep dives.
 
+**[▶ Watch a 38-second animated walkthrough of this architecture](https://youtu.be/lgmalgXmDfg)** — the same seven layers, twenty-six components, and four phases described below.
+
 **Related docs**
 
 - [Agent behaviors](agent-behaviors.md) — five additive coordinator behaviors (kubectl error hints, snapshot bias, gather-then-conclude, playbook library, visible plan)
