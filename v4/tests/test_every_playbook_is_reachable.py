@@ -115,10 +115,10 @@ _BUMP_HINT = (
 
 def test_the_inventory_is_actually_covered():
     """Guard the guard: an empty registry would make both tests above pass vacuously."""
-    assert len(_PLAYBOOKS) == 26, (
+    assert len(_PLAYBOOKS) == 27, (
         f"playbook count changed to {len(_PLAYBOOKS)}{_BUMP_HINT}"
     )
-    assert len(_CASES) == 46, (
+    assert len(_CASES) == 48, (
         f"trigger-regex count changed to {len(_CASES)}{_BUMP_HINT}"
     )
 
