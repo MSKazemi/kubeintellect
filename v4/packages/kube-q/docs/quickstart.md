@@ -58,6 +58,21 @@ Before you begin, make sure you have:
     kq --version
     ```
 
+=== ":material-ubuntu: Snap"
+
+    ```bash
+    sudo snap install kubeintellect
+    sudo snap connect kubeintellect:dot-kube
+    sudo snap connect kubeintellect:dot-kube-q
+    sudo snap alias kubeintellect.kq kq
+    kq --version
+    ```
+
+    !!! warning "Both `connect` steps are required"
+        The snap is strictly confined and snapd's `home` interface excludes
+        top-level dot-directories, so without them `kq` can read neither your
+        kubeconfig nor its own state. Check with `snap connections kubeintellect`.
+
 === ":material-source-branch: From source"
 
     ```bash

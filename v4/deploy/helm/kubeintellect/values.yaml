@@ -137,8 +137,26 @@ config:
   # cluster; set it (e.g. "prod-eks-eu") whenever several clusters write to one database —
   # an in-cluster pod cannot derive a name on its own. See docs/configuration.md.
   clusterId: ""
-  llmProvider: azure          # azure | openai | qwen | anthropic (anthropic is V4-cortex only)
+  llmProvider: openai         # openai | azure | qwen | anthropic (anthropic is V4-cortex only)
   azureApiVersion: "2024-02-01"
+  # Reject unauthenticated callers. Leave false ONLY for a cluster-local or firewalled
+  # deployment. On any internet-reachable ingress set this true and supply at least one
+  # key below, because the default is not "deny": with no keys configured the server
+  # resolves every anonymous caller to `admin` — HITL-gated, but with write access to the
+  # cluster. That is not hypothetical; it was live on the public API until 2026-09.
+  # The pod refuses to start if this is true and no key tier is set, so it cannot half-apply.
+  requireAuth: false
+  # Serve /docs, /redoc, and /openapi.json. Those routes mount unauthenticated by construction
+  # (FastAPI wires them before any dependency runs), so on an internet-reachable ingress they
+  # hand out the full route map — including that POST /v1/auth/demo-keys exists and what it
+  # needs — before an attacker has made one authenticated call. The routes behind it still
+  # reject every unauthenticated request either way; this only removes the map. Leave true for
+  # local development, where interactive docs are worth the exposure.
+  disableApiDocs: false
+  # Browser origins allowed to call the API (comma-separated, no trailing slash, no spaces).
+  # Empty keeps the app default of http://localhost:3080. A value with a stray leading space
+  # matches no browser Origin and fails as a CORS rejection rather than a config error.
+  allowedOrigins: ""
   # Observability — URLs of Prometheus and Loki in the target cluster.
   # KubeIntellect queries these to answer metric/log questions.
   # Leave empty if you don't have them; the app still works for kubectl-based queries.

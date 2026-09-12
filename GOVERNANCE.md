@@ -28,8 +28,31 @@ than co-maintaining everything, and it is the normal route to maintainer.
 Contributors trusted with review and merge rights. Maintainers:
 - Review and merge pull requests.
 - Triage issues and shepherd RFCs.
+- **Re-read the open `good first issue` and `help wanted` pool periodically** and refresh what has
+  gone stale — see below.
 - Cut releases and keep CI green.
 - Uphold the [Code of Conduct](CODE_OF_CONDUCT.md) and the project's design principles.
+
+#### Refreshing the open-issue pool is a standing duty, not housekeeping
+
+This is written down because it is the single highest-yield thing a maintainer here does, and it
+is measured rather than assumed: a pass over *existing* stale issues on 2026-09-08 — filing
+nothing new — brought three first-time contributors within hours. A different pass found the
+opposite failure: an issue advertised as `good first issue` whose first command could not work,
+and a stale maintainer draft sitting on another that made it look taken. Both were silently
+turning people away.
+
+What the pass actually involves:
+
+- **Re-measure any number an issue states.** Counts drift; an issue body is the one surface no
+  gate can check, so prefer telling the reader how to check the tree (`ls playbooks/*.yaml`) over
+  restating a total that will rot.
+- **Kill anything that is already done.** An issue describing solved work wastes the most
+  generous thing a stranger offers — an evening.
+- **Say plainly when something is *not* taken.** A stale draft or an unanswered "I'd like to try
+  this" reads as claimed, and the next person moves on.
+- **Edit the body, not just a comment.** The body is what people read first.
+- **Label it.** An unlabelled issue is invisible to anyone browsing `help wanted`.
 
 New maintainers are invited by existing maintainers based on a sustained track record of
 high-quality contributions and good community judgment.

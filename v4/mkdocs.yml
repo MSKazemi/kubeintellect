@@ -138,6 +138,7 @@ nav:
     - Docker Compose: deploy/docker-compose.md
     - Kind dev env (repo, full stack): deploy/kind.md
     - Cloud / VM (Helm): deploy/cloud.md
+    - Hetzner (single VM): deploy/hetzner.md
     - AWS EKS: deploy/aws.md
     - Google Cloud GKE: deploy/gcp.md
     - Alibaba Cloud: deploy/alibaba.md

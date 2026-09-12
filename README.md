@@ -5,12 +5,15 @@
 
   [![CI](https://github.com/MSKazemi/kubeintellect/actions/workflows/ci.yml/badge.svg)](https://github.com/MSKazemi/kubeintellect/actions/workflows/ci.yml)
   [![PyPI](https://img.shields.io/pypi/v/kubeintellect.svg)](https://pypi.org/project/kubeintellect/)
+  [![kubeintellect downloads](https://img.shields.io/pypi/dm/kubeintellect?label=kubeintellect%20installs)](https://pypi.org/project/kubeintellect/)
   [![kq downloads](https://img.shields.io/pypi/dm/kube-q?label=kq%20installs)](https://pypi.org/project/kube-q/)
+  [![Snap Store](https://img.shields.io/snapcraft/v/kubeintellect/latest/stable?logo=snapcraft&label=snap)](https://snapcraft.io/kubeintellect)
   [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
   [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
   [![DOI](https://img.shields.io/badge/DOI-10.1007%2Fs10723--026--09837--6-blue)](https://doi.org/10.1007/s10723-026-09837-6)
   [![arXiv](https://img.shields.io/badge/arXiv-2509.02449-b31b1b.svg)](https://arxiv.org/abs/2509.02449)
   [![Website](https://img.shields.io/badge/website-kubeintellect.com-0075C4)](https://kubeintellect.com/)
+  [![YouTube](https://img.shields.io/badge/YouTube-Demo-FF0000?logo=youtube&logoColor=white)](https://youtu.be/je-K_w3vgGY)
   [![Hugging Face Space](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/mskazemi/kubeintellect)
   [![good first issues](https://img.shields.io/github/issues/MSKazemi/kubeintellect/good%20first%20issue?label=good%20first%20issues&color=7057ff)](https://github.com/MSKazemi/kubeintellect/contribute)
   [![GitHub Stars](https://img.shields.io/github/stars/MSKazemi/kubeintellect?style=social)](https://github.com/MSKazemi/kubeintellect)
@@ -21,9 +24,13 @@
 
   <br/>
 
-  <img src=".github/assets/kubeintellect-demo.gif" alt="KubeIntellect diagnosing a crash-looping payments-api, then pausing for approval before restarting it" width="880" />
+  <a href="https://youtu.be/je-K_w3vgGY">
+    <img src=".github/assets/kubeintellect-demo.gif" alt="KubeIntellect diagnosing a crash-looping payments-api, then pausing for approval before restarting it" width="880" />
+  </a>
 
   <sub>Ask why a pod is broken → get the root cause. Ask it to <em>change</em> something → it stops and waits for you.<br/>A real session against a live cluster, recorded end to end — nothing is cut, only the waiting is compressed.</sub>
+
+  <p><strong>▶ <a href="https://youtu.be/je-K_w3vgGY">Watch the full 8-minute demo</a></strong> · <a href="https://youtu.be/lgmalgXmDfg">Architecture walkthrough (38s)</a></p>
 </div>
 
 ---
@@ -64,9 +71,14 @@ kq --api-key ki-ro-dev            # kq defaults to https://api.kubeintellect.com
 ```bash
 docker run --rm -p 8000:8000 \
   -e LLM_PROVIDER=openai -e OPENAI_API_KEY=sk-... -e USE_SQLITE=true \
-  ghcr.io/mskazemi/kubeintellect:2.4.1
+  ghcr.io/mskazemi/kubeintellect:2.5.0
 curl localhost:8000/healthz          # {"status":"ok","arm":"v4",...}
 ```
+
+The same image is also mirrored to Docker Hub as `kazemi/kubeintellect:2.5.0`, if you'd rather
+not use GHCR. Both carry a sigstore build-provenance attestation and an SBOM, and you can check
+them before you run anything — see
+**[what is signed, and how to check it](v4/docs/security.md#what-is-signed-and-how-to-check-it)**.
 
 That starts the API with no database and no cluster attached — enough to see it come up.
 To point it at a cluster and a real database, use
@@ -82,6 +94,10 @@ kubeintellect serve        # start the API server on :8000
 ```
 
 Full install paths (browser, CLI-only, local Kind, Docker Compose, existing cluster) are in the **[v4 README](v4/README.md)** and **[v4 docs](v4/docs/)**.
+
+**Who's actually running this?** One real adopter so far, honestly listed in
+[ADOPTERS.md](ADOPTERS.md) — if you're running KubeIntellect anywhere, even a laptop Kind
+cluster, you'd be the second entry.
 
 ## This repository
 
@@ -277,7 +293,7 @@ something.
 | **[@AshSgDe29071999](https://github.com/AshSgDe29071999)** | Independently diagnosed the terminal-sensitivity bug and submitted the fixture-only fix ([#107](https://github.com/MSKazemi/kubeintellect/pull/107)). It did not merge — #109 arrived against a claimed issue — but running it as a control is the only reason we know the `pytest_configure` hook is load-bearing rather than incidental. The `claimed` label exists because of the collision they hit. |
 | **[@be-student](https://github.com/be-student)** | Fixed the fault-isolation hole in parallel tool batches ([#183](https://github.com/MSKazemi/kubeintellect/pull/183), closing [#174](https://github.com/MSKazemi/kubeintellect/issues/174)) — one malformed `kubectl` call raised straight out of LangGraph's parallel `ToolNode` and discarded every *successful* investigation result in the same batch, so a six-command diagnosis returned nothing. They found the right seam (`awrap_tool_call`) rather than widening a `try` around the graph, and the regression builds a **real compiled LangGraph** with seven parallel calls and proves the six good results survive — a test that genuinely fails without the fix. They also kept the HITL interrupt escaping the boundary unchanged and put both the command and the failure reason through `redact_secrets`, which is the part most fault-isolation patches get wrong. |
 | **[@biggdawg320](https://github.com/biggdawg320)** | Wrote the `PodDisruptionBudgetBlocking` playbook ([#196](https://github.com/MSKazemi/kubeintellect/pull/196)) — a voluntary eviction refused by a PDB, which is one of the harder Kubernetes failures to diagnose because nothing looks broken. Two judgement calls stand out. They kept `detect: null` and said why: an eviction refusal is an API response or drain stderr, not a Warning Event, and Karpenter reports PDB blockers as **Normal** events — so there was nothing honest to compile into a watch predicate. And they encoded that **zero allowed disruptions is legitimate availability policy, not an incident**, with a negative test proving a `kubectl get pdb` table showing `0` does not fire the playbook. The fix template refuses to delete the PDB or reach for `drain --disable-eviction`. They also added read-only `policy/poddisruptionbudgets` to both shipped roles and extended the RBAC-coverage test that derives its list from the playbooks. Reported their validation honestly, explicitly **not** claiming full suites green and running the unchanged base as a control to separate their changes from pre-existing Windows failures. Then wrote the fork-PR section of [`TRIAGE.md`](TRIAGE.md) ([#198](https://github.com/MSKazemi/kubeintellect/pull/198)), which records the trap that a workflow run awaiting maintainer approval reports `status: completed` with `conclusion: action_required` — so `completed` alone does not mean success — and separates workflow approval from code-review approval, the conflation that produced [#170](https://github.com/MSKazemi/kubeintellect/issues/170). And a third: `StatefulSetRolloutStuck` ([#202](https://github.com/MSKazemi/kubeintellect/pull/202)), where they assessed the scope **before** claiming it and correctly argued that no snapshot signal distinguishes a normal rollout wait from a stalled one — so the triggers match only the StatefulSet controller's own creation-failure messages, checked against `stateful_pod_control.go` rather than invented, with a multi-line negative test proving a `successful` line for one object cannot pair with a `failed error:` from another. They ran the red-green themselves and reported both halves (3 failed before the YAML, 14 passing after). |
-| **[@1cbyc](https://github.com/1cbyc)** | Claimed the `subprocess.run(..., text=True)` encoding work ([#168](https://github.com/MSKazemi/kubeintellect/issues/168)) — and **changed the plan before writing a line of code**. The issue recorded the maintainer's inclination as *"`errors="replace"` on log/output reads and strict elsewhere"*; they argued the line belongs somewhere better: strict `utf-8` for identifiers and structured command output, because replacement can turn operational data into a **plausible wrong answer**, and `errors="replace"` only where the purpose is displaying free-form logs. That is the reasoning this project exists to protect, it is now the adopted policy, and it arrived from someone who had not yet touched the repo. They also scoped themselves — 17 shipping call sites, not a bulk rewrite — and asked for confirmation before editing. |
+| **[@1cbyc](https://github.com/1cbyc)** | Shipped the `subprocess.run(..., text=True)` encoding fix ([#168](https://github.com/MSKazemi/kubeintellect/issues/168), [#213](https://github.com/MSKazemi/kubeintellect/pull/213)) — and **changed the plan before writing a line of code**. The issue recorded the maintainer's inclination as *"`errors="replace"` on log/output reads and strict elsewhere"*; they argued the line belongs somewhere better: strict `utf-8` for identifiers and structured command output, because replacement can turn operational data into a **plausible wrong answer**, and `errors="replace"` only where the purpose is displaying free-form logs. That is the reasoning this project exists to protect, and it arrived from someone who had not yet touched the repo. Their PR shipped it correctly everywhere they applied it; three remaining content sites the maintainer caught in review (`context_fetcher`'s cluster snapshot, `gitops`, `helm_tool`) were finished on top with credit intact. |
 | **[@Ryota-Di](https://github.com/Ryota-Di)** | Stepped forward for [#189](https://github.com/MSKazemi/kubeintellect/issues/189) — `kubeintellect service start` exiting 0 when systemd refuses to start the unit — within an hour of it being filed, and asked to be assigned rather than working in silence, which is the thing that stops two people duplicating an evening. Work in progress. |
 | **[@Lumbenlengo](https://github.com/Lumbenlengo)** | Volunteered to verify the install path on **Amazon EKS** ([#101](https://github.com/MSKazemi/kubeintellect/issues/101)) — the most common managed platform in production, and one CI has never touched, so IRSA, the AWS VPC CNI and the load-balancer controller are all genuinely unknown territory for this project. Offered a non-production cluster of their own to find out. Work in progress. |
 

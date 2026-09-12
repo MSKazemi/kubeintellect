@@ -32,7 +32,7 @@ help: ## Show shared-infra targets
 	@printf "  \033[36mcheck-public-checkout\033[0m    Run the nine gates against an export of HEAD, not your tree\n"
 	@printf "\n\033[1mKind cluster (one cluster, shared by all versions)\033[0m\n"
 	@printf "  \033[36mkind-cluster-create\033[0m      Create the shared Kind cluster (run once)\n"
-	@printf "  \033[36mkind-cluster-create-vm\033[0m   Create Kind cluster on an Azure VM (run once on the VM)\n"
+	@printf "  \033[36mkind-cluster-create-vm\033[0m   Create Kind cluster on a remote Linux VM (run once on the VM)\n"
 	@printf "  \033[36mkind-cluster-stop\033[0m        Pause cluster containers (state preserved)\n"
 	@printf "  \033[36mkind-cluster-start\033[0m       Resume a stopped cluster\n"
 	@printf "  \033[36mkind-cluster-cleanup\033[0m     Delete the cluster entirely (irreversible)\n"
@@ -80,7 +80,7 @@ check-public-checkout: ## Run the nine gates against an export of HEAD — what 
 kind-cluster-create: ## Create the shared Kind cluster (2-node, hot-reload mounts) — run once
 	KIND_CLUSTER_NAME=$(KIND_CLUSTER_NAME) bash scripts/kind/create-kind-cluster.sh
 
-kind-cluster-create-vm: ## Create Kind cluster on an Azure VM (no host mounts) — run once on the VM
+kind-cluster-create-vm: ## Create Kind cluster on a remote Linux VM (no host mounts) — run once on the VM
 	kind create cluster --name $(KIND_CLUSTER_NAME) \
 	  --config deploy/kind/kind-config-vm.yaml
 	kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.1/deploy/static/provider/kind/deploy.yaml

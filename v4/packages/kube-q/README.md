@@ -6,6 +6,7 @@
 
 [![Docs](https://img.shields.io/badge/docs-mskazemi.github.io%2Fkube__q-teal)](https://mskazemi.github.io/kube_q/)
 [![PyPI](https://img.shields.io/pypi/v/kube-q)](https://pypi.org/project/kube-q/)
+[![Snap Store](https://img.shields.io/snapcraft/v/kubeintellect/latest/stable?logo=snapcraft&label=snap)](https://snapcraft.io/kubeintellect)
 
 ---
 
@@ -37,6 +38,18 @@
 ```bash
 pip install kube-q
 ```
+
+Or from the Snap Store (Linux — bundles its own Python):
+
+```bash
+sudo snap install kubeintellect
+sudo snap connect kubeintellect:dot-kube    # read ~/.kube (kubeconfig)
+sudo snap connect kubeintellect:dot-kube-q  # read/write ~/.kube-q (config, sessions)
+sudo snap alias kubeintellect.kq kq         # optional: the short command name
+```
+
+Both `snap connect` steps are required: strict confinement plus snapd's `home`
+interface excluding dot-directories means neither path is reachable without them.
 
 Or via Homebrew:
 

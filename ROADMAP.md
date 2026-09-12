@@ -62,12 +62,12 @@ Not glamorous, but real, and each is a genuinely good first contribution.
 - ~~**`mypy` is not clean** — 30 errors across 12 files.~~ **Cleared in v2.3.0.** The workspace
   type-checks with zero errors and `Types (mypy)` is a blocking CI gate. Configuration lives in
   `v4/pyproject.toml`; keep it at zero.
-- **Worked examples missing for most `kq` subcommands** — [#15](https://github.com/MSKazemi/kubeintellect/issues/15).
-- **The snap is built but not published.** `snap/snapcraft.yaml` produces a strict-confinement
-  `kubeintellect` snap (amd64 + arm64) and CI builds and smoke-tests it on every relevant PR, but
-  the store name is unregistered and the two `personal-files` plugs need an approved snap
-  declaration before release. Build it yourself meanwhile — see
-  [`snap/README.md`](snap/README.md). Blocked on the maintainer's store account, not on code.
+- ~~**Worked examples missing for most `kq` subcommands**~~ **Closed in
+  [#15](https://github.com/MSKazemi/kubeintellect/issues/15), 2026-09-09.** `examples.md` now
+  has a worked example for every subcommand.
+- ~~**The snap is built but not published.**~~ **Published 2026-09-04.** Live on the Snap
+  Store's `stable` channel (`snap install kubeintellect`) — see
+  [`snap/README.md`](snap/README.md).
 - **`v1/`–`v3/` carry known-vulnerable dependencies.** They are frozen reference trees, not
   deployable software — see [SECURITY.md](SECURITY.md) for why they are not upgraded.
 

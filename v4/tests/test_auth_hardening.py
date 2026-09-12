@@ -18,6 +18,7 @@ from fastapi import HTTPException
 
 from app.api.v1 import auth as auth_mod
 from app.core.config import settings
+from app.main import api_docs_urls
 
 
 class FakeRequest:
@@ -95,3 +96,16 @@ def test_a_valid_key_still_resolves_to_its_role(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         auth_mod.get_user_role(FakeRequest("nope"))
     assert exc.value.status_code == 401
+
+
+# ── DISABLE_API_DOCS: unauthenticated /docs, /redoc, /openapi.json hand out the route map ─────
+
+def test_docs_are_served_by_default():
+    """The local quickstart keeps interactive docs — that's the whole point of Swagger UI."""
+    assert api_docs_urls(disabled=False) == ("/docs", "/redoc", "/openapi.json")
+
+
+def test_disable_api_docs_hides_all_three_together():
+    """No partial state: /docs fetches openapi.json client-side, so hiding one and not the
+    other leaves a working route map reachable through the survivor."""
+    assert api_docs_urls(disabled=True) == (None, None, None)

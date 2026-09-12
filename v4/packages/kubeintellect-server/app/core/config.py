@@ -34,7 +34,11 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/v1"
 
     # ── LLM provider ─────────────────────────────────────────────────────────
-    LLM_PROVIDER: str = Field(default="azure")
+    # Defaults to `openai` because that is the endpoint a new user can actually reach:
+    # it needs one key from platform.openai.com, whereas `azure` needs a deployed Azure
+    # OpenAI resource, its endpoint URL and two deployment names before a single call
+    # succeeds. Every provider here is still first-class — set LLM_PROVIDER to switch.
+    LLM_PROVIDER: str = Field(default="openai")
 
     # Sampling temperature for every model call. 0.0 remains the default because determinism
     # is what an operator wants, but it is now configurable because it cannot always be honoured:
@@ -689,6 +693,14 @@ class Settings(BaseSettings):
     # REQUIRE_AUTH converts that silent grant into a loud startup failure. Off by default so the
     # local quickstart is unchanged; the chart turns it on for any deployment that sets keys.
     REQUIRE_AUTH: bool = False
+
+    # /docs, /redoc, and /openapi.json are unauthenticated by construction (FastAPI mounts them
+    # before any dependency runs) and hand an attacker the full route map — including that
+    # POST /v1/auth/demo-keys exists and what it needs — before they've made a single
+    # authenticated call. The routes themselves still reject every unauthenticated request, so
+    # this is reconnaissance hardening, not an auth fix. Off by default so the local quickstart
+    # keeps interactive docs; the chart turns it on for any deployment that sets REQUIRE_AUTH.
+    DISABLE_API_DOCS: bool = False
 
     # ── Self-observability ────────────────────────────────────────────────────
     # Prometheus metrics about THIS process at /metrics: request rate, latency histogram, error

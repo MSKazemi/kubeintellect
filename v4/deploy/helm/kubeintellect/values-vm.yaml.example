@@ -1,4 +1,4 @@
-# ── Kind on Azure VM — production values ─────────────────────────────────────
+# ── Kind on a generic Linux VM — production values ──────────────────────────
 # Copy to values-vm.yaml (gitignored) and fill in the blanks.
 # Deploy with: make vm-deploy
 

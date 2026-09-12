@@ -13,6 +13,152 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **A truncated pod listing reported a healthy cluster, with an invented pod count**
+  (`app/agent/nodes/context_fetcher.py`, `app/agent/nodes/coordinator.py`,
+  `app/agent/state.py`; reported by [@uuzzrm](https://github.com/uuzzrm), #139, closes #140).
+  Safety invariant #1, live since the snapshot was introduced. The cluster-wide read was
+  sliced to 8 000 characters with nothing recording that it had been sliced, so on a
+  401-pod cluster whose one `CrashLoopBackOff` sorted past the cut the model was handed
+  *"85 pods, issues=false, warnings=false"* together with the instruction to prefer
+  answering "is the cluster healthy" from the snapshot. Both the verdict and the count
+  were fabricated; any real cluster exceeds that cap.
+
+  `_kubectl_snapshot` now returns `(ok, text, complete)`. Completeness is deliberately not
+  folded into `has_issues`: that flag means "unhealthy workloads were observed" and is
+  shown to the user in those words, so a cluster nobody could measure must not be
+  described as an unhealthy one. It gates the answer-from-the-snapshot shortcut instead —
+  an incomplete snapshot now renders a block telling the model never to answer a
+  whole-cluster question from it, and that absence of a pod is not evidence it is gone.
+
+  Three further defects in the same few lines, none of them in the original report:
+
+  * **The cap deleted the blocked-namespace notice.** `_filter_snapshot_output` appended
+    `[Protected] N row(s) withheld … NOT the complete set` at the end of the table and the
+    cap ran afterwards, so on any listing over the limit the sentence was sliced off and
+    the short listing read as a complete one — the exact outcome its own docstring says it
+    exists to prevent. Both notices are now appended *after* the cap.
+  * **The cap cut mid-row**, and the fragment still parsed: `default app-1 1/1 Runni` was
+    counted as a pod whose STATUS is `Runni`, which is not a healthy phase, so a listing
+    of nothing but Running pods reported an issue. The cut is now on a line boundary.
+  * **The truncation marker was itself parsed as a pod.** `_scan_snapshot` skipped policy
+    lines by a `[Protected]` prefix, and the marker begins `[truncated` — so the notice
+    saying pods were missing invented a pod and an issue of its own. Both scanners now use
+    the shared `POLICY_LINE_RE`.
+
+  `_run_kubectl_snapshot` dropped the `ok` flag, so a failed read reached
+  `targeted_investigator` fenced under a `### Pod Description` heading — kubectl's
+  `Unauthorized` stderr presented as the description of a pod. It now returns an explicit
+  `[unavailable]` line.
+
+- **`subprocess.run(..., text=True)` decoded child output with the platform default
+  encoding** (25 call sites across `app/`, `scripts/`, `tests/`; fixed by
+  [@1cbyc](https://github.com/1cbyc), #213, closes #168, the `subprocess` half of #136/#156
+  left standing by #161). On Windows (CP1252/CP936) or the POSIX `C` locale, a single
+  non-ASCII byte in `kubectl`/`helm`/`git` output raised `UnicodeDecodeError`. Every site now
+  names `encoding="utf-8"`; sites reading free-form content a human or the model reads
+  (`kubectl logs`/`describe`/`get`, the cluster snapshot, helm output, git/gh output) also
+  take `errors="replace"`, while identifier and structured-output sites (namespace/context
+  names, `which`, `systemctl`) stay strict, so a replaced byte can never corrupt a lookup key.
+  Three content sites the strict-only pass missed (`context_fetcher`'s cluster snapshot,
+  `gitops`, `helm_tool`) were completed on top with credit intact.
+- **The coordinator prompt taught the model to emit `<ns>` literally**
+  (`app/agent/nodes/coordinator.py`, `app/tools/output_policy.py`, fixed by
+  [@biggdawg320](https://github.com/biggdawg320), #207, closes the prompt half of #173).
+  Every kubectl example in the system prompt used metavariables — `-n <ns>`, `<name>`,
+  `--grace-period=<N>` — eighteen times over. A model copies the shape it is shown, so it
+  emitted `<ns>` verbatim, the kubectl guard rejected the command for containing shell
+  metacharacters, and the run failed. The examples now use concrete illustrative values
+  (`shop`, `payments-api`, `worker-1`) with an explicit instruction that they are
+  illustrative, that they must be substituted from discovery, and that a name must never
+  be guessed to make a command executable.
+
+  `describe node` was also dropped from the "Parallel (always)" batch, which had told the
+  model to describe a node in the same parallel batch that discovers which node to look at.
+
+  `v4/tests/test_coordinator_command_examples.py` keeps the examples grounded. It counts a
+  line as a command example if it names a CLI this project drives or carries a flag or a
+  `key=` directive — not only if it contains the word `kubectl`, which would have walked
+  past two of the lines this change repaired — and it runs over the Cortex gather and
+  synthesis prompts too, since the truncation clause is spliced into all three.
+
+  Still open in #173: `app/tools/kubectl_errors.py` hands metavariables back to the model
+  on the error path (`re-run \`kubectl get pods -n <ns>\``), with hints enabled by default.
+  That is the same failure at the moment the model is most likely to copy a suggestion.
+
+- **`kubeintellect service start` and `service stop` exited 0 after systemd refused**
+  (`app/cli.py`, reported and fixed by [@Ryota-Di](https://github.com/Ryota-Di), #208).
+  Both called `subprocess.run(...)` and discarded the result, so a unit that failed to
+  start reported success to the caller — and to any script or CI step that trusted the
+  exit code. They now propagate systemd's own return code.
+
+  The fix is narrower than it looks, and deliberately so: `service status` and
+  `service logs` keep discarding theirs, because `systemctl status` returns non-zero for
+  a perfectly valid inactive unit and `journalctl -f` returns non-zero when the operator
+  presses Ctrl-C. Treating either as a failure would have traded one wrong answer for
+  another. Those two entries stay in the audit allowlist with that reasoning written out.
+
+  `systemctl --user start` and `stop` were added to `_MUST_STAY_CHECKED`, and the success
+  path gained a test of its own: the failure test pins the code that is propagated, but
+  nothing held the other side, so `sys.exit(proc.returncode or 1)` — the shape a later
+  cleanup reaches for — would have turned every successful start into exit 1 with the
+  suite still green.
+
+## [2.5.0] – 2026-09-12
+
+### Added
+
+- **`DISABLE_API_DOCS` closes the public `/docs`, `/redoc`, and `/openapi.json` routes by
+  default off** (`app/core/config.py`, `app/main.py`,
+  `v4/deploy/helm/kubeintellect/{values.yaml,templates/configmap.yaml}`,
+  `v4/tests/test_auth_hardening.py`). FastAPI's default docs routes were reachable on
+  `api.kubeintellect.com` with zero auth, handing anyone the full route map — including that
+  `POST /v1/auth/demo-keys` (admin-only key minting) exists and its exact request schema.
+  Every real endpoint already rejected unauthenticated calls, so this was reconnaissance
+  exposure rather than a working exploit. `DISABLE_API_DOCS` mirrors the existing
+  `REQUIRE_AUTH` config pattern exactly and defaults to `false`, so no existing deployment
+  changes behaviour on upgrade; the Hetzner production deployment sets it `true`.
+
+- **AWS Bedrock is a supported LLM backend, and a provider-agnostic connectivity check**
+  (`v4/scripts/verify_llm.py`, `v4/docs/deploy/aws.md`, `v4/docs/deploy/hetzner.md`).
+  Bedrock exposes an OpenAI-compatible Chat Completions API, so it needs **no new provider
+  and no code change** — `LLM_PROVIDER=openai` with `OPENAI_BASE_URL` pointed at
+  `https://bedrock-runtime.<region>.amazonaws.com/openai/v1` and a Bedrock API key as the
+  bearer token, exactly the mechanism the DashScope/Qwen path already uses. Verified against
+  the live `eu-central-1` endpoint on 2026-09-03: the existing factory reaches it and gets a
+  well-formed Bedrock error back, so the integration is configuration only.
+  `scripts/verify_llm.py` generalises `verify_qwen.py` (which still works) to any provider —
+  OpenAI, Bedrock, Azure, Qwen, Ollama, or a local proxy. It exercises the real
+  `app.core.llm` factory and checks **tool calling**, not just chat, because a model that
+  chats fine but emits no tool call yields an agent that answers confidently and never reads
+  the cluster. `docs/deploy/aws.md` previously admitted there was no verifier for anything
+  but Qwen; there is now.
+
+- **A single-VM Hetzner deployment profile, and the auth switch it needs**
+  (`v4/deploy/helm/kubeintellect/values-hetzner.yaml.example`, `v4/docs/deploy/hetzner.md`,
+  `v4/tests/test_a_default_install_must_not_require_azure.py`). The chart had **no named
+  value for `REQUIRE_AUTH` or `ALLOWED_ORIGINS`** — the only way to enable authentication on
+  a Helm-deployed release was `config.extraEnv`, an escape hatch whose own documentation
+  describes it as carrying additive experiment flags. An operator reading `values.yaml` to
+  find the auth switch would have concluded there wasn't one. Both are now first-class
+  `config` keys, emitted by the ConfigMap and defaulting to today's behaviour, so no existing
+  release changes. The pairing of "auth required" with "keys actually set" is deliberately
+  *not* guarded in the template — the keys legitimately arrive via `--set-string`, and every
+  values file in the chart directory has to render standalone — so it stays where it cannot
+  be bypassed, in `app/main.py`, which exits non-zero before the port opens. That refusal now
+  has a test; it previously had none.
+
+### Changed
+
+- **The default LLM provider is `openai`, not `azure`** (`app/core/config.py`,
+  `v4/deploy/helm/kubeintellect/values.yaml`, `v4/Makefile`). Azure was the one provider a
+  new user could not satisfy with a single credential: it needs a deployed Azure OpenAI
+  resource, its endpoint URL and two deployment names before the first call succeeds, and a
+  missing Azure credential is a startup *warning*, not an error — so the server came up,
+  served traffic, and failed at the first LLM call. Every provider remains first-class and
+  existing deployments set `LLM_PROVIDER` explicitly, so this changes nothing for them.
+
+### Fixed
+
 - **A rollback point could be marked `restorable` while covering only some of the objects the
   command mutates** (`app/tools/kubectl_tool.py`, `packages/ki-protocol/ki_protocol/record.py`,
   `v4/tests/test_a_rollback_point_covers_every_object_or_says_it_does_not.py`, #190 → #195).

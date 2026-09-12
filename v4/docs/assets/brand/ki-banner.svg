@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2160" height="720" viewBox="0 0 2160 720" role="img" aria-label="KubeIntellect banner">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#00ff88"/>
+      <stop offset="100%" stop-color="#00c758"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="18%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#00ff88" stop-opacity=".07"/>
+      <stop offset="100%" stop-color="#00ff88" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="gl" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="2160" height="720" fill="#0b1020"/>
+  <rect width="2160" height="720" fill="url(#glow)"/>
+
+  <!-- >ki mark, 256-unit design scaled 1.7 → 435px, at (150,142) -->
+  <g transform="translate(150,142) scale(1.7)">
+    <rect width="256" height="256" rx="58" fill="#0d1226"/>
+    <rect x="1" y="1" width="254" height="254" rx="57" fill="none" stroke="#1e2642" stroke-width="2"/>
+    <g transform="translate(-17,0)">
+      <path d="M 53,96 L 86,128 L 53,160"
+            fill="none" stroke="url(#g)" stroke-width="14"
+            stroke-linecap="round" stroke-linejoin="round"
+            filter="url(#gl)"/>
+      <text x="104" y="170"
+            font-family="'JetBrains Mono','SF Mono',monospace"
+            font-weight="700" font-size="112"
+            fill="url(#g)">ki</text>
+    </g>
+  </g>
+
+  <!-- Wordmark: Kube (light) + Intellect (green), JetBrains Mono -->
+  <text x="700" y="335"
+    font-family="'JetBrains Mono','SF Mono',monospace"
+    font-weight="800" font-size="160"
+    fill="#e6edf3">Kube<tspan fill="url(#g)">Intellect</tspan></text>
+
+  <!-- Tagline -->
+  <text x="705" y="435"
+    font-family="'Inter', 'Helvetica Neue', Arial, sans-serif"
+    font-weight="300" font-size="46" letter-spacing="1"
+    fill="#94a3b8">Chat with your Kubernetes cluster from the terminal</text>
+
+  <!-- Sub-line -->
+  <text x="705" y="515"
+    font-family="'Inter', 'Helvetica Neue', Arial, sans-serif"
+    font-weight="400" font-size="38" letter-spacing="1"
+    fill="#00e07a">Evidence-quoted diagnosis &#8226; human approval before any change</text>
+</svg>

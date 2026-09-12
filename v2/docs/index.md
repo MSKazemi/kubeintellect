@@ -6,6 +6,12 @@ hide:
   - toc
 ---
 
+> **This is `v2`, a frozen reference version.** The current, deployable KubeIntellect is
+> **[`v4/`](https://github.com/MSKazemi/kubeintellect/tree/main/v4)**. `v1`–`v3` are
+> deliberately frozen (ADR-001/002) to keep the published paper's results reproducible — see
+> [SECURITY.md](https://github.com/MSKazemi/kubeintellect/blob/main/SECURITY.md). Nothing here
+> is published to PyPI, Docker Hub, GHCR, or the Snap Store.
+
 <div class="ki-hero">
   <div class="ki-hero-inner">
     <img src="assets/brand/ki-c-indigo.svg" alt="KubeIntellect" class="ki-hero-mark" />
@@ -19,6 +25,7 @@ hide:
     <div class="ki-ctas">
       <a href="quickstart/" class="md-button md-button--primary">Get Started →</a>
       <a href="https://github.com/MSKazemi/kubeintellect" class="md-button">View on GitHub</a>
+      <a href="which-version/#see-v4-the-current-platform-in-action" class="md-button">▶ Watch Demo (v4)</a>
     </div>
   </div>
 </div>
@@ -264,5 +271,5 @@ list of model and deployment variables.
 ---
 
 <div style="text-align:center; padding: 1rem 0 0.5rem; color: #374151; font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase;">
-  Open-source · AGPL-3.0 · <a href="https://github.com/MSKazemi/kubeintellect" style="color: #00e676;">GitHub</a> · <a href="v1/" style="color: #64748b;">KubeIntellect v1 (legacy)</a>
+  Open-source · MIT · <a href="https://github.com/MSKazemi/kubeintellect" style="color: #00e676;">GitHub</a> · <a href="v1/" style="color: #64748b;">KubeIntellect v1 (legacy)</a>
 </div>

@@ -23,11 +23,13 @@
 credentials.json
 secrets.yaml
 secrets.yml
+.secrets/
 # Generated Kubernetes/Helm secret overlays (contain real credentials)
 charts/kubeintellect/values-kind-secrets.yaml
 values-prod.yaml
 values-production.yaml
 values-vm.yaml
+values-hetzner.yaml
 values-aks.yaml
 values-eks.yaml
 values-gke.yaml

@@ -1,0 +1,87 @@
+title: "[Idea] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas are welcome at any size — a one-line "I'd use this if it did X" is as useful here
+        as a full design.
+
+        Everything below is optional. The one field worth filling in is the first one: **what
+        you were trying to do when you wanted this**. A request with the situation attached
+        usually gets built, or gets a workaround in the first reply; a request without one
+        usually gets a round-trip asking for it.
+
+        **This is not a commitment queue.** Ideas here feed the
+        [roadmap](https://github.com/MSKazemi/kubeintellect/blob/main/ROADMAP.md), which is
+        honest about what is Now / Next / Later / Not-planned. An idea landing in "Not-planned"
+        is still a useful outcome — it tells the next person why.
+
+        **Found a bug instead?** Please open an
+        [issue](https://github.com/MSKazemi/kubeintellect/issues/new/choose) — bugs get fixed
+        faster from the issue tracker than from a discussion thread.
+
+  - type: textarea
+    id: situation
+    attributes:
+      label: What were you trying to do?
+      description: |
+        The situation, not the solution. "I was on call at 2am and had to…" beats "add a
+        `--json` flag", because the situation often has more than one good answer and you may
+        not have picked the one that is cheapest to build.
+      placeholder: |
+        I was trying to work out which of 40 pods had restarted in the last hour, and I ended up
+        piping kubectl into jq because…
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like it to do?
+      description: Sketch it however you like — prose, a command line, a screenshot of another tool that gets it right.
+      placeholder: |
+        `kq -q "..." --since 1h`, or a summary line at the top of the answer that says what changed recently.
+    validations:
+      required: false
+
+  - type: textarea
+    id: today
+    attributes:
+      label: How do you handle it today?
+      description: |
+        Including "I don't, I just live with it." Knowing the current workaround tells us how
+        much the idea is actually worth — and sometimes the workaround turns out to be a
+        documentation gap rather than a missing feature.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part does this touch?
+      description: A rough guess is fine — nobody will hold you to it.
+      options:
+        - The kq CLI / terminal experience
+        - Diagnosis quality — the answers it gives
+        - The approval gate / safety model
+        - Playbooks and detectors
+        - Install, packaging, deployment
+        - Memory / the flight recorder / postmortems
+        - Docs
+        - Not sure
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        **"I'd adopt this if it supported X" is the single most useful thing you can post here**
+        — it comes with the reason attached, so it can be weighed against everything else
+        rather than just queued.
+
+        Proposing an idea is a real contribution and is credited the same way as code, whether
+        or not you write the implementation — see
+        [GOVERNANCE.md](https://github.com/MSKazemi/kubeintellect/blob/main/GOVERNANCE.md).
+        Several people on the contributor list have no merged commit.

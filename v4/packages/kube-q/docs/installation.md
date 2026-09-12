@@ -18,6 +18,23 @@ pipx install kube-q
 
 ---
 
+## Snap (Linux)
+
+```bash
+sudo snap install kubeintellect
+sudo snap connect kubeintellect:dot-kube    # read ~/.kube (kubeconfig)
+sudo snap connect kubeintellect:dot-kube-q  # read/write ~/.kube-q (config, sessions)
+sudo snap alias kubeintellect.kq kq         # optional: the short command name
+```
+
+Bundles its own Python, so it does not need one on the host. The two `snap connect`
+steps are required and are not auto-connected: the snap runs under **strict**
+confinement, and snapd's `home` interface deliberately excludes top-level
+dot-directories — which is where both `~/.kube` and `~/.kube-q` live. Verify with
+`snap connections kubeintellect`.
+
+---
+
 ## Homebrew
 
 ```bash

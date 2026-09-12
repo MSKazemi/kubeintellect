@@ -40,13 +40,16 @@ _REVIEWED: dict[tuple[str, str], str] = {
         "install's returncode and stays true regardless; a failed patch surfaces as an "
         "unreachable Loki in `kubeintellect status`"
     ),
-    ("cli.py", "systemctl --user start"): (
-        "`service start|stop|status` pass systemctl's own stdout and stderr straight through to "
-        "the terminal — no capture_output, and no ✓ printed afterwards"
+    ("cli.py", "systemctl --user status"): (
+        "`service status` is a query: systemctl may return non-zero for a valid service state "
+        "such as inactive, so its returncode is not treated as a command failure; stdout and "
+        "stderr are passed through directly"
     ),
-    ("cli.py", "systemctl --user stop"): "as `service start`",
-    ("cli.py", "systemctl --user status"): "as `service start`",
-    ("cli.py", "journalctl --user -u"): "`service logs` streams journalctl to the terminal, tail -f style",
+    ("cli.py", "journalctl --user -u"): (
+        "`service logs` is an interactive follow command; journalctl -f normally runs until "
+        "the user interrupts it, so its eventual returncode is not treated as the success or "
+        "failure of starting log viewing"
+    ),
 }
 
 # Signatures that were the pass-192 defects. They must never come back.
@@ -54,6 +57,11 @@ _MUST_STAY_CHECKED = (
     "kubectl apply -f",
     "systemctl --user restart",
     "systemctl --user disable",
+    # `start` and `stop` exited 0 after systemd refused, until #208. Deleting their
+    # `_REVIEWED` entries is what stops the discarded shape returning; listing them here
+    # is what stops the entry being written back, which is the easier mistake to make.
+    "systemctl --user start",
+    "systemctl --user stop",
 )
 
 
@@ -183,6 +191,46 @@ class TestTheCommandsThemselves:
 
         ok, detail = _run_quietly(["sleep", "5"], timeout=1)
         assert ok is False and "sleep" in detail
+
+    @pytest.mark.parametrize("action", ["start", "stop"])
+    def test_service_start_and_stop_propagate_systemctl_failure(
+        self, monkeypatch, action
+    ):
+        import argparse
+
+        from app import cli
+
+        def fake_run(cmd, **kwargs):
+            assert cmd == ["systemctl", "--user", action, cli._SERVICE_NAME]
+            return subprocess.CompletedProcess(cmd, 5)
+
+        monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+        with pytest.raises(SystemExit) as exit_info:
+            cli.cmd_service(argparse.Namespace(action=action))
+
+        assert exit_info.value.code == 5
+
+    @pytest.mark.parametrize("action", ["start", "stop"])
+    def test_service_start_and_stop_stay_silent_on_success(self, monkeypatch, action):
+        """A successful start/stop must return normally, not exit.
+
+        The failure path above pins the code that is propagated; nothing pinned the
+        success path, so `sys.exit(proc.returncode or 1)` — the shape a later cleanup
+        reaches for — would turn every successful `service start` into exit 1 with the
+        whole suite still green.
+        """
+        import argparse
+
+        from app import cli
+
+        def fake_run(cmd, **kwargs):
+            assert cmd == ["systemctl", "--user", action, cli._SERVICE_NAME]
+            return subprocess.CompletedProcess(cmd, 0)
+
+        monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+        cli.cmd_service(argparse.Namespace(action=action))  # must not raise SystemExit
 
     def test_uninstall_reports_a_refused_disable(self, tmp_path, monkeypatch, capsys):
         """`service uninstall` must not print "Service removed" when systemd refused."""

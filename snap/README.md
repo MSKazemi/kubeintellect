@@ -9,10 +9,25 @@ that path badly. `kq` talks to whatever backend you point it at.
 
 ## Status
 
-**Not yet published to the Snap Store.** The name `kubeintellect` is unregistered,
-and snaps that use the `personal-files` interface need an approved snap declaration
-before they can be released. Until that lands, build it locally with the commands
-below — the artifact is identical to what CI produces.
+**Published.** `kubeintellect` is on the Snap Store at
+<https://snapcraft.io/kubeintellect>, `latest/stable`:
+
+```bash
+sudo snap install kubeintellect
+sudo snap connect kubeintellect:dot-kube    # read ~/.kube (kubeconfig)
+sudo snap connect kubeintellect:dot-kube-q  # read/write ~/.kube-q (config, sessions)
+sudo snap alias kubeintellect.kq kq         # optional: the short command name
+
+kq --version
+```
+
+The two `snap connect` steps are not optional and not auto-connected — see
+[Why strict confinement](#why-strict-confinement-and-what-that-costs) below. The
+store declaration for the two `personal-files` plugs took four rejected revisions
+and publisher vetting to obtain; revisions 1–4 (1.5.0) were all rejected for
+requesting a super-privileged interface without one.
+
+Building locally is still the way to test a change before it ships.
 
 ## Build and test locally
 
@@ -79,10 +94,19 @@ snapcraft export-login --snaps kubeintellect \
     --acls package_access,package_push,package_update,package_release -
 ```
 
-First-time store setup, in order:
+First-time store setup is **done** and is recorded here so the next snap does not
+have to rediscover it:
 
-1. `snapcraft register kubeintellect`
-2. Request a snap declaration for the two `personal-files` plugs, and a `kq` alias,
-   on the [snapcraft forum store-requests category](https://forum.snapcraft.io/c/store-requests/19).
-   Both need manual review; expect days, not minutes.
+1. `snapcraft register kubeintellect` — the name is registered.
+2. A snap declaration for the two `personal-files` plugs was requested on the
+   [snapcraft forum store-requests category](https://forum.snapcraft.io/c/store-requests/19)
+   and granted after publisher vetting. `personal-files` is super-privileged: an
+   upload without the declaration is auto-rejected, which is what happened to
+   revisions 1–4. Expect days, not minutes.
 3. Release to `edge` first, verify on a clean machine, then promote.
+
+Check what the store is actually serving before claiming a version is out:
+
+```bash
+snap info kubeintellect | sed -n '/^channels:/,$p'
+```

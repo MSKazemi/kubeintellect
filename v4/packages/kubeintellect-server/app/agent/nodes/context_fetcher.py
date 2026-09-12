@@ -19,6 +19,11 @@ from app.tools.namespace_guard import (
     protected_message,
     withheld_sentence,
 )
+from app.tools.output_policy import (
+    POLICY_LINE_RE,
+    UNAVAILABLE_MARKER,
+    truncation_marker,
+)
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -37,10 +42,15 @@ _HEALTHY_POD_STATUSES = frozenset({"Running", "Completed", "Succeeded"})
 
 
 def _data_row_count(table: str) -> int:
-    """Rows of a kubectl table that are actual resources — not the header, not policy text."""
+    """Rows of a kubectl table that are actual resources — not the header, not policy text.
+
+    Policy text is matched with the shared predicate rather than a `[Protected]` prefix,
+    so a truncation marker is not counted as a warning event. Otherwise a cut events
+    listing grows a warning out of the sentence saying the listing was cut.
+    """
     rows = [
         ln for ln in table.splitlines()
-        if ln.strip() and not ln.strip().startswith(_POLICY_PREFIX)
+        if ln.strip() and not POLICY_LINE_RE.search(ln)
     ]
     return max(len(rows) - 1, 0)  # the first surviving line is the header
 
@@ -87,10 +97,16 @@ def _scan_snapshot(
     status_idx: int | None = None
     for line in lines:
         stripped = line.strip()
-        if not stripped or stripped.startswith(_POLICY_PREFIX):
+        if not stripped or POLICY_LINE_RE.search(stripped):
             # The withheld-rows sentence has enough whitespace-separated columns to be read
             # as a pod. Counting the notice that rows were removed as one of the rows would
             # be its own small lie, and it would flip has_issues on its wording.
+            #
+            # The test is the shared policy-line predicate, not a `[Protected]` prefix: the
+            # truncation marker appended after the cap begins `[truncated`, matches no
+            # prefix check, and was duly counted as a pod whose STATUS column read
+            # `omitted` — inventing a pod and an issue out of the notice saying pods were
+            # missing. Exactly the failure the two lines above describe, one marker later.
             continue
         cols = line.split()
         if status_idx is None:
@@ -119,21 +135,26 @@ def _scan_snapshot(
     return has_issues, has_warnings, pod_count
 
 
-def _filter_snapshot_output(args: list[str], output: str) -> str:
-    """Remove blocked-namespace rows from a cluster-wide snapshot, and say how many.
+def _filter_snapshot_output(args: list[str], output: str) -> tuple[str, int]:
+    """Remove blocked-namespace rows from a cluster-wide snapshot. Returns ``(text, dropped)``.
 
     `-n <blocked>` is refused before it runs; `--all-namespaces` names no namespace in
     particular, so it has to be filtered on the way back — exactly as `run_kubectl` filters the
     output of the identical command. The withheld sentence goes in because the alternative is a
     short listing that reads as a complete one: the model is being handed this table as *the*
     state of the cluster, with no request of its own to compare it against.
+
+    The count comes back instead of the sentence so the caller can append it **after** the
+    length cap. Appending it here put it at the end of a 34 000-character table that was then
+    sliced to 8 000, which deleted the one line saying the listing was not complete — the exact
+    outcome the sentence exists to prevent.
     """
     if not _is_all_namespaces(args):
-        return output
+        return output, 0
     kept, dropped = drop_blocked_table_rows(output)
     if not dropped:
-        return output
-    return kept.rstrip("\n") + "\n" + withheld_sentence(dropped, "row") + "\n"
+        return output, 0
+    return kept, dropped
 
 
 def _snapshot_refusal(args: list[str]) -> str | None:
@@ -168,18 +189,30 @@ def _snapshot_refusal(args: list[str]) -> str | None:
     return None
 
 
-def _kubectl_snapshot(args: list[str]) -> tuple[bool, str]:
-    """Run a read-only kubectl command. Returns ``(ok, text)``.
+def _kubectl_snapshot(args: list[str]) -> tuple[bool, str, bool]:
+    """Run a read-only kubectl command. Returns ``(ok, text, complete)``.
 
     ``ok`` is False when kubectl exited non-zero, could not be started, or timed
     out. The text is still returned — it is the operator-facing explanation — but
     a caller must not treat it as cluster data. See ``_scan_snapshot`` for what
     happened while nothing checked the exit code.
+
+    ``complete`` is False when the output was longer than the cap. It is a separate
+    fact from ``ok``: the read succeeded, the text is real, and it is *not all of
+    it*. Nothing carried that before, so a 401-pod listing whose one
+    `CrashLoopBackOff` sorted past 8 000 characters arrived as ``ok=True`` with no
+    marker, `_scan_snapshot` found no unhealthy status in what survived, and the
+    coordinator was handed "85 pods, issues=false, warnings=false" together with an
+    instruction to prefer answering "is the cluster healthy" from it (#140).
+
+    Completeness is deliberately not folded into ``has_issues``. That flag means
+    "unhealthy workloads were observed", and it is rendered to the user in those
+    words; a cluster nobody could measure is not a cluster reported as unhealthy.
     """
     refusal = _snapshot_refusal(args)
     if refusal:
         logger.warning("context_fetcher: refused snapshot read %r: %s", args, refusal)
-        return False, refusal
+        return False, refusal, True
 
     kubeconfig = os.path.expanduser(settings.KUBECONFIG_PATH)
     env = {**os.environ, "KUBECONFIG": kubeconfig}
@@ -187,7 +220,7 @@ def _kubectl_snapshot(args: list[str]) -> tuple[bool, str]:
         proc = subprocess.run(
             ["kubectl"] + args,
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8", errors="replace",
             timeout=settings.KUBECTL_TIMEOUT_SECONDS,
             env=env,
             shell=False,
@@ -199,16 +232,57 @@ def _kubectl_snapshot(args: list[str]) -> tuple[bool, str]:
                 " ".join(args[:2]), proc.returncode,
                 (proc.stderr or "").strip().splitlines()[-1:] or ["(no stderr)"],
             )
-            return False, out[:_SNAPSHOT_MAX_CHARS]
-        return True, _filter_snapshot_output(args, out)[:_SNAPSHOT_MAX_CHARS]
+            return False, out[:_SNAPSHOT_MAX_CHARS], False
+        filtered, dropped = _filter_snapshot_output(args, out)
+        return True, _cap_with_notices(filtered, dropped), len(filtered) <= _SNAPSHOT_MAX_CHARS
     except Exception as exc:
         logger.warning(f"context_fetcher: kubectl {' '.join(args[:2])} failed: {exc}")
-        return False, f"(unavailable: {exc})"
+        return False, f"(unavailable: {exc})", False
+
+
+def _cap_with_notices(text: str, dropped: int) -> str:
+    """Apply the length cap, then say what the cap and the filter each removed.
+
+    Order is the whole point. Both notices are appended after the slice, because a
+    notice inside the slice is a notice that can be sliced off — and the two that
+    belong here are precisely the ones that say the text above them is incomplete.
+    """
+    notices = []
+    if dropped:
+        notices.append(withheld_sentence(dropped, "row"))
+
+    if len(text) <= _SNAPSHOT_MAX_CHARS:
+        if not notices:
+            return text
+        return text.rstrip("\n") + "\n" + "\n".join(notices) + "\n"
+
+    # Cut on a line boundary. A character slice ends mid-row, and the fragment it leaves
+    # still has enough columns to be parsed: `default app-1 1/1 Runni` was counted as a
+    # pod whose STATUS is `Runni`, which is not a healthy phase, so a listing of nothing
+    # but Running pods reported an issue — a fabricated one, out of a severed word.
+    cut = text[:_SNAPSHOT_MAX_CHARS]
+    boundary = cut.rfind("\n")
+    body = (cut[:boundary] if boundary > 0 else cut).rstrip("\n")
+    notices.append(truncation_marker(
+        len(text) - len(body), "chars",
+        "narrow the read with -n or -l; absence here is not evidence",
+    ))
+    return body + "\n" + "\n".join(notices) + "\n"
 
 
 def _run_kubectl_snapshot(args: list[str]) -> str:
-    """Text-only wrapper, for callers that render the output for a human."""
-    return _kubectl_snapshot(args)[1]
+    """Text-only wrapper, for callers that render the output for a human.
+
+    A failed read comes back as an explicit unavailable line rather than raw stderr.
+    The wrapper used to drop ``ok`` on the floor, so `targeted_investigator` fenced
+    `error: You must be logged in to the server (Unauthorized)` under a
+    `### Pod Description` heading, carrying none of the markers the prompt tells the
+    model to treat as incomplete.
+    """
+    ok, text, _complete = _kubectl_snapshot(args)
+    if ok:
+        return text
+    return f"{UNAVAILABLE_MARKER} {_unavailable_reason(text)}"
 
 
 def _unavailable_reason(text: str) -> str:
@@ -226,15 +300,17 @@ async def context_fetcher(state: AgentState) -> dict:
         session_id=session_id,
     ))
 
-    (pods_ok, pods_out), (events_ok, events_out) = await asyncio.gather(
-        asyncio.to_thread(_kubectl_snapshot, ["get", "pods", "--all-namespaces"]),
-        asyncio.to_thread(_kubectl_snapshot, [
-            "get", "events", "--all-namespaces",
-            "--sort-by=.lastTimestamp",
-            "--field-selector=type=Warning",
-        ]),
-    )
+    (pods_ok, pods_out, pods_complete), (events_ok, events_out, events_complete) = \
+        await asyncio.gather(
+            asyncio.to_thread(_kubectl_snapshot, ["get", "pods", "--all-namespaces"]),
+            asyncio.to_thread(_kubectl_snapshot, [
+                "get", "events", "--all-namespaces",
+                "--sort-by=.lastTimestamp",
+                "--field-selector=type=Warning",
+            ]),
+        )
     read_failed = not (pods_ok and events_ok)
+    snapshot_complete = pods_complete and events_complete
 
     parts = ["## Cluster Snapshot"]
     if pods_ok:
@@ -293,6 +369,7 @@ async def context_fetcher(state: AgentState) -> dict:
             "snapshot_has_issues": has_issues,
             "snapshot_has_warnings": has_warnings,
             "snapshot_read_failed": read_failed,
+            "snapshot_complete": snapshot_complete,
             "matched_playbooks": matched_playbooks,
             "cluster_id": cluster_id,
         },
@@ -304,6 +381,7 @@ async def context_fetcher(state: AgentState) -> dict:
         "snapshot_has_warnings": has_warnings,
         "snapshot_pod_count": pod_count,
         "snapshot_read_failed": read_failed,
+        "snapshot_complete": snapshot_complete,
         "snapshot_built_at": time.time(),
         "matched_playbooks": matched_playbooks,
         "cluster_id": cluster_id,
