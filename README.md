@@ -70,7 +70,9 @@ curl localhost:8000/healthz          # {"status":"ok","arm":"v4",...}
 ```
 
 The same image is also mirrored to Docker Hub as `kazemi/kubeintellect:2.4.1`, if you'd rather
-not use GHCR.
+not use GHCR. Both carry a sigstore build-provenance attestation and an SBOM, and you can check
+them before you run anything — see
+**[what is signed, and how to check it](v4/docs/security.md#what-is-signed-and-how-to-check-it)**.
 
 That starts the API with no database and no cluster attached — enough to see it come up.
 To point it at a cluster and a real database, use
