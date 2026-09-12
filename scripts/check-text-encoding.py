@@ -36,8 +36,14 @@
 # It DOES flag a source file that is not valid UTF-8, rather than skipping it: a
 # file the gate cannot read is a file the gate is not guarding.
 #
-# NOT COVERED, and tracked separately: `subprocess.run(..., text=True)` decodes
-# with the locale encoding too. Same bug class, different call shape.
+# subprocess text mode decodes the child's pipes with the locale default too.
+# The `errors=` convention for these calls, as agreed in #168:
+#   - `errors="replace"` where the decoded bytes are free-form **content** a human or
+#     the model will read.
+#   - strict (no `errors=` or `"strict"`) where they are an **identifier**, a **path**,
+#     or a tool's own **structured output**.
+
+
 #
 # SCOPE
 #
@@ -52,6 +58,8 @@
 #   make check-encoding                         # same as the first form
 # ─────────────────────────────────────────────────────────────────────────────
 from __future__ import annotations
+
+SUBPROCESS_CALLS = frozenset({"run", "Popen", "check_output", "call", "check_call"})
 
 import ast
 import subprocess
@@ -93,7 +101,7 @@ def repo_root() -> str:
         ["git", "rev-parse", "--show-toplevel"],
         capture_output=True,
         check=True,
-        text=True,
+        text=True, encoding="utf-8",
     ).stdout.strip()
 
 
@@ -109,7 +117,7 @@ def tracked_python_files(root: str | None = None) -> list[str]:
         ["git", "ls-files", "-z", "--", "*.py"],
         capture_output=True,
         check=True,
-        text=True,
+        text=True, encoding="utf-8",
         cwd=root,
     ).stdout
     paths = [p for p in out.split("\0") if p]
@@ -191,6 +199,17 @@ def offenders(source: str, path: str) -> list[tuple[str, int, str]]:
         if not isinstance(node, ast.Call):
             continue
         name = _called_name(node)
+        
+        # Check subprocess text mode
+        if name in SUBPROCESS_CALLS:
+            text_arg = next((kw for kw in node.keywords if kw.arg in ("text", "universal_newlines")), None)
+            if text_arg:
+                if isinstance(text_arg.value, ast.Constant) and text_arg.value.value is False:
+                    pass  # Explicitly False is fine
+                elif not any(keyword.arg == "encoding" for keyword in node.keywords) and not any(keyword.arg is None for keyword in node.keywords):
+                    found.append((path, node.lineno, name))
+            continue
+            
         if name not in TEXT_IO_NAMES:
             continue
         if any(keyword.arg == "encoding" for keyword in node.keywords):

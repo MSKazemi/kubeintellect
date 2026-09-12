@@ -26,12 +26,12 @@ dependencies = [
     "python-dotenv>=1.2.3",
     # LLM + Agent
     "langchain>=1.0",
-    "langchain-openai>=1.0",
+    "langchain-openai>=1.6.1",
     "langgraph>=1.0",
     "langsmith>=0.8",
     # Database
     "asyncpg>=0.30",
-    "psycopg[binary,pool]>=3.3.4",
+    "psycopg[binary,pool]>=3.3.5",
     "langgraph-checkpoint-postgres>=3.0",
     "langgraph-checkpoint-sqlite>=3.0",
     # YAML validation

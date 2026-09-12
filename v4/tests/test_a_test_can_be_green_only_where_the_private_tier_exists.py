@@ -46,7 +46,7 @@ def _private_only_paths() -> list[str]:
          "ls-tree", "-r", "--name-only", "HEAD"],
         cwd=_REPO_ROOT,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=True,
     )
     private = {line for line in priv.stdout.splitlines() if line}
@@ -60,7 +60,7 @@ def _tracked_at_head() -> list[str]:
         ["git", "ls-tree", "-r", "--name-only", "HEAD"],
         cwd=_REPO_ROOT,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         check=True,
     )
     return sorted(line for line in out.stdout.splitlines() if line)
@@ -88,7 +88,7 @@ def export_dir():
             ["bash", str(_SCRIPT), "--export-only", str(target)],
             cwd=_REPO_ROOT,
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8",
         )
         assert proc.returncode == 0, (
             f"--export-only failed ({proc.returncode})\n"
@@ -107,7 +107,7 @@ class TestTheScriptIsRunnableAtAll:
         assert _SCRIPT.stat().st_mode & 0o111, f"{_SCRIPT.name} is not executable"
 
     def test_it_parses(self):
-        proc = subprocess.run(["bash", "-n", str(_SCRIPT)], capture_output=True, text=True)
+        proc = subprocess.run(["bash", "-n", str(_SCRIPT)], capture_output=True, text=True, encoding="utf-8",)
         assert proc.returncode == 0, proc.stderr
 
 
@@ -146,7 +146,7 @@ class TestItRunsWhereGitHasNoConfiguredIdentity:
             ["bash", str(_SCRIPT), "--export-only", str(tmp_path / "tree")],
             cwd=_REPO_ROOT,
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8",
             env=env,
         )
         assert proc.returncode == 0, (
@@ -157,7 +157,7 @@ class TestItRunsWhereGitHasNoConfiguredIdentity:
             ["git", "rev-parse", "HEAD"],
             cwd=tmp_path / "tree",
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8",
             env=env,
         )
         assert head.returncode == 0, head.stderr
@@ -176,7 +176,7 @@ class TestTheExportIsAFaithfulCheckout:
             ["git", "rev-parse", "--is-inside-work-tree"],
             cwd=export_dir,
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8",
         )
         assert proc.returncode == 0, proc.stderr
         assert proc.stdout.strip() == "true"
@@ -189,7 +189,7 @@ class TestTheExportIsAFaithfulCheckout:
             ["git", "rev-parse", "HEAD"],
             cwd=export_dir,
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8",
         )
         assert proc.returncode == 0, f"the export has no HEAD:\n{proc.stderr}"
         assert len(proc.stdout.strip()) == 40
@@ -202,7 +202,7 @@ class TestTheExportIsAFaithfulCheckout:
             ["git", "ls-files"],
             cwd=export_dir,
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8",
             check=True,
         )
         got = sorted(line for line in out.stdout.splitlines() if line)
@@ -232,7 +232,7 @@ class TestNoPrivateTierPathReachesTheExport:
             ["git", "ls-files"],
             cwd=export_dir,
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8",
             check=True,
         )
         indexed = {line for line in out.stdout.splitlines() if line}

@@ -61,7 +61,7 @@ def repo_root() -> str:
         ["git", "rev-parse", "--show-toplevel"],
         capture_output=True,
         check=True,
-        text=True,
+        text=True, encoding="utf-8",
     ).stdout.strip()
 
 
@@ -81,7 +81,7 @@ def tracked_python_files(root: str | None = None) -> list[str]:
         ["git", "ls-files", "-z", "--", "*.py"],
         capture_output=True,
         check=True,
-        text=True,
+        text=True, encoding="utf-8",
         cwd=root,
     ).stdout
     paths = [p for p in out.split("\0") if p]
