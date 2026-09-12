@@ -11,6 +11,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`kubeintellect service start` and `service stop` exited 0 after systemd refused**
+  (`app/cli.py`, reported and fixed by [@Ryota-Di](https://github.com/Ryota-Di), #208).
+  Both called `subprocess.run(...)` and discarded the result, so a unit that failed to
+  start reported success to the caller — and to any script or CI step that trusted the
+  exit code. They now propagate systemd's own return code.
+
+  The fix is narrower than it looks, and deliberately so: `service status` and
+  `service logs` keep discarding theirs, because `systemctl status` returns non-zero for
+  a perfectly valid inactive unit and `journalctl -f` returns non-zero when the operator
+  presses Ctrl-C. Treating either as a failure would have traded one wrong answer for
+  another. Those two entries stay in the audit allowlist with that reasoning written out.
+
+  `systemctl --user start` and `stop` were added to `_MUST_STAY_CHECKED`, and the success
+  path gained a test of its own: the failure test pins the code that is propagated, but
+  nothing held the other side, so `sys.exit(proc.returncode or 1)` — the shape a later
+  cleanup reaches for — would have turned every successful start into exit 1 with the
+  suite still green.
+
 ## [2.5.0] – 2026-09-12
 
 ### Added
