@@ -681,6 +681,27 @@ not an empty or healthy cluster.
 
     bias_strength = "Strongly prefer" if mode == "strict" else "Prefer"
 
+    # A listing that was cut is not a listing of the cluster. `issues=false` then means
+    # "nothing unhealthy in the part that survived the cap", and the pod count is a count
+    # of that part — on a 401-pod cluster it read 85. Neither may license answering "is
+    # the cluster healthy" without a fresh, narrowed read (#140).
+    if not state.get("snapshot_complete", True):
+        return f"""
+
+## Snapshot Sufficiency
+
+**The cluster snapshot above is INCOMPLETE — it was longer than the limit and was
+cut.** It reports {pod_count} pods and issues={str(issues).lower()},
+warnings={str(warnings).lower()}, and each of those describes only the part that
+survived the cut, not the cluster.
+
+- NEVER answer "how many pods", "is the cluster healthy", "what's running", or any
+  other whole-cluster question from this snapshot.
+- Absence of a pod, namespace or warning here is NOT evidence that it does not exist.
+- Use a tool, narrowed with `-n` or `-l` so the result fits, and say which part of the
+  cluster your answer covers.
+"""
+
     return f"""
 
 ## Snapshot Sufficiency
@@ -1114,8 +1135,8 @@ def _verify_resolution(namespace: str | None, pre_state: dict | None = None) -> 
             _wait_for_rollout(namespace)
 
         ns_arg = ["-n", namespace] if namespace else ["--all-namespaces"]
-        pods_ok, pods_out = _kubectl_snapshot(["get", "pods", *ns_arg])
-        events_ok, events_out = _kubectl_snapshot([
+        pods_ok, pods_out, _pods_complete = _kubectl_snapshot(["get", "pods", *ns_arg])
+        events_ok, events_out, _events_complete = _kubectl_snapshot([
             "get", "events", *ns_arg,
             "--sort-by=.lastTimestamp",
             "--field-selector=type=Warning",
