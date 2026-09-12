@@ -13,6 +13,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **The coordinator prompt taught the model to emit `<ns>` literally**
+  (`app/agent/nodes/coordinator.py`, `app/tools/output_policy.py`, fixed by
+  [@biggdawg320](https://github.com/biggdawg320), #207, closes the prompt half of #173).
+  Every kubectl example in the system prompt used metavariables — `-n <ns>`, `<name>`,
+  `--grace-period=<N>` — eighteen times over. A model copies the shape it is shown, so it
+  emitted `<ns>` verbatim, the kubectl guard rejected the command for containing shell
+  metacharacters, and the run failed. The examples now use concrete illustrative values
+  (`shop`, `payments-api`, `worker-1`) with an explicit instruction that they are
+  illustrative, that they must be substituted from discovery, and that a name must never
+  be guessed to make a command executable.
+
+  `describe node` was also dropped from the "Parallel (always)" batch, which had told the
+  model to describe a node in the same parallel batch that discovers which node to look at.
+
+  `v4/tests/test_coordinator_command_examples.py` keeps the examples grounded. It counts a
+  line as a command example if it names a CLI this project drives or carries a flag or a
+  `key=` directive — not only if it contains the word `kubectl`, which would have walked
+  past two of the lines this change repaired — and it runs over the Cortex gather and
+  synthesis prompts too, since the truncation clause is spliced into all three.
+
+  Still open in #173: `app/tools/kubectl_errors.py` hands metavariables back to the model
+  on the error path (`re-run \`kubectl get pods -n <ns>\``), with hints enabled by default.
+  That is the same failure at the moment the model is most likely to copy a suggestion.
+
 - **`kubeintellect service start` and `service stop` exited 0 after systemd refused**
   (`app/cli.py`, reported and fixed by [@Ryota-Di](https://github.com/Ryota-Di), #208).
   Both called `subprocess.run(...)` and discarded the result, so a unit that failed to
