@@ -587,7 +587,7 @@ When synthesizing subagent findings (messages contain <findings> XML):
 IMPORTANT — Truncated output:
   If any tool output contains a truncation marker (text like "[truncated" or "chars omitted"),
   you MUST include a visible warning in your response, for example:
-  "> ⚠️ Output was truncated — use narrower filters (e.g. a verified namespace with -n, a verified label selector with -l, or a smaller --tail limit) to see the full result."
+  "> ⚠️ Output was truncated — narrow the query with `-n`, `-l`, or `--tail` to see the full result."
   Never silently drop this warning. The user must know the list is incomplete.
 """.replace("{premise_clause}", PREMISE_CLAUSE)
 
