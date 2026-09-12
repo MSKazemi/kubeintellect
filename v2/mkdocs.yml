@@ -53,6 +53,9 @@ theme:
 extra_css:
   - stylesheets/extra.css
 
+extra_javascript:
+  - javascripts/video-facade.js
+
 extra:
   generator: false
   social:
@@ -102,6 +105,8 @@ plugins:
 nav:
   - Home: index.md
   - Quickstart: quickstart.md
+  - Which version do I want?: which-version.md
+  - How it compares (vs k8sgpt / HolmesGPT): comparison.md
 
   - Use:
     - What you can ask: capabilities.md
