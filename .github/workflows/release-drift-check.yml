@@ -1,0 +1,98 @@
+name: Release drift check
+
+# ADR-005 (design/adr/, private tier — proposed, not yet accepted): catches `main` sitting too
+# far ahead of its last release tag automatically, instead of by a human noticing the GitHub
+# page looks different from their clone (2026-09-12: 60 commits, 12 days, undetected).
+#
+# Deliberately NOT a required/blocking check — unreleased work between tags is normal. This
+# opens or updates one tracking issue when the drift crosses the threshold, and closes it again
+# once a release brings the count back down. It never fails a PR or blocks a merge.
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # daily, 06:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  # Tune against this repo's actual PR cadence per ADR-005's own caveat — these are starting
+  # values, not a measured optimum.
+  MAX_COMMITS: 20
+  MAX_DAYS: 7
+
+jobs:
+  check-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Measure drift since the last tag
+        id: drift
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 --match 'v*')
+          TAG_DATE=$(git log -1 --format=%cI "$LAST_TAG")
+          COMMITS=$(git rev-list "${LAST_TAG}..HEAD" --count)
+          DAYS=$(( ( $(date -u +%s) - $(date -u -d "$TAG_DATE" +%s) ) / 86400 ))
+          echo "last_tag=$LAST_TAG" >> "$GITHUB_OUTPUT"
+          echo "commits=$COMMITS" >> "$GITHUB_OUTPUT"
+          echo "days=$DAYS" >> "$GITHUB_OUTPUT"
+          echo "Last tag: $LAST_TAG ($TAG_DATE) — $COMMITS commits / $DAYS days ahead"
+          if [ "$COMMITS" -ge "$MAX_COMMITS" ] || [ "$DAYS" -ge "$MAX_DAYS" ]; then
+            echo "drifted=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "drifted=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open or update the tracking issue
+        if: steps.drift.outputs.drifted == 'true'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const { last_tag, commits, days } = ${{ toJSON(steps.drift.outputs) }};
+            const title = 'main has drifted from its last release tag';
+            const body = `\`main\` is **${commits} commits** / **${days} days** ahead of ` +
+              `\`${last_tag}\`, past this repo's drift threshold (${process.env.MAX_COMMITS} ` +
+              `commits or ${process.env.MAX_DAYS} days — see ADR-005).\n\nThis is not a ` +
+              `merge gate; it's a reminder to cut a release, or to explicitly decide not to ` +
+              `yet. Closes automatically once a new tag brings the count back under threshold.`;
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'release-drift',
+            });
+            if (existing.data.length > 0) {
+              await github.rest.issues.update({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existing.data[0].number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: ['release-drift'],
+              });
+            }
+
+      - name: Close a stale tracking issue
+        if: steps.drift.outputs.drifted == 'false'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'release-drift',
+            });
+            for (const issue of existing.data) {
+              await github.rest.issues.update({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issue.number, state: 'closed',
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issue.number,
+                body: 'Drift is back under threshold — closing automatically.',
+              });
+            }
