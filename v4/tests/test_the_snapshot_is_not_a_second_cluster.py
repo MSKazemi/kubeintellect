@@ -29,6 +29,7 @@ import pytest
 from app.agent.nodes import context_fetcher as cf
 from app.agent.nodes.context_fetcher import (
     _data_row_count,
+    _cap_with_notices,
     _filter_snapshot_output,
     _kubectl_snapshot,
     _scan_snapshot,
@@ -88,47 +89,60 @@ def _fake_kubectl(stdout: str, returncode: int = 0):
     return _run
 
 
+def _filtered_snapshot_text(args, table):
+    """Exactly what reaches the model: filtered, capped, then annotated.
+
+    `_filter_snapshot_output` stopped appending the withheld sentence itself — it now
+    returns the count so the caller can add it *after* the length cap, because appending
+    it before meant the cap deleted it on any listing over 8 000 characters (#140). The
+    guarantee these tests assert is unchanged; it is made one function later, so they
+    assert it there.
+    """
+    text, dropped = _filter_snapshot_output(args, table)
+    return _cap_with_notices(text, dropped)
+
+
 # ── L1 · the cluster-wide table is filtered on the way back ───────────────────
 class TestTheClusterWideSnapshotIsFiltered:
     def test_blocked_rows_do_not_reach_the_snapshot(self):
-        out = _filter_snapshot_output(["get", "pods", "--all-namespaces"], PODS_TABLE)
+        out = _filtered_snapshot_text(["get", "pods", "--all-namespaces"], PODS_TABLE)
         for ns in ("kube-system", "kubeintellect", "monitoring"):
             assert ns not in out
 
     def test_the_unblocked_row_survives(self):
-        out = _filter_snapshot_output(["get", "pods", "--all-namespaces"], PODS_TABLE)
+        out = _filtered_snapshot_text(["get", "pods", "--all-namespaces"], PODS_TABLE)
         assert "shop-api-7d9f" in out
 
     def test_the_header_survives(self):
-        out = _filter_snapshot_output(["get", "pods", "--all-namespaces"], PODS_TABLE)
+        out = _filtered_snapshot_text(["get", "pods", "--all-namespaces"], PODS_TABLE)
         assert out.splitlines()[0].startswith("NAMESPACE")
 
     def test_the_reader_is_told_the_listing_is_short(self):
-        out = _filter_snapshot_output(["get", "pods", "--all-namespaces"], PODS_TABLE)
+        out = _filtered_snapshot_text(["get", "pods", "--all-namespaces"], PODS_TABLE)
         assert "3 row(s) withheld" in out
         assert "NOT the complete set" in out
 
     def test_a_clean_table_is_returned_untouched(self):
         clean = "NAMESPACE   NAME\ndefault     a\nshop        b\n"
-        assert _filter_snapshot_output(["get", "pods", "-A"], clean) == clean
+        assert _filtered_snapshot_text(["get", "pods", "-A"], clean) == clean
 
     def test_a_namespaced_read_is_not_row_filtered(self):
         # `-n <allowed>` was already decided; its rows carry no NAMESPACE column at all.
         body = "NAME   READY\nmonitoring-lookalike   1/1\n"
-        assert _filter_snapshot_output(["get", "pods", "-n", "shop"], body) == body
+        assert _filtered_snapshot_text(["get", "pods", "-n", "shop"], body) == body
 
     @pytest.mark.parametrize("flag", ["-A", "--all-namespaces", "--all-namespaces=true"])
     def test_every_spelling_of_all_namespaces_filters(self, flag):
-        out = _filter_snapshot_output(["get", "pods", flag], PODS_TABLE)
+        out = _filtered_snapshot_text(["get", "pods", flag], PODS_TABLE)
         assert "kube-system" not in out
 
     def test_the_event_message_column_is_what_this_protects(self):
-        out = _filter_snapshot_output(["get", "events", "-A"], EVENTS_TABLE)
+        out = _filtered_snapshot_text(["get", "events", "-A"], EVENTS_TABLE)
         assert "openai-api-key" not in out
         assert "6443/livez" not in out
 
     def test_a_fully_withheld_table_keeps_only_header_and_notice(self):
-        out = _filter_snapshot_output(["get", "events", "-A"], EVENTS_TABLE)
+        out = _filtered_snapshot_text(["get", "events", "-A"], EVENTS_TABLE)
         assert _data_row_count(out) == 0
         assert "2 row(s) withheld" in out
 
@@ -160,13 +174,13 @@ class TestABlockedNamespaceIsRefusedAtTheFunnel:
 
     def test_no_subprocess_is_launched_for_a_refused_read(self):
         with patch.object(subprocess, "run", side_effect=AssertionError("must not run")):
-            ok, text = _kubectl_snapshot(["describe", "pod", "etcd", "-n", "kube-system"])
+            ok, text, _complete = _kubectl_snapshot(["describe", "pod", "etcd", "-n", "kube-system"])
         assert ok is False
         assert text.startswith("[Protected]")
 
     def test_an_allowed_read_still_reaches_kubectl(self):
         with patch.object(subprocess, "run", _fake_kubectl("NAME   READY\napi    1/1\n")):
-            ok, text = _kubectl_snapshot(["get", "pods", "-n", "shop"])
+            ok, text, _complete = _kubectl_snapshot(["get", "pods", "-n", "shop"])
         assert ok is True
         assert "api" in text
 
@@ -244,29 +258,29 @@ class TestTargetedInvestigationHonoursTheBlocklist:
 # ── L5/L6 · the notice is not a pod, and not a warning ────────────────────────
 class TestThePolicyLineIsNotClusterData:
     def test_a_withheld_notice_is_not_counted_as_a_pod(self):
-        filtered = _filter_snapshot_output(["get", "pods", "-A"], PODS_TABLE)
+        filtered = _filtered_snapshot_text(["get", "pods", "-A"], PODS_TABLE)
         _, _, pod_count = _scan_snapshot(filtered, "", pods_ok=True, events_ok=True)
         assert pod_count == 1
 
     def test_a_withheld_notice_does_not_flip_has_issues(self):
-        filtered = _filter_snapshot_output(["get", "pods", "-A"], PODS_TABLE)
+        filtered = _filtered_snapshot_text(["get", "pods", "-A"], PODS_TABLE)
         has_issues, _, _ = _scan_snapshot(filtered, "", pods_ok=True, events_ok=True)
         assert has_issues is False   # the only CrashLoopBackOff was in `monitoring`
 
     def test_a_visible_crashloop_still_flips_has_issues(self):
         table = PODS_TABLE.replace("monitoring      loki-0", "shop            loki-0")
-        filtered = _filter_snapshot_output(["get", "pods", "-A"], table)
+        filtered = _filtered_snapshot_text(["get", "pods", "-A"], table)
         has_issues, _, _ = _scan_snapshot(filtered, "", pods_ok=True, events_ok=True)
         assert has_issues is True
 
     def test_a_fully_withheld_event_table_is_not_a_warning(self):
-        filtered = _filter_snapshot_output(["get", "events", "-A"], EVENTS_TABLE)
+        filtered = _filtered_snapshot_text(["get", "events", "-A"], EVENTS_TABLE)
         _, has_warnings, _ = _scan_snapshot(PODS_TABLE, filtered, pods_ok=True, events_ok=True)
         assert has_warnings is False
 
     def test_a_surviving_event_is_still_a_warning(self):
         table = EVENTS_TABLE + "shop   1m   Warning   BackOff   pod/x   restarting\n"
-        filtered = _filter_snapshot_output(["get", "events", "-A"], table)
+        filtered = _filtered_snapshot_text(["get", "events", "-A"], table)
         _, has_warnings, _ = _scan_snapshot(PODS_TABLE, filtered, pods_ok=True, events_ok=True)
         assert has_warnings is True
 
