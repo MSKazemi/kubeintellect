@@ -80,6 +80,13 @@ def main() -> int:
     record = yaml.safe_load(RECORD.read_text(encoding="utf-8"))
     required = list(record["required"])
     not_required = dict(record["not_required"])
+    # Checks required by name from a workflow file other than ci.yml (e.g.
+    # dependency-review.yml, scorecard.yml). ci_check_names() only parses ci.yml, so these
+    # never appear in `produced` and must stay out of the offline ci.yml partition below —
+    # but they are just as real for the live branch-protection comparison, which matches by
+    # name across the whole repository, not by workflow file.
+    required_other = dict(record.get("required_from_other_workflows") or {})
+    not_required_other = dict(record.get("not_required_from_other_workflows") or {})
     produced = ci_check_names()
 
     failures: list[str] = []
@@ -99,6 +106,9 @@ def main() -> int:
     for name, reason in sorted(not_required.items()):
         if not str(reason).strip().startswith("2026-"):
             failures.append(f"{name!r} is not required and its reason is not dated")
+    for name, reason in sorted((required_other | not_required_other).items()):
+        if not str(reason).strip().startswith("2026-"):
+            failures.append(f"{name!r} (from another workflow) has an undated reason")
 
     print(f"CI produces {len(produced)} check(s); the record accounts for {len(accounted)}.")
 
@@ -111,15 +121,23 @@ def main() -> int:
         )
     else:
         contexts = set(live["required_status_checks"]["contexts"])
-        for name in sorted(contexts - set(required)):
+        all_required = set(required) | set(required_other)
+        for name in sorted(contexts - all_required):
             failures.append(f"main REQUIRES {name!r} but the record does not list it")
-        for name in sorted(set(required) - contexts):
+        for name in sorted(all_required - contexts):
             failures.append(f"the record lists {name!r} as required but main does NOT require it")
         for key, expected in (record.get("settings") or {}).items():
-            actual = (
-                live["required_status_checks"]["strict"] if key == "strict"
-                else live.get(key, {}).get("enabled")
-            )
+            if key == "strict":
+                actual = live["required_status_checks"]["strict"]
+            elif key == "required_approving_review_count":
+                # Nested under required_pull_request_reviews, not a top-level {"enabled": ...}
+                # boolean like the other settings here — absent entirely when reviews are not
+                # required at all, rather than present with a false/zero value.
+                actual = (live.get("required_pull_request_reviews") or {}).get(
+                    "required_approving_review_count"
+                )
+            else:
+                actual = (live.get(key) or {}).get("enabled")
             if actual != expected:
                 failures.append(f"branch protection {key}={actual!r}, record says {expected!r}")
         print(f"live: main requires {len(contexts)} check(s).")
