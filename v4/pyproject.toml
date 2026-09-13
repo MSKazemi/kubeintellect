@@ -15,6 +15,7 @@ dev = [
     "pytest-asyncio>=1.0",
     "pytest-mock>=3.14",
     "pytest-timeout>=2.4",
+    "pytest-cov>=7.0",
     "respx>=0.22",
     # Pinned below 0.16 deliberately: 0.16 enables new default rules that reported
     # 438 findings across app/, now 342 after #70 cleared the EXE002 family.
@@ -58,6 +59,17 @@ asyncio_mode = "auto"
 # can only ever fire on a genuine hang, never on a slow-but-working test on a loaded CI runner.
 timeout = 120
 timeout_method = "thread"
+
+[tool.coverage.run]
+source = ["packages/kubeintellect-server/app"]
+branch = true
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "def __repr__",
+]
 
 [tool.mypy]
 python_version = "3.12"

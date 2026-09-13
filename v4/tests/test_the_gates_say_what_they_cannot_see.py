@@ -231,20 +231,36 @@ class TestTheRequiredChecksAreRecorded:
         assert len(reason) > 60, f"{name}: a reason, not a label"
 
     def test_an_undecided_gap_is_marked_as_undecided(self, record):
-        """Three of these are not choices anyone made; recording them as choices would be a lie."""
+        """v2/v3-frozen are not choices anyone made; recording them as choices would be a lie."""
         open_questions = {
             n for n, r in record["not_required"].items() if "NOT a deliberate decision" in str(r)
         }
-        assert "Container image (build + serve)" in open_questions, (
-            "the only check that proves the published image starts is unrequired; that is a gap, "
-            "not a policy"
+        assert open_questions == {"Tests (v2 · frozen)", "Tests (v3 · frozen)"}, (
+            "the open-questions set changed without this test being updated to match"
         )
-        assert len(open_questions) >= 3
+
+    def test_container_and_web_were_resolved_not_swept_away(self, record):
+        """2026-09-13: these were the other two open questions. Promoting them to `required`
+        must not silently drop them from the record — verify they moved, not vanished."""
+        assert "Container image (build + serve)" in record["required"]
+        assert "Web (lint + build)" in record["required"]
+        assert "Container image (build + serve)" not in record["not_required"]
+        assert "Web (lint + build)" not in record["not_required"]
 
     def test_the_settings_that_change_what_green_means_are_pinned(self, record):
         """`strict: false` is why two individually green PRs once turned main red."""
-        assert set(record["settings"]) == {"strict", "enforce_admins"}
-        assert all(isinstance(v, bool) for v in record["settings"].values())
+        settings = record["settings"]
+        assert set(settings) == {
+            "strict",
+            "enforce_admins",
+            "required_approving_review_count",
+            "required_signatures",
+            "required_linear_history",
+        }
+        assert isinstance(settings["required_approving_review_count"], int)
+        assert settings["required_approving_review_count"] >= 0
+        bool_keys = set(settings) - {"required_approving_review_count"}
+        assert all(isinstance(settings[k], bool) for k in bool_keys)
 
     def test_the_comparator_exists_and_is_runnable(self):
         assert COMPARATOR.exists()

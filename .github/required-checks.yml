@@ -23,6 +23,22 @@ required:
   - Tests (server · py3.13)
   - Tests (kube-q CLI · py3.13)
   - Install smoke test
+  # 2026-09-13: closes the two open questions below. Both were re-verified green on main
+  # before being promoted — see the CI-hardening PR that made this change for the exact run.
+  - Web (lint + build)
+  - Container image (build + serve)
+
+# ── Required, but NOT produced by ci.yml, so deliberately outside the `required`/
+# `not_required` partition above — v4/tests/test_the_gates_say_what_they_cannot_see.py checks
+# that those two sets exactly cover ci.yml's own checks, and a check from a different workflow
+# file would break that partition by definition, not by a bug in either side. ─────────────────
+required_from_other_workflows:
+  "Dependency review":
+    "2026-09-13: from .github/workflows/dependency-review.yml. Branch protection matches
+     required checks by NAME across the whole repository, not by workflow file, so a check
+     from any workflow can be required the same way ci.yml's own checks are. Blocks a PR that
+     adds a dependency with a known high/critical vulnerability — closes the gap that
+     Dependabot alerts only fire AFTER a bad dependency already reached main."
 
 # ── Not required, each with a dated reason. A CI check in neither list fails the gate. ────
 not_required:
@@ -40,22 +56,54 @@ not_required:
   "Tests (v3 · frozen)":
     "2026-08-28: ⚠️ NOT a deliberate decision — the same open question as v2. v3 is an abandoned
      spike rather than a cited generation, so it is the weaker half of that question."
-  "Web (lint + build)":
-    "2026-08-28: ⚠️ NOT a deliberate decision — recorded as an open question. The web surface
-     can go red and merge."
-  "Container image (build + serve)":
-    "2026-08-28: ⚠️ NOT a deliberate decision, and the sharpest of these. This job builds the
-     image and probes /healthz against a real Postgres — it is the ONLY check that proves the
-     published artifact starts at all, and every image published before it existed could not.
-     A PR that breaks the image merges green today."
+
+# ── Not required, and NOT produced by ci.yml — same reason this has its own section as the
+# required_from_other_workflows block above: the partition test only covers ci.yml. ──────────
+not_required_from_other_workflows:
+  "Scorecard analysis":
+    "2026-09-13: deliberate. scorecard.yml runs on push/schedule/branch_protection_rule, not
+     on pull_request, so there is no per-PR run for a required-check gate to wait on — making
+     it required would leave every PR permanently pending on a check that never reports for
+     it. It publishes to securityscorecards.dev as a monitoring signal, not a merge gate."
 
 # ── Settings this record also pins, because each one changes what 'green' means. ──────────
 settings:
-  # false = a PR does NOT have to be up to date with main before merging. Two individually
-  # green PRs can therefore turn main red on their SUM — which has already happened here, on
-  # the documented test counts. Now that the doc-claims checker is a required-job step
-  # (2026-08-28), that drift fails a build rather than merely being wrong.
-  strict: false
-  # false = an admin can push straight to main past every check above. Deliberate for a solo
-  # maintainer; written down so it is never mistaken for "main is protected from everyone".
+  # 2026-09-13: true. A PR must now be up to date with main before merging — closes the exact
+  # gap that let two individually-green PRs turn main red on their sum (the documented test
+  # counts, before the doc-claims checker existed as a required-job step).
+  strict: true
+  # 2026-09-13: true. At least one approving review is now required before merge. Safe to
+  # apply immediately alongside `enforce_admins: false` (below, still false): GitHub exempts
+  # repository admins from every branch-protection rule including this one when
+  # enforce_admins is off, so this only newly binds non-admin/external-contributor PRs —
+  # which needed the maintainer's review in practice already — and does not block any of the
+  # admin-authenticated sessions currently merging PRs to this repo.
+  required_approving_review_count: 1
+  # 2026-09-13: still false. Owner approved enabling this, but two blockers surfaced during
+  # implementation that make flipping it immediately destructive rather than "stricter":
+  #
+  #   enforce_admins: at the moment this was written, at least 5 other agent sessions were
+  #   concurrently merging PRs to this exact repo as the admin-authenticated owner (e.g. the
+  #   #207/#208 integration). Flipping this now would instantly require a review on every one
+  #   of those in-flight admin merges with no reviewer process for any of them to fall back
+  #   to — this is a live-multi-session-safety issue, not a policy preference.
+  #
+  #   required_signatures: verified locally that commit signing is NOT configured
+  #   (`git config commit.gpgsign` unset) despite GPG/SSH keys existing on the machine.
+  #   Flipping this before signing is set up and a signed test commit is verified against
+  #   GitHub would lock the owner AND every other active session out of pushing to main at
+  #   all — checked with `git log --pretty=%H %P` that main carries real 2-parent merge
+  #   commits in active use right now (e.g. 3f13e67), so this needs signing configured first,
+  #   not just approved.
+  #
+  #   required_linear_history: also held for the same reason — verified via `git log
+  #   --pretty=%p` that recent merges to main (3f13e67, PR #207) are genuine 2-parent merge
+  #   commits, not squashes. Enabling this disables GitHub's "create a merge commit" button
+  #   for every future PR, including ones other sessions may be mid-merge on right now.
+  #
+  # All three remain approved and intended — see the owner conversation this file's commit
+  # references — pending: (1) commit signing actually configured and verified, (2) a
+  # coordination point where no PR merge is in flight, before either is flipped live.
   enforce_admins: false
+  required_signatures: false
+  required_linear_history: false
