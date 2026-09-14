@@ -11,6 +11,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- **A TLS certificate-expiry triage playbook** (`app/agent/playbooks/tls_certificate_expired.yaml`,
+  by [@biggdawg320](https://github.com/biggdawg320), #210, with steps folded in from
+  [@RahulSinha9](https://github.com/RahulSinha9)'s independent #211; closes #13's TLS case).
+  Two contributors reached for the same missing capability a day apart, which is the clearest
+  evidence the gap was real. One guide ships, and both are credited.
+
+  The guide is deliberately triage-only (`detect: null`) and deliberately narrow. Its trigger
+  requires the same-line `is after` detail from Go's combined expired-or-not-yet-valid message,
+  because that message also covers a *future* `notBefore`, which is not expiry at all. Measured
+  against the real registry over CrashLoopBackOff, ImagePullBackOff, a readiness 500 and a
+  FailedScheduling snapshot: it stays silent on all four and fires only on genuine expiry
+  evidence. The alternative implementation matched `Failed|Unhealthy|BackOff` as an event
+  reason, which — since the matcher searches the whole events blob rather than a reason column —
+  fired on all four, injecting certificate guidance into an image-pull incident.
+
+  Its evidence discipline is the reason it ships as written: *"If identity, dates or ownership
+  are unverified, gather evidence before proposing a change. A generic TLS failure or HTTP 5xx
+  is insufficient to diagnose expiry."* It refuses `insecure-skip-tls-verify`, refuses to weaken
+  trust, and refuses to change a webhook `failurePolicy` to make the error disappear — the three
+  repairs that make the symptom go away without fixing anything.
+
+  Folded in from #211: the concrete SNI inspection (`openssl s_client -servername`), reading
+  validity and SAN coverage out of `tls.crt` without touching `tls.key`, and the distinction
+  that an unexpired certificate still fails verification when its SAN does not cover the
+  requested hostname. #211's `kubectl get certificate,certificaterequest` step is deliberately
+  **not** included: the shipped ClusterRole grants nothing under `cert-manager.io`, and widening
+  it is a security decision, not a playbook detail. Renewal ownership stays as prose.
+
+
 ### Fixed
 
 - **A truncated pod listing reported a healthy cluster, with an invented pod count**
