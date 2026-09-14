@@ -236,7 +236,7 @@ detects a matching pattern in the snapshot, the coordinator's system prompt
 includes the playbook(s) inline — guiding it to follow proven steps before
 improvising.
 
-**Playbooks shipped (26):**
+**Playbooks shipped (27):**
 
 *Pod / container lifecycle*
 
@@ -703,7 +703,7 @@ change; zero allowed disruptions by itself can be intentional availability polic
     threshold on the first scrape. That depends on runtime values, so it belongs to a
     shadow period and a human, not to a validator.
 
-Of the 26 shipped playbooks, **20 compile to detectors**; 4 are LLM-only
+Of the 27 shipped playbooks, **20 compile to detectors**; 4 are LLM-only
 (`CommandHardcodedFailure` — disambiguated from CrashLoopBackOff only by
 reading the pod spec — `ServiceUnreachable`, `NetworkPolicyBlocking`,
 where the packet is discarded in the CNI datapath so no machine signal
