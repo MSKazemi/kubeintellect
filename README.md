@@ -262,9 +262,9 @@ expected, it is not your mistake, and you do not need to do anything.
 
 ## Maintainer
 
-KubeIntellect was created by **[Mohsen Seyedkazemi Ardebili](https://github.com/MSKazemi)**, who
-maintains it today — see [GOVERNANCE.md](GOVERNANCE.md). The shipped code is the work of the
-people named below as well, and that list is meant to grow.
+KubeIntellect was created by **[Mohsen Seyedkazemi Ardebili](https://github.com/MSKazemi)**
+([homepage](https://mskazemi.com)), who maintains it today — see [GOVERNANCE.md](GOVERNANCE.md).
+The shipped code is the work of the people named below as well, and that list is meant to grow.
 
 Where the project is going — and what it deliberately **won't** do — is in **[ROADMAP.md](ROADMAP.md)**. It has one maintainer today; the contributor ladder in [GOVERNANCE.md](GOVERNANCE.md) is a real invitation, not a formality, and areas are genuinely available to own.
 

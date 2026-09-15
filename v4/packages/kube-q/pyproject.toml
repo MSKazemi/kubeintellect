@@ -39,7 +39,7 @@ dependencies = [
 ki-protocol = { workspace = true }
 
 [project.urls]
-Homepage = "https://github.com/MSKazemi/kubeintellect"
+Homepage = "https://mskazemi.com/kubeintellect/"
 Documentation = "https://github.com/MSKazemi/kubeintellect#readme"
 Repository = "https://github.com/MSKazemi/kubeintellect"
 Changelog = "https://github.com/MSKazemi/kubeintellect/blob/main/v4/packages/kube-q/CHANGELOG.md"

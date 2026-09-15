@@ -13,6 +13,7 @@ authors:
   - given-names: Mohsen
     family-names: "Seyedkazemi Ardebili"
     email: mohsen.seyedkazemi@gmail.com
+    website: "https://mskazemi.com"
 repository-code: "https://github.com/MSKazemi/kubeintellect"
 url: "https://github.com/MSKazemi/kubeintellect"
 license: AGPL-3.0-or-later
