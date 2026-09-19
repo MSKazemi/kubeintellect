@@ -80,9 +80,11 @@ Written down now, while it is hypothetical and nobody is upset.
 - **If the project is ever abandoned**, the intent is to archive it publicly with a clear
   notice in the README rather than let it rot silently, and to say so on PyPI. The AGPL means
   the code cannot be taken away from you regardless.
-- **Copyright and the dual license** stay with the author; that is a legal fact, not a
-  governance lever, and it does not affect anyone's AGPL rights. See
-  [LICENSING.md](LICENSING.md).
+- **Copyright in the project's own code, and the dual license, stay with the lead
+  maintainer**; that is a legal fact, not a governance lever, and it does not affect anyone's
+  AGPL rights. **Contributors keep the copyright in their own work** — there is no CLA and no
+  copyright assignment, and the commercial license does not reach contributed code. See
+  [LICENSING.md](LICENSING.md) and [DCO.md](DCO.md).
 
 ### Code of Conduct enforcement
 Reports go to **mohsen.seyedkazemi@gmail.com** and are handled per

@@ -316,7 +316,7 @@ Two specific asks for this project in particular:
    filter, and it applies identically to hand-written code.
 
 We will never reject a contribution *because* AI was used. We will reject one that is untested,
-doesn't fit the design, or that the author cannot explain — the same bar as always.
+doesn't fit the design, or that its author cannot explain — the same bar as always.
 
 ---
 
