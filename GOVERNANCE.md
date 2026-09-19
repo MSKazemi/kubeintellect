@@ -78,7 +78,8 @@ Written down now, while it is hypothetical and nobody is upset.
   project's top priority.
 - **If the project is ever abandoned**, the intent is to archive it publicly with a clear
   the code cannot be taken away from you regardless.
-- **Copyright and the dual license** stay with the author; that is a legal fact, not a
+- **Copyright in the project's own code, and the dual license, stay with the lead
+  maintainer**; that is a legal fact, not a governance lever, and it does not affect anyone's
 
 ### Code of Conduct enforcement
 Reports go to **mohsen.seyedkazemi@gmail.com** and are handled per
