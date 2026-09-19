@@ -142,6 +142,9 @@ hide:
     kq
     ```
 
+    On Homebrew 6.0+, if `brew tap` refuses this tap as untrusted, run
+    `brew trust --formula MSKazemi/kube-q/kube-q` and retry.
+
 === ":material-ubuntu: Snap"
 
     ```bash
