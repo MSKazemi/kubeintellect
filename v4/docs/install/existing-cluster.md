@@ -11,6 +11,8 @@ Connect KubeIntellect to a cluster you already have — company cluster, AKS, EK
 
 > **OpenShift / OKD Support:** Community-verified on a 3-node OpenShift/OKD cluster — `pip install`, `kubeintellect init`, and `kubeintellect serve` completed with no SecurityContextConstraints issues and no undocumented steps ([#104](https://github.com/MSKazemi/kubeintellect/issues/104)). RBAC and LLM-backed query behavior have not yet been verified on this platform.
 
+> **Amazon EKS Support:** Community-verified against a real EKS cluster (`v1.34`) — `pip install`, `kubeintellect init`, and `kubeintellect serve` completed cleanly, and a `readonly` key correctly blocked a mutating operation with no approval prompt shown ([#101](https://github.com/MSKazemi/kubeintellect/issues/101)). This local `pip install` path authenticates via kubeconfig plus the AWS CLI (`aws eks get-token`) — make sure both are installed and on `PATH`. IRSA only applies when KubeIntellect runs *inside* the cluster, which this path does not.
+
 ---
 
 ## 1. Install
