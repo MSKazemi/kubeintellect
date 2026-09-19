@@ -9,6 +9,8 @@ Connect KubeIntellect to a cluster you already have — company cluster, AKS, EK
 
 **Requirements:** Python 3.12+, `kubectl` configured with cluster access, an LLM API key.
 
+> **OpenShift / OKD Support:** Community-verified on a 3-node OpenShift/OKD cluster — `pip install`, `kubeintellect init`, and `kubeintellect serve` completed with no SecurityContextConstraints issues and no undocumented steps ([#104](https://github.com/MSKazemi/kubeintellect/issues/104)). RBAC and LLM-backed query behavior have not yet been verified on this platform.
+
 ---
 
 ## 1. Install
