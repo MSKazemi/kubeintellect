@@ -30,7 +30,7 @@ dev = [
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=1.0.6",
     "scipy>=1.18.1",
-    "matplotlib>=3.9",
+    "matplotlib>=3.11.2",
     "seaborn>=0.13",
     "numpy>=2.5.3",
     # The demo-recording toolchain. scripts/demo/cast_to_gif.py renders an asciinema cast to
