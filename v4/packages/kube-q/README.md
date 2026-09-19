@@ -58,6 +58,9 @@ brew tap MSKazemi/kube-q
 brew install kube-q
 ```
 
+On Homebrew 6.0+, `brew tap` may refuse this tap as untrusted (tap trust, added
+6.0.0). Run `brew trust --formula MSKazemi/kube-q/kube-q` and retry.
+
 Or install from source:
 
 ```bash
