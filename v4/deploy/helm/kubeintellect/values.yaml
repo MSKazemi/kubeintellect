@@ -121,6 +121,9 @@ serviceMonitor:
 
 serviceAccount:
   name: kubeintellect-sa
+  # Empty by default. On EKS, IRSA needs a role-arn annotation here, e.g.:
+  #   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::<account>:role/<role>
+  annotations: {}
 
 rbac:
   clusterAdmin: false
