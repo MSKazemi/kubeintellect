@@ -150,6 +150,17 @@ rbac:
   allowExec: false            # pods/exec — off by default to protect secrets
 ```
 
+On a managed cluster that authenticates outbound calls (Prometheus, Loki, an LLM provider) via a
+cloud-native workload identity rather than a static key, annotate the ServiceAccount instead of
+injecting credentials as secrets — e.g. IRSA on EKS:
+
+```bash
+helm install kubeintellect ./deploy/helm/kubeintellect \
+  --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::<account>:role/<role>
+```
+
+`serviceAccount.annotations` is empty by default and has no effect unless set.
+
 ---
 
 ## Observability (optional)
