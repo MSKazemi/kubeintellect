@@ -7,12 +7,12 @@ platform team asks before adopting a young project — and because knowing *how*
 people run it is what tells the maintainers which parts to harden next. Adding
 yourself is the single lowest-effort, highest-value contribution to the project.
 
-> **Status: one entry.** [@ybayraktarb](https://github.com/ybayraktarb) was the
+> **Status: two entries.** [@ybayraktarb](https://github.com/ybayraktarb) was the
 > first, in August 2026 — a k3s/k3d cluster on macOS, and the run that found the
 > README quickstart had never worked ([#151](https://github.com/MSKazemi/kubeintellect/pull/151)).
-> One is a small number and this list stays honest about that rather than padded.
-> If you're running KubeIntellect — even a Kind cluster on a laptop — you would be
-> the second entry, and "evaluating it" is a perfectly good row.
+> [@Lumbenlengo](https://github.com/Lumbenlengo) followed in September 2026,
+> verifying the local install path and readonly RBAC on Amazon EKS v1.34
+> ([#101](https://github.com/MSKazemi/kubeintellect/issues/101)).
 
 ## The list
 
@@ -20,6 +20,7 @@ yourself is the single lowest-effort, highest-value contribution to the project.
 
 | Organization / person | Since | Environment | How it's used | Contact |
 |---|---|---|---|---|
+| [@Lumbenlengo](https://github.com/Lumbenlengo) | 2026-09 | Amazon EKS v1.34 (1-node test cluster) | install path and RBAC verification | [@Lumbenlengo](https://github.com/Lumbenlengo) |
 | [@ybayraktarb](https://github.com/ybayraktarb) | 2026-08 | k3s / k3d (macOS) | install path verification & evaluation | [@ybayraktarb](https://github.com/ybayraktarb) |
 
 **Columns**
