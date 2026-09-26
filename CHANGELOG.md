@@ -13,6 +13,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **EKS deploy prerequisites and the in-cluster IRSA result are documented**
+  (`v4/docs/deploy/aws.md`, `v4/docs/deploy/image.md`, `v4/docs/install/existing-cluster.md`),
+  from [@Lumbenlengo](https://github.com/Lumbenlengo)'s in-cluster verification on EKS `1.34.11`
+  (#239, following their local-path run in #101).
+
+  Two findings, both now stated where a deployer will hit them. A **fresh EKS cluster cannot bind
+  the Postgres volume**: the chart leaves `postgres.storageClass` empty so the PVC inherits the
+  cluster default, and a new cluster has neither the EBS CSI driver nor a default StorageClass —
+  the install stops with the PVC `Pending`. The guide now names the add-on, and the two ways
+  around it (`postgres.storageClass`, or `postgres.external.enabled` with RDS).
+
+  And **IRSA works, verified as a negative control rather than a happy path** — with no static
+  keys or kubeconfig in the pod and EC2 metadata blocked, the SDK still authenticated via
+  `AssumeRoleWithWebIdentity`, which is what proves the credential came from the projected
+  ServiceAccount token. The docs also now say plainly what that does *not* mean: the runtime image
+  ships no AWS SDK and the server calls no AWS API today (Bedrock is an OpenAI-compatible endpoint
+  with a bearer key), so `serviceAccount.annotations` (#238) is supported plumbing for components
+  you add, confirmed working ahead of anything depending on it.
+
 - **A TLS certificate-expiry triage playbook** (`app/agent/playbooks/tls_certificate_expired.yaml`,
   by [@biggdawg320](https://github.com/biggdawg320), #210, with steps folded in from
   [@RahulSinha9](https://github.com/RahulSinha9)'s independent #211; closes #13's TLS case).
