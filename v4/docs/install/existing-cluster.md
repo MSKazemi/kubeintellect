@@ -13,6 +13,8 @@ Connect KubeIntellect to a cluster you already have — company cluster, AKS, EK
 
 > **Amazon EKS Support:** Community-verified against a real EKS cluster (`v1.34`) — `pip install`, `kubeintellect init`, and `kubeintellect serve` completed cleanly, and a `readonly` key correctly blocked a mutating operation with no approval prompt shown ([#101](https://github.com/MSKazemi/kubeintellect/issues/101)). This local `pip install` path authenticates via kubeconfig plus the AWS CLI (`aws eks get-token`) — make sure both are installed and on `PATH`. IRSA only applies when KubeIntellect runs *inside* the cluster, which this path does not.
 
+> **Running in-cluster on EKS instead?** That path is separately community-verified on EKS `1.34.11` ([#239](https://github.com/MSKazemi/kubeintellect/issues/239)) — the readonly-key refusal held from inside the cluster, and an IRSA-annotated ServiceAccount resolved credentials through the projected token with no static keys present. Two prerequisites bite there and not here: a fresh EKS cluster needs the EBS CSI driver and a default StorageClass before the Postgres volume will bind, and the runtime image ships no AWS SDK. See [deploy/aws.md](../deploy/aws.md) and [deploy/image.md](../deploy/image.md).
+
 ---
 
 ## 1. Install

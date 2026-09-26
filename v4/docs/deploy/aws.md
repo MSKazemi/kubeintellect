@@ -22,6 +22,25 @@ provider is decoupled from the cloud — use **Azure OpenAI, OpenAI, Qwen
 - An EKS cluster with an **amd64** node group (the image is `linux/amd64`).
 - The **AWS Load Balancer Controller** add-on if you want ALB ingress.
 - Local tools: `kubectl` (pointed at the cluster), `helm`, `aws` CLI, `docker`.
+- **Block storage, if you use the in-cluster Postgres fallback** — the
+  [`aws-ebs-csi-driver`](https://docs.aws.amazon.com/eks/latest/userguide/ebs-csi.html) add-on
+  *and* a StorageClass marked default. See the note below.
+
+> **A fresh EKS cluster cannot bind the Postgres volume until you add this.** The chart leaves
+> `postgres.storageClass` empty, which means "use the cluster's default StorageClass" — and a new
+> EKS cluster has neither the EBS CSI driver nor a default StorageClass. The install then stops
+> with the Postgres PVC stuck `Pending`
+> ([#239](https://github.com/MSKazemi/kubeintellect/issues/239)):
+>
+> ```text
+> no persistent volumes available for this claim and no storage class is set
+> ```
+>
+> Install the EBS CSI driver add-on (it needs its own IAM permissions, via IRSA or EKS Pod
+> Identity) and mark a StorageClass default — `gp3` is the usual choice. Alternatively, set
+> `postgres.storageClass` explicitly, or skip in-cluster Postgres altogether with
+> `postgres.external.enabled: true` and point at RDS (step 3 below), which is the recommended
+> path for anything long-lived and avoids this entirely.
 
 ## 1. Pick + verify the LLM
 

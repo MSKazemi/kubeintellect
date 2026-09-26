@@ -161,6 +161,20 @@ helm install kubeintellect ./deploy/helm/kubeintellect \
 
 `serviceAccount.annotations` is empty by default and has no effect unless set.
 
+> **Community-verified on EKS ([#239](https://github.com/MSKazemi/kubeintellect/issues/239)).**
+> On EKS `1.34.11`, with the annotation above applied, the pod carried no static AWS keys and no
+> kubeconfig, and with EC2 instance metadata blocked the AWS SDK still authenticated through
+> `AssumeRoleWithWebIdentity` and resolved the expected role — so the credential really is coming
+> from the projected ServiceAccount token and not from a fallback.
+>
+> Two things that verification makes clear. The runtime image ships **no AWS SDK** — `boto3` is
+> not a dependency — so reproducing the check means bringing one into the pod yourself. And
+> KubeIntellect's own server code calls no AWS API today: Bedrock is reached as an
+> OpenAI-compatible endpoint with a bearer key ([aws.md](aws.md#amazon-bedrock)), not through IAM.
+> This annotation is therefore the supported way to give the pod an AWS identity for anything
+> *you* add that needs one — a sidecar, or an IAM-fronted Prometheus or Loki — and the mechanism
+> is confirmed working ahead of anything in the app depending on it.
+
 ---
 
 ## Observability (optional)
