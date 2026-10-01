@@ -520,6 +520,8 @@ until you promote them.
 
 `--help` is local; `new`, `list`, `shadow`, `promote` and `reject` all call the server. The default is the safety property: a newly compiled detector enters **shadow** mode, where it records what it *would* have fired on and accrues a precision score, and it cannot open an investigation or act until a human promotes it. Authoring is behind `NL_DETECTOR_AUTHORING_ENABLED`, which is off by default.
 
+Newer servers are stricter about what they accept. A compiled detector that could never fire — zero predicates, a `promql` query (recorded, never evaluated), or a field the engine does not read — is refused with the reasons and exit code `3`, never reported as staged. "Staged" means the server's engine has actually loaded the detector. Running the same sentence again reuses the stored compilation instead of asking the model for a new one; `--recompile --name <new-name>` asks again on purpose.
+
 See [CLI Reference → `kq detector`](cli-reference.md#kq-detector-teach-a-new-failure-in-plain-english) and [Agent Behaviors → Playbook library](agent-behaviors.md#playbook-library).
 
 ---

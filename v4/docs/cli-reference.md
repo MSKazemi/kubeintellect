@@ -778,6 +778,8 @@ schema, and staged in **shadow** mode: it observes and accrues precision but
 
 ```bash
 kq detector new "pods stuck terminating for more than 5 minutes"   # compile + stage shadow
+kq detector new --recompile --name nl:stuck-v2 "pods stuck terminating for more than 5 minutes"
+                                                                   # ask the model again
 kq detector list --status shadow                                   # the candidate queue
 kq detector shadow <name>                                          # what a shadow detector has fired
 kq detector promote <name>                                         # shadow → active (it can now act)
@@ -786,7 +788,8 @@ kq detector reject <name>                                          # stop it fir
 
 | Subcommand | Meaning |
 |---|---|
-| `new "<description>"` | Compile + validate + stage as a shadow candidate. |
+| `new "<description>"` | Compile + validate + stage as a shadow candidate. A description compiled before is answered from its **stored** compilation — the model is not asked again. |
+| `new --recompile --name <name> "<description>"` | Compile afresh even though the description was compiled before, staged under a new name. |
 | `list [--status S]` | List detectors (`candidate`/`shadow`/`active`/`demoted`). |
 | `shadow <name>` | Show a shadow detector's firings (review before promoting). |
 | `promote <name>` | Promote shadow → active (requires operator/admin). |
@@ -794,15 +797,16 @@ kq detector reject <name>                                          # stop it fir
 
 | Exit code | Meaning |
 |---|---|
-| `0` | The operation succeeded — for `new`, the detector was staged in shadow. |
-| `1` | The request failed. |
+| `0` | The operation succeeded — for `new`, the detector was staged in shadow **and the server's engine has loaded it**. |
+| `1` | The request failed — or, for `new`, the detector was stored but no engine has loaded it yet (re-running the same command reuses the stored compilation and re-checks). |
 | `2` | Usage error. |
-| `3` | The detector was **rejected on its merits** and nothing changed — `new`: the description would not compile into a stageable detector; `promote`/`reject`: the server answered `409` because the predicate can never match an observation. Distinct from `1` on purpose — `1` is worth retrying and `3` never is. |
+| `3` | The detector was **rejected on its merits** and nothing changed — `new`: the compiled detector cannot fire (`422`, with every reason listed), or the name is taken / the same description was already demoted (`409`); `promote`/`reject`: the server answered `409` because the predicate can never match an observation. Distinct from `1` on purpose — `1` is worth retrying and `3` never is. |
 
-`3` matters when scripting. A description the compiler refuses comes back as a normal `200`
-response carrying `staged: false` and the errors — not an HTTP failure — so the exit code is the
-only machine-readable sign that no detector was created. `kq detector new … && kq detector list`
-would otherwise carry on as though one existed.
+`3` matters when scripting: the exit code is the machine-readable sign that no detector was
+created, so `kq detector new … && kq detector list` does not carry on as though one existed. The
+gate refuses a detector with zero predicates, any `promql` entry (recorded, never evaluated),
+an unknown key or field, and anything the loader would drop or rewrite — the full list is in the
+[API reference](api-reference.md#authoring-outcomes).
 
 ### `kq preference …` — view and manage learned operator preferences
 

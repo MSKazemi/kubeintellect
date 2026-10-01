@@ -607,7 +607,7 @@ candidate that observes but never reaches the watchtower until promoted. Gated b
 
 | Method & path | Purpose |
 |---|---|
-| `POST /v1/detectors` | Body `{"description": "...", "name"?: "..."}` → compile + validate + stage as shadow. Returns the compiled block + any validation errors. |
+| `POST /v1/detectors` | Body `{"description": "...", "name"?: "...", "recompile"?: false}` → compile + validate + stage as shadow + confirm the engine loaded it. See [Authoring outcomes](#authoring-outcomes) below. |
 | `GET /v1/detectors?status=` | List detectors (`candidate`/`shadow`/`active`/`demoted`). |
 | `POST /v1/detectors/{name}/promote` | Promote shadow → active (it now reaches the watchtower). **409** if its predicates can never match — see below. |
 | `POST /v1/detectors/{name}/demote` | Demote/reject — stop it firing. |
@@ -634,10 +634,58 @@ without checking. The load path reads the same way, for the same reason: a detec
 through this API is evaluated by the cluster running it, not only by a deployment that happens
 to leave `CLUSTER_ID` unset.
 
+### Authoring outcomes
+
+`POST /v1/detectors` never reports a detector it could not stand behind. Each outcome has its
+own status code, and `staged` means one thing only: **this server's detector engine has loaded
+the detector and evaluates it**.
+
+| HTTP | `staged` | `stored` | Meaning |
+|---|---|---|---|
+| `200` | `true` | `true` | Stored as `shadow`, loaded by the engine, and evaluated. |
+| `202` | `false` | `true` | Stored, but not loaded or not evaluated *here* — `staged_reason` says why (e.g. the engine runs on another replica, or a refresh failed). Resubmitting the same description re-checks without recompiling. |
+| `422` | `false` | `false` | The compiled detector was refused by the validation gate — `errors` names every reason, `compiled` shows what the model produced. Nothing was stored. |
+| `409` | `false` | — | The name is taken, or this exact description was already compiled and then demoted. Nothing changed. |
+| `502` | — | — | The compiler model could not be called. Retryable; says nothing about the description. |
+| `503` | — | — | The detector store is unavailable. Nothing was compiled or stored. |
+
+The validation gate refuses, by name, every compiled detector that could not fire, or whose
+loaded form would differ from what was compiled:
+
+- an empty object, or one with **zero** watch/trend predicates;
+- any `promql` entry — PromQL is recorded but never evaluated, so it cannot fire (express a
+  metric condition as a `trend_predicates` entry);
+- an unknown top-level key, or an unknown field on a predicate (e.g. `namespace` on a watch
+  predicate) — the engine has no reader for it, so the condition would be silently dropped;
+- a predicate missing `kind` (watch) or `metric`/`threshold` (trend), a non-string regex, or a
+  non-numeric threshold — the loader would drop the predicate without saying so;
+- a trend knob or `debounce_seconds` the loader would replace with its default (e.g.
+  `min_r2: 1.5`), and any difference between the number of predicates written and loaded;
+- every liveness check described above (unsupported or wrong-case `kind`, no `status_regex`,
+  a regex only an impossible value satisfies, a template in a PromQL selector, a bad
+  `direction`), and a predicate that matches a **healthy** object;
+- a detector whose only predicates are trend predicates while `PREDICTIVE_DETECTION_ENABLED` is
+  false — nothing on that deployment would evaluate it.
+
+**Compilation is pinned and stored.** The model is called at temperature 0, and the compiled
+block is stored together with its provenance (`compilation`: `description_sha256`, `model`,
+`temperature`, `compiled_at`). Loading, listing and promoting a detector read that stored block —
+nothing recompiles it. Submitting the **same description again** (compared whitespace-insensitively)
+answers from the stored compilation without calling the model (`compilation.source: "stored"`,
+`reused: true`), re-checked against the gate. Pass `"recompile": true` with a new `name` to ask
+the model again; the response then carries `compilation.source: "fresh"`. Temperature 0 narrows
+but does not eliminate run-to-run variation in a hosted model, so two fresh compilations of one
+sentence can still differ — which is why reuse, not recompilation, is the default. A model that
+rejects `temperature=0` makes authoring fail with `502` rather than compile at a temperature
+nobody chose.
+
 ```json
-{"staged": true, "status": "shadow", "name": "nl:OOMKilled",
+{"staged": true, "stored": true, "status": "shadow", "name": "nl:OOMKilled",
  "compiled": {"watch_predicates": [{"kind": "Pod", "status_regex": "^OOMKilled$"}]},
- "errors": []}
+ "errors": [],
+ "staged_reason": "loaded, with watch predicates evaluated on every observation",
+ "compilation": {"description_sha256": "…", "model": "gpt-4o-mini", "temperature": 0.0,
+                 "compiled_at": 1790000000.0, "source": "fresh"}}
 ```
 
 `GET /v1/detectors/{name}/shadow-findings` answers with the firings **and** two fields about

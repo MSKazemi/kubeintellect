@@ -619,7 +619,7 @@ grounding rate of 0.70 and 0.61, which is why the default floor is 0.9.
 
 | Variable | Default | Description |
 |---|---|---|
-| `NL_DETECTOR_AUTHORING_ENABLED` | `false` | Compile a plain-English failure into a detect block and stage it as a **shadow** detector (observes only, never reaches the watchtower) until a human promotes it. `POST /v1/detectors`, `kq detector`. |
+| `NL_DETECTOR_AUTHORING_ENABLED` | `false` | Compile a plain-English failure into a detect block and stage it as a **shadow** detector (observes only, never reaches the watchtower) until a human promotes it. `POST /v1/detectors`, `kq detector`. Compiles at temperature 0 regardless of `LLM_TEMPERATURE`, stores the compilation, and reuses it for identical prose; a compiled detector that cannot fire is refused (`422`) — see [API reference](api-reference.md#authoring-outcomes). |
 | `DB_DETECTOR_REFRESH_SECONDS` | `120` | How often the engine reloads promoted (active) + shadow detectors from the database so promotions take effect without a restart. A refresh whose query fails keeps the detectors already loaded rather than reloading an empty set. |
 
 ### Watchtower & autonomy ladder
