@@ -528,12 +528,25 @@ This is logged as a future roadmap item. The current model is pragmatic and secu
 `run_kubectl` (`app/tools/kubectl_tool.py`) has multiple layers preventing command injection:
 
 ```
+Layer 0 — unresolved placeholder guard (#173)
+  Reject a command that still carries planning notation where a real value belongs:
+  <node-name>, {namespace}, {{pod}}, $NODE / ${NODE}, or an UPPER_SNAKE operand such
+  as POD_NAME in a name, namespace (-n) or container (-c) position. kubectl is not run;
+  the error names the placeholder and tells the model to resolve the identifier first
+  (from the snapshot, an earlier result, or a listing such as `kubectl get nodes`).
+  Not inspected: the value of -o / --output / --template / --sort-by (jsonpath,
+  go-template and custom-columns legitimately contain {…} and upper-case headers),
+  quoted text for the {…} and UPPER_SNAKE shapes (JSON patches, annotation values),
+  anything after `--` (the container's own command), and UPPER_SNAKE under
+  `kubectl config`. This layer only narrows what runs: every <, > and $ it does not
+  name is still refused by Layer 1. The snapshot reads `targeted_investigator` builds
+  from a model-written `TARGETED:` line apply the same rule.
+
 Layer 1 — metacharacter guard
-  Reject any command containing: ; & ` $ \
+  Reject any command containing: ; & ` $ < >
   Pipe (|) is allowed and handled in Python (not the shell).
-  < and > are intentionally allowed — they are only dangerous for shell I/O
-  redirection, which is impossible under shell=False, and excluding them allows
-  --from-literal values that contain HTML / template content.
+  Backslash (\) is allowed — jsonpath separators such as {"\n"} need it, and it is
+  passed to kubectl literally under shell=False.
 
 Layer 2 — rejected verbs
   `kubectl edit` is hard-blocked at parse time — it requires an interactive

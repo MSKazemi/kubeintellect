@@ -410,10 +410,26 @@ and produces false positives.
 
 ### Shell-metacharacter constraints
 
-The runner blocks any `kubectl` command containing `;`, `&`, `` ` ``, `$`, or
-`\`. (Pipes and redirection are excluded — `|` is reimplemented in Python and
-`<` / `>` are harmless under `shell=False`.) The constraint applies to the full
-command string, including arguments inside `--patch '[...]'` or `-- sh -c "..."`.
+The runner blocks any `kubectl` command containing `;`, `&`, `` ` ``, `$`, `<`
+or `>`. (Pipes are excluded — `|` is reimplemented in Python, and `\` is passed
+literally under `shell=False`.) The constraint applies to the full command
+string, including arguments inside `--patch '[...]'` or `-- sh -c "..."`.
+
+### Unresolved placeholders
+
+A tool argument must name real resources. A command that still carries planning
+notation — `<node-name>`, `{namespace}`, `$NODE`, or an upper-case operand such
+as `POD_NAME` where a pod, namespace or container name belongs — is refused
+before kubectl runs, with an error that names the placeholder and says to
+resolve it first (#173). In a parallel batch only that call fails; the others
+still return. The model is expected to take the identifier from the cluster
+snapshot or an earlier result, or to list the resource (`kubectl get nodes -o
+wide`), wait for the result, and call again with the concrete name.
+
+Values the guard deliberately does not inspect: `-o` / `--output` /
+`--template` / `--sort-by` (jsonpath, go-template and custom-columns use `{…}`
+and upper-case column headers), quoted values such as a JSON patch, and
+everything after `--` in `kubectl exec`.
 
 For container `command` / `args` changes (which usually contain shell
 metacharacters), the only reliable path is:
