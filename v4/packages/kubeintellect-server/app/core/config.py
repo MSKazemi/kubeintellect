@@ -668,6 +668,7 @@ class Settings(BaseSettings):
     WATCHTOWER_ROLE: str = "operator"
     AUTONOMY_LEVEL: str = "A1"
     AUTONOMY_NAMESPACE_LEVELS: str = ""     # "prod=A0,dev=A2"
+    SELF_GOVERN_ENABLED: bool = False   # ADR-007/008/009 self-governance (default off)
     AUTONOMY_A3_ALLOWLIST: str = ""         # "CrashLoopBackOff/dev-*"
 
     # ── Auth / RBAC ───────────────────────────────────────────────────────────

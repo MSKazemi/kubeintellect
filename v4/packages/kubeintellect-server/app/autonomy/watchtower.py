@@ -15,7 +15,11 @@ Guard rails:
 - a global concurrency cap;
 - protected namespaces are pinned to A0 by the ladder;
 - the autonomous identity runs with a configured role (default operator) —
-  the role ceiling still applies inside the tools.
+  the role ceiling still applies inside the tools;
+- with SELF_GOVERN_ENABLED (Cortex graph), an A3 fix runs only after the
+  diagnosis passed the ADR-009 grounding check: turn 1 diagnoses and proposes
+  (HITL-gated), turn 2 applies — and turn 2 is skipped when any claim was
+  unsupported, the check errored, or its verdict cannot be read.
 """
 from __future__ import annotations
 
@@ -138,6 +142,9 @@ async def _investigate(finding: Finding, level: str) -> None:
             logger.warning("watchtower: A3 auto-fix revoked by the recorded record: %s", revocation)
             auto_fix = False
     predicted = getattr(finding, "severity", "warning") == "predicted"
+    # ADR-009 (SELF_GOVERN_ENABLED): an auto-fix is split into a diagnose-and-propose turn and,
+    # only if that diagnosis is grounded, an apply turn. Off ⇒ one turn, exactly as before.
+    grounding_gated = auto_fix and _grounding_gates_autofix()
     session_id = f"auto-{finding.id}"
     if predicted:
         ask = (
@@ -154,7 +161,12 @@ async def _investigate(finding: Finding, level: str) -> None:
             f"'{finding.namespace}' (evidence: {finding.evidence}). "
             "Diagnose the root cause and report it concisely."
         )
-        if auto_fix:
+        if grounding_gated:
+            # ADR-009: the diagnosis must be grounded BEFORE it may drive a fix, so the fix is
+            # not requested in this turn. This turn proposes (human-gated, like A2); a second,
+            # auto-approved turn applies it only if the diagnosis passed `ground_check`.
+            ask += " Propose the exact fix commands but do not execute destructive actions."
+        elif auto_fix:
             ask += " Then apply the appropriate fix and verify it worked."
         elif at_least(level, "A2"):
             ask += " Propose the exact fix commands but do not execute destructive actions."
@@ -166,29 +178,78 @@ async def _investigate(finding: Finding, level: str) -> None:
             f" level={level} auto_fix={auto_fix} session={session_id}"
         )
         try:
-            from app.agent.workflow import run_session
-            from app.streaming.emitter import prepare_session, stream
-
-            prepare_session(session_id)
-            runner = asyncio.create_task(run_session(
-                ask,
-                session_id,
-                user_id="watchtower",
-                user_role=settings.WATCHTOWER_ROLE,
-                auto_approve=auto_fix,
-                # In-process, detector-triggered: the one caller entitled to sensor trust.
-                trigger_source="detector",
-            ))
-            # Drain the event stream (no human is attached); the flight
-            # recorder + episode write are the durable outputs.
-            async for _event in stream(session_id, heartbeat_interval=5.0):
-                pass
-            await runner
+            if grounding_gated:
+                await _run_turn(ask, session_id, auto_approve=False)
+                grounding = await _turn_grounding(session_id)
+                from app.cortex.verify import grounding_permits_autofix
+                if not grounding_permits_autofix(grounding):
+                    # Demoted to advisory (or the check errored / did not run): the proposal
+                    # stands in the report, nothing executes. Never raised on an unchecked
+                    # diagnosis.
+                    logger.warning(
+                        f"watchtower: A3 auto-fix withheld — diagnosis not grounded "
+                        f"(grounding={grounding}) session={session_id}"
+                    )
+                    return
+                await _run_turn(
+                    "Apply the fix you proposed above and verify it worked.",
+                    session_id, auto_approve=True,
+                )
+            else:
+                await _run_turn(ask, session_id, auto_approve=auto_fix)
             logger.info(f"watchtower_done session={session_id}")
             if auto_fix:
                 await _schedule_post_fix_recheck(finding)
         except Exception as exc:
             logger.warning(f"watchtower: investigation failed session={session_id}: {exc}")
+
+
+def _grounding_gates_autofix() -> bool:
+    """ADR-009 is in force for autonomous fixes. Cortex-only: the grounding verdict is produced
+    by the Cortex graph's `ground_check` node, which the V2 graph does not have — gating A3 on a
+    verdict that can never exist would silently disable it."""
+    return settings.SELF_GOVERN_ENABLED and settings.CORTEX_V4_ENABLED
+
+
+async def _run_turn(ask: str, session_id: str, *, auto_approve: bool) -> None:
+    """Run one watchtower turn through the chat session machinery and drain its stream."""
+    from app.agent.workflow import run_session
+    from app.streaming.emitter import prepare_session, stream
+
+    prepare_session(session_id)
+    runner = asyncio.create_task(run_session(
+        ask,
+        session_id,
+        user_id="watchtower",
+        user_role=settings.WATCHTOWER_ROLE,
+        auto_approve=auto_approve,
+        # In-process, detector-triggered: the one caller entitled to sensor trust.
+        trigger_source="detector",
+    ))
+    # Drain the event stream (no human is attached); the flight
+    # recorder + episode write are the durable outputs.
+    async for _event in stream(session_id, heartbeat_interval=5.0):
+        pass
+    await runner
+
+
+async def _turn_grounding(session_id: str) -> dict | None:
+    """The `ground_check` outcome of the session's last turn, or None when it cannot be read.
+
+    None is never permission: `grounding_permits_autofix(None)` is False, so a checkpoint that
+    cannot be read withholds the fix rather than assuming a grounded diagnosis.
+    """
+    try:
+        from app.agent.workflow import get_graph
+
+        graph = await get_graph()
+        snapshot = await graph.aget_state({"configurable": {"thread_id": session_id}})
+        values = dict(snapshot.values) if snapshot and snapshot.values else {}
+        grounding = values.get("grounding")
+        return grounding if isinstance(grounding, dict) else None
+    except Exception as exc:
+        logger.warning(f"watchtower: could not read the grounding verdict session={session_id}: {exc}")
+        return None
 
 
 async def _schedule_post_fix_recheck(finding: Finding) -> None:

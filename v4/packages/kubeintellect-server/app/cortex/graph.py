@@ -8,6 +8,7 @@ Topology:
     gather_llm  → gather_tools (when the model called tools) | synthesize
     gather_tools → gather_llm   (bounded loop)
     synthesize  → remember → END
+    (SELF_GOVERN_ENABLED: synthesize → ground_check → remember — ADR-009)
 
 Design points vs the V2 coordinator:
 - The plan is FIRST-CLASS state: triage produces it as structured JSON, the
@@ -25,6 +26,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from typing import cast
 
 from langchain_core.messages import (
     AIMessage,
@@ -65,6 +67,9 @@ class CortexState(AgentState):
     gather_rounds: int
     turn_start_index: int     # messages[] length at turn start (for remember)
     turn_start_monotonic: float  # monotonic clock at turn start (P2 latency budget)
+    # ADR-009 ground_check outcome for this turn: {status, counts, autonomy_ceiling}. Reset by
+    # triage every turn so a reused thread never carries a previous turn's verdict.
+    grounding: dict | None
 
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
@@ -190,6 +195,8 @@ async def triage(state: CortexState, config: RunnableConfig) -> dict:
         "gather_rounds": 0,
         "turn_start_index": len(state.get("messages", [])),
         "turn_start_monotonic": time.monotonic(),
+        # ADR-009: clear the previous turn's grounding verdict. Flag off ⇒ the key is absent.
+        **({"grounding": None} if settings.SELF_GOVERN_ENABLED else {}),
     }
 
 
@@ -538,6 +545,106 @@ def _gathered_evidence(state: CortexState) -> str:
     )
 
 
+_GROUND_CONTEXT_MAX_CHARS = 3_000
+
+
+def _bounded_context(text: str, hint: str) -> str:
+    """Bound a context block for the grounding checker without hiding the cut or the tool's
+    own policy lines (the same discipline `triage` applies to the snapshot)."""
+    body, policy = split_policy_lines(text)
+    shown = body[:_GROUND_CONTEXT_MAX_CHARS]
+    note = ""
+    if len(body) > _GROUND_CONTEXT_MAX_CHARS:
+        note = "\n" + truncation_marker(len(body) - _GROUND_CONTEXT_MAX_CHARS, hint=hint)
+    tail = f"\n{policy}" if policy else ""
+    return f"{shown}{note}{tail}"
+
+
+def _grounding_evidence(state: CortexState) -> str:
+    """The evidence ADR-009 grounds against — already in state, no new retrieval: this turn's
+    tool output (kubectl / PromQL / LogQL / fan-out), the detector firing that opened the turn,
+    the cluster snapshot, and the recalled episodes. The draft answer itself (the last message)
+    is excluded: a claim cannot be its own evidence."""
+    messages = list(state.get("messages") or [])
+    parts = []
+    gathered = _gathered_evidence(cast(CortexState, {**state, "messages": messages[:-1]}))
+    if gathered:
+        parts.append(f"## Tool output gathered this turn\n{gathered}")
+    if state.get("trigger_source") == "detector":
+        # Only an in-process caller can set this; a chat user's question is not evidence.
+        parts.append(f"## Detector firing\n{_last_user_text(state)}")
+    if state.get("cluster_snapshot"):
+        parts.append("## Cluster snapshot\n" + _bounded_context(
+            state["cluster_snapshot"], "cluster snapshot cut for the grounding check"))
+    if state.get("memory_context"):
+        parts.append("## Recalled episodes and memory\n" + _bounded_context(
+            state["memory_context"], "memory context cut for the grounding check"))
+    return "\n\n".join(parts) or "(no evidence was gathered this turn)"
+
+
+async def ground_check(state: CortexState, config: RunnableConfig) -> dict:
+    """ADR-009 grounding check — the shared critique sub-stage between synthesize and remember.
+
+    Classifies each atomic claim of the draft answer as supported | partial | none against the
+    evidence already in state (cheap tier, one structured call). Then:
+
+    - ``none`` claims are hedged in the streamed answer (an appended note — the tokens are
+      already on the wire) and withdrawn from the stored copy, which is what the next turn and
+      `remember`'s episode read;
+    - any ``none`` claim sets ``autonomy_ceiling=A1``: the diagnosis cannot auto-trigger A2/A3
+      (the watchtower reads it — `grounding_permits_autofix`);
+    - a draft with no actionable claim is skipped with no LLM call;
+    - fail-open: a classifier error returns the answer unchanged plus a "NOT PERFORMED" note and
+      sets ``autonomy_ceiling=A2`` — autonomy may stay or drop, it is never raised.
+
+    The outcome (status, per-class counts, ceiling) is kept in ``state["grounding"]`` and chained
+    into the flight recorder as a ``ground_check`` row. Self-critique and the prompt-injection
+    output check are to be hosted in this same call — see the extension note in `verify.py`.
+    """
+    from app.cortex.verify import (
+        GroundingVerdict,
+        classify_claims,
+        grounding_record,
+        has_actionable_claim,
+        render_grounding_note,
+        withdraw_unsupported,
+    )
+    from app.db import flight_recorder
+
+    session_id = state["session_id"]
+    messages = list(state.get("messages") or [])
+    last = messages[-1] if messages else None
+    draft = last.content if isinstance(last, AIMessage) and isinstance(last.content, str) else ""
+
+    if not has_actionable_claim(draft):
+        verdict = GroundingVerdict(status="skipped")
+    else:
+        await emit(session_id, StatusEvent(
+            phase="verifying", message="Checking claims against the evidence…",
+            session_id=session_id,
+        ))
+        verdict = await classify_claims(draft, _grounding_evidence(state), config=config)
+
+    record = grounding_record(verdict)
+    flight_recorder.record(session_id, "ground_check", {"type": "ground_check", **record})
+    if verdict.status != "skipped":
+        logger.info(
+            f"cortex.ground_check session={session_id} status={verdict.status} "
+            f"counts={record['counts']} autonomy_ceiling={record['autonomy_ceiling']}"
+        )
+
+    update: dict = {"grounding": record}
+    note = render_grounding_note(verdict)
+    if note and isinstance(last, AIMessage):
+        await emit(session_id, TokenEvent(content=note, session_id=session_id))
+        # Same id ⇒ the add_messages reducer REPLACES the draft rather than appending a second
+        # answer.
+        update["messages"] = [AIMessage(
+            content=withdraw_unsupported(draft, verdict) + note, id=last.id,
+        )]
+    return update
+
+
 async def remember(state: CortexState, config: RunnableConfig) -> dict:
     """Reflexion + episode write — reuses the battle-tested V2 outcome path.
 
@@ -630,7 +737,14 @@ def build_cortex_graph() -> StateGraph:
     builder.add_conditional_edges("triage", route_triage)
     builder.add_conditional_edges("gather_llm", route_gather)
     builder.add_edge("gather_tools", "gather_llm")
-    builder.add_edge("synthesize", "remember")
+    if settings.SELF_GOVERN_ENABLED:
+        # ADR-009: the critique sub-stage sits between the answer and the episode write, so
+        # `remember` stores the grounded copy. Flag off ⇒ the topology is unchanged.
+        builder.add_node("ground_check", ground_check)
+        builder.add_edge("synthesize", "ground_check")
+        builder.add_edge("ground_check", "remember")
+    else:
+        builder.add_edge("synthesize", "remember")
     builder.add_edge("remember", END)
     return builder
 
