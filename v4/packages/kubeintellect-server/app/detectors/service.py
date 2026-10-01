@@ -198,6 +198,20 @@ async def _refresh_db_detectors(cluster_id: str) -> None:
     _last_db_counts = counts
 
 
+async def reload_db_detectors() -> bool:
+    """Refresh the DB detectors now rather than at the next interval. False iff no engine here.
+
+    Called by the authoring endpoint straight after it stores a detector, so that the answer it
+    gives -- staged or not -- is read off the engine's live set instead of assumed from the INSERT.
+    A failed refresh keeps the set already loaded (see `_refresh_db_detectors`), so the caller's
+    membership check then reports the new detector as not loaded, which is the truth.
+    """
+    if _engine is None:
+        return False
+    await _refresh_db_detectors(_engine.cluster_id)
+    return True
+
+
 async def _db_refresh_loop(cluster_id: str) -> None:
     from app.core.config import settings
 

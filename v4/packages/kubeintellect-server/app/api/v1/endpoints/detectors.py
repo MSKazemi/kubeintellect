@@ -12,6 +12,7 @@ the watchtower without an explicit human promote.
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.api.v1.auth import get_user_role
@@ -25,6 +26,9 @@ router = APIRouter()
 class NewDetectorRequest(BaseModel):
     description: str
     name: str | None = None
+    # Compile afresh even though this exact description was compiled before. Off by default: the
+    # same prose then always answers with the same stored predicates (see `create_detector`).
+    recompile: bool = False
 
 
 def _require_enabled() -> None:
@@ -39,26 +43,171 @@ def _require_writer(request: Request) -> str:
     return role
 
 
+def _refused(status_code: int, detail: str, **body) -> JSONResponse:
+    """A refusal that still carries what was compiled, so the author can see why.
+
+    Not an HTTPException: the body keeps the `staged`/`compiled`/`errors` shape clients already
+    read, plus `detail` in the one-string form `kq`'s `server_detail` renders.
+    """
+    return JSONResponse(status_code=status_code,
+                        content={"staged": False, "detail": detail, **body})
+
+
+async def _staging(name: str, status: str) -> tuple[bool, str]:
+    """Is `name` loaded AND evaluated by this process's engine? Read off the engine, never assumed.
+
+    An INSERT that succeeded says the row exists, not that anything watches with it: the engine
+    may not run in this process (a leader-election standby, a failed start, the flag off), a
+    refresh may fail and keep the old set, or the loader may refuse the row. Each of those used to
+    answer `staged: true`. The engine is refreshed first so a healthy deployment answers truthfully
+    *now* rather than one refresh interval later.
+    """
+    from app.detectors.service import reload_db_detectors, sensorium_absence
+
+    def _no_engine() -> tuple[bool, str]:
+        state, why = sensorium_absence()
+        return False, (
+            f"stored, but the detector engine is not running in this process (state={state}"
+            f"{': ' + why if why else ''}), so nothing here has loaded it. A replica running the "
+            f"engine loads stored detectors every {settings.DB_DETECTOR_REFRESH_SECONDS}s; "
+            "resubmit the same description to re-check — the stored compilation is reused, not "
+            "recompiled."
+        )
+
+    if get_engine() is None:
+        return _no_engine()
+    await reload_db_detectors()
+    engine = get_engine()
+    if engine is None:
+        return _no_engine()
+    candidates = engine.detectors if status == "active" else engine.shadow_detectors
+    loaded = next((d for d in candidates if d.playbook == name), None)
+    return _watching(loaded, name)
+
+
 @router.post("/detectors")
 async def create_detector(req: NewDetectorRequest, request: Request):
+    """Compile → validate → store → confirm the engine loaded it. Every exit says which happened.
+
+    | outcome                                              | HTTP | staged | stored |
+    |------------------------------------------------------|------|--------|--------|
+    | loaded and evaluated by this process's engine        | 200  | true   | true   |
+    | stored, but not loaded/evaluated here (reason given) | 202  | false  | true   |
+    | compiled detector refused by the validation gate     | 422  | false  | false  |
+    | name taken, or identical prose already demoted       | 409  | false  | —      |
+    | compiler model could not be called                   | 502  | false  | false  |
+    | detector store unavailable                           | 503  | false  | false  |
+
+    Identical prose (whitespace-insensitive) that was compiled before is answered from the STORED
+    compilation, without calling the model: the same eight descriptions compiled 47 minutes apart
+    produced different predicate counts on four of them, so "compile again" is not a neutral
+    re-read. `recompile: true` asks for a fresh compilation; `compilation.source` says which one
+    the response carries.
+    """
     _require_enabled()
     author = _require_writer(request)
-    raw = await authoring.compile_nl_to_detect_block(req.description)
+    description = req.description
+    if not authoring.normalize_description(description):
+        raise HTTPException(status_code=422, detail="description is empty — nothing to compile")
+
+    # The store is read first: if it cannot be read, nothing could be staged anyway, and spending a
+    # compilation on an answer that cannot be kept is how the same prose gets two compilations.
+    try:
+        previous = None if req.recompile else await authoring.find_compilation(description)
+    except review.DetectorStoreUnavailable as exc:
+        raise HTTPException(status_code=503,
+                            detail=f"{exc} — nothing can be staged, so nothing was compiled") from exc
+    if previous is not None:
+        return await _reuse(previous, req)
+
+    try:
+        raw, provenance = await authoring.compile_nl_to_detect_block(description)
+    except authoring.CompilerUnavailable as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    compilation = {**provenance, "source": "fresh"}
+
     block, errors = authoring.validate_detect_block(raw, name=req.name or "nl")
-    if block is None:
-        return {"staged": False, "compiled": raw, "errors": errors}
+    if block is not None:
+        errors = authoring.deployment_errors(block)
+    if block is None or errors:
+        return _refused(422, f"the compiled detector was refused: {errors[0]}", stored=False,
+                        compiled=raw, errors=errors, compilation=compilation)
+
     name = req.name or f"nl:{block.playbook}"
     if name == "nl:nl":
         name = f"nl:{req.description[:40].strip().replace(' ', '-')}"
-    staged = await authoring.stage_candidate(name, req.description, raw, author=author)
-    return {
+    try:
+        created = await authoring.stage_candidate(name, description, raw, author=author,
+                                                  compilation=provenance)
+    except review.DetectorStoreUnavailable as exc:
+        raise HTTPException(status_code=503, detail=f"{exc} — nothing was stored") from exc
+    if not created:
+        return _refused(
+            409,
+            f"a detector named {name!r} already exists — nothing was stored. Choose a different "
+            "`name`.",
+            stored=False, name=name, compiled=raw, errors=[], compilation=compilation,
+        )
+
+    staged, reason = await _staging(name, "shadow")
+    return JSONResponse(status_code=200 if staged else 202, content={
         "staged": staged,
-        "status": "shadow" if staged else "not-staged",
+        "stored": True,
+        "status": "shadow",
         "name": name,
         "compiled": raw,
-        "errors": errors,
+        "errors": [],
+        "staged_reason": reason,
+        "compilation": compilation,
         "note": "Shadow detectors observe only — promote after reviewing precision.",
-    }
+    })
+
+
+async def _reuse(previous: dict, req: NewDetectorRequest) -> JSONResponse:
+    """Answer identical prose from its stored compilation. The model is not called."""
+    name, status, stored = previous["name"], previous["status"], previous["block"]
+    # Rows staged before provenance was stored carry none; say so rather than invent it.
+    compilation = {**(previous["compilation"] or {"provenance": "not recorded (staged before "
+                                                                "compilations were stored)"}),
+                   "source": "stored"}
+    if status == "demoted":
+        return _refused(
+            409,
+            f"this description was already compiled as {name!r}, which a reviewer demoted — "
+            "nothing was staged. Resubmit with recompile=true and a new `name` to compile it "
+            "afresh.",
+            stored=True, name=name, status=status, compiled=stored, errors=[],
+            compilation=compilation,
+        )
+    # Re-gated, not trusted: the row may predate the gate, and the gate must agree with itself.
+    block, errors = authoring.validate_detect_block(stored, name=name)
+    if block is not None:
+        errors = authoring.deployment_errors(block)
+    if block is None or errors:
+        return _refused(
+            422,
+            f"the stored compilation of this description ({name!r}) is refused by the validation "
+            f"gate: {errors[0]}. Resubmit with recompile=true and a new `name`.",
+            stored=True, name=name, status=status, compiled=stored, errors=errors,
+            compilation=compilation,
+        )
+    staged, reason = await _staging(name, status)
+    note = "Identical description: the stored compilation was reused, not recompiled."
+    if req.name and req.name != name:
+        note += (f" The requested name {req.name!r} was not used; pass recompile=true to stage a "
+                 "separate detector under it.")
+    return JSONResponse(status_code=200 if staged else 202, content={
+        "staged": staged,
+        "stored": True,
+        "status": status,
+        "name": name,
+        "compiled": stored,
+        "errors": [],
+        "staged_reason": reason,
+        "compilation": compilation,
+        "reused": True,
+        "note": note,
+    })
 
 
 @router.get("/detectors")

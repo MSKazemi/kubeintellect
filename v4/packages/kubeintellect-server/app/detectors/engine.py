@@ -25,7 +25,7 @@ from dataclasses import dataclass, field, replace
 
 from app.core.config import settings
 from app.db import flight_recorder
-from app.detectors.models import DetectBlock, Finding, TrendPredicate
+from app.detectors.models import EVALUATED_PREDICATE_KEYS, DetectBlock, Finding, TrendPredicate
 from app.sensorium.observations import Observation
 from app.tools.prometheus_tool import query_prometheus_series
 from app.utils.logger import get_logger
@@ -458,7 +458,7 @@ def _is_detect_block(predicate: object) -> bool:
     PromQL compiles to a detector that can never fire. See ``parse_detect_block``.
     """
     return isinstance(predicate, dict) and any(
-        k in predicate for k in ("watch_predicates", "trend_predicates")
+        k in predicate for k in EVALUATED_PREDICATE_KEYS
     )
 
 

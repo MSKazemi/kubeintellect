@@ -10,6 +10,13 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+#: The `detect:` keys something actually EVALUATES: `DetectorEngine.process()` matches
+#: `watch_predicates` and the predictive tick evaluates `trend_predicates`. `promql` is parsed and
+#: recorded but has no evaluator (see the note at the end of `parse_detect_block`). One tuple, read
+#: by the engine's loader and by the NL-authoring gate, so the two cannot disagree about what can
+#: fire.
+EVALUATED_PREDICATE_KEYS = ("watch_predicates", "trend_predicates")
+
 
 @dataclass(frozen=True)
 class WatchPredicate:

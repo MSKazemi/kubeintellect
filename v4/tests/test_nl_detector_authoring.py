@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 import time
 
+import pytest
+
 from app.detectors import authoring, review
 from app.detectors.engine import DetectorEngine, load_db_detectors
 from app.detectors.models import parse_detect_block
@@ -30,11 +32,14 @@ class TestCompileAndValidate:
             content = "Here you go:\n" + json.dumps(_GOOD_BLOCK)
 
         class FakeLLM:
+            def bind(self, **_kwargs):
+                return self
+
             async def ainvoke(self, _messages):
                 return FakeResp()
 
         mocker.patch("app.cortex.models.get_specialist_llm", return_value=FakeLLM())
-        raw = await authoring.compile_nl_to_detect_block("pods getting OOM killed")
+        raw, _provenance = await authoring.compile_nl_to_detect_block("pods getting OOM killed")
         block, errors = authoring.validate_detect_block(raw, name="OOMtest")
         assert block is not None
         assert not errors
@@ -52,13 +57,15 @@ class TestCompileAndValidate:
         assert block is None
         assert errors
 
-    async def test_compile_failure_is_fail_open(self, mocker):
+    async def test_compile_failure_is_loud_not_an_empty_block(self, mocker):
+        """It used to return {} here, which the validator then reported as "no valid predicates"
+        — an LLM outage presented to the author as a fault in their description."""
         def _boom():
             raise RuntimeError("no llm")
 
         mocker.patch("app.cortex.models.get_specialist_llm", side_effect=_boom)
-        raw = await authoring.compile_nl_to_detect_block("anything")
-        assert raw == {}  # no raise
+        with pytest.raises(authoring.CompilerUnavailable, match="no llm"):
+            await authoring.compile_nl_to_detect_block("anything")
 
 
 class TestShadowGate:
