@@ -572,7 +572,9 @@ triggers:
   `kind: Node` regexes run against the computed STATUS column; `kind: Event`
   regexes run against Warning-event reason and message (when both
   `reason_regex` and `message_regex` are present, **both** must match;
-  `involved_kind` optionally narrows the involved object).
+  `involved_kind` optionally narrows the involved object). An Event predicate
+  needs at least one of the two regexes: with neither it matches **every**
+  Warning event, and the authoring and promotion gates refuse it.
 - `promql` lists instant PromQL filters; each series in the result is a match for
   the object its labels name. Evaluated only with `PROMQL_DETECTION_ENABLED` — see
   the note below.

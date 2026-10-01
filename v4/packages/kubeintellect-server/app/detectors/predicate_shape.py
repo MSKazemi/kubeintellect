@@ -186,7 +186,21 @@ def predicate_health_errors(pred) -> list[str]:
     Deliberately narrow, and deliberately not a guess: it asks the predicate the same question
     the engine will — `status_regex.search(status)` — against the statuses the observer emits for
     a healthy object. Nothing here reasons about whether a detector is a *good* one.
+
+    An Event predicate with neither `reason_regex` nor `message_regex` is the Event-channel form
+    of the same mistake: `WatchPredicate.matches` treats an absent regex as "matches anything",
+    so it fires on EVERY Warning event (of `involved_kind`, when set) — routine BackOff, Unhealthy
+    and FailedScheduling noise included. No shipped playbook has this shape; every shipped Event
+    predicate names a reason. It is not an intended catch-all, so it is named here.
     """
+    if pred.kind == "Event" and pred.reason_regex is None and pred.message_regex is None:
+        scope = (f"every Warning event about a {pred.involved_kind}" if pred.involved_kind
+                 else "every Warning event on the cluster")
+        return [
+            f"an Event predicate with no reason_regex and no message_regex matches {scope} — "
+            "it fires on routine noise, not on a fault. Name the reason (and, if needed, the "
+            "message) the failure produces."
+        ]
     if pred.kind not in HEALTHY_STATUS or pred.status_regex is None:
         return []
     hits = [s for s in HEALTHY_STATUS[pred.kind] if pred.status_regex.search(s)]

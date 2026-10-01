@@ -697,6 +697,9 @@ loaded form would differ from what was compiled:
 - every liveness check described above (unsupported or wrong-case `kind`, no `status_regex`,
   a regex only an impossible value satisfies, a template in a PromQL selector, a bad
   `direction`), and a predicate that matches a **healthy** object;
+- an `Event` watch predicate with neither `reason_regex` nor `message_regex` — an absent regex
+  matches anything, so it fires on every Warning event (of `involved_kind`, if set). Promotion
+  refuses it too; a stored one still loads, flagged in `fires_on_healthy`;
 - a detector whose only predicates are trend predicates while `PREDICTIVE_DETECTION_ENABLED` is
   false — nothing on that deployment would evaluate it.
 

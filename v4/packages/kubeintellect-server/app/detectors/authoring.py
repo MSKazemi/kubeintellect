@@ -89,6 +89,8 @@ detector that could never fire:
   two are evaluated by separate loops and OR'd, never AND'd. If the condition is a resource level
   ("pinned at its CPU limit", "memory climbing"), express it as a trend_predicate ALONE and emit
   NO watch_predicates.
+- An Event predicate MUST carry reason_regex or message_regex (or both). Without either it
+  matches every Warning event on the cluster and is refused.
 - Emit NO other keys and NO other fields than the ones listed above. The output is checked
   against the engine's schema and a key the engine has no reader for is refused, not ignored —
   an ignored field is a condition the detector silently stops checking.
