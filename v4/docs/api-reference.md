@@ -565,6 +565,8 @@ any events for this episode — intact and complete are different claims. Requir
   "root_cause": "…", "follow_ups": [], "narrative": null,
   "events_lost": 0,
   "gaps": [],
+  "grounding_rate": null, "claims_total": 0, "claims_ungrounded": 0,
+  "narrative_withheld": null,
   "summary": "… audit chain intact."
 }
 ```
@@ -586,7 +588,13 @@ banner beside the chain verdict, and `kq export` exits `5`.
 
 The [`kq postmortem`](cli-reference.md#kq-postmortem-session-id) subcommand wraps
 this with `format=markdown`. An optional LLM narrative (`POSTMORTEM_LLM_NARRATIVE`)
-is constrained to the recorded events.
+is constrained to the recorded events and then checked **claim by claim** against them:
+unsupported claims are removed, and when fewer than `POSTMORTEM_MIN_GROUNDING` (default
+`0.9`) of its claims are supported the narrative is withheld (`narrative: null`) with the
+reason in `narrative_withheld`. `grounding_rate` is `null` when no narrative was checked —
+that is "not measured", not a perfect score. `format=markdown` returns these four fields
+alongside the verdict fields. See [configuration](configuration.md#incident-postmortems-adr-011)
+for the rules.
 
 ---
 

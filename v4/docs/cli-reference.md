@@ -702,7 +702,10 @@ hash-chained flight recorder, what fired, what was investigated and tried, the
 outcome, and an **audit-chain verdict**. Every line cites the recorded event
 (`[#seq]`) it came from. An optional LLM narrative
 (`POSTMORTEM_LLM_NARRATIVE=true`) prettifies the prose but is constrained to the
-recorded events and falls back to the deterministic timeline on any failure.
+recorded events and falls back to the deterministic timeline on any failure. Each of its
+claims is checked against the recorded events: unsupported claims are removed (the report
+says how many), and below `POSTMORTEM_MIN_GROUNDING` the narrative is replaced by an
+**LLM NARRATIVE WITHHELD** note — the deterministic sections are unaffected.
 
 **The verdict has three states, not two.** *Audit chain verified intact* and
 *AUDIT CHAIN BROKEN* both mean the records were read; a third banner, *AUDIT CHAIN NOT

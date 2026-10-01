@@ -604,7 +604,16 @@ and the Anthropic model provider.
 | Variable | Default | Description |
 |---|---|---|
 | `POSTMORTEM_ENABLED` | `true` | Read-only grounded postmortem view over the flight recorder (`GET /v1/episodes/{id}/postmortem`, `kq postmortem`). The deterministic seq-cited timeline is always available. |
-| `POSTMORTEM_LLM_NARRATIVE` | `false` | Add an LLM narrative (the only token-spending part) constrained to the recorded events; falls back to the deterministic timeline on any failure. |
+| `POSTMORTEM_LLM_NARRATIVE` | `false` | Add an LLM narrative (the only token-spending part) constrained to the recorded events; falls back to the deterministic timeline on any failure. Every narrative passes the claim-level grounding gate below. |
+| `POSTMORTEM_MIN_GROUNDING` | `0.9` | Minimum share of narrative claims (0.0–1.0) that must be supported by the recorded events. Each sentence of the narrative is checked deterministically (no second LLM call); unsupported claims are always removed, and below this floor the whole narrative is withheld and the deterministic postmortem is returned with the reason in `narrative_withheld`. The measured rate is reported per postmortem as `grounding_rate`, `claims_total`, `claims_ungrounded`. |
+
+**Narrative grounding gate.** A claim is *unsupported* — and never shown — when it cites a
+`[#seq]` that is not in the timeline; when a resource name, backticked span, number or clock
+time in it does not appear in the evidence the model was given (the deterministic postmortem
+itself); when it asserts a cause (*because*, *caused*, *led to*, *root cause*, …) that the
+recorded conclusion or the events it cites do not carry; or when it has nothing checkable at
+all (no citation and no named anchor). A field campaign measured the ungated narrative at a
+grounding rate of 0.70 and 0.61, which is why the default floor is 0.9.
 
 ### Natural-language detector authoring (ADR-012)
 
