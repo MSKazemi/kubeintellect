@@ -51,6 +51,7 @@ They ship alongside the V2 graph and activate via feature flags
 | Autonomy ladder + watchtower | Detector firings open autonomous investigations; morning digest | [Autonomy](autonomy.md) | `WATCHTOWER_ENABLED` (on, level A1) |
 | NL detector authoring | Compile a plain-English failure into a detect block, run it in **shadow** (observes only, never reaches the watchtower) until a human promotes it — ADR-012 | [CLI](cli-reference.md#kq-detector-teach-a-new-failure-in-plain-english) | `NL_DETECTOR_AUTHORING_ENABLED` (off) |
 | Cortex V4 | Explicit-node reasoning graph: structured triage plan, live step transitions, true token streaming, tiered models | [Agent Behaviors](agent-behaviors.md) | `CORTEX_V4_ENABLED` (off) |
+| Grounding check | Cortex `ground_check` node between synthesize and remember: each claim of the answer is labelled supported / partial / none against the evidence already gathered; unsupported claims are withdrawn and demote the turn to advisory, so an A3 fix runs only after a grounded diagnosis — ADR-009 | [Agent Behaviors](agent-behaviors.md#cortex-v4-opt-in) | `SELF_GOVERN_ENABLED` (off) |
 
 The V2 graph below remains the default reasoning path until the V4 cortex
 meets resolution parity on the evaluation suite.

@@ -589,7 +589,7 @@ and the Anthropic model provider.
 | `PREFERENCE_DECAY_DAYS` | `60` | Inferred preferences not re-seen within this window decay and are purged by the consolidation worker (`preference_purge()`). |
 | `PREFERENCE_MIN_CONFIDENCE` | `0.3` | Inferred preferences below this confidence are not injected. |
 | `PREFERENCE_INFER_MIN_OCCURRENCE` | `3` | How many times a behaviour must recur before it's inferred as a preference. |
-| `CORTEX_V4_ENABLED` | `false` | Enables the V4 reasoning graph (triage → gather loop → synthesize → remember). When `false`, the V2 graph is used. |
+| `CORTEX_V4_ENABLED` | `false` | Enables the V4 reasoning graph (triage → gather loop → synthesize → remember; with `SELF_GOVERN_ENABLED`, synthesize → ground_check → remember). When `false`, the V2 graph is used. |
 | `CORTEX_MAX_GATHER_ROUNDS` | `8` | Bound on gather-loop LLM↔tool iterations per turn. |
 
 ### Predictive detection (ADR-010)
@@ -631,6 +631,7 @@ grounding rate of 0.70 and 0.61, which is why the default floor is 0.9.
 | `AUTONOMY_LEVEL` | `A1` | Default autonomy level: `A0` observe, `A1` investigate + report, `A2` propose, `A3` auto-fix (allowlist only). |
 | `AUTONOMY_NAMESPACE_LEVELS` | `""` | Per-namespace overrides, e.g. `prod=A0,dev=A2`. **Exact match, no globs** — unlike the row below; an unmatchable entry is reported, not silently ignored. Protected namespaces are always pinned to `A0` for autonomous action. |
 | `AUTONOMY_A3_ALLOWLIST` | `""` | Patterns eligible for `A3` auto-fix, as `<playbook>/<namespace-glob>` entries, e.g. `CrashLoopBackOff/dev-*`. |
+| `SELF_GOVERN_ENABLED` | `false` | ADR-009 grounding check (Cortex graph only). Adds a `ground_check` node between `synthesize` and `remember` that labels each claim of the answer `supported` / `partial` / `none` against the evidence already gathered (one cheap-tier call; skipped when the answer makes no actionable claim). Unsupported claims are hedged and withdrawn, and demote the turn to advisory: an A3 fix then runs only after a grounded diagnosis. A checker error never raises autonomy. Off ⇒ graph and watchtower unchanged. See [Autonomy](autonomy.md#grounded-auto-fix-adr-009). |
 
 ### Anthropic provider
 

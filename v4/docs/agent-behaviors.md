@@ -831,6 +831,36 @@ What changes when it is on:
   the `langchain-anthropic` extra.
 - **Bounded gathering.** The LLM↔tools loop is capped at
   `CORTEX_MAX_GATHER_ROUNDS` (default `8`) iterations per turn.
+- **Grounding check (ADR-009, opt-in).** With `SELF_GOVERN_ENABLED` on, a
+  `ground_check` node runs between `synthesize` and `remember`:
+
+  ```
+  … → synthesize → ground_check → remember
+  ```
+
+  One cheap-tier structured call labels every atomic claim of the answer
+  `supported`, `partial` or `none` against the evidence already in state — this
+  turn's tool output, the detector firing that opened the turn, the cluster
+  snapshot and the recalled episodes. Nothing new is fetched.
+  - A `none` claim is listed under **⚠ Grounding check** after the answer (the
+    tokens are already streamed) and withdrawn from the stored copy, which is
+    what the next turn and the episode write read. `partial` claims are listed
+    as hypotheses.
+  - Any `none` claim demotes the turn to **advisory** (`autonomy_ceiling=A1`):
+    the diagnosis cannot trigger an autonomous fix — see
+    [Autonomy](autonomy.md#grounded-auto-fix-adr-009).
+  - A draft with no actionable claim (no root cause, cause, fix or mutating
+    command — e.g. a healthy-cluster listing) is skipped with **no LLM call**.
+  - **Fail-open, never fail-up.** A checker error returns the answer unchanged
+    plus a **"Grounding check NOT PERFORMED"** note, and sets the ceiling to
+    `A2`: autonomy may stay or drop, it is never raised on an unchecked answer.
+  - Every outcome is recorded: `state["grounding"]` holds the status, per-class
+    counts and ceiling, and the flight recorder chains a `ground_check` row.
+
+  The node is the graph's shared critique sub-stage: ADR-009 places
+  self-critique and the prompt-injection output check in the same call.
+  Neither exists yet; the extension point is the structured call in
+  `app/cortex/verify.py`.
 
 HITL approval gates, role enforcement, the reflexion outcome path, and episode
 writes are identical in both graphs. With the flag off (default), nothing in
