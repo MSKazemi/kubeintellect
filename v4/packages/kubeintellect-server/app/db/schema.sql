@@ -521,6 +521,46 @@ CREATE TABLE IF NOT EXISTS fleet_signals (
 );
 CREATE INDEX IF NOT EXISTS idx_fleet_signals_tenant ON fleet_signals (tenant, created_at);
 
+-- ── Effect log — exactly-once irreversible calls (ADR-008) ───────────────────
+-- One row per state change of an IRREVERSIBLE tool call, consulted synchronously before the
+-- call runs: approval issued / consumed (single-use tokens), intent claimed, effect recorded,
+-- branch forked, call refused. Hash-chained per session with the flight recorder's own format
+-- (`compute_hash(prev_hash, session_id, seq, kind, payload)`), and the binding columns below
+-- are query projections of fields that also live in `payload`, so the hash covers them.
+-- Only written when SELF_GOVERN_ENABLED=true. Append-only: the trigger refuses UPDATE and
+-- DELETE, because a removed `effect` row is exactly what would let an irreversible call run
+-- twice. Never pruned by retention (see `app/memory/retention.py::REFUSED`).
+CREATE TABLE IF NOT EXISTS effect_log (
+    id             BIGSERIAL PRIMARY KEY,
+    session_id     TEXT        NOT NULL,
+    seq            INTEGER     NOT NULL,
+    kind           TEXT        NOT NULL,   -- approval_issued | approval_consumed | intent | effect | fork | refused
+    rollback_point TEXT        NOT NULL,   -- the turn the call belongs to
+    branch_id      TEXT        NOT NULL,
+    tool           TEXT        NOT NULL,
+    canonical_key  TEXT        NOT NULL,   -- sha256 of the canonical intent
+    payload        JSONB       NOT NULL,
+    prev_hash      TEXT        NOT NULL DEFAULT '',
+    hash           TEXT        NOT NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (session_id, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_effect_log_scope
+    ON effect_log (session_id, rollback_point, branch_id, canonical_key);
+-- A consumed approval token can be consumed once. This is the server-side half of single-use:
+-- a second consumption of the same token is a constraint violation, not a code path.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_effect_log_token_consumed
+    ON effect_log ((payload->>'token')) WHERE kind = 'approval_consumed';
+
+CREATE OR REPLACE FUNCTION effect_log_append_only() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'effect_log is append-only (ADR-008)';
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS effect_log_no_rewrite ON effect_log;
+CREATE TRIGGER effect_log_no_rewrite BEFORE UPDATE OR DELETE ON effect_log
+    FOR EACH ROW EXECUTE FUNCTION effect_log_append_only();
+
 -- ── Stamp the ledger (enterprise A11) ────────────────────────────────────────
 -- Applied LAST, so a partial run never claims a complete schema. The Helm chart's db-init Job
 -- pipes this file straight into psql and never touches the Python CLI, so the stamp has to live
@@ -530,5 +570,5 @@ CREATE INDEX IF NOT EXISTS idx_fleet_signals_tenant ON fleet_signals (tenant, cr
 -- `tests/test_a_stale_schema_is_not_silent.py` is what actually forces the version below to be
 -- bumped whenever this file changes.
 INSERT INTO schema_migrations (version, fingerprint, applied_by)
-VALUES (2, '', 'schema.sql')
+VALUES (3, '', 'schema.sql')
 ON CONFLICT (version) DO UPDATE SET applied_at = now();

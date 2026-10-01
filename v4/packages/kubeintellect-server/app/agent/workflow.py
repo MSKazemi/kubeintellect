@@ -379,6 +379,8 @@ async def invoke(
     state = _fresh_turn_state(
         user_message, session_id, user_id, user_role, extra_state, trigger_source
     )
+    from app.tools import effect_guard
+    effect_guard.stamp_rollback_point(config, state)   # ADR-008 rollback point; no-op when off
 
     # The token meter is attached unconditionally, and deliberately not inside the `if callbacks`
     # below: usage must come back to the caller whether or not tracing is on. The campaign that
@@ -433,6 +435,8 @@ async def stream_events(
     and trusted automation. The flag is passed via configurable so kubectl_tool
     can read it without touching AgentState.
     """
+    from app.tools import effect_guard  # lazy: keeps tool modules out of this module's import
+
     graph = await get_graph()
     config: RunnableConfig = {
         "configurable": {"thread_id": session_id, "user_role": user_role, "hitl_bypass": auto_approve},
@@ -479,13 +483,17 @@ async def stream_events(
                 f"stream_events: HITL reply not recognised as approval, cancelling "
                 f"thread={session_id} reply={user_message[:80]!r}"
             )
-        input_data = Command(resume=approved)
+        # ADR-008: an approval of an effect-guarded call carries the single-use token the
+        # interrupt was raised with. With SELF_GOVERN_ENABLED off this is `approved` unchanged.
+        input_data = Command(resume=effect_guard.resume_value(approved, graph_state))
         logger.info(f"stream_events: resuming HITL thread={session_id} approved={approved}")
     else:
         input_data = _fresh_turn_state(
             user_message, session_id, user_id, user_role,
             trigger_source=trigger_source,
         )
+    # ADR-008 rollback point (the turn) for the effect guard; no-op with the flag off.
+    effect_guard.stamp_rollback_point(config, input_data, graph_state)
 
     # The token meter is attached unconditionally, and deliberately not inside the `if callbacks`
     # below: usage must come back to the caller whether or not tracing is on. The campaign that

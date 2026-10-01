@@ -1778,13 +1778,25 @@ def run_kubectl(
         return protected_err
 
     # ── 4c. Risk classification → HITL interrupt ─────────────────────────────
+    # ADR-008 exactly-once + single-use approvals for irreversible calls. Inert (PASS) unless
+    # SELF_GOVERN_ENABLED. Imported here, not at the top: app.tools.aci imports this module.
+    from app.tools import effect_guard
+    admission = effect_guard.PASS
     if verb in DESTRUCTIVE_VERBS or _destructive_verbs_in(args) or _is_write_verb(verb, args):
         has_dry_run = any(
             flag in args for flag in ("--dry-run=client", "--dry-run=server", "--dry-run")
         )
         hitl_bypass = bool((config.get("configurable") or {}).get("hitl_bypass", False)) if config else False
         always_confirm = _requires_always_confirm(verb, args)
-        if not has_dry_run and (not hitl_bypass or always_confirm):
+        admission = effect_guard.admit(
+            cmd, args, stdin, config, has_dry_run=has_dry_run,
+            hitl_bypass=hitl_bypass, always_confirm=always_confirm,
+        )
+        if admission.response is not None:
+            return admission.response
+        if admission.approved:
+            logger.info(f"run_kubectl: single-use approval consumed by the effect guard for {cmd!r}")
+        elif not has_dry_run and (not hitl_bypass or always_confirm):
             hidden = sorted(_destructive_verbs_in(args))
             effective = verb if (verb in DESTRUCTIVE_VERBS or not hidden) else hidden[0]
             risk = "high" if always_confirm else _classify_risk(effective, args)
@@ -1926,4 +1938,4 @@ def run_kubectl(
         )
         logger.debug(f"run_kubectl: output truncated ({omitted} chars omitted)")
 
-    return output
+    return effect_guard.settle(admission, output)

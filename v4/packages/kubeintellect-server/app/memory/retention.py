@@ -121,6 +121,12 @@ REFUSED: dict[str, str] = {
         "2026-08-28: the same anchor, one row per cluster, for the memory write chain. It is "
         "the only record of how far that chain got, so deleting it is what makes a truncation "
         "of `memory_audit` undetectable rather than merely unlogged.",
+    "effect_log":
+        "2026-10-02: the ADR-008 exactly-once ledger. An `effect` row is the only thing that "
+        "stops an irreversible call (a PVC or namespace delete) from running a second time on a "
+        "rollback+retry, and an `approval_consumed` row is the only thing that stops a used "
+        "approval from being presented again. Ageing either out re-arms both. The table also "
+        "refuses UPDATE and DELETE at the database itself.",
     "episodes":
         "2026-08-28: L1 episodic memory — the thing the product recalls — and the row "
         "`decision_log.episode_id` and `prospective_memory.source_episode_id` point at. Ageing "
