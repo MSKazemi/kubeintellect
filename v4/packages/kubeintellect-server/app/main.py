@@ -41,6 +41,16 @@ async def lifespan(app: FastAPI):
         from app.core.llm import get_coordinator_llm, get_subagent_llm
         get_coordinator_llm()
         get_subagent_llm()
+    if settings.LLM_PROVIDER == "local":
+        # A self-hosted endpoint that is down, or a model that cannot call tools, would give
+        # an agent that answers without reading the cluster. Prove both before the port opens.
+        from app.core.local_llm import LocalLLMUnavailable, preflight_local_llm
+
+        try:
+            await preflight_local_llm()
+        except LocalLLMUnavailable as exc:
+            logger.error(f"Startup failed: {exc}")
+            sys.exit(1)
     logger.info(f"LLM provider: {settings.LLM_PROVIDER}")
     # A guard entry that cannot match protects nothing, and every parser here discards
     # silently. Logged loudly at startup and surfaced on GET /v1/v5/status; never fatal —

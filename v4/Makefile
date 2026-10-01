@@ -273,7 +273,7 @@ gcp-deploy-kubeintellect: ## Deploy KubeIntellect to Google Cloud GKE (any LLM p
 	@$(MAKE) --no-print-directory _cloud-deploy CLOUD=gcp
 
 # Shared multi-cloud deploy recipe. CLOUD=aws|gcp selects the values-<CLOUD>.yaml
-# overlay. LLM provider is decoupled from the cloud: azure | openai | qwen | anthropic.
+# overlay. LLM provider is decoupled from the cloud: azure | openai | qwen | anthropic | local.
 _cloud-deploy:
 	@bash -c '\
 	  set -euo pipefail; \
@@ -289,7 +289,8 @@ _cloud-deploy:
 	    qwen) : "$${OPENAI_API_KEY:?ERROR: OPENAI_API_KEY (DashScope key) not set in .env}"; \
 	          OPENAI_BASE_URL=$${OPENAI_BASE_URL:-https://dashscope-intl.aliyuncs.com/compatible-mode/v1};; \
 	    openai) : "$${OPENAI_API_KEY:?ERROR: OPENAI_API_KEY not set in .env}";; \
-	    *) echo "ERROR: unknown LLM_PROVIDER=$$LLM_PROVIDER (want azure|openai|qwen|anthropic)"; exit 1;; \
+	    local) : "$${OPENAI_BASE_URL:?ERROR: OPENAI_BASE_URL (your model server, reachable from the pod) not set in .env}";; \
+	    *) echo "ERROR: unknown LLM_PROVIDER=$$LLM_PROVIDER (want azure|openai|qwen|anthropic|local)"; exit 1;; \
 	  esac; \
 	  helm upgrade --install kubeintellect deploy/helm/kubeintellect \
 	    -f deploy/helm/kubeintellect/values.yaml \

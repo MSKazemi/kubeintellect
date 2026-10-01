@@ -70,6 +70,9 @@ class Settings(BaseSettings):
     # DASHSCOPE_API_KEY (Alibaba's own convention) or QWEN_API_KEY populate it.
     DASHSCOPE_API_KEY: str | None = None
     QWEN_API_KEY: str | None = None
+    # LLM_PROVIDER=local: how long the startup check waits for each model's tool-calling probe.
+    # Generous on purpose -- the first request to a local server loads the model into memory.
+    LOCAL_LLM_PROBE_TIMEOUT_SECONDS: float = 180.0
 
     # ── PostgreSQL ────────────────────────────────────────────────────────────
     # When DATABASE_URL is set (e.g. external managed DB), it takes precedence
@@ -735,11 +738,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_provider(self) -> Settings:
-        valid = {"azure", "openai", "anthropic", "qwen"}
+        valid = {"azure", "openai", "anthropic", "qwen", "local"}
         if self.LLM_PROVIDER not in valid:
             raise ValueError(
                 f"LLM_PROVIDER must be one of {sorted(valid)}, got {self.LLM_PROVIDER!r}.\n"
-                f"  Fix: set LLM_PROVIDER=qwen (or openai / azure / anthropic) in ~/.kubeintellect/.env"
+                f"  Fix: set LLM_PROVIDER=qwen (or openai / azure / anthropic / local) in ~/.kubeintellect/.env"
             )
         # 'qwen' is a first-class alias for the OpenAI-compatible DashScope path:
         # it auto-targets the DashScope endpoint and qwen-* model defaults so an
@@ -753,6 +756,14 @@ class Settings(BaseSettings):
                 self.OPENAI_COORDINATOR_MODEL = "qwen-max"
             if self.OPENAI_SUBAGENT_MODEL == "gpt-4o-mini":
                 self.OPENAI_SUBAGENT_MODEL = "qwen-plus"
+        # 'local' is a self-hosted OpenAI-compatible server (Ollama, vLLM, LM Studio, llama.cpp)
+        # on the same client as 'openai' and 'qwen' -- OPENAI_BASE_URL and OPENAI_*_MODEL. Its
+        # base URL is never left empty: an empty one means api.openai.com, and an operator who
+        # chose 'local' to keep cluster data on their own hardware must not reach OpenAI by
+        # omission. No API key is required; reachability and tool calling are checked before
+        # the server opens its port (app.core.local_llm).
+        if self.LLM_PROVIDER == "local" and not self.OPENAI_BASE_URL:
+            self.OPENAI_BASE_URL = LOCAL_LLM_DEFAULT_BASE_URL
         if self.LLM_PROVIDER == "anthropic":
             refusal = v2_provider_refusal(self)
             if refusal:
@@ -798,6 +809,10 @@ class Settings(BaseSettings):
         return self
 
 
+#: Ollama's OpenAI-compatible endpoint on its default port -- the `local` provider's default.
+LOCAL_LLM_DEFAULT_BASE_URL = "http://localhost:11434/v1"
+
+
 def v2_provider_refusal(s: Settings) -> str | None:
     """Why the default V2 graph must not start with this provider, or None if it may.
 
@@ -818,7 +833,7 @@ def v2_provider_refusal(s: Settings) -> str | None:
             "send cluster data to a vendor you did not select.\n"
             "  Fix: set CORTEX_V4_ENABLED=true (and install langchain-anthropic) to use "
             "Anthropic, or set LLM_PROVIDER to the provider you actually want "
-            "(openai / azure / qwen)."
+            "(openai / azure / qwen / local)."
         )
     return None
 

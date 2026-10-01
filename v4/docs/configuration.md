@@ -65,7 +65,7 @@ Skip the interactive wizard and configure manually. Copy the block below, save i
 # REQUIRED — fill in exactly one LLM provider
 # ═══════════════════════════════════════════════════════
 
-LLM_PROVIDER=openai                     # openai | azure | qwen | anthropic
+LLM_PROVIDER=openai                     # openai | azure | qwen | anthropic | local
 
 # ── Option A: OpenAI ─────────────────────────────────────────────────────────
 OPENAI_API_KEY=sk-...                   # ← your key (platform.openai.com/api-keys)
@@ -99,6 +99,14 @@ OPENAI_SUBAGENT_MODEL=gpt-4o-mini
 # ANTHROPIC_API_KEY=sk-ant-...
 # ANTHROPIC_LARGE_MODEL=claude-sonnet-4-6
 # ANTHROPIC_SMALL_MODEL=claude-haiku-4-5-20251001
+
+# ── Option E: Local / self-hosted (Ollama, vLLM, LM Studio, llama.cpp) ───────
+# No API key needed. The server checks the endpoint and tool calling before it
+# starts. Full guide: docs/local-llm.md
+# LLM_PROVIDER=local
+# OPENAI_BASE_URL=http://localhost:11434/v1   # default for `local` (Ollama)
+# OPENAI_COORDINATOR_MODEL=qwen2.5:14b        # must be served by your endpoint
+# OPENAI_SUBAGENT_MODEL=qwen2.5:14b
 
 
 # ═══════════════════════════════════════════════════════
@@ -157,7 +165,7 @@ LOG_FORMAT=text
 
 | Variable | Default | Values | Description |
 |---|---|---|---|
-| `LLM_PROVIDER` | `openai` | `openai` \| `azure` \| `qwen` \| `anthropic` | Which LLM backend to use. `qwen` is OpenAI-compatible via Alibaba DashScope (set `OPENAI_BASE_URL`); `anthropic` is served only by the V4 cortex graph — see the table below. |
+| `LLM_PROVIDER` | `openai` | `openai` \| `azure` \| `qwen` \| `anthropic` \| `local` | Which LLM backend to use. `qwen` is OpenAI-compatible via Alibaba DashScope (set `OPENAI_BASE_URL`); `local` is a self-hosted OpenAI-compatible server such as Ollama — see [Local / self-hosted LLM](local-llm.md); `anthropic` is served only by the V4 cortex graph — see the table below. |
 
 Which providers each graph supports:
 
@@ -167,6 +175,7 @@ Which providers each graph supports:
 | `azure` | ✅ | ✅ |
 | `qwen` | ✅ | ✅ |
 | `anthropic` | ❌ **refused at startup** | ✅ (needs `langchain-anthropic`) |
+| `local` | ✅ | ✅ |
 
 `LLM_PROVIDER=anthropic` with `CORTEX_V4_ENABLED=false` is a startup error, not a
 fallback. The V2 graph has no Anthropic backend, and the server will not substitute
@@ -184,6 +193,21 @@ actually want.
 | `OPENAI_API_KEY` | — | Your OpenAI API key |
 | `OPENAI_COORDINATOR_MODEL` | `gpt-4o` | Model for the coordinator agent |
 | `OPENAI_SUBAGENT_MODEL` | `gpt-4o-mini` | Model for domain subagents |
+
+**Local / self-hosted** (`LLM_PROVIDER=local`) — uses the OpenAI variables above against your
+own server. Guide: [Local / self-hosted LLM](local-llm.md).
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENAI_BASE_URL` | `http://localhost:11434/v1` with `local` (empty → `api.openai.com` otherwise) | Your server's OpenAI-compatible URL. With `local` it is never empty, so requests cannot fall back to OpenAI. |
+| `LOCAL_LLM_PROBE_TIMEOUT_SECONDS` | `180` | How long the startup check waits for each model's tool-calling probe; the first request loads the model. |
+
+With `local`, `OPENAI_API_KEY` is optional (set it only if your server checks a key) and
+`OPENAI_COORDINATOR_MODEL` / `OPENAI_SUBAGENT_MODEL` must name models your server serves.
+Before opening its port, the server checks that the endpoint is reachable, that both models
+are served, and that each one makes a tool call; if any check fails it exits with status 1
+and says what to change. A model that cannot call tools is refused, because the agents read
+the cluster only through tool calls.
 
 **Azure OpenAI:**
 

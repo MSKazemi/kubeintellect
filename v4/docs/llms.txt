@@ -16,6 +16,7 @@ Install: `pip install kubeintellect` or Docker Compose or Helm.
 - [Deploy: Docker Compose](https://mskazemi.com/kubeintellect/deploy/docker-compose/): Full local stack with PostgreSQL, Prometheus, Grafana, Loki, and optional Langfuse LLM tracing.
 - [Deploy: Kind dev environment](https://mskazemi.com/kubeintellect/deploy/kind/): 2-node cluster with hot-reload, monitoring, and LLM tracing for contributors.
 - [Deploy: Cloud / Helm](https://mskazemi.com/kubeintellect/deploy/cloud/): Production deployment on AKS, EKS, GKE, or any Kubernetes cluster using Helm.
+- [Local / self-hosted LLM](https://mskazemi.com/kubeintellect/local-llm/): Run against Ollama, vLLM, LM Studio or any OpenAI-compatible server with `LLM_PROVIDER=local` — no API key, startup check for reachability and tool calling.
 - [Configuration reference](https://mskazemi.com/kubeintellect/configuration/): All environment variables — LLM provider, auth keys, database, kubectl, observability.
 - [Security model](https://mskazemi.com/kubeintellect/security/): HITL gates, three-tier RBAC, shell injection blocking, kubectl blocklists, REPL sandbox, and (experimental) learned-memory hardening against MINJA poisoning.
 - [Memory](https://mskazemi.com/kubeintellect/memory/): The four-tier memory hierarchy (episodic recall + temporal knowledge graph) and the experimental Memory V5 upgrade — hybrid retrieval, bi-temporal KG, multi-hop blast-radius, write reconciliation, episode→rule→detector promotion, importance/prospective memory, MINJA-hardened writes, and a RAPTOR-style summary tree.

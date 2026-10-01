@@ -32,7 +32,7 @@ this flag. This page is only about the *reasoning engine* and the *models it use
 | Streaming | Token buffering needed to suppress intermediate ReAct chatter | Native — only the synthesis node streams tokens; triage/specialist tiers stream nothing |
 | Investigation plan | Inferred after the fact (regex over sentinel strings like `RCA_REQUIRED`, `TARGETED:`) | First-class state; `PlanEvent`s fire as nodes execute |
 | Tool-call / HITL accounting | Inferred by counting tool calls | Exact — driven by explicit state transitions |
-| Provider support | Azure / OpenAI only | Azure / OpenAI **and** Anthropic |
+| Provider support | Azure / OpenAI-compatible (`openai`, `qwen`, `local`) | Azure / OpenAI-compatible **and** Anthropic |
 | Gather loop bound | n/a | `CORTEX_MAX_GATHER_ROUNDS` (default 8) |
 
 The three "V2 workarounds" — token buffering, plan-string regex parsing, and

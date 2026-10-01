@@ -74,13 +74,16 @@ def _validate_config(cfg: dict) -> list[_Issue]:
 
     # LLM provider ─────────────────────────────────────────────────────────────
     provider = cfg.get("LLM_PROVIDER", "azure").strip().lower()
-    if provider not in ("azure", "openai"):
+    if provider not in ("azure", "openai", "local"):
         issues.append(_Issue(
             "LLM_PROVIDER", "error",
-            f"Invalid value {provider!r} — must be 'openai' or 'azure'.",
+            f"Invalid value {provider!r} — must be 'openai' or 'azure' "
+            "(or 'local' for a self-hosted endpoint).",
             "Edit ~/.kubeintellect/.env:\n"
-            "         LLM_PROVIDER=openai    # or: LLM_PROVIDER=azure",
+            "         LLM_PROVIDER=openai    # or: LLM_PROVIDER=azure / LLM_PROVIDER=local",
         ))
+    # `local` has no key to check -- a self-hosted endpoint usually has none. Reachability and
+    # tool calling are proven by the server itself before it opens its port.
     elif provider == "openai":
         if not cfg.get("OPENAI_API_KEY", "").strip():
             issues.append(_Issue(
@@ -1878,6 +1881,11 @@ def cmd_status(_args: argparse.Namespace) -> None:
             else f"  {_dim('OPENAI_API_KEY missing — platform.openai.com/api-keys')}"
         )
         print(f"  LLM:       {llm_status}  openai / {model}{note}")
+    elif provider == "local":
+        model = os.environ.get("OPENAI_COORDINATOR_MODEL", "gpt-4o")
+        base = os.environ.get("OPENAI_BASE_URL", "").strip() or "http://localhost:11434/v1"
+        note = f"  {_dim('self-hosted at ' + base + ' — checked when the server starts')}"
+        print(f"  LLM:       {_mark(True, 'LLM')}  local / {model}{note}")
     else:
         model = os.environ.get("AZURE_COORDINATOR_DEPLOYMENT", "gpt-4o")
         has_key = bool(os.environ.get("AZURE_OPENAI_API_KEY", "").strip())
@@ -2425,7 +2433,7 @@ config file:  ~/.kubeintellect/.env
   Edit the file directly or use 'kubeintellect set KEY=VALUE'.
 
   Key options:
-    LLM_PROVIDER                openai or azure
+    LLM_PROVIDER                openai, azure or local (self-hosted, e.g. Ollama)
     OPENAI_API_KEY              OpenAI API key
     AZURE_OPENAI_API_KEY        Azure OpenAI API key
     AZURE_OPENAI_ENDPOINT       Azure endpoint URL
