@@ -59,7 +59,11 @@ PostgreSQL unlocks the cross-session cognitive layers: the
 [audit log](operations.md#audit-log), which has no SQLite equivalent: on SQLite the
 server starts with `audit: SQLite mode — audit logging disabled`, so there is no
 stored record of who asked for what. In SQLite mode these are disabled; nothing else
-is. See [Configuration → Database](configuration.md#database).
+is. (One opt-in feature changes behaviour rather than switching off: with
+`SELF_GOVERN_ENABLED=true`, the ADR-008 effect log lives beside the flight recorder, so on
+SQLite every irreversible call asks for a fresh human approval — see
+[security](security.md#exactly-once-irreversible-calls-and-single-use-approvals-adr-008).)
+See [Configuration → Database](configuration.md#database).
 
 ---
 

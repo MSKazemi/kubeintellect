@@ -386,6 +386,55 @@ skipping parse as the verb, so `kubectl -n prod delete namespace shop` and `kube
 -n prod namespace shop` behave identically. Until 2026-08-20 it read a fixed `args[2]`, and a
 single flag in front of the target turned it off on an auto-approve session.
 
+### Exactly-once irreversible calls and single-use approvals (ADR-008) {#exactly-once-irreversible-calls-and-single-use-approvals-adr-008}
+
+**Off by default** (`SELF_GOVERN_ENABLED=false`); with the flag off nothing below runs and the
+gate behaves exactly as described above.
+
+An agent's state can be rolled back and retried; the cluster cannot. Inside one turn a step can
+run again — LangGraph re-executes a node when it resumes it, a failed step is retried, the model
+re-issues a call after a rollback — and an irreversible call that already ran would run a second
+time. Worse, LangGraph hands a resumed node the stored approval **by position**, so a `yes` the
+operator gave for one command can be applied to whatever command now sits at that position
+("Authority Resurrection").
+
+With the flag on, `run_kubectl` interposes on every call in the **IRREVERSIBLE** rollback class
+(`app/tools/aci/mutating.py::classify_rollback` — deletes of PVCs, PVs, namespaces, CRDs and
+StatefulSets, and any mutating verb it cannot classify) before the approval gate:
+
+| Situation in this turn (same session, same branch) | What happens |
+|---|---|
+| The same canonical intent already ran successfully | The recorded result is returned, labelled `[Replayed — not re-executed]`. Nothing runs. |
+| A *different* target of the same action (same verb, same kind) already ran | Blocked. The prior record is shown and a human must approve an **explicit fork** (a new branch id is recorded); a denial returns `[Blocked]`. Applies on auto-approve sessions too. |
+| An earlier attempt has no known-good outcome (claimed but never recorded, or failed) | Neither replayed nor re-run silently: a human re-approves. |
+| First attempt, interactive | A single-use approval token bound to this exact call is issued and shown in the prompt. |
+| First attempt, auto-approve / A3 | An `a3` token is issued and consumed in the same transaction as the intent: the bypass authorises one execution of one intent, not every replay of it. |
+
+**Approvals are single-use and validated server-side.** A token is consumed exactly once (a
+unique index in the database enforces it), and an approval only counts if the resume value
+carries the token minted for *this* call — a bare `yes`, another call's token, or an
+already-consumed token is rejected with `[Rejected]` and nothing runs.
+
+**Canonical intent** — what makes two calls "the same": the verb and subcommand, the resource kind
+(short names and plurals folded: `pvc` = `persistentvolumeclaims`), names, namespace, selectors,
+`--all`/`-A`, replica count, cascade mode, image, container, revision, `key=value` assignments,
+and for a stdin manifest each object's kind/name/namespace plus a digest of the manifest. Not
+intent: output format, timeouts, grace periods and other execution modifiers, server-set
+metadata (`uid`, `resourceVersion`, `creationTimestamp`, `managedFields`, `status`, the
+last-applied annotation), and any label, annotation or assignment whose key names a request id,
+trace id, nonce or timestamp.
+
+**Rollback point = the turn.** A new user message is a new instruction and starts a new rollback
+point, so "delete it again" in a later message runs normally (through the gate). The ledger is the
+append-only, hash-chained `effect_log` table, mirrored into the [flight
+recorder](flight-recorder.md#effect-log-adr-008).
+
+**Fail-closed.** If the ledger is unavailable — flight recorder off, SQLite mode, Postgres
+unreachable, `db-init` not run, or a chain that does not verify — an irreversible call is never
+replayed and never run on the strength of auto-approve: it falls back to a fresh human approval,
+whose prompt says the ledger is unavailable. A call with no session id has no rollback point and
+is refused.
+
 ---
 
 ## 5. Secret protection — why users can't steal the API key

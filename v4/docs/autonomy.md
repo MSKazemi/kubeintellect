@@ -132,6 +132,13 @@ Two built-in guards prevent investigation storms:
 
 Both values are fixed in this release (not configurable via env).
 
+With `SELF_GOVERN_ENABLED=true` an A3 auto-fix gets one more guard (ADR-008): the bypass
+authorises **one** execution of an irreversible call (a PVC, PV, namespace, CRD or StatefulSet
+delete, or a mutation the classifier cannot place). A retry of the same call inside the
+investigation returns the recorded result; a retry aimed at a different object stops for a human
+fork; and if the effect ledger is unavailable the call waits for human approval instead of
+running. See [security](security.md#exactly-once-irreversible-calls-and-single-use-approvals-adr-008).
+
 Every autonomous investigation runs as session `auto-<finding-id>` and is
 recorded by the flight recorder, so you can replay it later:
 

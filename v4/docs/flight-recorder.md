@@ -273,6 +273,24 @@ of the two it is:
 
 ---
 
+## Effect log (ADR-008) {#effect-log-adr-008}
+
+With `SELF_GOVERN_ENABLED=true`, irreversible calls also go through a second, **synchronous**
+ledger: the `effect_log` table. The decision log above is written fire-and-forget and read after
+the fact; the effect log is read *before* an irreversible call runs, so every append is a committed
+transaction serialised per session, and any failure makes the call fall back to human approval
+rather than run (see [security](security.md#exactly-once-irreversible-calls-and-single-use-approvals-adr-008)).
+
+- Rows: `approval_issued`, `approval_consumed`, `intent`, `effect`, `fork`, `refused` — keyed by
+  session, rollback point (the turn), branch id, tool and the sha256 of the canonical intent.
+- Tamper evidence uses this page's chain format — `sha256(prev_hash + canonical)` per session — and
+  the table refuses `UPDATE` and `DELETE` at the database. Retention never prunes it.
+- Every row is mirrored here as an `effect_log` event (without the recorded result), so
+  `kq replay` shows replays, forks and rejected approvals in order.
+- Recorded results are redacted and capped at 8000 characters, like the tool output they copy.
+
+---
+
 ## Configuration & limitations
 
 | Flag | Default | Effect |
