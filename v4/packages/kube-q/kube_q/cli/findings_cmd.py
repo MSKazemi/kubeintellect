@@ -96,6 +96,18 @@ def run(argv: list[str]) -> int:
             f"  [yellow]•[/yellow] {data.get('predictive_error') or 'no reason recorded'}"
         )
 
+    # Same rule for the instant PromQL predicates (#20): a query that could not run is not a
+    # condition that does not hold. Older servers omit the field, which reads as not blind.
+    promql = data.get("promql")
+    if promql == "blind":
+        console.print(
+            "[red]PromQL detection is blind[/red] — a detector query could not be evaluated, "
+            "so a metric-side finding may not have fired."
+        )
+        console.print(
+            f"  [yellow]•[/yellow] {data.get('promql_error') or 'no reason recorded'}"
+        )
+
     # A third, independent way to be blind while looking connected: the watch stream is up and
     # the queue behind it overflowed. `_enqueue` sheds the OLDEST observation rather than applying
     # backpressure to `kubectl`, so the loss is silent by design at the point it happens and
@@ -122,6 +134,10 @@ def run(argv: list[str]) -> int:
         caveats = []
         if predictive == "blind":
             caveats.append("predictive detection is blind")
+        if promql == "blind":
+            caveats.append("PromQL detection is blind")
+        elif promql == "starting":
+            caveats.append("PromQL detection has not completed its first evaluation")
         if shed:
             caveats.append(f"{shed} observation(s) were dropped unseen")
         if state == "active" and not caveats:

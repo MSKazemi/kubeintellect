@@ -584,7 +584,10 @@ fired. When the server reports `predictive: blind`, the command prints *"Predict
 detection is blind — Prometheus could not be queried"* with the reason, and downgrades the
 summary line to *"N detectors watching, but predictive detection is blind — this is not an
 all-clear"*. `predictive: off` (the default — `PREDICTIVE_DETECTION_ENABLED` is `false`) is
-a configuration, not an outage, and stays quiet.
+a configuration, not an outage, and stays quiet. The same rule covers the instant `promql:`
+detector queries (#20): `promql: blind` prints *"PromQL detection is blind"* with the reason, and
+`promql: starting` (enabled, no sweep finished yet) also downgrades the summary line; `promql: off`
+stays quiet.
 
 ```bash
 kq findings               # last 100 findings
@@ -804,7 +807,8 @@ kq detector reject <name>                                          # stop it fir
 
 `3` matters when scripting: the exit code is the machine-readable sign that no detector was
 created, so `kq detector new … && kq detector list` does not carry on as though one existed. The
-gate refuses a detector with zero predicates, any `promql` entry (recorded, never evaluated),
+gate refuses a detector with zero predicates, a `promql` entry on a server that does not evaluate
+PromQL (`PROMQL_DETECTION_ENABLED` off or no `PROMETHEUS_URL`) or that Prometheus rejects,
 an unknown key or field, and anything the loader would drop or rewrite — the full list is in the
 [API reference](api-reference.md#authoring-outcomes).
 

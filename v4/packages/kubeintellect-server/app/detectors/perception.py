@@ -65,6 +65,12 @@ class PerceptionState:
     # anything outside its scope. Reporting `active` with an empty findings list and NOT saying
     # this would turn a setting into a false all-clear. Defaulted like the two fields above.
     watch_namespaces: tuple[str, ...] = ()
+    # PromQL detection (#20): `off` (flag off, or no detector carries a query), `starting` (on,
+    # no sweep finished yet), `active`, or `blind` (a query in the last sweep could not run).
+    # Defaulted like the fields above.
+    promql: str = OFF
+    promql_detectors: int = 0
+    promql_error: str | None = None
 
     @property
     def watching(self) -> bool:
@@ -131,6 +137,21 @@ def perception_state(engine: "DetectorEngine | None" = None) -> PerceptionState:
     else:
         predictive = ACTIVE
 
+    # And for the instant PromQL predicates (#20). Shadow detectors count: their queries run in
+    # the same sweep, and their silence is read as precision evidence at promotion time.
+    promql_detectors = sum(
+        1 for d in (*engine.detectors, *getattr(engine, "shadow_detectors", ()))
+        if getattr(d, "promql", None)
+    )
+    if not settings.PROMQL_DETECTION_ENABLED or not promql_detectors:
+        promql = OFF
+    elif getattr(engine, "promql_blind_since", None) is not None:
+        promql = BLIND
+    elif getattr(engine, "promql_last_sweep_at", None) is None:
+        promql = STARTING
+    else:
+        promql = ACTIVE
+
     return PerceptionState(
         sensorium=sensorium,
         sensorium_reason="",
@@ -142,6 +163,9 @@ def perception_state(engine: "DetectorEngine | None" = None) -> PerceptionState:
         shed_total=shed,
         queue_high_water=high_water,
         watch_namespaces=scope,
+        promql=promql,
+        promql_detectors=promql_detectors,
+        promql_error=getattr(engine, "last_promql_error", None),
     )
 
 
@@ -184,6 +208,16 @@ def perception_gaps(state: PerceptionState) -> list[str]:
             "predictive detection is blind — Prometheus could not be queried "
             f"({state.predictive_error or 'no reason recorded'}), so no predicted "
             "finding could have fired")
+
+    if state.promql == BLIND:
+        gaps.append(
+            "PromQL detection is blind — "
+            f"{state.promql_error or 'a query could not be evaluated, no reason recorded'} — "
+            "so a metric-side finding may not have fired")
+    elif state.promql == STARTING:
+        gaps.append(
+            "PromQL detection is on but has not completed its first evaluation — no "
+            "metric-side finding could have fired yet")
 
     # Independent of both instruments above, and the reason this belongs in the shared
     # classifier rather than in one surface: the watch queue sheds the OLDEST observation on

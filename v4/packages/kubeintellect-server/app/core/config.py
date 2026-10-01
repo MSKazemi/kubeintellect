@@ -341,6 +341,17 @@ class Settings(BaseSettings):
     PREDICTIVE_DETECTION_ENABLED: bool = False
     PREDICTIVE_TREND_INTERVAL_SECONDS: int = 60
 
+    # ── PromQL detection (#20, ADR-006) ───────────────────────────────────────
+    # Evaluate the instant `promql:` queries in `detect:` blocks: every series in the
+    # result vector is a firing candidate for (playbook, namespace, object), debounced
+    # like a watch predicate, zero tokens. Default off: most shipped playbooks carry
+    # queries that were never run before, so turning this on changes what fires on every
+    # cluster. Needs PROMETHEUS_URL. An unreachable Prometheus is reported as
+    # `promql: blind` on GET /v1/findings — never as "nothing fired". The interval is
+    # floored at 5s by the engine loop.
+    PROMQL_DETECTION_ENABLED: bool = False
+    PROMQL_DETECTION_INTERVAL_SECONDS: int = 30
+
     # ── Natural-language detector authoring (V4 ADR-012) ──────────────────────
     # Compile a plain-English failure into a detect block, stage it as a SHADOW
     # candidate, and require human promotion before it can act. Shadow detectors

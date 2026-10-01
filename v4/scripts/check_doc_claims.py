@@ -74,8 +74,8 @@ def _canonical() -> Canonical:
 
     # `promql:` declarations across the shipped playbooks. Counted from the YAML the
     # loader actually reads, because the number is quoted in a *safety* comment in
-    # `detectors/models.py` explaining why a promql-only detector is refused — and that
-    # comment said 21 while the tree carried 19, from 2026-08-23 until it was gated here.
+    # `detectors/models.py` about what the shipped queries cover (until #20 it explained why a
+    # promql-only detector was refused) — and that comment said 21 while the tree carried 19, from 2026-08-23 until it was gated here.
     # A number living in a source comment is exactly the kind no gate was watching.
     playbook_dir = (
         _ROOT / "v4" / "packages" / "kubeintellect-server" / "app" / "agent" / "playbooks"
@@ -314,12 +314,12 @@ def _numeric_claims(c: Canonical) -> list[_Claim]:
     """
     pc, dc, fc = c.playbook_count, c.detector_count, c.flag_count
     return [
-        # A safety comment, not a doc: it explains why a promql-only detector is refused.
+        # A safety comment, not a doc: what the shipped promql queries do and do not cover.
         # It is checked here because it is a number about the tree, and nothing else was
         # watching it -- it read 21 against a tree of 19 for over two weeks.
         ("root:v4/packages/kubeintellect-server/app/detectors/models.py",
          r"The (\d+) `promql:` queries in the shipped playbooks", c.promql_count,
-         "unevaluated promql count"),
+         "shipped promql count"),
         ("agent-behaviors.md", r"Playbooks shipped \((\d+)\)", pc, "playbook count"),
         ("agent-behaviors.md", r"Of the (\d+) shipped playbooks", pc, "playbook count"),
         ("capabilities.md", r"the (\d+) most common failures", pc, "playbook count"),

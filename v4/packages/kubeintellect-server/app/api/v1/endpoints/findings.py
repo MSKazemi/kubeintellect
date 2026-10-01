@@ -35,6 +35,12 @@ async def list_findings(
         "predictive": state.predictive,
         "predictive_detectors": state.predictive_detectors,
         "predictive_error": state.predictive_error,
+        # Instant PromQL predicates (#20): off | starting | active | blind. `blind` means a
+        # query in the last sweep could not run, so an absent metric-side finding is not
+        # evidence the condition is absent.
+        "promql": state.promql,
+        "promql_detectors": state.promql_detectors,
+        "promql_error": state.promql_error,
         "streams": state.streams,
         # Queue depth and shed count. `shed_total > 0` means the sensorium is DROPPING
         # observations — detection is lossy and this endpoint is the only place that says so.

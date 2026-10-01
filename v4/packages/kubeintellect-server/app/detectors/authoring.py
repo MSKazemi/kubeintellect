@@ -16,8 +16,10 @@ Two field-campaign defects shaped what follows (ADR-012 implementation notes):
   detector with zero predicates and `errors: []`; another kept a PromQL predicate that is recorded
   but never evaluated. `validate_detect_block` therefore checks the model's output against the
   engine's own schema *before* parsing -- an entry the parser would silently drop, a field or key
-  the engine has no reader for, a knob the parser would replace with its default -- and refuses
-  `promql` outright, because nothing evaluates it.
+  the engine has no reader for, a knob the parser would replace with its default. `promql` was
+  refused outright while nothing evaluated it; since #20 the engine evaluates it, so a query is
+  accepted when it passes `predicate_shape.promql_shape_errors`, this deployment evaluates PromQL
+  (`deployment_errors`), and Prometheus itself accepts it (`promql_probe_errors`).
 * **Compilation was not repeatable.** The same eight descriptions compiled 47 minutes apart gave
   different predicate counts on four of them. Every compilation is now requested at temperature
   0, and stored with its provenance (`compilation`: description digest, model, temperature, time)
@@ -43,6 +45,7 @@ from app.detectors.models import (
 from app.detectors.predicate_shape import (
     predicate_health_errors,
     predicate_liveness_errors,
+    promql_shape_errors,
     trend_liveness_errors,
 )
 from app.utils.logger import get_logger
@@ -96,6 +99,26 @@ Use anchored, specific RE2 regexes. Examples:
   "message_regex": "Back-off restarting failed container", "involved_kind": "Pod"}]}
 
 Return JSON only — no prose, no code fences."""
+
+# The prompt offers `promql` only where the engine evaluates it (#20). Elsewhere a query would be
+# refused by `deployment_errors`, so offering it would only spend a compilation on a refusal.
+_PROMQL_REFUSED_LINE = """- Do NOT emit "promql". PromQL queries are recorded but NOT evaluated by the engine, so a
+  detector carrying one is refused. Express a metric condition as a trend_predicate instead."""
+_PROMQL_OFFERED_LINE = """- "promql": list of INSTANT PromQL strings. A detector fires once per series in the result
+  vector, for the object its labels name (pod, node, deployment, ...), so write a FILTER that
+  returns only the faulty series: `kube_pod_container_status_waiting_reason{reason="X"} == 1`,
+  `increase(kube_pod_container_status_restarts_total[10m]) > 3`. Never use the `bool` modifier
+  (it returns every series), never end in a bare range selector like `metric[5m]` (wrap it in
+  max_over_time(...)), and never use a range wider than 24h."""
+
+
+def _authoring_system() -> str:
+    """The compiler prompt for THIS deployment: `promql` is offered only where it is evaluated."""
+    from app.detectors.engine import promql_unavailable_reason
+
+    if promql_unavailable_reason() is not None:
+        return _AUTHORING_SYSTEM
+    return _AUTHORING_SYSTEM.replace(_PROMQL_REFUSED_LINE, _PROMQL_OFFERED_LINE)
 
 #: Every compilation is requested at this sampling temperature, whatever `LLM_TEMPERATURE` says.
 #: The rest of the product may run warmer (some models reject 0.0 -- see `config.LLM_TEMPERATURE`),
@@ -167,10 +190,11 @@ async def compile_nl_to_detect_block(description: str) -> tuple[dict | None, dic
 
     from app.utils.redact import redact_secrets
 
+    system = _authoring_system()
     try:
         base, llm = _authoring_llm()
         resp = await llm.ainvoke(
-            [SystemMessage(content=_AUTHORING_SYSTEM), HumanMessage(content=description)]
+            [SystemMessage(content=system), HumanMessage(content=description)]
         )
     except CompilerUnavailable:
         raise
@@ -183,6 +207,8 @@ async def compile_nl_to_detect_block(description: str) -> tuple[dict | None, dic
         "model": _model_name(base),
         "temperature": COMPILE_TEMPERATURE,
         "compiled_at": time.time(),
+        # Which prompt compiled it: the same prose compiles differently when `promql` is offered.
+        "promql_offered": system is not _AUTHORING_SYSTEM,
     }
     return _parse_detect_json(getattr(resp, "content", "") or ""), provenance
 
@@ -213,7 +239,7 @@ _TREND_FIELDS = tuple(f.name for f in dataclasses.fields(TrendPredicate))
 _WATCH_STRING_FIELDS = ("kind", "status_regex", "reason_regex", "message_regex", "involved_kind")
 _TREND_KNOBS = ("window_minutes", "projection_horizon_minutes", "fire_if_eta_within_minutes",
                 "min_r2")
-_KNOWN_KEYS = (*EVALUATED_PREDICATE_KEYS, "debounce_seconds", "promql")
+_KNOWN_KEYS = (*EVALUATED_PREDICATE_KEYS, "debounce_seconds")
 
 
 def _schema_errors(raw: dict) -> list[str]:
@@ -225,11 +251,16 @@ def _schema_errors(raw: dict) -> list[str]:
                 f"{', '.join(EVALUATED_PREDICATE_KEYS)} and debounce_seconds, so it would be "
                 "silently ignored"
             )
-    if raw.get("promql"):
-        errors.append(
-            "promql is recorded but never evaluated — no evaluator is wired for it, so those "
-            "queries can never fire; express the condition as a watch or trend predicate"
-        )
+    # `promql` (#20): a list of instant-query strings, each of a shape that can fire. Whether
+    # this deployment evaluates PromQL at all is `deployment_errors`' question, and whether
+    # Prometheus accepts the expression is `promql_probe_errors`'.
+    queries = raw.get("promql")
+    if queries is not None:
+        if not isinstance(queries, list):
+            errors.append(f"promql must be a list of query strings, got {type(queries).__name__}")
+        else:
+            for i, query in enumerate(queries):
+                errors += [f"promql[{i}]: {msg}" for msg in promql_shape_errors(query)]
 
     for key, allowed, required in (
         ("watch_predicates", _WATCH_FIELDS, ("kind",)),
@@ -276,7 +307,8 @@ def _fidelity_errors(raw: dict, block: DetectBlock) -> list[str]:
     """Differences between what was compiled and what `parse_detect_block` actually built."""
     errors: list[str] = []
     for key, built in (("watch_predicates", block.watch_predicates),
-                       ("trend_predicates", block.trend_predicates)):
+                       ("trend_predicates", block.trend_predicates),
+                       ("promql", block.promql)):
         written = raw.get(key) or []
         if len(built) != len(written):
             errors.append(
@@ -323,15 +355,60 @@ def deployment_errors(block: DetectBlock) -> list[str]:
     `GET /v1/detectors/{name}/shadow-findings`.
     """
     from app.core.config import settings
+    from app.detectors.engine import promql_unavailable_reason
 
-    if (block.trend_predicates and not block.watch_predicates
+    errors: list[str] = []
+    # PromQL is refused whenever it would not run, even beside a live watch predicate: the
+    # author is shown the query as part of the detector, and an inert half is the defect this
+    # gate was written for. Same reason string as the loaders use.
+    promql_off = promql_unavailable_reason() if block.promql else None
+    if promql_off:
+        errors.append(
+            f"this detector carries {len(block.promql)} PromQL quer"
+            f"{'y' if len(block.promql) == 1 else 'ies'}, and PromQL detection is unavailable on "
+            f"this deployment ({promql_off}) — they would be stored and never evaluated, so they "
+            "could never fire here. Enable PROMQL_DETECTION_ENABLED with a PROMETHEUS_URL, or "
+            "express the condition as a watch or trend predicate."
+        )
+    if (block.trend_predicates and not block.watch_predicates and not block.promql
             and not settings.PREDICTIVE_DETECTION_ENABLED):
-        return [
+        errors.append(
             "this detector has only trend predicates and PREDICTIVE_DETECTION_ENABLED is false — "
             "nothing on this deployment evaluates them, so it could never fire here. Enable "
             "predictive detection, or describe a condition a watch predicate can observe."
-        ]
-    return []
+        )
+    return errors
+
+
+async def promql_probe_errors(block: DetectBlock) -> list[str]:
+    """Run each of `block`'s PromQL queries once against Prometheus; reasons any of them fails.
+
+    The authoritative syntax check: there is no PromQL parser in this workspace, so the static
+    `promql_shape_errors` can only refuse shapes, and Prometheus is the one that says whether an
+    expression parses. Same reader, timeout and error strings as the engine's sweep
+    (`query_prometheus_vector`), so a query accepted here is one the engine can run.
+
+    An EMPTY result is not an error — the condition simply does not hold anywhere right now,
+    which is the expected state when a detector is authored. An unreachable Prometheus IS a
+    refusal: "could not check" must not become "checked". Reasons are redacted.
+    """
+    import asyncio
+
+    from app.tools.prometheus_tool import query_prometheus_vector
+    from app.utils.redact import redact_secrets
+
+    errors: list[str] = []
+    for i, query in enumerate(block.promql):
+        try:
+            _series, error = await asyncio.to_thread(query_prometheus_vector, query)
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+        if error is not None:
+            errors.append(
+                f"promql[{i}] {' '.join(query.split())[:80]!r} could not be evaluated by "
+                f"Prometheus, so nothing was stored: {redact_secrets(str(error), max_chars=300)}"
+            )
+    return errors
 
 
 def validate_detect_block(
@@ -340,13 +417,15 @@ def validate_detect_block(
     """Validate a compiled block by running it through the real compiler.
 
     Returns (block, errors). block is None when the output is empty or not an object, carries
-    anything the engine would silently drop, ignore or replace (`_schema_errors`), carries
-    `promql` (recorded, never evaluated), nothing valid compiled, a predicate is malformed (e.g. an
+    anything the engine would silently drop, ignore or replace (`_schema_errors`, which also
+    refuses a `promql` query of a shape that cannot fire), nothing valid compiled, a predicate is
+    malformed (e.g. an
     uncompilable regex), a predicate compiles cleanly but provably cannot ever match
     (`predicate_shape.predicate_liveness_errors`), one matches a healthy object and so fires on the
     whole cluster (`predicate_shape.predicate_health_errors`), or the block that would load differs
     from the one written (`_fidelity_errors`). A non-None block always carries at least one
-    evaluated predicate.
+    predicate of a type the engine evaluates; whether THIS deployment runs that type is
+    `deployment_errors`' question, and the authoring endpoint asks it next.
     """
     if not isinstance(raw, dict):
         return None, ["compiler did not return a JSON object"]
@@ -363,8 +442,7 @@ def validate_detect_block(
     except (re.error, ValueError, TypeError) as exc:
         return None, [f"invalid predicate: {exc}"]
     if block is None:
-        return None, ["no valid predicates (need watch_predicates or trend_predicates; "
-                      "promql is recorded but never evaluated, so it cannot fire)"]
+        return None, ["no valid predicates (need watch_predicates, trend_predicates or promql)"]
 
     # Compiling is not the same as being able to fire. A model writing a regex from prose
     # reproduces #114's mistake (a space inside an anchored alternation) more readily than a

@@ -599,6 +599,13 @@ and the Anthropic model provider.
 | `PREDICTIVE_DETECTION_ENABLED` | `false` | Anticipatory detection: trend predicates project a range-PromQL metric toward its threshold (least-squares slope, zero tokens) and fire a `predicted` finding *before* the failure manifests. Predicted findings are capped at autonomy `A1` (never auto-fix). Fail-open — but **not silently**: if Prometheus cannot be queried, `GET /v1/findings` reports `predictive: blind` with the reason and `kq findings` withholds its all-clear line. |
 | `PREDICTIVE_TREND_INTERVAL_SECONDS` | `60` | How often the trend-projection loop runs (range queries are expensive — separate from the 1s reactive tick). |
 
+### PromQL detection (#20)
+
+| Variable | Default | Description |
+|---|---|---|
+| `PROMQL_DETECTION_ENABLED` | `false` | Evaluate the instant `promql:` queries in `detect:` blocks (playbooks and stored detectors, active and shadow). Every series in a query's result vector is a match for the object its labels name, debounced and deduplicated like a watch predicate; zero tokens. Needs `PROMETHEUS_URL`. Off by default because the shipped playbooks carry queries that never ran before, so enabling it changes what fires. Fail-loud: a query that cannot run fires nothing, clears nothing, and `GET /v1/findings` reports `promql: blind` with the reason. While off, the NL-authoring gate refuses any `promql` entry with this reason. See [Agent Behaviors](agent-behaviors.md). |
+| `PROMQL_DETECTION_INTERVAL_SECONDS` | `30` | How often every PromQL query is run (floored at 5s). A `debounce_seconds` is effectively rounded up to this interval. |
+
 ### Incident postmortems (ADR-011)
 
 | Variable | Default | Description |

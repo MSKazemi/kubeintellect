@@ -129,6 +129,9 @@ async def create_detector(req: NewDetectorRequest, request: Request):
     block, errors = authoring.validate_detect_block(raw, name=req.name or "nl")
     if block is not None:
         errors = authoring.deployment_errors(block)
+    if block is not None and not errors and block.promql:
+        # Prometheus is the PromQL parser: run each query once before anything is stored (#20).
+        errors = await authoring.promql_probe_errors(block)
     if block is None or errors:
         return _refused(422, f"the compiled detector was refused: {errors[0]}", stored=False,
                         compiled=raw, errors=errors, compilation=compilation)
@@ -183,6 +186,9 @@ async def _reuse(previous: dict, req: NewDetectorRequest) -> JSONResponse:
     block, errors = authoring.validate_detect_block(stored, name=name)
     if block is not None:
         errors = authoring.deployment_errors(block)
+    if block is not None and not errors and block.promql:
+        # Prometheus is the PromQL parser: run each query once before anything is stored (#20).
+        errors = await authoring.promql_probe_errors(block)
     if block is None or errors:
         return _refused(
             422,
@@ -341,6 +347,20 @@ def _watching(loaded, name: str) -> tuple[bool, str]:
         return True, (f"loaded, with watch predicates evaluated on every observation.{partial}"
                       if partial else
                       "loaded, with watch predicates evaluated on every observation")
+    # PromQL (#20). `load_db_detectors` already dropped every query on a deployment that does
+    # not evaluate PromQL, so a loaded query is one the sweep runs — but the sweep may be blind.
+    if loaded.promql:
+        from app.detectors.engine import promql_unavailable_reason
+
+        if promql_unavailable_reason() is None:
+            what = (f"loaded, with PromQL predicates evaluated every "
+                    f"{settings.PROMQL_DETECTION_INTERVAL_SECONDS}s")
+            engine = get_engine()
+            blind = getattr(engine, "last_promql_error", None) if engine is not None else None
+            if blind:
+                what += (f" — but the last PromQL sweep was BLIND ({blind}), so its recent "
+                         "silence is not evidence")
+            return True, f"{what}.{partial}" if partial else what
     if loaded.trend_predicates:
         if settings.PREDICTIVE_DETECTION_ENABLED:
             return True, ("loaded, with trend predicates evaluated on the predictive "

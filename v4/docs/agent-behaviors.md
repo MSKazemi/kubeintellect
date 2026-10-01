@@ -573,6 +573,9 @@ triggers:
   regexes run against Warning-event reason and message (when both
   `reason_regex` and `message_regex` are present, **both** must match;
   `involved_kind` optionally narrows the involved object).
+- `promql` lists instant PromQL filters; each series in the result is a match for
+  the object its labels name. Evaluated only with `PROMQL_DETECTION_ENABLED` — see
+  the note below.
 - `debounce_seconds` delays firing until the condition has persisted —
   one restart is not a crash loop.
 - `detect: null` marks a playbook as **LLM-only** (no machine signal exists,
@@ -616,15 +619,47 @@ change; zero allowed disruptions by itself can be intentional availability polic
     An absent key and an explicit YAML `null` still take the default in silence — those are
     genuinely "not set".
 
-!!! warning "`promql:` is recorded, not evaluated"
-    Only `watch_predicates` and `trend_predicates` run. `promql:` is parsed,
-    stored and exported, but **no code path evaluates it** — a detector whose
-    only predicate is PromQL can never fire, and is now rejected at parse time
-    rather than loading as a valid detector that silently does nothing. The 21
-    `promql:` queries in the shipped playbooks all sit alongside real
-    `watch_predicates`, so every shipped detector still fires; what those queries
-    do *not* provide is any additional detection. Treat them as documentation of
-    the metric signal until evaluation is built.
+!!! note "`promql:` is evaluated — when `PROMQL_DETECTION_ENABLED` is on"
+    Each `promql:` entry is an **instant** PromQL query, run on its own loop every
+    `PROMQL_DETECTION_INTERVAL_SECONDS` (default 30) when `PROMQL_DETECTION_ENABLED=true` and
+    `PROMETHEUS_URL` is set (#20). Before #20 nothing evaluated these queries; the flag is
+    **off by default** because turning it on adds firings from 21 shipped queries that had
+    never run. Every shipped detector also has `watch_predicates`, so with the flag off every
+    shipped detector still fires exactly as before.
+
+    **Firing semantics** follow Prometheus alerting rules:
+
+    - every element of the result vector is a match, so write a *filter* that returns only
+      the faulty series (`... == 1`, `... > 3`) — never the `bool` modifier, which returns
+      every series;
+    - the object is named by the series' labels — the first of `pod`,
+      `persistentvolumeclaim`, `node`, `deployment`, `statefulset`, `daemonset`, `job_name`,
+      `cronjob`, `horizontalpodautoscaler`, `service`, `endpoint`, `resourcequota`,
+      `container`, `instance`; `namespace` defaults to `cluster`. A series with none of these
+      is keyed by its full label set, so two different series never share a key;
+    - a key arms on the first sweep that returns it and fires on the first sweep at least
+      `debounce_seconds` later (the debounce is rounded up to the interval; `0` fires on the
+      first sweep). It does not re-fire while the condition holds, and clears on the first
+      complete sweep in which no query of that detector returns it — a recurrence then fires
+      again. The key is shared with `watch_predicates`, so a pod both arms catch fires once;
+    - findings carry `source: "promql"` and evidence `promql '<query>' = <value>`.
+
+    **A query that cannot run is an error, never "did not fire".** Unconfigured or unreachable
+    Prometheus, a timeout, a PromQL error, or an answer that is not an instant vector (a bare
+    `metric[5m]` returns a range vector) fires nothing, clears nothing, and marks the sweep
+    `promql: blind` on `GET /v1/findings` with the reason — `kq findings` and the digest then
+    withhold their all-clear.
+
+    A detector whose **only** predicates are PromQL is not loaded on a deployment that does not
+    evaluate PromQL (logged as such); a stored detector with PromQL beside other predicates
+    loads with its queries dropped and named in `dropped_predicates`.
+
+    ```yaml
+    detect:
+      promql:
+        - 'kube_persistentvolumeclaim_status_phase{phase="Pending"} == 1'
+      debounce_seconds: 300
+    ```
 
 !!! warning "`kind:` is the observation channel, not the Kubernetes object"
     `kind:` selects which normalised stream the predicate reads — it is one of

@@ -128,6 +128,9 @@ def store(monkeypatch):
 def _authoring_on(monkeypatch):
     monkeypatch.setattr(settings, "NL_DETECTOR_AUTHORING_ENABLED", True)
     monkeypatch.setattr(settings, "PREDICTIVE_DETECTION_ENABLED", False)
+    # The PromQL refusals below are about a deployment that does not evaluate PromQL (#20 made
+    # it evaluable where PROMQL_DETECTION_ENABLED is on; see test_promql_predicates_fire_or_say_why).
+    monkeypatch.setattr(settings, "PROMQL_DETECTION_ENABLED", False)
     monkeypatch.setattr(ep, "get_user_role", lambda _request: "operator")
     # No playbooks in the engine's set: only what this file stores.
     monkeypatch.setattr(det_service, "load_detectors", lambda: ())
@@ -392,3 +395,60 @@ class TestCompilationIsPinnedAndStored:
     def test_the_prompt_no_longer_offers_promql_as_an_output(self):
         assert '"promql": OPTIONAL' not in authoring._AUTHORING_SYSTEM
         assert 'Do NOT emit "promql"' in authoring._AUTHORING_SYSTEM
+
+
+# ── #20: where PromQL IS evaluated, a PromQL detector is accepted — after Prometheus checks it ──
+
+class TestPromqlWherePromqlRuns:
+    @pytest.fixture(autouse=True)
+    def _promql_on(self, monkeypatch):
+        monkeypatch.setattr(settings, "PROMQL_DETECTION_ENABLED", True)
+        monkeypatch.setattr(settings, "PROMETHEUS_URL", "http://prometheus.test:9090")
+
+    def _prometheus(self, monkeypatch, answer):
+        from app.tools import prometheus_tool
+
+        calls: list[str] = []
+
+        def _fake(query):
+            calls.append(query)
+            return answer
+
+        monkeypatch.setattr(prometheus_tool, "query_prometheus_vector", _fake)
+        return calls
+
+    async def test_promql_only_is_staged_and_loaded(self, monkeypatch, store, engine):
+        calls = self._prometheus(monkeypatch, ([], None))   # parses; nothing pending right now
+        _compiler(monkeypatch, PROMQL_ONLY)
+        r = await _post({"description": "pods pending", "name": "nl:pending"})
+        assert r.status_code == 200, r.text
+        assert r.json()["staged"] is True
+        assert "PromQL predicates evaluated" in r.json()["staged_reason"]
+        assert calls == ['kube_pod_status_phase{phase="Pending"} > 0'], "probed exactly once"
+        loaded = next(d for d in engine.shadow_detectors if d.playbook == "nl:pending")
+        assert loaded.promql == ('kube_pod_status_phase{phase="Pending"} > 0',)
+
+    async def test_a_query_prometheus_rejects_is_a_422_and_nothing_is_stored(
+            self, monkeypatch, store, engine):
+        self._prometheus(monkeypatch, ([], "Prometheus error: parse error: unexpected '>'"))
+        _compiler(monkeypatch, PROMQL_BESIDE_A_WATCH)
+        r = await _post({"description": "a container restarts in a loop"})
+        assert r.status_code == 422, r.text
+        assert "parse error" in r.json()["errors"][0]
+        assert store.inserts == 0
+
+    async def test_an_unreachable_prometheus_refuses_rather_than_stages_unchecked(
+            self, monkeypatch, store, engine):
+        self._prometheus(monkeypatch, ([], "Cannot reach Prometheus at http://prometheus.test."))
+        _compiler(monkeypatch, PROMQL_ONLY)
+        r = await _post({"description": "pods pending"})
+        assert r.status_code == 422
+        assert "Cannot reach Prometheus" in r.json()["errors"][0]
+        assert store.inserts == 0
+
+    async def test_the_url_missing_is_refused_with_that_reason(self, monkeypatch, store, engine):
+        monkeypatch.setattr(settings, "PROMETHEUS_URL", "")
+        _compiler(monkeypatch, PROMQL_ONLY)
+        r = await _post({"description": "pods pending"})
+        assert r.status_code == 422
+        assert "PROMETHEUS_URL is not set" in r.json()["errors"][0]

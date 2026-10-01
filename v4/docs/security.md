@@ -696,9 +696,12 @@ components can reach the cluster or its data, and each enforces the same blockli
 | `query_prometheus` | agent tool call | blocked namespaces — on the query **and** on the returned series labels |
 | `GET /v1/namespaces` | `kq` namespace picker | blocked namespaces |
 
-One path is deliberately **not** gated: `query_prometheus_series` / `query_prometheus_range_raw`,
-the detector engine's trend-evaluation path (ADR-010). Its PromQL comes from human-reviewed
-playbooks rather than from a chat message, and detectors are *supposed* to watch `kube-system`
+One path is deliberately **not** gated: `query_prometheus_series` / `query_prometheus_range_raw`
+/ `query_prometheus_vector`, the detector engine's trend- and PromQL-evaluation paths (ADR-010,
+#20). Findings from either carry the query and the current value as evidence, never the series'
+other label values. Their PromQL comes from human-reviewed
+playbooks or the gated detector-authoring path (operator role; shadow until promoted) rather
+than from a chat message, and detectors are *supposed* to watch `kube-system`
 for control-plane and node problems. The guard sits on the tool the LLM calls, not on the
 shared query path.
 
