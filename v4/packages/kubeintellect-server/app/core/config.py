@@ -354,6 +354,11 @@ class Settings(BaseSettings):
     # only token-spending part) and falls back to the timeline on any failure.
     POSTMORTEM_ENABLED: bool = True
     POSTMORTEM_LLM_NARRATIVE: bool = False
+    # Claim-level grounding gate on that narrative. Each sentence is checked against the
+    # recorded evidence; unsupported claims are removed, and if the share of supported
+    # claims falls below this floor the narrative is withheld entirely (the deterministic
+    # postmortem is returned with the reason). A measured field campaign found 0.61-0.70.
+    POSTMORTEM_MIN_GROUNDING: float = Field(default=0.9, ge=0.0, le=1.0)
 
     # ── Memory hierarchy (V4 ADR-002) ─────────────────────────────────────────
     # L1 episodic + L2 temporal KG + consolidation worker. Postgres-native;

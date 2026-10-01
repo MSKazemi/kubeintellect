@@ -3,12 +3,15 @@
 Deterministic-first: the postmortem is a *view* over the hash-chained decision_log
 (never a separate history). The structured timeline is the source of truth and
 cites every event's `seq`; the optional LLM narrative only prettifies prose over
-that timeline and is constrained to it. Fail-open like the digest — a recorder
+that timeline and is constrained to it — and then checked claim by claim against it
+(`apply_grounding_gate`): unsupported claims are removed, and a narrative below
+`POSTMORTEM_MIN_GROUNDING` is withheld outright. Fail-open like the digest — a recorder
 outage degrades the report, never the request path.
 """
 from __future__ import annotations
 
 import json
+import re
 import time
 from datetime import datetime
 
@@ -83,6 +86,14 @@ async def build_postmortem(episode_id: str) -> dict:
         # 2026-08-24, under a ✅ "audit chain verified intact" banner. A missing section is a
         # claim about the incident; a failed lookup is a claim about us.
         "enrichment_failed": [],
+        # Claim-level grounding of the LLM narrative (see `apply_grounding_gate`). None/0 means
+        # no narrative was checked — NOT a perfect score; `grounding_rate` is only a number when
+        # claims were actually counted. `narrative_withheld` is the reason the narrative was
+        # dropped by the gate, so "the flag is off" and "the gate refused it" stay different.
+        "grounding_rate": None,
+        "claims_total": 0,
+        "claims_ungrounded": 0,
+        "narrative_withheld": None,
     }
     try:
         rows = await flight_recorder.fetch_episode(episode_id)
@@ -181,10 +192,19 @@ async def build_postmortem(episode_id: str) -> dict:
         f"point(s) · {len(pm['errors'])} error(s) · audit chain {chain}."
     )
     try:
-        pm["narrative"] = await synthesize_narrative(pm)
+        narrative = await synthesize_narrative(pm)
     except _NarrativeFailed as exc:
-        pm["narrative"] = None
+        narrative = None
         pm["enrichment_failed"].append(f"narrative ({exc})")
+    if narrative:
+        try:
+            apply_grounding_gate(pm, narrative)
+        except Exception as exc:
+            # Fail CLOSED for the narrative, open for the request: an unchecked narrative is
+            # never attached, and the deterministic postmortem is still returned.
+            logger.warning(f"postmortem: grounding check failed, narrative withheld: {exc}")
+            pm["narrative"] = None
+            pm["narrative_withheld"] = f"the grounding check could not run ({type(exc).__name__})"
     return pm
 
 
@@ -249,7 +269,7 @@ async def synthesize_narrative(pm: dict) -> str | None:
             "[#seq] tag. Do not invent any fact not present in the timeline. If the audit "
             "chain is broken, say so explicitly. Be concise."
         )
-        grounding = render_markdown({**pm, "narrative": None})
+        grounding = _evidence_text(pm)
         llm = get_synthesis_llm()
         resp = await llm.ainvoke([SystemMessage(content=system), HumanMessage(content=grounding)])
         text = getattr(resp, "content", None)
@@ -257,6 +277,221 @@ async def synthesize_narrative(pm: dict) -> str | None:
     except Exception as exc:
         logger.warning(f"postmortem: narrative synthesis failed (using timeline only): {exc}")
         raise _NarrativeFailed(str(exc)) from exc
+
+
+# ── Claim-level grounding gate (ADR-011 × ADR-009) ──────────────────────────────────────────
+# The system prompt above *asks* the model to invent nothing; a field campaign measured how far
+# that holds: 0.70 and 0.61 of narrative claims supported by the incident record, with 36 and
+# 54 unsupported claims across two runs, against a target of zero. A request is not a control.
+# So every claim is checked, deterministically and without a second LLM call, against the very
+# text the model was given — it cannot legitimately know anything else — and a claim that
+# names something that text does not contain is never shown as fact.
+
+_CITATION = re.compile(r"\[#(\d+)\]")
+_BACKTICKED = re.compile(r"`([^`]+)`")
+_TOKEN = re.compile(r"[A-Za-z0-9][\w.:/=%-]*")
+_TIME = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?$")
+_NUMBER = re.compile(r"^\d+(?:\.\d+)?%?$")
+_ABBREV = re.compile(r"^(?:[a-z]\.)+[a-z]?$", re.I)          # e.g / i.e — not identifiers
+_CAMEL_OR_ACRONYM = re.compile(r"[a-z][A-Z]|^[A-Z]{2,}[a-z]*$")
+_BULLET = re.compile(r"^(\s*(?:[-*+]|\d+[.)])\s+)")
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=\S)")
+_CAUSAL = re.compile(
+    r"\b(because|due to|caused|causes|causing|root cause|led to|leads to|lead to|resulted in|"
+    r"results in|as a result|result of|therefore|thus|hence|triggered by|owing to|attributed to)\b",
+    re.I,
+)
+# Lowercase hyphenated words are English ("follow-up", "read-only") as often as they are
+# Kubernetes names ("payment-api"). Without a digit or a path separator they are only treated
+# as a resource name when a resource kind sits next to them.
+_KIND_WORDS = frozenset({
+    "pod", "pods", "deployment", "deployments", "service", "svc", "namespace", "ns", "node",
+    "nodes", "statefulset", "daemonset", "replicaset", "job", "cronjob", "configmap", "secret",
+    "pvc", "pv", "ingress", "container", "hpa", "release", "chart", "image",
+})
+_STOPWORDS = frozenset({
+    "this", "that", "these", "those", "with", "from", "into", "onto", "than", "then", "there",
+    "their", "they", "them", "were", "was", "been", "being", "have", "has", "had", "which",
+    "while", "when", "where", "what", "also", "only", "after", "before", "during", "about",
+    "event", "events", "recorded", "record", "per", "the", "and", "its", "it's", "very",
+    "most", "likely", "probably", "appears", "seems", "would", "could", "should", "some",
+})
+
+
+def _evidence_text(pm: dict) -> str:
+    """Exactly what the narrative model is shown — and so the only thing it may assert."""
+    return render_markdown({
+        **pm, "narrative": None, "narrative_withheld": None,
+        "claims_total": 0, "claims_ungrounded": 0,
+    })
+
+
+def _strip_md(text: str) -> str:
+    return text.replace("**", "").replace("__", "").strip()
+
+
+def _is_heading(line: str) -> bool:
+    """Structure, not a claim: `## Timeline`, a ``` fence, or a short `**Summary:**` label."""
+    s = _strip_md(line)
+    if not s or s.startswith("#") or s.startswith("```"):
+        return True
+    return s.endswith(":") and len(s.split()) <= 4
+
+
+def _present(token: str, evidence: str, *, numeric: bool) -> bool:
+    """Whole-token, case-insensitive presence. A number may be followed by a unit, so `128`
+    matches `128Mi`, but `5` does not match `256` and `123` does not match `abc123`; names are
+    bounded by word characters and hyphens, so `web-1` matches `shop/web-1` but not `web-12`."""
+    esc = re.escape(token)
+    pattern = rf"(?<![\w.]){esc}(?!\.?\d)" if numeric else rf"(?<![\w-]){esc}(?![\w-])"
+    return re.search(pattern, evidence, re.I) is not None
+
+
+def _words(text: str) -> set[str]:
+    """Content words, lightly normalised (plural `s` dropped) so `limits` meets `limit`."""
+    return {
+        w.rstrip("s") for w in re.findall(r"[a-z][a-z'-]+", text.lower())
+        if len(w) >= 4 and w not in _STOPWORDS
+    }
+
+
+def _claim_is_grounded(
+    claim: str, evidence: str, seqs: set[int], cited_text: dict[int, str], conclusion: str,
+) -> bool:
+    """One atomic claim against the evidence record. Every rule is a reason to REFUSE:
+
+    1. it cites a `[#seq]` that is not in the timeline;
+    2. a backticked span, resource-like name (digit, `/`, `.`, `:`, `_`, `=`, CamelCase or an
+       acronym, or a hyphenated name beside a resource kind), number, or clock time in it does
+       not appear in the evidence;
+    3. it asserts causation (because / caused / led to / root cause / …) that is not carried
+       by the recorded conclusion or by the events it cites — at least half its content words
+       must come from that text;
+    4. it has nothing to check at all — no valid citation and no named anchor. The prompt
+       requires a citation on every claim; an unverifiable sentence is not a verified one.
+    """
+    cited = [int(m) for m in _CITATION.findall(claim)]
+    if any(c not in seqs for c in cited):
+        return False
+    body = _CITATION.sub(" ", claim)
+    anchors = 0
+    for span in _BACKTICKED.findall(body):
+        span = span.strip()
+        if span:
+            anchors += 1
+            if span.lower() not in evidence.lower():
+                return False
+    body = _BACKTICKED.sub(" ", body)
+    words = body.replace("**", " ").split()
+    neighbours = [w.strip(".,;:!?()'\"").lower() for w in words]
+    for i, raw in enumerate(words):
+        for m in _TOKEN.finditer(raw):
+            tok = m.group(0).rstrip(".:/=-_")
+            if not tok or _ABBREV.match(tok):
+                continue
+            if _TIME.match(tok) or _NUMBER.match(tok):
+                # Bare numbers are checked but are not anchors: "1" appears in nearly any record.
+                if not _present(tok, evidence, numeric=True):
+                    return False
+                if _TIME.match(tok):
+                    anchors += 1
+                continue
+            has_marker = any(ch.isdigit() or ch in "/.:_=" for ch in tok)
+            is_named = has_marker or bool(_CAMEL_OR_ACRONYM.search(tok))
+            if not is_named and "-" in tok:
+                around = neighbours[max(0, i - 1):i] + neighbours[i + 1:i + 2]
+                is_named = any(w in _KIND_WORDS for w in around)
+            if is_named:
+                anchors += 1
+                if not _present(tok, evidence, numeric=False):
+                    return False
+    if _CAUSAL.search(body):
+        support = " ".join([conclusion, *(cited_text.get(c, "") for c in cited)])
+        content = _words(_CAUSAL.sub(" ", body))
+        if not content or len(content & _words(support)) * 2 < len(content):
+            return False
+    return bool(cited) or anchors > 0
+
+
+def ground_narrative(narrative: str, pm: dict) -> tuple[str, int, int]:
+    """Split ``narrative`` into atomic claims and drop every one the record does not support.
+
+    Splitting is rule-based: each non-heading line (a bullet's marker removed) is cut into
+    sentences at `.`/`!`/`?` followed by whitespace; each sentence is one claim. Headings,
+    fences and short `Label:` lines are structure and are neither counted nor checked.
+
+    Returns ``(kept_text, claims_total, claims_ungrounded)``. A heading left with nothing under
+    it is dropped too, so a removed section does not leave an empty title implying content.
+    """
+    evidence = _evidence_text(pm)
+    seqs = {int(e["seq"]) for e in pm.get("timeline", [])}
+    cited_text = {int(e["seq"]): str(e.get("summary", "")) for e in pm.get("timeline", [])}
+    conclusion = " ".join([str(pm.get("root_cause") or ""), *map(str, pm.get("worked", []))])
+    total = ungrounded = 0
+    out: list[str] = []
+    for line in narrative.splitlines():
+        if _is_heading(line):
+            out.append(line)
+            continue
+        m = _BULLET.match(line)
+        prefix = m.group(1) if m else ""
+        kept = []
+        for sentence in _SENTENCE_END.split(line[len(prefix):].strip()):
+            if not re.search(r"[A-Za-z0-9]", sentence):
+                continue
+            total += 1
+            if _claim_is_grounded(sentence, evidence, seqs, cited_text, conclusion):
+                kept.append(sentence)
+            else:
+                ungrounded += 1
+        if kept:
+            out.append(prefix + " ".join(kept))
+    # Drop headings whose section lost every claim, then collapse blank runs.
+    pruned: list[str] = []
+    for i, line in enumerate(out):
+        if line.strip() and _is_heading(line) and not _strip_md(line).startswith("```"):
+            rest = [x for x in out[i + 1:] if x.strip()]
+            if not rest or (_is_heading(rest[0]) and not _strip_md(rest[0]).startswith("```")):
+                continue
+        if not line.strip() and pruned and not pruned[-1].strip():
+            continue
+        pruned.append(line)
+    return "\n".join(pruned).strip(), total, ungrounded
+
+
+def apply_grounding_gate(pm: dict, narrative: str) -> None:
+    """Attach ``narrative`` to ``pm`` only as far as the record supports it.
+
+    Unsupported claims are removed, never shown marked-up: a reader skims an incident report,
+    and an "(unverified)" suffix is a suffix people skip. The counts are recorded on ``pm`` so
+    the rate is observable per postmortem. Below ``POSTMORTEM_MIN_GROUNDING`` the whole
+    narrative is withheld — when a third of the prose was invented, the surviving two thirds
+    were written by the same process — and the deterministic postmortem stands alone, with
+    the reason in ``narrative_withheld``.
+    """
+    kept, total, ungrounded = ground_narrative(narrative, pm)
+    pm["claims_total"] = total
+    pm["claims_ungrounded"] = ungrounded
+    pm["grounding_rate"] = (total - ungrounded) / total if total else None
+    floor = settings.POSTMORTEM_MIN_GROUNDING
+    reason = None
+    if not total:
+        reason = "the narrative contained no claims that could be checked against the record"
+    elif pm["grounding_rate"] < floor:
+        reason = (
+            f"only {total - ungrounded} of {total} narrative claims are supported by the "
+            f"recorded events (grounding rate {pm['grounding_rate']:.2f}, below "
+            f"POSTMORTEM_MIN_GROUNDING={floor:.2f})"
+        )
+    elif not kept:
+        reason = "no narrative claim survived the grounding check"
+    if reason:
+        # Counts only — the narrative text is model output and is not logged.
+        logger.warning(f"postmortem {pm.get('episode_id')}: narrative withheld: {reason}")
+        pm["narrative"] = None
+        pm["narrative_withheld"] = reason
+        return
+    pm["narrative"] = kept
 
 
 def render_markdown(pm: dict) -> str:
@@ -328,4 +563,18 @@ def render_markdown(pm: dict) -> str:
         lines += ["## Follow-ups", *(f"- {x}" for x in pm["follow_ups"]), ""]
     if pm.get("narrative"):
         lines += ["## Narrative", pm["narrative"], ""]
+        if pm.get("claims_ungrounded"):
+            lines += [
+                f"_{pm['claims_ungrounded']} of {pm['claims_total']} narrative claim(s) were "
+                "removed: the recorded events above do not support them._",
+                "",
+            ]
+    elif pm.get("narrative_withheld"):
+        # Said out loud: with the flag on, a silently absent narrative reads as "off".
+        lines += [
+            "## Narrative",
+            f"> ⚠️ **LLM NARRATIVE WITHHELD** — {pm['narrative_withheld']}. The sections "
+            "above are built from the recorded events alone and are unaffected.",
+            "",
+        ]
     return "\n".join(lines)
