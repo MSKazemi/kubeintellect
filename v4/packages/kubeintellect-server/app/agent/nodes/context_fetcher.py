@@ -13,6 +13,7 @@ from app.tools.kubectl_tool import (
     _connection_flag_in,
     _extract_namespace,
     _is_all_namespaces,
+    _unresolved_placeholder_in_args,
 )
 from app.tools.namespace_guard import (
     drop_blocked_table_rows,
@@ -186,6 +187,14 @@ def _snapshot_refusal(args: list[str]) -> str | None:
     namespace = _extract_namespace(args)
     if namespace and namespace.strip().lower() in settings.kubectl_blocked_namespaces:
         return protected_message(namespace)
+    # A `TARGETED: namespace=<ns>, pod=<pod>` line copied from planning notation names nothing.
+    # `run_kubectl` refuses the same argument (#173); here it must not reach kubectl either.
+    placeholder = _unresolved_placeholder_in_args(args)
+    if placeholder:
+        return (
+            f"{_POLICY_PREFIX} unresolved placeholder {placeholder!r} is not a resource name; "
+            "nothing was read."
+        )
     return None
 
 
