@@ -140,7 +140,7 @@ config:
   # cluster; set it (e.g. "prod-eks-eu") whenever several clusters write to one database —
   # an in-cluster pod cannot derive a name on its own. See docs/configuration.md.
   clusterId: ""
-  llmProvider: openai         # openai | azure | qwen | anthropic (anthropic is V4-cortex only)
+  llmProvider: openai         # openai | azure | qwen | anthropic (anthropic needs cortexV4Enabled: true — the pod refuses to start otherwise)
   azureApiVersion: "2024-02-01"
   # Reject unauthenticated callers. Leave false ONLY for a cluster-local or firewalled
   # deployment. On any internet-reachable ingress set this true and supply at least one

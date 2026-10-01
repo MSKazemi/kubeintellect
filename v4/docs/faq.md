@@ -41,7 +41,8 @@ The default is **Azure OpenAI** (`LLM_PROVIDER=azure`), driving `gpt-4o` for the
 coordinator/synthesis tier and `gpt-4o-mini` for the subagents. Three other
 providers are supported: `openai` (same models, OpenAI-hosted), `qwen` (Alibaba
 DashScope, OpenAI-compatible — `qwen-max` / `qwen-plus`), and `anthropic`
-(`claude-sonnet-4-6` / `claude-haiku-4-5`, wired only through the V4 cortex). You
+(`claude-sonnet-4-6` / `claude-haiku-4-5`, wired only through the V4 cortex — the
+server refuses to start with `anthropic` unless `CORTEX_V4_ENABLED=true`). You
 set exactly one. See [Configuration → LLM provider](configuration.md#llm-provider).
 
 ### Do I need PostgreSQL?

@@ -114,6 +114,18 @@ kubeintellect set OPENAI_API_KEY=sk-proj-...
 kubeintellect set AZURE_OPENAI_API_KEY=... AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 ```
 
+### "LLM_PROVIDER=anthropic requires CORTEX_V4_ENABLED=true"
+
+The server refused to start. Anthropic is served only by the V4 cortex graph, and the
+default V2 graph will not quietly send your prompts to a different vendor instead.
+Either turn the cortex on, or pick a provider the default graph supports:
+
+```bash
+kubeintellect set CORTEX_V4_ENABLED=true     # keep Anthropic (needs langchain-anthropic)
+# or
+kubeintellect set LLM_PROVIDER=openai        # or azure / qwen
+```
+
 ### Azure: 404 / "deployment does not exist"
 
 The **deployment name** in `AZURE_COORDINATOR_DEPLOYMENT` /

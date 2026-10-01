@@ -754,23 +754,14 @@ class Settings(BaseSettings):
             if self.OPENAI_SUBAGENT_MODEL == "gpt-4o-mini":
                 self.OPENAI_SUBAGENT_MODEL = "qwen-plus"
         if self.LLM_PROVIDER == "anthropic":
-            if not self.CORTEX_V4_ENABLED:
-                # Name the CONSEQUENCE, not just the cause. The previous wording --
-                # "anthropic is only used by the V4 cortex" -- reads as "Anthropic will not
-                # be used", i.e. it will fail or do nothing. What actually happens is that
-                # the default V2 graph builds a ChatOpenAI client and sends every prompt,
-                # cluster data included, to OpenAI using OPENAI_API_KEY. Provider choice is
-                # often a compliance decision, so a reader deciding whether to act on this
-                # line needs to know which vendor receives the data.
-                logging.warning(
-                    "LLM_PROVIDER=anthropic but CORTEX_V4_ENABLED is false. The default V2 "
-                    "graph has no Anthropic backend, so every coordinator and subagent call "
-                    "-- including the cluster data in each prompt -- will be sent to OpenAI "
-                    "at %s using OPENAI_API_KEY, not to Anthropic, and ANTHROPIC_API_KEY "
-                    "will be ignored. Set CORTEX_V4_ENABLED=true to actually use Anthropic, "
-                    "or set LLM_PROVIDER=openai to make the current behaviour explicit.",
-                    self.OPENAI_BASE_URL or "https://api.openai.com/v1",
-                )
+            refusal = v2_provider_refusal(self)
+            if refusal:
+                # Logged here so every process that loads the config says it, but NOT raised
+                # here: a model-validator ValueError becomes a pydantic ValidationError whose
+                # text embeds every env-sourced setting, API keys included, and
+                # `_load_settings` re-raises it. The refusal itself is enforced where the
+                # V2 client would be built (app.core.llm) and before the port opens (main).
+                logging.error(refusal)
             if not self.ANTHROPIC_API_KEY:
                 logging.warning(
                     "LLM_PROVIDER=anthropic but ANTHROPIC_API_KEY is not set. "
@@ -805,6 +796,31 @@ class Settings(BaseSettings):
                 f"got {self.SNAPSHOT_SUFFICIENCY_MODE!r}."
             )
         return self
+
+
+def v2_provider_refusal(s: Settings) -> str | None:
+    """Why the default V2 graph must not start with this provider, or None if it may.
+
+    The V2 model factory (app.core.llm) has an Azure backend and an OpenAI-compatible one,
+    and nothing else. Before #192, `LLM_PROVIDER=anthropic` fell through to the
+    OpenAI-compatible one: the run looked normal and every prompt -- pod specs, events,
+    log excerpts -- went to OpenAI with OPENAI_API_KEY, for an operator who had selected
+    Anthropic, often as a compliance decision. A configuration whose meaning cannot be
+    honoured is refused, the way an unknown provider is; it is never quietly re-routed.
+    """
+    if s.LLM_PROVIDER == "anthropic" and not s.CORTEX_V4_ENABLED:
+        return (
+            "LLM_PROVIDER=anthropic requires CORTEX_V4_ENABLED=true. The default V2 graph has "
+            "no Anthropic backend: running it would send every coordinator and subagent "
+            "prompt -- including the cluster data in it -- to OpenAI at "
+            f"{s.OPENAI_BASE_URL or 'https://api.openai.com/v1'} using OPENAI_API_KEY, and "
+            "ANTHROPIC_API_KEY would be ignored. KubeIntellect refuses to start rather than "
+            "send cluster data to a vendor you did not select.\n"
+            "  Fix: set CORTEX_V4_ENABLED=true (and install langchain-anthropic) to use "
+            "Anthropic, or set LLM_PROVIDER to the provider you actually want "
+            "(openai / azure / qwen)."
+        )
+    return None
 
 
 def _load_settings() -> Settings:

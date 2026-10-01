@@ -56,7 +56,9 @@ only the final synthesis does. Routing the cheap stages to a small model lowers
 cost and latency per turn while reserving the large model for where it matters.
 A model factory abstracts the provider, so the same tiering applies whichever
 `LLM_PROVIDER` you pick. **Anthropic is only wired through the V4 cortex** — setting
-`LLM_PROVIDER=anthropic` while `CORTEX_V4_ENABLED=false` has no effect.
+`LLM_PROVIDER=anthropic` while `CORTEX_V4_ENABLED=false` is refused at startup (the
+server exits with status 1). It used to fall back silently to OpenAI with
+`OPENAI_API_KEY`; see [#192](https://github.com/MSKazemi/kubeintellect/issues/192).
 
 ---
 

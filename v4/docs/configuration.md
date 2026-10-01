@@ -92,8 +92,10 @@ OPENAI_SUBAGENT_MODEL=gpt-4o-mini
 # OPENAI_COORDINATOR_MODEL=qwen-max     # synthesis / large tier
 # OPENAI_SUBAGENT_MODEL=qwen-plus       # parallel RCA subagents / small tier
 
-# ── Option D: Anthropic / Claude (V4 Cortex) ─────────────────────────────────
+# ── Option D: Anthropic / Claude (V4 Cortex only) ────────────────────────────
+# Requires CORTEX_V4_ENABLED=true — the server refuses to start without it.
 # LLM_PROVIDER=anthropic
+# CORTEX_V4_ENABLED=true
 # ANTHROPIC_API_KEY=sk-ant-...
 # ANTHROPIC_LARGE_MODEL=claude-sonnet-4-6
 # ANTHROPIC_SMALL_MODEL=claude-haiku-4-5-20251001
@@ -155,7 +157,25 @@ LOG_FORMAT=text
 
 | Variable | Default | Values | Description |
 |---|---|---|---|
-| `LLM_PROVIDER` | `azure` | `openai` \| `azure` \| `qwen` \| `anthropic` | Which LLM backend to use. `qwen` is OpenAI-compatible via Alibaba DashScope (set `OPENAI_BASE_URL`); `anthropic` is used only by the V4 cortex layer. |
+| `LLM_PROVIDER` | `openai` | `openai` \| `azure` \| `qwen` \| `anthropic` | Which LLM backend to use. `qwen` is OpenAI-compatible via Alibaba DashScope (set `OPENAI_BASE_URL`); `anthropic` is served only by the V4 cortex graph — see the table below. |
+
+Which providers each graph supports:
+
+| Provider | V2 graph (default) | V4 cortex (`CORTEX_V4_ENABLED=true`) |
+|---|---|---|
+| `openai` | ✅ | ✅ |
+| `azure` | ✅ | ✅ |
+| `qwen` | ✅ | ✅ |
+| `anthropic` | ❌ **refused at startup** | ✅ (needs `langchain-anthropic`) |
+
+`LLM_PROVIDER=anthropic` with `CORTEX_V4_ENABLED=false` is a startup error, not a
+fallback. The V2 graph has no Anthropic backend, and the server will not substitute
+another vendor: it logs `LLM_PROVIDER=anthropic requires CORTEX_V4_ENABLED=true …` and
+exits with status 1 before the port opens. Before
+[#192](https://github.com/MSKazemi/kubeintellect/issues/192) this combination silently
+sent every prompt, cluster data included, to OpenAI using `OPENAI_API_KEY`. Fix it by
+setting `CORTEX_V4_ENABLED=true`, or by setting `LLM_PROVIDER` to the provider you
+actually want.
 
 **OpenAI:**
 
@@ -582,7 +602,8 @@ and the Anthropic model provider.
 ### Anthropic provider
 
 Optional model provider for the V4 reasoning graph (`LLM_PROVIDER=anthropic`).
-Requires the `langchain-anthropic` package.
+Requires the `langchain-anthropic` package **and** `CORTEX_V4_ENABLED=true`; on the
+default V2 graph the server refuses to start (see [LLM provider](#llm-provider)).
 
 | Variable | Default | Description |
 |---|---|---|

@@ -26,9 +26,21 @@ async def lifespan(app: FastAPI):
         logger.info(version_line())
     except Exception:  # never let a diagnostic log break startup
         pass
-    from app.core.llm import get_coordinator_llm, get_subagent_llm
-    get_coordinator_llm()
-    get_subagent_llm()
+    # Refuse, before the port opens, a provider the selected graph cannot honour. Falling
+    # through to another vendor's client is how LLM_PROVIDER=anthropic used to send cluster
+    # data to OpenAI on the default graph (#192).
+    from app.core.config import v2_provider_refusal
+
+    refusal = v2_provider_refusal(settings)
+    if refusal:
+        logger.error(f"Startup failed: {refusal}")
+        sys.exit(1)
+    if not settings.CORTEX_V4_ENABLED:
+        # Warm the V2 clients only when the V2 graph is the one being built; the Cortex
+        # graph builds its own tiers (app.cortex.models) and never calls these.
+        from app.core.llm import get_coordinator_llm, get_subagent_llm
+        get_coordinator_llm()
+        get_subagent_llm()
     logger.info(f"LLM provider: {settings.LLM_PROVIDER}")
     # A guard entry that cannot match protects nothing, and every parser here discards
     # silently. Logged loudly at startup and surfaced on GET /v1/v5/status; never fatal —
