@@ -13,6 +13,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **`LLM_PROVIDER=local` — a first-class self-hosted provider** (Ollama, vLLM, LM Studio,
+  llama.cpp; `app/core/local_llm.py`, `docs/local-llm.md`; #17). Works on both graphs through the
+  existing OpenAI-compatible client. No API key is required, and `OPENAI_BASE_URL` (default
+  `http://localhost:11434/v1`) can never be empty, so it cannot fall back to `api.openai.com`. At
+  startup the server checks `/models` lists both configured models and makes each distinct model
+  complete one real tool call; an unreachable server, rejected auth, unlisted model, a model that
+  rejects tools or answers in text, or a timeout (`LOCAL_LLM_PROBE_TIMEOUT_SECONDS`, default 180)
+  stops startup with an actionable message. There is no switch to skip the check.
+- **Exactly-once irreversible calls and single-use approvals** (ADR-008; `app/db/effect_log.py`,
+  `app/tools/effect_guard.py`; schema v3), behind `SELF_GOVERN_ENABLED` (default **off**; off is
+  byte-for-byte the previous behaviour). Every `kubectl` call in the IRREVERSIBLE rollback class is
+  checked against an append-only, hash-chained `effect_log` before it runs: an equivalent retry in
+  the same turn returns the recorded result instead of executing; a retry that drifted onto a
+  different target is blocked until a human approves an explicit fork; approval tokens are bound to
+  the exact call and consumed once, enforced by a unique index. If the ledger is unavailable every
+  irreversible call falls back to a fresh human approval, even on auto-approve.
+- **Grounding check on the Cortex graph** (ADR-009; `app/cortex/verify.py`), behind
+  `SELF_GOVERN_ENABLED` (default off). A `ground_check` node labels each claim of a diagnosis
+  `supported` / `partial` / `none` against evidence already gathered. Unsupported claims are
+  hedged, withdrawn from the stored message, and cap the turn at advisory; with the flag on, an A3
+  auto-fix is split into a propose turn and an apply turn that runs only after a grounded
+  diagnosis. A checker error never raises autonomy.
+- **Claim-level grounding gate for postmortem narratives** (ADR-011; `app/digest/postmortem.py`).
+  The LLM narrative is split into sentence-level claims and each is checked deterministically
+  against the evidence the model was shown; ungrounded claims are removed, and below
+  `POSTMORTEM_MIN_GROUNDING` (default 0.9) the whole narrative is withheld and the deterministic
+  postmortem returned with the reason. `grounding_rate`, `claims_total`, `claims_ungrounded` are
+  recorded per postmortem. `POSTMORTEM_LLM_NARRATIVE` stays default-off.
+- **PromQL predicates in `detect:` blocks are now evaluated** (#20, ADR-006; behind
+  `PROMQL_DETECTION_ENABLED`, default **off**; `PROMQL_DETECTION_INTERVAL_SECONDS`, default 30).
+  Every series in the result vector is a match, debounced like a watch predicate. A query that
+  cannot run is an error state, never "did not fire": `GET /v1/findings` reports `promql: blind`
+  and the digest and `kq findings` withhold their all-clear. 18 shipped playbooks carry 21 queries
+  that never ran before, so enabling the flag changes what fires.
+
 - **EKS deploy prerequisites and the in-cluster IRSA result are documented**
   (`v4/docs/deploy/aws.md`, `v4/docs/deploy/image.md`, `v4/docs/install/existing-cluster.md`),
   from [@Lumbenlengo](https://github.com/Lumbenlengo)'s in-cluster verification on EKS `1.34.11`
@@ -61,7 +96,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   it is a security decision, not a playbook detail. Renewal ownership stays as prose.
 
 
+### Changed
+
+- **Breaking — `LLM_PROVIDER=anthropic` on the default V2 graph now refuses to start** instead of
+  routing to OpenAI (#192). Previously only a warning was logged while the V2 model factory built
+  an OpenAI/Azure client, so cluster data went to a vendor the operator had not chosen. The
+  server now exits with code 1 before the port opens, naming the vendor and key the data would
+  have gone to; the factory also refuses the combination on every call. Set
+  `CORTEX_V4_ENABLED=true` to use Anthropic, or pick a provider the V2 graph supports. (The
+  refusal is logged, not raised from the settings validator: pydantic's error text includes every
+  environment-sourced field and would have printed API keys into the startup traceback.)
+- **Breaking — NL detector authoring (`POST /v1/detectors`) no longer always answers 200**
+  (ADR-012). It returns 422 for a compiled detector that cannot fire, 409 for a name or prose
+  clash, 202 with `staged:false` when stored but not loaded, 502 when the model could not be
+  called and 503 when the store is unavailable. `staged:true` now means the engine has loaded and
+  evaluates the detector. Compilation runs at temperature 0, so models that reject it (e.g.
+  gpt-5-mini) can no longer author detectors; identical prose reuses the stored compilation
+  (`recompile:true` forces a fresh, labelled one). `kq detector new` exits 0 only when staged.
+  Clients other than `kq` must handle the new status codes.
+- Event predicates with neither `reason_regex` nor `message_regex` are refused at authoring and
+  promotion: they matched every Warning event.
+
 ### Fixed
+
+- **kubectl commands with unresolved placeholders no longer reach kubectl** (#173).
+  `<node-name>`, `$NAME`, `{namespace}` and `POD_NAME`-style tokens are refused with an error that
+  names the placeholder and says to resolve it first. jsonpath/go-template/custom-columns values,
+  quoted text and everything after `--` are excluded. Both graphs and the snapshot runner share the
+  one check; `_SHELL_METACHAR`, `shell=False` and the allowlist are unchanged. `security.md` and
+  `agent-behaviors.md` had the shell-metacharacter rules backwards and are corrected.
+- **An NL-compiled detector could report success and never fire** (ADR-012): zero predicates with
+  `errors: []`, a PromQL predicate recorded but never evaluated, and the same description compiling
+  to different predicate counts on 4 of 8 runs 47 minutes apart. Compiled blocks are now checked
+  against the engine's own predicate definitions before anything is stored (see Changed).
 
 - **A truncated pod listing reported a healthy cluster, with an invented pod count**
   (`app/agent/nodes/context_fetcher.py`, `app/agent/nodes/coordinator.py`,
