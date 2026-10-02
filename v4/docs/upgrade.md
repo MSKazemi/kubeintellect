@@ -190,8 +190,8 @@ Enable them one at a time, as in [the runbook above](#runbook-enable-a-flag-safe
 
 ### Database
 
-Schema version goes from 2 to 3 (one additive table, `effect_log`; append-only, never pruned by
-retention). `kubeintellect db-init` applies it; `/healthz` reports a mismatch between the applied
+Schema version goes from 2 to 3 (two additive tables, `effect_log` and its `effect_log_head`
+anchor; append-only, never pruned by retention). `kubeintellect db-init` applies it; `/healthz` reports a mismatch between the applied
 and expected version. Nothing in version 2 is altered.
 
 ---

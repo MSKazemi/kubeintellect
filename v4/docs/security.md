@@ -429,8 +429,17 @@ point, so "delete it again" in a later message runs normally (through the gate).
 append-only, hash-chained `effect_log` table, mirrored into the [flight
 recorder](flight-recorder.md#effect-log-adr-008).
 
+**Kind matching is exact.** The IRREVERSIBLE class for a `delete` is decided on the resource
+*kind* after the same folding the canonical intent uses (one shared function, so they cannot
+disagree): `pv`/`pvc`/`ns`/`crd`/`sts` and their long and plural forms (`persistentvolumeclaims`,
+`statefulset.apps`) are irreversible; `daemonset`, `deployment`, `pod`, `configmap` and a name that
+merely contains `pv` or `ns` are not. A `delete` whose kinds cannot be read (`-f`, no operand) stays
+irreversible.
+
 **Fail-closed.** If the ledger is unavailable — flight recorder off, SQLite mode, Postgres
-unreachable, `db-init` not run, or a chain that does not verify — an irreversible call is never
+unreachable, `db-init` not run, a chain that does not verify, or a chain that contradicts its
+head anchor (`effect log tampered/truncated` — newest rows removed, see [flight
+recorder](flight-recorder.md#effect-log-adr-008)) — an irreversible call is never
 replayed and never run on the strength of auto-approve: it falls back to a fresh human approval,
 whose prompt says the ledger is unavailable. A call with no session id has no rollback point and
 is refused.

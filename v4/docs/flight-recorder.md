@@ -284,7 +284,19 @@ rather than run (see [security](security.md#exactly-once-irreversible-calls-and-
 - Rows: `approval_issued`, `approval_consumed`, `intent`, `effect`, `fork`, `refused` — keyed by
   session, rollback point (the turn), branch id, tool and the sha256 of the canonical intent.
 - Tamper evidence uses this page's chain format — `sha256(prev_hash + canonical)` per session — and
-  the table refuses `UPDATE` and `DELETE` at the database. Retention never prunes it.
+  the table refuses `UPDATE`, `DELETE` and `TRUNCATE` at the database. Retention never prunes it.
+- **Head anchor.** Like `decision_log_head`, `effect_log_head` (one row per session) records how
+  far each chain got — because deleting the *newest* rows breaks no link, and a missing `effect`
+  row is exactly what would let an irreversible call run again. Unlike the decision-log head it is
+  written in the **same transaction** as every append, so it can never legitimately lag: before
+  every decision the ledger is compared with its head, and *any* disagreement (rows but no head, a
+  head but no rows, a different last `seq` or hash, or a head that cannot be read) raises
+  `effect log tampered/truncated` and the call falls back to human re-approval. The head table
+  cannot be deleted, truncated, or moved backwards. `kubeintellect verify-restore` counts both
+  `effect_log` and its chain, so a restore that lost the tail is reported as a truncated chain.
+  Limit: a database superuser who disables the triggers and rewrites the ledger *and* its head
+  together is not detectable from inside the same database — the defence is the same as for the
+  decision log (archive the head off-database).
 - Every row is mirrored here as an `effect_log` event (without the recorded result), so
   `kq replay` shows replays, forks and rejected approvals in order.
 - Recorded results are redacted and capped at 8000 characters, like the tool output they copy.

@@ -136,8 +136,9 @@ With `SELF_GOVERN_ENABLED=true` an A3 auto-fix gets one more guard (ADR-008): th
 authorises **one** execution of an irreversible call (a PVC, PV, namespace, CRD or StatefulSet
 delete, or a mutation the classifier cannot place). A retry of the same call inside the
 investigation returns the recorded result; a retry aimed at a different object stops for a human
-fork; and if the effect ledger is unavailable the call waits for human approval instead of
-running. See [security](security.md#exactly-once-irreversible-calls-and-single-use-approvals-adr-008).
+fork; and if the effect ledger is unavailable — or contradicts its head anchor because its newest
+rows were removed (`effect log tampered/truncated`) — the call waits for human approval instead of
+running. Kinds are matched exactly (`daemonset` is not a namespace). See [security](security.md#exactly-once-irreversible-calls-and-single-use-approvals-adr-008).
 
 Every autonomous investigation runs as session `auto-<finding-id>` and is
 recorded by the flight recorder, so you can replay it later:
