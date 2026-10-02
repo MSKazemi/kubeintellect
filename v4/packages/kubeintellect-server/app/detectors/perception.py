@@ -128,8 +128,13 @@ def perception_state(engine: "DetectorEngine | None" = None) -> PerceptionState:
         sensorium = RECONNECTING
 
     # Same rule one layer over: the predictive (trend) detectors are only watching
-    # while Prometheus answers them.
-    trend_detectors = sum(1 for d in engine.detectors if getattr(d, "trend_predicates", None))
+    # while Prometheus answers them. Shadow detectors count: `evaluate_trends` projects them in
+    # the same sweep (into the shadow buffer only), and their silence is read as precision
+    # evidence at promotion time.
+    trend_detectors = sum(
+        1 for d in (*engine.detectors, *getattr(engine, "shadow_detectors", ()))
+        if getattr(d, "trend_predicates", None)
+    )
     if not settings.PREDICTIVE_DETECTION_ENABLED or not trend_detectors:
         predictive = OFF
     elif getattr(engine, "trend_blind_since", None) is not None:

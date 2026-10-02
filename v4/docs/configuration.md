@@ -596,7 +596,7 @@ and the Anthropic model provider.
 
 | Variable | Default | Description |
 |---|---|---|
-| `PREDICTIVE_DETECTION_ENABLED` | `false` | Anticipatory detection: trend predicates project a range-PromQL metric toward its threshold (least-squares slope, zero tokens) and fire a `predicted` finding *before* the failure manifests. Predicted findings are capped at autonomy `A1` (never auto-fix). Fail-open — but **not silently**: if Prometheus cannot be queried, `GET /v1/findings` reports `predictive: blind` with the reason and `kq findings` withholds its all-clear line. |
+| `PREDICTIVE_DETECTION_ENABLED` | `false` | Anticipatory detection: trend predicates project a range-PromQL metric toward its threshold (least-squares slope, zero tokens) and fire a `predicted` finding *before* the failure manifests. Predicted findings are capped at autonomy `A1` (never auto-fix). Shadow detectors (NL-authored candidates) are projected in the same sweep, but their predictions go to the shadow buffer only and never reach the watchtower; with this flag off, neither active nor shadow trend predicates are evaluated, and `GET /v1/detectors/{name}/shadow-findings` says so (`watching: false`). Fail-open — but **not silently**: if Prometheus cannot be queried, `GET /v1/findings` reports `predictive: blind` with the reason and `kq findings` withholds its all-clear line. |
 | `PREDICTIVE_TREND_INTERVAL_SECONDS` | `60` | How often the trend-projection loop runs (range queries are expensive — separate from the 1s reactive tick). |
 
 ### PromQL detection (#20)

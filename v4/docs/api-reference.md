@@ -402,7 +402,9 @@ Prometheus is answering.
 | `blind` | Prometheus could not be queried; `predictive_error` carries the reason, and no prediction *could* have fired |
 | `off` | `PREDICTIVE_DETECTION_ENABLED=false`, or no loaded detector has a `trend_predicates` block |
 
-`predictive_detectors` counts the detectors that carry trend predicates.
+`predictive_detectors` counts the active **and shadow** detectors that carry trend predicates. Shadow
+trend predicates are projected in the same sweep, with firings routed to the shadow buffer only
+(never the watchtower, ADR-012); one failing trend query anywhere in the sweep makes it `blind`.
 
 `promql` is the same claim for the instant **`promql:` predicates** of `detect:` blocks (#20),
 which also see through Prometheus. They run on their own loop, every
@@ -736,7 +738,11 @@ whether the number means anything:
 are different for a detector whose only predicates are `trend_predicates`: those are evaluated on
 the predictive interval, which does not run when `PREDICTIVE_DETECTION_ENABLED` is false. Such a
 detector is in the shadow set, lists as `shadow`, and is evaluated by nothing — so `"findings":
-[]` is a fact about the flag, not about the cluster. `watching_reason` names the case in words,
+[]` is a fact about the flag, not about the cluster. With the flag **on**, shadow trend predicates
+are evaluated and fire into the shadow buffer only; if the last trend sweep was blind,
+`watching_reason` says so. A detector with watch predicates *and* trend predicates stays
+`watching: true` while the flag is off, but `watching_reason` states that its trend predicates are
+not evaluated. `watching_reason` names the case in words,
 including which flag to change. A detector with PromQL predicates is `watching` when
 `PROMQL_DETECTION_ENABLED` is on and `PROMETHEUS_URL` is set (on any other deployment the loader
 drops its queries and says so); if the last PromQL sweep was blind, `watching_reason` says that

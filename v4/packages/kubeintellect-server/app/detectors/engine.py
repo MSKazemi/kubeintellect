@@ -84,6 +84,7 @@ class DetectorEngine:
     _states: dict[tuple[str, str, str], _KeyState] = field(default_factory=dict)
     _shadow_states: dict[tuple[str, str, str], _KeyState] = field(default_factory=dict)
     _predicted_fired: dict[tuple[str, str, str], float] = field(default_factory=dict)
+    _shadow_predicted_fired: dict[tuple[str, str, str], float] = field(default_factory=dict)
     _tick_task: asyncio.Task | None = None
     # Predictive-detection visibility (ADR-010). None ⇒ the last trend sweep reached Prometheus.
     # Set ⇒ it did not, and every "no prediction" since then is an absence of evidence, not
@@ -173,22 +174,27 @@ class DetectorEngine:
 
     def _emit_shadow(self, det: DetectBlock, namespace: str, name: str, state: _KeyState) -> Finding:
         state.fired = True
-        finding = Finding(
-            playbook=det.playbook,
-            cluster_id=self.cluster_id,
-            namespace=namespace,
-            object_name=name,
-            evidence=state.evidence,
-            first_seen=state.armed_at,
-            source="shadow",
+        return self._publish_shadow(
+            Finding(
+                playbook=det.playbook,
+                cluster_id=self.cluster_id,
+                namespace=namespace,
+                object_name=name,
+                evidence=state.evidence,
+                first_seen=state.armed_at,
+                source="shadow",
+            )
         )
+
+    def _publish_shadow(self, finding: Finding) -> Finding:
+        """Shadow publish path: shadow ring + shadow flight-recorder episode, nothing else."""
         self.shadow_findings.append(finding)
         flight_recorder.record(
             f"shadow-findings:{self.cluster_id}", "finding", finding.to_dict()
         )
         logger.info(
-            f"shadow_detector_fired playbook={det.playbook} ns={namespace} object={name}"
-            f" evidence={state.evidence[:120]!r}"
+            f"shadow_detector_fired playbook={finding.playbook} ns={finding.namespace}"
+            f" object={finding.object_name} evidence={finding.evidence[:120]!r}"
         )
         # Deliberately NEVER calls self.on_finding — shadow detectors cannot act.
         return finding
@@ -268,10 +274,24 @@ class DetectorEngine:
         is worthless if it stops warning without saying so, and that is what happened: the
         outage arrived as the discarded half of a tuple, so `trend_blind_since` /
         `last_trend_error` now hold it and `GET /v1/findings` reports `predictive: blind`.
+
+        Returns the ACTIVE findings fired. Shadow detectors (ADR-012) are projected in the same
+        sweep and fire into the shadow buffer only, never the watchtower — exactly as
+        `_process_shadow` and `evaluate_promql` treat them. They were skipped until 2026-10-02,
+        while the shadow-findings `watching` field reported a trend-only shadow detector as
+        "evaluated on the predictive interval": its zero firings meant "never asked", and the
+        NL compiler is told to express a metric condition as a trend predicate ALONE.
+
+        Blindness is decided per sweep, like `evaluate_promql`: ANY query that could not run
+        leaves the sweep blind. It used to be decided per query, so a later success reset an
+        earlier failure — harmless while one Prometheus answered every query alike, wrong once
+        the shadow queries run after the active ones and can mask an active detector's outage.
         """
         now = now if now is not None else time.time()
         fired: list[Finding] = []
-        for det in self.detectors:
+        first_error: str | None = None
+        for det, shadow in ([(d, False) for d in self.detectors]
+                            + [(d, True) for d in self.shadow_detectors]):
             for tp in det.trend_predicates:
                 try:
                     series, query_error = await asyncio.to_thread(
@@ -284,23 +304,27 @@ class DetectorEngine:
                     # the exception handler above could not see a Prometheus outage at all: the
                     # error came back as the discarded half of a tuple, the loop saw `[]`, and
                     # the predictive layer went silent with no finding and no log line.
-                    self.trend_blind_since = self.trend_blind_since or now
-                    self.last_trend_error = query_error
+                    first_error = first_error or query_error
                     logger.warning(
                         f"trend_query_unavailable playbook={det.playbook} "
                         f"metric={tp.metric[:80]!r}: {query_error}"
                     )
                     continue
-                self.trend_blind_since = None
-                self.last_trend_error = None
                 for s in series or []:
-                    finding = self._project_series(det, tp, s, now)
-                    if finding is not None:
+                    finding = self._project_series(det, tp, s, now, shadow)
+                    if finding is not None and not shadow:
                         fired.append(finding)
+        if first_error is not None:
+            self.trend_blind_since = self.trend_blind_since or now
+            self.last_trend_error = first_error
+        else:
+            self.trend_blind_since = None
+            self.last_trend_error = None
         return fired
 
     def _project_series(
-        self, det: DetectBlock, tp: TrendPredicate, series: dict, now: float
+        self, det: DetectBlock, tp: TrendPredicate, series: dict, now: float,
+        shadow: bool = False,
     ) -> Finding | None:
         samples = _extract_samples(series)
         if len(samples) < 3:
@@ -315,28 +339,30 @@ class DetectorEngine:
             return None
         namespace, name = _series_target(series, tp.object_label)
         key = (det.playbook, namespace, name)
-        last = self._predicted_fired.get(key)
+        refired = self._shadow_predicted_fired if shadow else self._predicted_fired
+        last = refired.get(key)
         if last is not None and now - last < _PREDICTED_REFIRE_TTL:
             return None
-        self._predicted_fired[key] = now
+        refired[key] = now
         evidence = (
             f"predicted {det.playbook}: {tp.metric[:80]} {tp.direction} toward "
             f"{tp.threshold} — crossing in ~{eta_min:.0f}m"
         )
-        return self._emit(
-            Finding(
-                playbook=det.playbook,
-                cluster_id=self.cluster_id,
-                namespace=namespace,
-                object_name=name,
-                evidence=evidence,
-                first_seen=now,
-                fired_at=now,
-                source="trend",
-                severity="predicted",
-                eta_minutes=round(eta_min, 1),
-            )
+        finding = Finding(
+            playbook=det.playbook,
+            cluster_id=self.cluster_id,
+            namespace=namespace,
+            object_name=name,
+            evidence=evidence,
+            first_seen=now,
+            fired_at=now,
+            source="shadow" if shadow else "trend",
+            severity="predicted",
+            eta_minutes=round(eta_min, 1),
         )
+        # A shadow prediction reaches the shadow buffer only — never `_emit`, which is the path
+        # to the watchtower (ADR-012).
+        return self._publish_shadow(finding) if shadow else self._emit(finding)
 
     async def run(self) -> None:
         """Background tick loop (debounce expiry + stale-arm cleanup)."""

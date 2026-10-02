@@ -343,6 +343,11 @@ def _watching(loaded, name: str) -> tuple[bool, str]:
     if healthy:
         partial += (f" WARNING: this detector fires on HEALTHY objects, so its findings are not "
                     f"evidence of a fault — {healthy[0]}")
+    # A detector that carries trend predicates as well as watch ones is evaluated only in part
+    # while predictive detection is off; say which part, or its trend half is silently absent.
+    if loaded.trend_predicates and not settings.PREDICTIVE_DETECTION_ENABLED:
+        partial += (" Its trend predicates are NOT evaluated (PREDICTIVE_DETECTION_ENABLED is "
+                    "false), so it cannot fire on them here.")
     if loaded.watch_predicates:
         return True, (f"loaded, with watch predicates evaluated on every observation.{partial}"
                       if partial else
@@ -363,9 +368,14 @@ def _watching(loaded, name: str) -> tuple[bool, str]:
             return True, f"{what}.{partial}" if partial else what
     if loaded.trend_predicates:
         if settings.PREDICTIVE_DETECTION_ENABLED:
-            return True, ("loaded, with trend predicates evaluated on the predictive "
-                          f"interval.{partial}" if partial else
-                          "loaded, with trend predicates evaluated on the predictive interval")
+            what = ("loaded, with trend predicates evaluated on the predictive interval, "
+                    "firing into the shadow buffer only")
+            engine = get_engine()
+            blind = getattr(engine, "last_trend_error", None) if engine is not None else None
+            if blind:
+                what += (f" — but the last trend sweep was BLIND ({blind}), so its recent "
+                         "silence is not evidence")
+            return True, f"{what}.{partial}" if partial else what
         return False, (
             f"{name} is loaded but has only trend predicates, and PREDICTIVE_DETECTION_ENABLED "
             "is false — nothing evaluates them, so it cannot fire on this deployment. Its zero "

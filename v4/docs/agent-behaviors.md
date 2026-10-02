@@ -829,7 +829,7 @@ only while a watch stream is connected; in any other state an empty `findings`
 list means *nothing was watched*, not *nothing happened*. `predictive` is the
 independent claim for the anticipatory detectors, which read Prometheus rather
 than the watch stream: `blind` means the last trend sweep could not query it, so
-no prediction *could* have fired (see
+no prediction *could* have fired (shadow trend detectors are included in that sweep and fire to the shadow buffer only; see
 [the endpoint reference](api-reference.md#get-v1findings)). What happens *after* a finding fires is
 governed by the [autonomy ladder](autonomy.md).
 
