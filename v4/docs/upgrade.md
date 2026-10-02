@@ -158,6 +158,44 @@ kubeintellect set PREDICTIVE_DETECTION_ENABLED=false
 
 ---
 
+## Upgrading to the next release (after 2.5.0)
+
+These changes are in `CHANGELOG.md` under **[Unreleased]**. Read the breaking changes before you
+upgrade; everything new is default-off.
+
+### Breaking changes
+
+1. **`LLM_PROVIDER=anthropic` on the default V2 graph now refuses to start.** Before, the server
+   logged a warning and sent cluster data to OpenAI/Azure instead. It now exits with code 1 before
+   the port opens and says which vendor the data would have gone to. Fix: set
+   `CORTEX_V4_ENABLED=true` (the Cortex graph supports Anthropic), or choose `openai`, `azure`,
+   `qwen` or the new `local` provider. See [Configuration](configuration.md).
+2. **NL detector authoring (`POST /v1/detectors`) no longer always answers 200.** It returns
+   `422` (the compiled detector cannot fire), `409` (name or prose clash), `202` (stored but not
+   loaded — `staged:false` with a reason), `502` (model unavailable) or `503` (store unavailable).
+   `kq` already handles all of them; any other client must. Authoring compiles at temperature 0,
+   so a model that rejects temperature 0 cannot author detectors. See the
+   [API reference](api-reference.md).
+
+### New default-off flags
+
+| Flag | What it adds | Before you enable it |
+|---|---|---|
+| `LLM_PROVIDER=local` | Ollama / vLLM / LM Studio / llama.cpp as a first-class provider | [Local LLM guide](local-llm.md). Startup makes one real tool call per model; a cold CPU load can exceed a short liveness probe |
+| `SELF_GOVERN_ENABLED` | Exactly-once irreversible calls with single-use approvals (ADR-008), and a grounding check on the Cortex graph (ADR-009) | Needs the flight recorder on Postgres and **`kubeintellect db-init`** (schema version 3 adds the `effect_log` table). Without the ledger every irreversible call falls back to a human approval |
+| `PROMQL_DETECTION_ENABLED` | Evaluates the `promql:` queries in `detect:` blocks | Needs `PROMETHEUS_URL`. The 20 shipped queries have never run before, so expect new findings; an unreachable Prometheus shows as `promql: blind` on `GET /v1/findings`, never as "all clear" |
+| `POSTMORTEM_MIN_GROUNDING` | Threshold for the claim-level grounding gate on postmortem narratives | Only matters with `POSTMORTEM_LLM_NARRATIVE=true` (still default-off). Below the threshold the narrative is withheld and the deterministic postmortem returned |
+
+Enable them one at a time, as in [the runbook above](#runbook-enable-a-flag-safely).
+
+### Database
+
+Schema version goes from 2 to 3 (one additive table, `effect_log`; append-only, never pruned by
+retention). `kubeintellect db-init` applies it; `/healthz` reports a mismatch between the applied
+and expected version. Nothing in version 2 is altered.
+
+---
+
 ## Turning on autonomy carefully
 
 Autonomy is the one area where a flag can *change your cluster*. The safe path:
