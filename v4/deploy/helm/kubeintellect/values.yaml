@@ -133,6 +133,28 @@ rbac:
   allowExec: false             # pods/exec — separate flag; off by default to protect secrets from exec+env
   enableNamespaceManagement: false
 
+# Startup window — rendered ONLY when config.llmProvider is `local`; every other provider keeps
+# exactly the liveness/readiness behaviour it always had (no startupProbe is emitted).
+#
+# Why: with a local provider the server's startup check makes one real tool call per distinct
+# model BEFORE it opens its port, and the first request to a cold local server loads the model
+# into memory. The liveness probe alone allows 15s + 3 x 30s = 105s, so a slow load means the
+# kubelet kills the pod mid-check and it restarts forever. A startupProbe holds liveness and
+# readiness off until /healthz first answers.
+#
+# Budget (seconds) = config.localLlmProbeTimeoutSeconds x models + marginSeconds
+#   defaults: 180 x 2 + 120 = 480s  ->  failureThreshold = ceil(480 / periodSeconds 10) = 48
+# `models` is the number of DISTINCT models the check probes: 2 when the coordinator and
+# subagent models differ, 1 when secrets.openaiCoordinatorModel == openaiSubagentModel (the
+# default 2 is the safe upper bound). marginSeconds covers imports, DB connect and schema checks.
+# failureThreshold 0 means "compute it". Set it explicitly only to go HIGHER; the chart refuses
+# a value whose window (periodSeconds x failureThreshold) is below the budget above.
+startupProbe:
+  models: 2
+  marginSeconds: 120
+  periodSeconds: 10
+  failureThreshold: 0
+
 # Non-secret config injected via ConfigMap
 config:
   logLevel: info
@@ -182,6 +204,30 @@ config:
   predictiveDetectionEnabled: false
   nlDetectorAuthoringEnabled: false
   postmortemLlmNarrative: false
+  # Claim-level grounding floor for the LLM postmortem narrative (0.0-1.0). Each sentence is
+  # checked against the recorded evidence; if the share of supported claims falls below this,
+  # the narrative is withheld and the deterministic postmortem is returned with the reason.
+  # Only matters when postmortemLlmNarrative is true. Matches the server default (0.9).
+  postmortemMinGrounding: 0.9
+  # Self-governance (ADR-007/008/009): exactly-once irreversible kubectl calls via the
+  # `effect_log` ledger, single-use approval tokens, and a grounding check on the Cortex graph.
+  # Default off. Needs the Postgres flight recorder with schema v3 (the `effect_log` table):
+  # this chart always provides Postgres (in-cluster or postgres.external), and the db-init Job
+  # applies the schema. Without the ledger every irreversible call falls back to a fresh human
+  # approval. The grounding check runs only on the Cortex graph (cortexV4Enabled: true).
+  selfGovernEnabled: false
+  # Evaluate the instant `promql:` queries in playbook `detect:` blocks (zero tokens). Default
+  # off: most shipped playbooks carry queries that were never run before, so enabling this
+  # changes what fires on every cluster. Needs prometheusUrl — the chart refuses to render
+  # without it. An unreachable Prometheus shows as `promql: blind` on GET /v1/findings, never
+  # as "nothing fired". The server floors the interval at 5 seconds.
+  promqlDetectionEnabled: false
+  promqlDetectionIntervalSeconds: 30
+  # llmProvider: local only — how long the server's startup check waits for EACH model's
+  # tool-calling probe (a cold CPU model load can take minutes). Server default is 180.
+  # The pod's startupProbe (top-level `startupProbe` above) is sized from this value, so raising
+  # it here widens the window the kubelet allows before restarting the pod.
+  localLlmProbeTimeoutSeconds: 180
   # Arbitrary extra environment keys, merged verbatim into the ConfigMap.
   #
   # The named settings above cover the supported product surface. This is the escape hatch for

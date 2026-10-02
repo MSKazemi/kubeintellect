@@ -230,7 +230,9 @@ These are the variables the container reads. For full details on each, see the [
 
     | Variable | Default | Notes |
     |---|---|---|
-    | `LLM_PROVIDER` | `azure` | `azure` or `openai` |
+    | `LLM_PROVIDER` | `openai` | `openai`, `azure`, `qwen`, `anthropic` (needs `CORTEX_V4_ENABLED=true`) or `local` |
+    | `OPENAI_BASE_URL` | — | OpenAI-compatible endpoint. **Required for `local`** (in a pod, the model server's Service URL — `localhost` is the pod itself) |
+    | `LOCAL_LLM_PROBE_TIMEOUT_SECONDS` | `180` | `local` only: per-model startup tool-call probe timeout. The Helm chart sizes a `startupProbe` from it |
     | `AZURE_OPENAI_API_KEY` | — | Required for `azure` |
     | `AZURE_OPENAI_ENDPOINT` | — | Required for `azure` |
     | `AZURE_OPENAI_API_VERSION` | `2024-02-01` | |
@@ -257,6 +259,8 @@ These are the variables the container reads. For full details on each, see the [
     |---|---|---|
     | `PROMETHEUS_URL` | `""` | Leave empty to disable |
     | `LOKI_URL` | `""` | Leave empty to disable |
+    | `PROMQL_DETECTION_ENABLED` | `false` | Evaluate playbook `promql:` detectors. Needs `PROMETHEUS_URL` (the chart refuses to render without it) |
+    | `PROMQL_DETECTION_INTERVAL_SECONDS` | `30` | Floored at 5 by the server |
     | `LANGFUSE_ENABLED` | `false` | |
     | `LANGFUSE_HOST` | `""` | |
     | `LANGFUSE_PUBLIC_KEY` | — | |
@@ -272,6 +276,10 @@ These are the variables the container reads. For full details on each, see the [
     | `LOG_LEVEL` | `INFO` | `DEBUG` / `INFO` / `WARNING` / `ERROR` |
     | `LOG_FORMAT` | `text` | `text` or `json` |
     | `ALLOWED_ORIGINS` | `http://localhost:3080` | CORS — comma-separated |
+    | `SELF_GOVERN_ENABLED` | `false` | Exactly-once irreversible calls + grounding check (ADR-007/008/009). Needs the Postgres flight recorder with schema v3 (`kubeintellect db-init`) |
+    | `POSTMORTEM_MIN_GROUNDING` | `0.9` | Share of supported claims below which the LLM postmortem narrative is withheld (0.0–1.0) |
+
+    In the Helm chart these are `config.llmProvider`, `secrets.openaiBaseUrl`, `config.localLlmProbeTimeoutSeconds`, `config.promqlDetectionEnabled`, `config.promqlDetectionIntervalSeconds`, `config.selfGovernEnabled` and `config.postmortemMinGrounding`; all default to the server defaults above.
 
 ---
 

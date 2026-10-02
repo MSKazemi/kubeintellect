@@ -69,8 +69,8 @@ ingress:
     - api.kubeintellect.local  # local VM access (add to /etc/hosts on clients)
 
 config:
-  llmProvider: azure          # or: openai
-  prometheusUrl: ""           # add after monitoring install
+  llmProvider: azure          # or: openai | qwen | local (needs secrets.openaiBaseUrl) | anthropic (needs cortexV4Enabled: true)
+  prometheusUrl: ""           # add after monitoring install (required for promqlDetectionEnabled)
   lokiUrl: ""
 ```
 

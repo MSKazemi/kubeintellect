@@ -149,10 +149,18 @@ LLM_PROVIDER=local OPENAI_COORDINATOR_MODEL=qwen2.5:14b OPENAI_SUBAGENT_MODEL=qw
   `make aws-deploy-kubeintellect` / `gcp-deploy-kubeintellect` targets require
   `OPENAI_BASE_URL` in `.env` for `LLM_PROVIDER=local`.
 - **Probe timing:** the chart's liveness probe allows roughly 105 seconds (15 s initial delay,
-  then three failures 30 s apart) before restarting the pod, while the startup check may wait
-  up to `LOCAL_LLM_PROBE_TIMEOUT_SECONDS` per model. Keep the model loaded on the server (for
-  Ollama, `OLLAMA_KEEP_ALIVE`) or lower the timeout so a cold load does not cause a restart
-  loop.
+  then three failures 30 s apart), while the startup check may wait up to
+  `LOCAL_LLM_PROBE_TIMEOUT_SECONDS` per model. With `config.llmProvider: local` the chart
+  therefore adds a `startupProbe` on `/healthz` that holds liveness and readiness off until the
+  server has opened its port. Its window is `config.localLlmProbeTimeoutSeconds` x
+  `startupProbe.models` (default 2) + `startupProbe.marginSeconds` (default 120) — 480 s by
+  default (`failureThreshold` 48 at a 10 s period). Set `startupProbe.models: 1` when both
+  models are the same, and raise `config.localLlmProbeTimeoutSeconds` (not the probe) for a
+  slower machine; the chart refuses an explicit `startupProbe.failureThreshold` that is too
+  small. Other providers get no startup probe. Keeping the model loaded on the server (for
+  Ollama, `OLLAMA_KEEP_ALIVE`) still makes restarts of the pod fast.
+- **Fail-fast:** `helm template` / `helm install` fails if `local` is selected without
+  `secrets.openaiBaseUrl`.
 
 ## Choosing a model
 

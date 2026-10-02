@@ -1,3 +1,4 @@
+{{- include "kubeintellect.validate" . }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -48,6 +49,17 @@ data:
   PREDICTIVE_DETECTION_ENABLED: {{ .Values.config.predictiveDetectionEnabled | default false | toString | quote }}
   NL_DETECTOR_AUTHORING_ENABLED: {{ .Values.config.nlDetectorAuthoringEnabled | default false | toString | quote }}
   POSTMORTEM_LLM_NARRATIVE: {{ .Values.config.postmortemLlmNarrative | default false | toString | quote }}
+  # Self-governance (ADR-007/008/009) — default off. Needs the Postgres flight recorder (the chart
+  # always provides one) with schema v3 (`effect_log`), applied by the db-init Job.
+  SELF_GOVERN_ENABLED: {{ .Values.config.selfGovernEnabled | default false | toString | quote }}
+  # Postmortem grounding floor. NOT `| default 0.9`: 0 is a legal value and `default` would
+  # silently turn it into 0.9.
+  POSTMORTEM_MIN_GROUNDING: {{ ternary .Values.config.postmortemMinGrounding 0.9 (hasKey .Values.config "postmortemMinGrounding") | toString | quote }}
+  # PromQL `detect:` evaluation — default off, needs PROMETHEUS_URL (enforced by the validate helper).
+  PROMQL_DETECTION_ENABLED: {{ .Values.config.promqlDetectionEnabled | default false | toString | quote }}
+  PROMQL_DETECTION_INTERVAL_SECONDS: {{ .Values.config.promqlDetectionIntervalSeconds | default 30 | int | toString | quote }}
+  # LLM_PROVIDER=local — per-model tool-calling probe timeout at startup (see startupProbe in values.yaml).
+  LOCAL_LLM_PROBE_TIMEOUT_SECONDS: {{ .Values.config.localLlmProbeTimeoutSeconds | default 180 | toString | quote }}
   # Cluster identity for memory / findings / learned patterns. An in-cluster pod has no
   # kubeconfig context to derive a name from, so without this the id falls back to the
   # "unknown" sentinel — harmless for one cluster, but two clusters sharing a database would
