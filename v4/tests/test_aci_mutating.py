@@ -122,3 +122,58 @@ class TestPlanMutation:
         proposal, dr = plan_mutation("kubectl scale deploy/web --replicas=3", earned_rung="L4",
                                      budget=BudgetDecision(True), _runner=lambda c: "scaled (dry run)")
         assert proposal.decision == "auto" and dr is not None and dr.ok is True
+
+
+class TestClassifyRollbackMatchesKindsExactly:
+    """`classify_rollback` used to test `fragment in " ".join(target)`, so any kind or name that
+    merely *contained* `ns`/`pv`/`pvc`/`crd`/`sts` was irreversible. It now folds the kind with
+    the same function the ADR-008 effect guard uses and compares for equality."""
+
+    @pytest.mark.parametrize("target", [
+        "daemonset/agent", "daemonsets", "ds/agent", "deployment/web", "deploy web",
+        "pod/web", "pods web", "configmap/app", "cm app", "service/api", "ingress/x",
+        "replicaset/x", "cronjob/nightly", "serviceaccount/ci", "secret/envs",
+        "pod/pvc-reader", "pods pv-checker", "deploy/ns-controller", "pod x -n pv-tests",
+    ])
+    def test_non_data_kinds_are_not_irreversible(self, target):
+        assert classify_rollback(f"kubectl delete {target}") == VERSIONED_WORKLOAD
+
+    @pytest.mark.parametrize("target", [
+        "pvc/data", "pvc data", "persistentvolumeclaim/data", "persistentvolumeclaims data",
+        "PVC data", "pv/vol", "pvs vol", "persistentvolume vol", "persistentvolumes/vol",
+        "ns/demo", "namespace demo", "namespaces/demo", "NS demo",
+        "crd/foos.example.com", "crds foos.example.com",
+        "customresourcedefinitions.apiextensions.k8s.io foos.example.com",
+        "sts/db", "statefulsets db", "statefulset.apps/db",
+        "pod,pvc x", "pods,persistentvolumeclaims --all", "pod/a pvc/b",
+        "-n prod pvc data", "pvc data -n prod", "--namespace=prod pvc data",
+    ])
+    def test_data_bearing_kinds_are_irreversible(self, target):
+        assert classify_rollback(f"kubectl delete {target}") == IRREVERSIBLE
+
+    @pytest.mark.parametrize("cmd", [
+        "kubectl delete", "kubectl delete -n prod", "kubectl delete -f manifest.yaml",
+        "kubectl delete -f -", "kubectl delete --filename=pv.yaml", "kubectl delete -k overlay/",
+    ])
+    def test_an_unparseable_delete_target_stays_irreversible(self, cmd):
+        assert classify_rollback(cmd) == IRREVERSIBLE
+
+    def test_a_flag_value_is_not_read_as_a_kind(self):
+        # `-n pvc-ns` is a namespace *value*; the kind is the pod.
+        assert classify_rollback("kubectl delete -n pvc-ns pod web") == VERSIONED_WORKLOAD
+
+    def test_the_guard_and_the_classifier_share_one_folding_function(self):
+        from app.tools import effect_guard
+        from app.tools.aci import mutating
+        assert effect_guard._kind is mutating.fold_kind
+
+    @pytest.mark.parametrize("args,irreversible", [
+        (["delete", "pvc", "data", "-n", "prod"], True),
+        (["delete", "pod", "pvc-reader"], False),
+        (["delete", "daemonset", "agent"], False),
+        (["delete", "pod/a", "pvc/b"], True),          # mixed kinds: the data-bearing one wins
+        (["delete", "-f", "-"], True),                  # no kinds visible ⇒ fail-closed
+    ])
+    def test_effect_guard_is_irreversible_agrees(self, args, irreversible):
+        from app.tools.effect_guard import canonical_intent, is_irreversible
+        assert is_irreversible(canonical_intent(args)) is irreversible

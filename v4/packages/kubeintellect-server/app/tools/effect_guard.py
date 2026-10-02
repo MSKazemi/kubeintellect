@@ -67,7 +67,7 @@ from langgraph.types import interrupt
 from app.core.config import settings
 from app.db import effect_log
 from app.tools.aci import kubectl_output
-from app.tools.aci.mutating import IRREVERSIBLE, classify_rollback
+from app.tools.aci.mutating import IRREVERSIBLE, classify_rollback, fold_kind as _kind
 from app.utils.logger import get_logger
 from app.utils.redact import redact_secrets
 
@@ -80,16 +80,8 @@ _MAX_RESULT_CHARS = 8000
 
 # ── Canonicalization ──────────────────────────────────────────────────────────
 
-_KIND_ALIASES = {
-    "po": "pod", "svc": "service", "deploy": "deployment", "ds": "daemonset",
-    "sts": "statefulset", "rs": "replicaset", "rc": "replicationcontroller",
-    "cm": "configmap", "ns": "namespace", "pvc": "persistentvolumeclaim",
-    "pv": "persistentvolume", "crd": "customresourcedefinition", "crds": "customresourcedefinition",
-    "no": "node", "sa": "serviceaccount", "ing": "ingress", "cj": "cronjob",
-    "hpa": "horizontalpodautoscaler", "pdb": "poddisruptionbudget", "netpol": "networkpolicy",
-    "sc": "storageclass", "ep": "endpoints", "ev": "event", "limits": "limitrange",
-    "quota": "resourcequota",
-}
+# Kind folding (`pvc` == `persistentvolumeclaims`) is `mutating.fold_kind` — ONE function shared
+# with `classify_rollback`, so the guard's canonical key and the rollback class cannot disagree.
 
 #: Verbs whose first operand is a subcommand, not a resource kind.
 _SUBCOMMAND_VERBS = frozenset({"rollout", "set", "certificate", "auth", "config"})
@@ -128,21 +120,6 @@ def _volatile_key(key: str) -> bool:
     tail = str(key).rsplit("/", 1)[-1].lower()
     squashed = tail.replace("-", "").replace("_", "").replace(".", "")
     return squashed in _VOLATILE_KEYS or squashed.endswith("timestamp")
-
-
-def _kind(raw: str) -> str:
-    """Fold a resource kind: `PVC`, `pvc`, `persistentvolumeclaims` → `persistentvolumeclaim`."""
-    head, dot, group = raw.strip().lower().partition(".")
-    head = _KIND_ALIASES.get(head, head)
-    if head not in _KIND_ALIASES.values():
-        if head.endswith("ies"):
-            head = head[:-3] + "y"
-        elif head.endswith("sses"):
-            head = head[:-2]
-        elif head.endswith("s") and not head.endswith("ss"):
-            head = head[:-1]
-        head = _KIND_ALIASES.get(head, head)
-    return head + (dot + group if dot else "")
 
 
 def _strip_volatile(node: Any, under_meta_map: bool = False) -> Any:
@@ -268,7 +245,7 @@ def is_irreversible(intent: dict[str, Any]) -> bool:
     the first token as the verb, so `kubectl -n prod delete pvc x` would otherwise be classified
     on `-n`, and a `delete -f -` would be classified without the kinds its manifest names.
     """
-    kinds = " ".join(sorted({t[0] for t in intent["targets"]}))
+    kinds = ",".join(sorted({t[0] for t in intent["targets"]}))
     parts = [p for p in ("kubectl", intent["verb"], intent["subcommand"], kinds) if p]
     return classify_rollback(" ".join(parts)) == IRREVERSIBLE
 
