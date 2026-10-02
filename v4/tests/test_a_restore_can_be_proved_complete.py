@@ -81,6 +81,16 @@ class TestTheManifestMeasuresTheRightThings:
         for table in ("episodes", "decision_log", "memory_audit"):
             assert table in m["row_counts"]
 
+    def test_it_counts_the_adr008_effect_log(self):
+        """Dropped effect_log rows are how an irreversible call or a spent token runs again."""
+        assert "effect_log" in COUNTED_TABLES
+        assert "effect_log" in _manifest()["row_counts"]
+
+    def test_a_restore_that_lost_effect_log_rows_is_reported(self):
+        result = verify(_healthy(counts={"effect_log": 4}), _manifest())
+        assert result["ok"] is False
+        assert any("effect_log: 4 rows" in p and "6 MISSING" in p for p in result["problems"])
+
     def test_it_records_how_far_each_chain_got(self):
         """The part no row count can replace."""
         m = _manifest()
