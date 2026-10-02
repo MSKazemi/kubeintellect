@@ -625,7 +625,7 @@ change; zero allowed disruptions by itself can be intentional availability polic
     Each `promql:` entry is an **instant** PromQL query, run on its own loop every
     `PROMQL_DETECTION_INTERVAL_SECONDS` (default 30) when `PROMQL_DETECTION_ENABLED=true` and
     `PROMETHEUS_URL` is set (#20). Before #20 nothing evaluated these queries; the flag is
-    **off by default** because turning it on adds firings from 21 shipped queries that had
+    **off by default** because turning it on adds firings from 20 shipped queries that had
     never run. Every shipped detector also has `watch_predicates`, so with the flag off every
     shipped detector still fires exactly as before.
 

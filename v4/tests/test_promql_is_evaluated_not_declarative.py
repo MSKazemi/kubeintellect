@@ -75,9 +75,44 @@ class TestEveryShippedDetectorFiresWithPromqlOff:
             f"{pb.name} declares only promql, which runs only with PROMQL_DETECTION_ENABLED")
 
     def test_the_shipped_promql_queries_are_still_carried(self):
-        """The count is pinned so a change is deliberate: 21 queries across the shipped playbooks."""
+        """The count is pinned so a change is deliberate: 20 queries across the shipped playbooks."""
         total = sum(len(p.detect.promql) for p in list_playbooks() if p.detect is not None)
-        assert total == 21, f"shipped promql query count changed: {total}"
+        assert total == 20, f"shipped promql query count changed: {total}"
+
+
+class TestNoShippedQueryFiresOnACauseItDoesNotDescribe:
+    """`pending_resources` shipped `kube_pod_status_unschedulable == 1` marked AMBIGUOUS. That
+    series is 1 for EVERY pod the scheduler could not place — taint, affinity, unbound PVC or
+    capacity — so with PROMQL_DETECTION_ENABLED on it fired PendingInsufficientResources for
+    causes its own text ("Insufficient cpu/memory") does not describe. The metric carries no
+    reason label, so no rewrite of the query can narrow it; the Event predicate (FailedScheduling
+    + "Insufficient (cpu|memory)") is the exact condition and is kept."""
+
+    @staticmethod
+    def _by_name(name):
+        return next(p for p in list_playbooks() if p.name == name)
+
+    def test_pending_resources_carries_no_promql(self):
+        pb = self._by_name("PendingInsufficientResources")
+        assert pb.detect.promql == ()
+
+    def test_pending_resources_keeps_its_exact_event_predicate(self):
+        (pred,) = self._by_name("PendingInsufficientResources").detect.watch_predicates
+        assert pred.kind == "Event"
+        assert pred.reason_regex.search("FailedScheduling")
+        assert pred.message_regex.search("0/3 nodes are available: Insufficient cpu.")
+        assert not pred.message_regex.search("node(s) had untolerated taint")
+
+    def test_no_shipped_query_uses_the_causeless_unschedulable_series(self):
+        offenders = [p.name for p in list_playbooks() if p.detect is not None
+                     and any("kube_pod_status_unschedulable" in q for q in p.detect.promql)]
+        assert offenders == []
+
+    def test_no_shipped_playbook_leaves_an_ambiguous_marker_in_its_yaml(self):
+        pb_dir = _APP / "agent" / "playbooks"
+        marked = [f.name for f in pb_dir.glob("*.yaml")
+                  if "AMBIGUOUS" in f.read_text(encoding="utf-8")]
+        assert marked == []
 
 
 def test_the_engine_reads_promql():
