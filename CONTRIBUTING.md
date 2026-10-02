@@ -203,8 +203,8 @@ uv run mypy packages/kubeintellect-server/app packages/ki-protocol packages/kube
 
 # 3. Tests — two suites, run separately: the two `tests` packages collide
 #    under a single pytest invocation.
-uv run python -m pytest tests/ -q                              # server (~5643 tests)
-cd packages/kube-q && uv run python -m pytest tests/ -q        # kq CLI (~749 tests)
+uv run python -m pytest tests/ -q                              # server (~5884 tests)
+cd packages/kube-q && uv run python -m pytest tests/ -q        # kq CLI (~757 tests)
 ```
 
 If you are fixing a bug in a frozen arm, run that arm's own suite too — it resolves from its
