@@ -132,7 +132,9 @@ async def create_detector(req: NewDetectorRequest, request: Request):
     if block is not None and not errors and block.promql:
         # Prometheus is the PromQL parser: run each query once before anything is stored (#20).
         errors = await authoring.promql_probe_errors(block)
-    if block is None or errors:
+    # `raw is None` always means `block is None` (validate_detect_block refuses a missing block); it
+    # is spelled out so the type narrows for `stage_candidate` below without an assert or a cast.
+    if block is None or raw is None or errors:
         return _refused(422, f"the compiled detector was refused: {errors[0]}", stored=False,
                         compiled=raw, errors=errors, compilation=compilation)
 
