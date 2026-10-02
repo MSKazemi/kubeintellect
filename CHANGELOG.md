@@ -119,6 +119,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **Shadow trend detectors were reported as watched but never evaluated** (ADR-012, safety
+  invariant #1). `evaluate_trends` iterated only active detectors while the shadow-findings
+  `watching` field counted shadow trend detectors, so a shadow detector could be "watching" with
+  nothing behind it. They are now evaluated in the same sweep, their firings going only to the
+  shadow buffer — never to the watchtower — with their own re-fire window. Blindness is decided
+  per sweep, so a later success can no longer hide an earlier failed query. With
+  `PREDICTIVE_DETECTION_ENABLED` off nothing trend-related is evaluated and the status says so,
+  including for the trend half of a mixed watch+trend detector.
+- **The `pending_resources` playbook's PromQL arm is removed.** `kube_pod_status_unschedulable == 1`
+  is 1 for every unschedulable pod (taints, affinity, unbound PVC, quota, capacity) and carries no
+  reason label, so with `PROMQL_DETECTION_ENABLED` on it would have fired on causes the playbook does
+  not describe. The `FailedScheduling` + `Insufficient (cpu|memory)` event predicate, which is exactly
+  the described condition, stays. Shipped PromQL queries: 21 → 20.
 - **kubectl commands with unresolved placeholders no longer reach kubectl** (#173).
   `<node-name>`, `$NAME`, `{namespace}` and `POD_NAME`-style tokens are refused with an error that
   names the placeholder and says to resolve it first. jsonpath/go-template/custom-columns values,
