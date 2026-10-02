@@ -11,7 +11,10 @@ committed Postgres transaction, serialised per session by an advisory lock, and 
 raises :class:`EffectLogUnavailable` so the caller can fall back to HITL re-approval instead of
 guessing (ADR-008: fail-closed on the irreversible path).
 
-Tamper evidence is the flight recorder's own format, not a second one: rows are hash-chained per
+Tamper evidence is the flight recorder's own format, not a second one — including its head
+anchor: `effect_log_head` (the `decision_log_head` pattern) is advanced in the same transaction
+as every append, and every transaction checks the ledger against it, so truncating the newest
+rows fails closed to HITL as "effect log tampered/truncated". Rows are hash-chained per
 session with :func:`app.db.flight_recorder.compute_hash` (``episode_id`` = ``session_id``), the
 binding columns are projections of fields that also live in the hashed ``payload``, and the
 table refuses UPDATE/DELETE at the database (`schema.sql`). Every append is also mirrored into
@@ -77,6 +80,38 @@ def _binding_columns(payload: dict[str, Any]) -> tuple[str, str, str, str]:
     )
 
 
+_SQL_HEAD_UPSERT = """
+    INSERT INTO effect_log_head (session_id, seq, hash, updated_at)
+    VALUES (%s, %s, %s, now())
+    ON CONFLICT (session_id) DO UPDATE
+        SET seq = EXCLUDED.seq, hash = EXCLUDED.hash, updated_at = now()
+"""
+_SQL_HEAD_READ = "SELECT seq, hash FROM effect_log_head WHERE session_id = %s"
+
+TAMPERED = "effect log tampered/truncated"
+
+
+def head_problem(rows: list[dict[str, Any]], head: tuple[int, str] | None) -> str | None:
+    """Why a session's ledger contradicts its anchor, or None when they agree.
+
+    `verify` proves links; it cannot see rows removed from the END of the chain, because the
+    surviving prefix still hashes correctly. The head is written in the same transaction as
+    every append, so — unlike the decision-log head — there is no legitimate lag: *any*
+    disagreement (no head for a non-empty ledger, a head for an empty one, a different seq or
+    hash) is tampering or a bypassed writer, and the caller must not trust the ledger.
+    """
+    if head is None:
+        return f"{TAMPERED}: {len(rows)} ledger row(s) but no head anchor" if rows else None
+    head_seq, head_hash = head
+    if not rows:
+        return f"{TAMPERED}: head records seq={head_seq} but the ledger is empty"
+    last = rows[-1]
+    if int(last["seq"]) != head_seq or str(last["hash"]) != head_hash:
+        return (f"{TAMPERED}: ledger ends at seq={last['seq']} but its head records "
+                f"seq={head_seq}")
+    return None
+
+
 class _PgTxn:
     def __init__(self, cur, session_id: str, rows: list[dict[str, Any]]):
         self._cur = cur
@@ -113,6 +148,11 @@ class _PgTxn:
             "prev_hash": prev_hash, "hash": digest,
             "created_at": str(created[0]) if created else "",
         }
+        try:
+            # Same transaction as the row: the anchor advances atomically with the ledger.
+            self._cur.execute(_SQL_HEAD_UPSERT, (self._session_id, seq, digest))
+        except Exception as exc:
+            raise EffectLogUnavailable(f"effect_log head write failed: {exc}") from exc
         self.rows.append(row)
         _mirror(self._session_id, row)
         return row
@@ -156,6 +196,17 @@ class PostgresEffectStore:
                             })
                     except Exception as exc:
                         raise EffectLogUnavailable(f"effect_log read failed: {exc}") from exc
+                    try:
+                        cur.execute(_SQL_HEAD_READ, (session_id,))
+                        head_row = cur.fetchone()
+                    except Exception as exc:
+                        # An anchor that cannot be read cannot clear the ledger: fail closed.
+                        raise EffectLogUnavailable(f"effect_log head read failed: {exc}") from exc
+                    problem = head_problem(
+                        rows, (int(head_row[0]), str(head_row[1])) if head_row else None)
+                    if problem:
+                        logger.error(f"effect_log: session {session_id!r}: {problem}")
+                        raise EffectLogUnavailable(f"session {session_id!r}: {problem}")
                     if not verify(rows):
                         # A ledger that does not verify cannot be the evidence that an
                         # irreversible call already ran — or that it did not.

@@ -48,7 +48,7 @@ SCHEMA_VERSION = 3
 #: A11 and the part that actually enforces the discipline: change one line of DDL without bumping
 #: the version and updating this pin, and the suite fails. Without it, `SCHEMA_VERSION` is a
 #: number somebody has to remember to increment, which is not a migration policy.
-PINNED_FINGERPRINT = "27b44ba94c21010ebbab57c0a8f167ee73e214a3e27a877c88faf09359eaed42"
+PINNED_FINGERPRINT = "ea5d927d991ff9d7936950960d90b4d7a58277d67ff7875c0da7b57b9448d52f"
 
 #: Set once at startup by :func:`check_schema`. Read by `/healthz` — never a live query, because
 #: `/healthz` is liveness and a probe that touches Postgres turns one blip into a restart loop.

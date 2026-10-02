@@ -55,6 +55,7 @@ COUNTED_TABLES: tuple[str, ...] = (
 CHAINS: tuple[tuple[str, str, str], ...] = (
     ("decision_log", "decision_log_head", "episode_id"),
     ("memory_audit", "memory_chain_head", "cluster_id"),
+    ("effect_log", "effect_log_head", "session_id"),
 )
 
 

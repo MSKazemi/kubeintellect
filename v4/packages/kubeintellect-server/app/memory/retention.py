@@ -127,6 +127,10 @@ REFUSED: dict[str, str] = {
         "rollback+retry, and an `approval_consumed` row is the only thing that stops a used "
         "approval from being presented again. Ageing either out re-arms both. The table also "
         "refuses UPDATE and DELETE at the database itself.",
+    "effect_log_head":
+        "2026-10-02: the anchor the ADR-008 effect log is checked against — one row per session, "
+        "advanced in the same transaction as every ledger append. Deleting it (the table refuses "
+        "that at the database) would make a truncated effect log look like a fresh session.",
     "episodes":
         "2026-08-28: L1 episodic memory — the thing the product recalls — and the row "
         "`decision_log.episode_id` and `prospective_memory.source_episode_id` point at. Ageing "

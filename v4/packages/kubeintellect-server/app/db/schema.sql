@@ -560,6 +560,41 @@ $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS effect_log_no_rewrite ON effect_log;
 CREATE TRIGGER effect_log_no_rewrite BEFORE UPDATE OR DELETE ON effect_log
     FOR EACH ROW EXECUTE FUNCTION effect_log_append_only();
+DROP TRIGGER IF EXISTS effect_log_no_truncate ON effect_log;
+CREATE TRIGGER effect_log_no_truncate BEFORE TRUNCATE ON effect_log
+    FOR EACH STATEMENT EXECUTE FUNCTION effect_log_append_only();
+
+-- Effect-log chain head — the same anchor as `decision_log_head` / `memory_chain_head`. A
+-- per-session hash chain proves its links, but deleting the NEWEST rows of a session breaks no
+-- link: the surviving prefix still verifies, and a missing `effect` row is exactly what lets an
+-- irreversible call run again. This row records how far each session's chain got, and it is
+-- upserted in the SAME transaction as every ledger append (the ledger write is synchronous), so
+-- unlike the decision-log head it can never legitimately lag. The guard compares the two before
+-- every decision and treats any disagreement as "effect log tampered/truncated" → HITL.
+-- Never deleted, and its seq can only grow.
+CREATE TABLE IF NOT EXISTS effect_log_head (
+    session_id TEXT PRIMARY KEY,
+    seq        INTEGER NOT NULL,                  -- seq of the newest ledger row
+    hash       TEXT    NOT NULL,                  -- its hash
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE OR REPLACE FUNCTION effect_log_head_monotonic() RETURNS trigger AS $$
+BEGIN
+    IF TG_OP = 'DELETE' OR TG_OP = 'TRUNCATE' THEN
+        RAISE EXCEPTION 'effect_log_head is never deleted (ADR-008)';
+    END IF;
+    IF NEW.seq <= OLD.seq THEN
+        RAISE EXCEPTION 'effect_log_head may only advance (ADR-008)';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS effect_log_head_no_rewind ON effect_log_head;
+CREATE TRIGGER effect_log_head_no_rewind BEFORE UPDATE OR DELETE ON effect_log_head
+    FOR EACH ROW EXECUTE FUNCTION effect_log_head_monotonic();
+DROP TRIGGER IF EXISTS effect_log_head_no_truncate ON effect_log_head;
+CREATE TRIGGER effect_log_head_no_truncate BEFORE TRUNCATE ON effect_log_head
+    FOR EACH STATEMENT EXECUTE FUNCTION effect_log_head_monotonic();
 
 -- ── Stamp the ledger (enterprise A11) ────────────────────────────────────────
 -- Applied LAST, so a partial run never claims a complete schema. The Helm chart's db-init Job

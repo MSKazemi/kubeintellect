@@ -37,6 +37,8 @@ _ANCHOR_DDL = (
            episode_id TEXT PRIMARY KEY, seq BIGINT NOT NULL, hash TEXT NOT NULL)""",
     """CREATE TABLE memory_chain_head (
            cluster_id TEXT PRIMARY KEY, seq BIGINT NOT NULL, hash TEXT NOT NULL)""",
+    """CREATE TABLE effect_log_head (
+           session_id TEXT PRIMARY KEY, seq BIGINT NOT NULL, hash TEXT NOT NULL)""",
 )
 
 
@@ -81,6 +83,8 @@ def dsn():
                     "ALTER TABLE decision_log ADD COLUMN episode_id TEXT, ADD COLUMN seq BIGINT")
                 await con.execute(
                     "ALTER TABLE memory_audit ADD COLUMN cluster_id TEXT, ADD COLUMN seq BIGINT")
+                await con.execute(
+                    "ALTER TABLE effect_log ADD COLUMN session_id TEXT, ADD COLUMN seq BIGINT")
                 for ep, n in (("ep-1", 3), ("ep-2", 2)):
                     for i in range(n):
                         await con.execute(
