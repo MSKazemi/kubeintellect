@@ -52,7 +52,7 @@ kq = "kube_q.cli.main:main"
 dev = [
     "pytest>=8.0",
     "respx>=0.21",
-    "pytest-mock>=3.14",
+    "pytest-mock>=3.16.0",
     "ruff>=0.4",
     "mypy>=2.3.1",
 ]

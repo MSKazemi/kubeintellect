@@ -13,7 +13,7 @@ dev = [
     "kubeintellect[tracing,metrics]",
     "pytest>=8",
     "pytest-asyncio>=1.0",
-    "pytest-mock>=3.14",
+    "pytest-mock>=3.16.0",
     "pytest-timeout>=2.4",
     "pytest-cov>=7.0",
     "respx>=0.22",
@@ -30,7 +30,7 @@ dev = [
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=1.0.6",
     "scipy>=1.18.1",
-    "matplotlib>=3.9",
+    "matplotlib>=3.11.2",
     "seaborn>=0.13",
     "numpy>=2.5.3",
     # The demo-recording toolchain. scripts/demo/cast_to_gif.py renders an asciinema cast to
