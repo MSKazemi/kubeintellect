@@ -155,7 +155,7 @@ LOG_FORMAT=text
 
 | Variable | Default | Values | Description |
 |---|---|---|---|
-| `LLM_PROVIDER` | `azure` | `openai` \| `azure` \| `qwen` \| `anthropic` | Which LLM backend to use. `qwen` is OpenAI-compatible via Alibaba DashScope (set `OPENAI_BASE_URL`); `anthropic` is used only by the V4 cortex layer. |
+| `LLM_PROVIDER` | `azure` | `openai` \| `azure` \| `qwen` \| `anthropic` | Which LLM backend to use. The V2 graph supports `openai`, `azure`, and `qwen`; `qwen` is OpenAI-compatible via Alibaba DashScope (set `OPENAI_BASE_URL`). `anthropic` requires `CORTEX_V4_ENABLED=true` and is handled by the V4 cortex layer. |
 
 **OpenAI:**
 

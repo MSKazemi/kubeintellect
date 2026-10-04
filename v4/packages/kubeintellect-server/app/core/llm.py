@@ -148,6 +148,10 @@ def _make_openai(model: str, temperature: float | None = None, max_tokens: int =
 
 @lru_cache(maxsize=4)
 def _coordinator_llm() -> BaseChatModel:
+    if settings.LLM_PROVIDER == "anthropic" and not settings.CORTEX_V4_ENABLED:
+        raise RuntimeError(
+            "LLM_PROVIDER=anthropic requires CORTEX_V4_ENABLED=true"
+        )
     if settings.LLM_PROVIDER == "azure":
         return _make_azure(settings.AZURE_COORDINATOR_DEPLOYMENT, max_tokens=4096)
     return _make_openai(settings.OPENAI_COORDINATOR_MODEL, max_tokens=4096)
@@ -155,6 +159,10 @@ def _coordinator_llm() -> BaseChatModel:
 
 @lru_cache(maxsize=4)
 def _subagent_llm() -> BaseChatModel:
+    if settings.LLM_PROVIDER == "anthropic" and not settings.CORTEX_V4_ENABLED:
+        raise RuntimeError(
+            "LLM_PROVIDER=anthropic requires CORTEX_V4_ENABLED=true"
+        )
     if settings.LLM_PROVIDER == "azure":
         return _make_azure(settings.AZURE_SUBAGENT_DEPLOYMENT, max_tokens=2048)
     return _make_openai(settings.OPENAI_SUBAGENT_MODEL, max_tokens=2048)
