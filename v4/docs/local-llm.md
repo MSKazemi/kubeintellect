@@ -92,8 +92,8 @@ do — set both.
 
     LLM_PROVIDER=local
     OPENAI_BASE_URL=http://localhost:8080/v1
-    OPENAI_COORDINATOR_MODEL=<the model id /v1/models reports>
-    OPENAI_SUBAGENT_MODEL=<the model id /v1/models reports>
+    OPENAI_COORDINATOR_MODEL=<a model id listed by GET $OPENAI_BASE_URL/models>
+    OPENAI_SUBAGENT_MODEL=<a model id listed by GET $OPENAI_BASE_URL/models>
     ```
 
 ## What is checked at startup

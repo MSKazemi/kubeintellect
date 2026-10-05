@@ -173,8 +173,10 @@ upgrade; everything new is default-off.
 2. **NL detector authoring (`POST /v1/detectors`) no longer always answers 200.** It returns
    `422` (the compiled detector cannot fire), `409` (name or prose clash), `202` (stored but not
    loaded — `staged:false` with a reason), `502` (model unavailable) or `503` (store unavailable).
-   `kq detector new` reports 422, 409 and 202 explicitly (exit codes 3, 3 and 1; 0 only when the detector is staged) and treats 502/503 as an ordinary failed request; any other client must handle all six. Authoring compiles at temperature 0,
-   so a model that rejects temperature 0 cannot author detectors. See the
+   `kq detector new` reports 422, 409 and 202 explicitly (it exits successfully only when the
+   new rule is staged; 422 and 409 exit with code 3, and 202 with code 1) and treats 502 and 503
+   as an ordinary failed request; any other client must handle all six. Authoring compiles at a
+   temperature of zero, so a model that rejects that setting cannot author rules. See the
    [API reference](api-reference.md).
 
 ### New default-off flags
