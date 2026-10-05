@@ -237,7 +237,9 @@ class GroundingVerdict:
 
     ``status``:
       ``skipped``     — the draft makes no actionable claim; no LLM call was made.
-      ``grounded``    — every claim is ``supported`` or ``partial``.
+      ``grounded``    — every claim is ``supported``.
+      ``partial``     — no claim is ``none``, but at least one is only ``partial``: consistent with
+                        the evidence, not established by it.
       ``unsupported`` — at least one claim is ``none``.
       ``errored``     — the classifier failed or returned no usable verdict (fail-open).
     """
@@ -296,7 +298,12 @@ async def classify_claims(
             ))
         if not claims:
             return GroundingVerdict(status="errored")
-        status = "unsupported" if any(c.support == "none" for c in claims) else "grounded"
+        if any(c.support == "none" for c in claims):
+            status = "unsupported"
+        elif any(c.support == "partial" for c in claims):
+            status = "partial"
+        else:
+            status = "grounded"
         return GroundingVerdict(status=status, claims=claims)
     except Exception as exc:
         logger.warning("verify.classify_claims failed open: %s", exc)
@@ -306,15 +313,17 @@ async def classify_claims(
 def autonomy_ceiling_for(verdict: GroundingVerdict) -> str | None:
     """The highest autonomy level this turn's diagnosis may drive (ADR-009 x ADR-003).
 
-    ``None`` — no ceiling from grounding. ``A1`` — an unsupported claim demotes the turn to
-    advisory: it cannot auto-trigger A2/A3. ``A2`` — the classifier errored: the turn may stay
-    where it is (propose, human-gated) but is never raised on an unchecked diagnosis. A ceiling
-    only ever lowers the level the ladder resolved; it composes with, never replaces, the ladder,
-    the A3 allowlist and the blast-radius gate.
+    ``None`` — no ceiling from grounding: every claim was supported. ``A1`` — an unsupported claim
+    demotes the turn to advisory: it cannot auto-trigger A2/A3. ``A2`` — a claim is only partly
+    supported, or the classifier errored: the turn may propose a fix for a human to approve but
+    can never apply one on its own, and is never raised on a diagnosis that was not established.
+    An action that cannot be undone should rest on what the evidence establishes, not on what it
+    is merely consistent with. A ceiling only ever lowers the level the ladder resolved; it
+    composes with, never replaces, the ladder, the A3 allowlist and the blast-radius gate.
     """
     if verdict.status == "unsupported":
         return "A1"
-    if verdict.status == "errored":
+    if verdict.status in ("partial", "errored"):
         return "A2"
     return None
 
@@ -322,9 +331,9 @@ def autonomy_ceiling_for(verdict: GroundingVerdict) -> str | None:
 def grounding_permits_autofix(record: dict | None) -> bool:
     """May a diagnosis with this recorded grounding outcome trigger an autonomous fix?
 
-    Only a check that RAN and found every claim supported or partial. ``skipped`` (no actionable
-    claim — so nothing to fix), ``errored``, ``unsupported`` and a missing record (the check did
-    not run, or the turn paused at the approval gate before reaching it) all answer False.
+    Only a check that RAN and found every claim ``supported``. ``skipped`` (no actionable claim —
+    so nothing to fix), ``errored``, ``partial``, ``unsupported`` and a missing record (the check
+    did not run, or the turn paused at the approval gate before reaching it) all answer False.
     """
     return (isinstance(record, dict) and record.get("status") == "grounded"
             and record.get("autonomy_ceiling") is None)
@@ -372,6 +381,10 @@ def render_grounding_note(verdict: GroundingVerdict) -> str:
     if unsupported:
         lines.append("\n_Autonomy for this turn is demoted to advisory: this diagnosis cannot "
                      "trigger an autonomous fix._")
+    elif partial:
+        lines.append("\n_Autonomy for this turn is capped at propose: a partly supported diagnosis "
+                     "can be proposed for a human to approve but cannot trigger an autonomous "
+                     "fix._")
     return "\n".join(lines)
 
 

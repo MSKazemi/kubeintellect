@@ -68,9 +68,14 @@ auto-fix no longer runs in the same turn as the diagnosis:
    ([details](agent-behaviors.md#cortex-v4-opt-in)).
 3. **Apply — only if grounded.** A second, auto-approved turn on the same
    session applies the proposed fix, and only when every claim was
-   `supported` or `partial`. An unsupported claim, a checker error, a skipped
-   check (nothing actionable to apply), or a verdict that cannot be read all
-   withhold the fix: the proposal stays in the report and nothing executes.
+   `supported`. A claim that is only `partial` (consistent with the evidence
+   but not established by it) caps the turn at A2: the fix is proposed for a
+   human to approve and never applied on its own. An unsupported claim (A1,
+   advisory), a checker error, a skipped check (nothing actionable to apply),
+   or a verdict that cannot be read all withhold the fix too: the proposal
+   stays in the report and nothing executes. The reasoning is that an action
+   that cannot be undone should rest on what the evidence establishes, not on
+   what it is merely consistent with.
 
 The ceiling only lowers what the ladder, the allowlist and the blast-radius
 gate already allow; it never grants A3. With either flag off, A3 is the single

@@ -4,6 +4,9 @@ Fake-classifier tests (no network). What each class pins:
 
 * an unsupported claim is hedged on the wire, withdrawn from the stored answer, and demotes the
   turn to advisory — and the watchtower then does NOT run the auto-approved fix turn;
+* a partly supported draft (no unsupported claim) may still be PROPOSED to a human but is capped
+  at A2 — the watchtower does not run the auto-approved fix turn (a diagnosis the evidence is only
+  consistent with does not license an action that cannot be undone);
 * an all-supported draft passes through unchanged and may drive an A3 fix;
 * a draft with no actionable claim costs no LLM call;
 * a classifier error returns the read-only answer, says the check did not run, and never raises
@@ -161,6 +164,62 @@ class TestAllSupportedUnchanged:
         })
         assert [r["auto"] for r in runs] == [False, True]
         assert "Apply the fix you proposed" in runs[1]["ask"]
+
+
+class TestPartiallySupportedIsProposeOnly:
+    """`partial` is graded between `supported` and `none`: cap at A2, never an auto-fix."""
+
+    _PARTIAL = ("The root cause is a memory leak introduced by the v2.3 image.", "partial")
+    _OK = ("The pod web-1 is crash-looping because the container is OOMKilled.", "supported")
+
+    async def test_partial_only_caps_at_a2_and_is_not_withdrawn(self, mocker):
+        llm = _LLM(_claims(self._OK, self._PARTIAL))
+        emitted, _ = _wire(mocker, llm)
+
+        out = await cx.ground_check(_state(_DIAGNOSIS), {})
+
+        g = out["grounding"]
+        assert g["status"] == "partial"
+        assert g["autonomy_ceiling"] == "A2"
+        assert g["counts"] == {"supported": 1, "partial": 1, "none": 0}
+        # Stored copy: the draft is replaced (same id) and carries the note, but NOTHING is
+        # withdrawn — a partly supported claim is hedged, not removed.
+        (stored,) = out["messages"]
+        assert stored.id == "draft-1"
+        body, _, note = stored.content.partition("\n---\n")
+        assert _LEAK_CLAIM in body and "[withdrawn" not in stored.content
+        assert "Partly supported" in note and "capped at propose" in note
+        streamed = _tokens(emitted)
+        assert "Partly supported" in streamed and _LEAK_CLAIM in streamed
+        assert "capped at propose" in streamed
+        assert verify.grounding_permits_autofix(g) is False
+
+    async def test_an_unsupported_claim_still_wins_over_a_partial_one(self, mocker):
+        llm = _LLM(_claims(self._PARTIAL, ("Fix: raise the memory limit to 512Mi.", "none")))
+        _wire(mocker, llm)
+
+        out = await cx.ground_check(_state(_DIAGNOSIS), {})
+
+        assert out["grounding"]["status"] == "unsupported"
+        assert out["grounding"]["autonomy_ceiling"] == "A1"
+
+    def test_the_ceiling_for_every_status(self):
+        def v(status, *support):
+            return verify.GroundingVerdict(status=status, claims=[
+                verify.GroundedClaim(claim=f"c{i}", support=sup) for i, sup in enumerate(support)])
+        assert verify.autonomy_ceiling_for(v("grounded", "supported")) is None
+        assert verify.autonomy_ceiling_for(v("skipped")) is None
+        assert verify.autonomy_ceiling_for(v("partial", "supported", "partial")) == "A2"
+        assert verify.autonomy_ceiling_for(v("errored")) == "A2"
+        assert verify.autonomy_ceiling_for(v("unsupported", "none")) == "A1"
+
+    async def test_watchtower_withholds_the_fix_turn(self, mocker):
+        runs = await _watchtower_runs(mocker, grounding={
+            "status": "partial", "counts": {"supported": 1, "partial": 1, "none": 0},
+            "autonomy_ceiling": "A2",
+        })
+        assert len(runs) == 1                           # diagnose-and-propose only
+        assert runs[0]["auto"] is False
 
 
 class TestSkipRule:

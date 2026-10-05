@@ -32,9 +32,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - **Grounding check on the Cortex graph** (ADR-009; `app/cortex/verify.py`), behind
   `SELF_GOVERN_ENABLED` (default off). A `ground_check` node labels each claim of a diagnosis
   `supported` / `partial` / `none` against evidence already gathered. Unsupported claims are
-  hedged, withdrawn from the stored message, and cap the turn at advisory; with the flag on, an A3
-  auto-fix is split into a propose turn and an apply turn that runs only after a grounded
-  diagnosis. A checker error never raises autonomy.
+  hedged, withdrawn from the stored message, and cap the turn at advisory (A1); a claim that is
+  only partly supported caps it at propose (A2) — consistent with the evidence is not enough for an
+  action that cannot be undone. With the flag on, an A3 auto-fix is split into a propose turn and an
+  apply turn that runs only when every claim was supported. A checker error never raises autonomy.
 - **Claim-level grounding gate for postmortem narratives** (ADR-011; `app/digest/postmortem.py`).
   The LLM narrative is split into sentence-level claims and each is checked deterministically
   against the evidence the model was shown; ungrounded claims are removed, and below
