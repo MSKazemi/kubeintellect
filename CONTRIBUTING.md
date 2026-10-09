@@ -349,9 +349,10 @@ explains the reasoning and the trade-off in full.
 **You keep the copyright in your work.** Your contribution is licensed under AGPL-3.0-or-later, the
 same license as the rest of the project, and you can keep using your own code anywhere else you like.
 
-KubeIntellect is dual-licensed — AGPL-3.0-or-later, or a commercial license from the copyright holder
-(see [LICENSING.md](LICENSING.md)). That commercial option covers the maintainer's own code. It does
-not reach your contribution, and nothing here asks you to let it.
+The repository no longer offers separate proprietary/commercial licenses. Existing AGPL
+contribution terms remain documented, and an MIT transition is not active. Any prospective
+MIT relicensing must respect the rights of individual contributors and other rights holders.
+See [LICENSING.md](LICENSING.md).
 
 Questions about any of this? **Open a Discussion** — we would rather adapt than lose your work.
 
