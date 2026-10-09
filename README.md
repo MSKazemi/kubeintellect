@@ -190,7 +190,7 @@ Run `make help` at the root at any time to see the available infra targets.
 | Human-in-the-loop safety gate + RBAC | ✅ | n/a | ❌ |
 | Works with no LLM API key | ❌ | Varies (local models supported) | ✅ |
 | Runs fully offline / air-gapped | Partial (self-hosted models only) | Varies | ✅ |
-| Per-query cost | LLM tokens | LLM tokens | Free |
+| Per-query cost | LLM tokens | LLM tokens | No LLM cost |
 | Project maturity & community size | Young — small community | **Larger, more adopted** | Universal |
 
 Where the alternatives win is stated on purpose: if you only need read-only
