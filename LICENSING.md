@@ -8,7 +8,7 @@ The existing AGPL permits research, teaching, modification, distribution, and co
 
 ## Rights under review
 
-The University of Bologna has questioned the IP ownership and licensing authority for research-period work. The licensing position is subject to review. This repository notice does not decide ownership or grant new rights.
+The licensing authority and economic copyright rights for some research-era material are under review. This repository notice does not decide ownership or grant new rights.
 
 A future switch to MIT has been proposed, but **MIT is not currently in force**. See [draft pull request #248](https://github.com/MSKazemi/kubeintellect/pull/248). Any relicensing requires authorization from relevant rights holders and external contributors where necessary. Previously valid AGPL grants cannot be retroactively withdrawn.
 
