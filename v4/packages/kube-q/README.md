@@ -571,5 +571,6 @@ To require a token before clients can spawn `kq`, set `PTY_AUTH_TOKEN` on the se
 
 ## License
 
-Dual-licensed under **AGPL-3.0-or-later** (see [LICENSE](LICENSE)) or a **commercial
-license** — contact mohsen.seyedkazemi@gmail.com. See the top-level `LICENSING.md`.
+Published with **AGPL-3.0-or-later** notices (see [LICENSE](LICENSE)).
+No separate proprietary/commercial license is currently offered. MIT has not
+been adopted. See [LICENSING.md](../../../LICENSING.md).
