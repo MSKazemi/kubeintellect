@@ -8,7 +8,7 @@ description = "Interactive terminal CLI for chatting with your Kubernetes cluste
 readme = "README.md"
 license = "MIT"
 authors = [
-    { name = "Mohsen Seyedkazemi Ardebili", email = "mskazemi@gmail.com" },
+    { name = "Mohsen Seyedkazemi Ardebili", email = "mohsen.seyedkazemi@gmail.com" },
 ]
 keywords = ["kubernetes", "cli", "ai", "kubectl", "llm", "repl"]
 classifiers = [
@@ -38,11 +38,12 @@ dependencies = [
 ki-protocol = { workspace = true }
 
 [project.urls]
-Homepage = "https://mskazemi.com/kubeintellect/"
-Documentation = "https://github.com/MSKazemi/kubeintellect#readme"
+Homepage = "https://kubeintellect.com"
+Documentation = "https://kubeintellect.com/docs"
 Repository = "https://github.com/MSKazemi/kubeintellect"
 Changelog = "https://github.com/MSKazemi/kubeintellect/blob/main/v4/packages/kube-q/CHANGELOG.md"
 Issues = "https://github.com/MSKazemi/kubeintellect/issues"
+Paper = "https://doi.org/10.1007/s10723-026-09837-6"
 
 [project.scripts]
 kq = "kube_q.cli.main:main"

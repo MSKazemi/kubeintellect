@@ -6,7 +6,7 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
 authors = [
-    { name = "Mohsen Seyedkazemi Ardebili", email = "mskazemi@gmail.com" },
+    { name = "Mohsen Seyedkazemi Ardebili", email = "mohsen.seyedkazemi@gmail.com" },
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -23,11 +23,12 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://mskazemi.com/kubeintellect/"
-Documentation = "https://github.com/MSKazemi/kubeintellect#readme"
+Homepage = "https://kubeintellect.com"
+Documentation = "https://kubeintellect.com/docs"
 Repository = "https://github.com/MSKazemi/kubeintellect"
 Changelog = "https://github.com/MSKazemi/kubeintellect/blob/main/CHANGELOG.md"
 Issues = "https://github.com/MSKazemi/kubeintellect/issues"
+Paper = "https://doi.org/10.1007/s10723-026-09837-6"
 
 [tool.hatch.build.targets.wheel]
 packages = ["ki_protocol"]

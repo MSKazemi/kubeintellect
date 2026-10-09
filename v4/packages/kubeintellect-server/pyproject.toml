@@ -5,6 +5,9 @@ description = "AI-powered Kubernetes management — local server and CLI"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
+authors = [
+    { name = "Mohsen Seyedkazemi Ardebili", email = "mohsen.seyedkazemi@gmail.com" },
+]
 keywords = ["kubernetes", "llm", "ai", "devops", "k8s", "kubectl"]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -52,11 +55,12 @@ kube-q = { workspace = true }
 ki-protocol = { workspace = true }
 
 [project.urls]
-Homepage = "https://mskazemi.com/kubeintellect/"
-Documentation = "https://github.com/MSKazemi/kubeintellect#readme"
+Homepage = "https://kubeintellect.com"
+Documentation = "https://kubeintellect.com/docs"
 Repository = "https://github.com/MSKazemi/kubeintellect"
 Changelog = "https://github.com/MSKazemi/kubeintellect/blob/main/CHANGELOG.md"
 Issues = "https://github.com/MSKazemi/kubeintellect/issues"
+Paper = "https://doi.org/10.1007/s10723-026-09837-6"
 
 [project.optional-dependencies]
 tracing = [

@@ -35,7 +35,7 @@
 
 ---
 
-KubeIntellect is an open-source, LLM-orchestrated multi-agent framework for **autonomous Kubernetes operations**. Ask a question in plain English — it fans out to specialized agents that query **kubectl**, **Prometheus** (PromQL), and **Loki** (LogQL) live, correlates the evidence, and answers. Any change to the cluster pauses for **explicit human-in-the-loop approval** with role-based access control.
+KubeIntellect is an open-source, LLM-orchestrated multi-agent framework — **the human-governed AI SRE for Kubernetes**. Ask a question in plain English — it fans out to specialized agents that query **kubectl**, **Prometheus** (PromQL), and **Loki** (LogQL) live, correlates the evidence, and answers. Any change to the cluster pauses for **explicit human-in-the-loop approval** with role-based access control.
 
 ```bash
 kq -q "why is my api-server pod crashlooping?"

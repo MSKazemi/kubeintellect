@@ -6,6 +6,7 @@ type: software
 authors:
   - family-names: "Seyedkazemi Ardebili"
     given-names: "Mohsen"
+    orcid: "https://orcid.org/0000-0002-1166-6559"
   - family-names: "Bartolini"
     given-names: "Andrea"
 repository-code: "https://github.com/MSKazemi/kubeintellect"
