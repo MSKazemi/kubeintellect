@@ -329,7 +329,7 @@ thing the project cannot get any other way.
 
 ## License
 
-KubeIntellect is released under [MIT License](LICENSE).
+[MIT](LICENSE)
 
 ## Citation
 

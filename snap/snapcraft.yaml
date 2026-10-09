@@ -3,6 +3,7 @@ title: KubeIntellect (kq)
 base: core24
 adopt-info: kq
 summary: Chat with your Kubernetes cluster from the terminal
+license: MIT
 description: |
   **KubeIntellect** is an AI agent platform for Kubernetes operations, and `kq` is
   its terminal client: an interactive REPL that lets you query, debug and triage a
