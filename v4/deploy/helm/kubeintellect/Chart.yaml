@@ -33,6 +33,7 @@ maintainers:
 annotations:
   artifacthub.io/operator: "false"
   artifacthub.io/prerelease: "false"
+  artifacthub.io/license: MIT
   artifacthub.io/links: |
     - name: source
       url: https://github.com/MSKazemi/kubeintellect
