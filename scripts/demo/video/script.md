@@ -176,7 +176,7 @@ Every terminal scene replays a verbatim transcript from `../transcripts-kq/`, re
 
 **Checked against:** `../../../README.md (licence badge, DOI badge)`
 
-> KubeIntellect is A G P L three and self hosted. It runs where your cluster runs, with your keys, and it does not change anything without a human answering a gate. The recordings in this video, and the page listing everything they did not do, are both in the repository. It is all at kubeintellect dot com — the repository link is on screen.
+> KubeIntellect is self hosted. It runs where your cluster runs, with your keys, and it does not change anything without a human answering a gate. The recordings in this video, and the page listing everything they did not do, are both in the repository. It is all at kubeintellect dot com — the repository link is on screen.
 
 ---
 

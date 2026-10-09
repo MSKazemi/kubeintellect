@@ -3,8 +3,6 @@ name = "kubeintellect"
 version = "2.5.1"
 description = "AI-powered Kubernetes management — local server and CLI"
 readme = "README.md"
-license = "MIT"
-license-files = ["LICENSE"]
 requires-python = ">=3.12"
 keywords = ["kubernetes", "llm", "ai", "devops", "k8s", "kubectl"]
 classifiers = [

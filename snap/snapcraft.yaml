@@ -36,7 +36,6 @@ description: |
   then run `kubeintellect`. See https://github.com/MSKazemi/kubeintellect for the
   server side and full documentation.
 
-license: MIT
 website: https://kubeintellect.com
 source-code: https://github.com/MSKazemi/kubeintellect
 issues: https://github.com/MSKazemi/kubeintellect/issues
@@ -106,7 +105,7 @@ parts:
       rm -rf "${dest}"
       mkdir -p "${dest}"
       cp -r "${client}/kube_q" "${client}/pyproject.toml" \
-            "${client}/README.md" "${client}/LICENSE" "${dest}/"
+            "${client}/README.md" "${dest}/"
       find "${dest}" -name __pycache__ -type d -prune -exec rm -rf {} +
       # The snap version tracks the kube-q client release.
       craftctl set version="$(sed -n 's/^version = "\(.*\)"$/\1/p' "${dest}/pyproject.toml" | head -1)"

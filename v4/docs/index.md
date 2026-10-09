@@ -265,5 +265,5 @@ list of model and deployment variables.
 ---
 
 <div style="text-align:center; padding: 1rem 0 0.5rem; color: #374151; font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase;">
-  Open-source · MIT · <a href="https://github.com/MSKazemi/kubeintellect" style="color: #00e676;">GitHub</a> · <a href="v1/" style="color: #64748b;">KubeIntellect v1 (legacy)</a>
+  Open-source · <a href="https://github.com/MSKazemi/kubeintellect" style="color: #00e676;">GitHub</a> · <a href="v1/" style="color: #64748b;">KubeIntellect v1 (legacy)</a>
 </div>

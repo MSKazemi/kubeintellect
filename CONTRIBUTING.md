@@ -334,14 +334,13 @@ prompt injection.
 
 ---
 
-## Licensing
+## Contributing terms
 
 account to create, and nothing for an employer's legal team to review. Opening the pull
 request is the whole contract, and nothing checks for a sign-off — so there is nothing you can
 get wrong.
 
-Your contribution is licensed under the [MIT License](LICENSE), the same license as the rest of
-the project, and you keep the copyright in your work and can use your own code anywhere else you like.
+You keep the copyright in your work and can use your own code anywhere else you like.
 
 Questions about any of this? **Open a Discussion** — we would rather adapt than lose your work.
 

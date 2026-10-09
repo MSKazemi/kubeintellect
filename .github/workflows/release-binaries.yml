@@ -14,7 +14,7 @@ name: Release binaries
 # Python, and needs none of this.
 #
 # Archive layout is fixed by krew's expectations: each tar.gz contains the
-# binary at the root plus LICENSE, and is named kq_<os>_<arch>.tar.gz.
+# binary at the root, and is named kq_<os>_<arch>.tar.gz.
 #
 # Note for contributors: workflows only run when they live in the repository
 # ROOT .github/workflows/.
@@ -103,8 +103,7 @@ jobs:
         run: |
           mkdir -p out staging
           cp dist/kq staging/kq
-          cp LICENSE staging/LICENSE
-          tar -czf "out/kq_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz" -C staging kq LICENSE
+          tar -czf "out/kq_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz" -C staging kq
           ls -lh out/
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

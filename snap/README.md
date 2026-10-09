@@ -72,7 +72,7 @@ One `python` part, which is slightly unusual and deliberately so:
 - **`source:` is `v4/packages/ki-protocol`**, not `packages/kube-q`. Sourcing the
   client directly would pull its Next.js demo UI (`web/`, ~600 MB of
   `node_modules`) through the pull step for no reason. `override-pull` copies just
-  `kube_q/`, `pyproject.toml`, `README.md` and `LICENSE` next to it instead.
+  `kube_q/`, `pyproject.toml` and `README.md` next to it instead.
 - **Both packages install in a single `pip` invocation** (`python-packages: ['.',
   './vendor-kube-q']`) so that `kube-q`'s `ki-protocol>=1.0.0` requirement resolves
   against the local copy. `ki-protocol` is not on PyPI yet; a two-step install

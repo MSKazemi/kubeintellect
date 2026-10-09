@@ -121,21 +121,15 @@ pricing, cluster size, and how many investigations run.
 
 ---
 
-## Production, licensing, upgrades
+## Production, upgrades
 
-### Is it production-ready? What's the license?
+### Is it production-ready?
 
-KubeIntellect is **open-source under the MIT license**. The V2 reasoning graph (the
+The V2 reasoning graph (the
 default) plus the default-on V4 layers are the supported surface; the V4 cortex
 and all Memory V5 / v5 slices ship default-off as opt-in previews. The Helm chart
 covers AKS / EKS / GKE with RBAC, secrets, ingress, and resource limits — see the
 [cloud deploy guide](deploy/cloud.md).
-
-### What does the MIT license let me do?
-
-Use, copy, modify, merge, publish, distribute, sublicense and sell it — including in
-closed-source and hosted products — as long as the copyright and permission notice are kept.
-The full text is in the repository [LICENSE](https://github.com/MSKazemi/kubeintellect/blob/main/LICENSE).
 
 ### How do I upgrade or turn on experimental features?
 

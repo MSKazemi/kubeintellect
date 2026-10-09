@@ -567,8 +567,3 @@ To require a token before clients can spawn `kq`, set `PTY_AUTH_TOKEN` on the se
 - The user ID (`~/.kube-q/user-id`) is stored with `0600` permissions.
 - Logs are written to `~/.kube-q/kube-q.log` (rotating, 5 MB × 3 files).
 
----
-
-## License
-
-Released under the [MIT License](LICENSE).

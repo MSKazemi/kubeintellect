@@ -55,7 +55,6 @@ paste; nothing here contacts YouTube.
 
     Website:  https://{S.WEBSITE}
     Source:   https://{S.REPO}
-    Licence:  MIT, self-hosted
 
     The recordings, and the page listing everything they did not do, are in the repository
     under scripts/demo/.

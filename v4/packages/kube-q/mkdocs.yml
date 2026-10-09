@@ -6,7 +6,7 @@ repo_name: MSKazemi/kubeintellect
 # Relative to repo_url. kube-q lives in the monorepo, so this must carry the
 # package path — `edit/main/docs/` would 404 now that repo_url is the monorepo.
 edit_uri: edit/main/v4/packages/kube-q/docs/
-copyright: Copyright &copy; 2026 Mohsen Seyedkazemi Ardebili &bull; Released under the <a href="https://github.com/MSKazemi/kubeintellect/blob/main/LICENSE">MIT</a>
+copyright: Copyright &copy; 2026 Mohsen Seyedkazemi Ardebili
 
 theme:
   name: material

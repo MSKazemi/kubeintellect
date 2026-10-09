@@ -50,8 +50,6 @@ spec:
     files:
     - from: kq
       to: .
-    - from: LICENSE
-      to: .
   - selector:
       matchLabels:
         os: linux
@@ -60,8 +58,6 @@ spec:
     bin: kq
     files:
     - from: kq
-      to: .
-    - from: LICENSE
       to: .
   - selector:
       matchLabels:
@@ -72,8 +68,6 @@ spec:
     files:
     - from: kq
       to: .
-    - from: LICENSE
-      to: .
   - selector:
       matchLabels:
         os: darwin
@@ -82,6 +76,4 @@ spec:
     bin: kq
     files:
     - from: kq
-      to: .
-    - from: LICENSE
       to: .

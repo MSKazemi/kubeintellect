@@ -70,7 +70,7 @@ Full local stack (Docker is the only prerequisite) and self-hosting instructions
 ## Links
 
 - **Website** — <https://kubeintellect.com/>
-- **Source** — <https://github.com/MSKazemi/kubeintellect> (MIT)
+- **Source** — <https://github.com/MSKazemi/kubeintellect>
 - **PyPI** — [`kube-q`](https://pypi.org/project/kube-q/) · [`kubeintellect`](https://pypi.org/project/kubeintellect/)
 - **Paper** — [*Journal of Grid Computing*, 10.1007/s10723-026-09837-6](https://doi.org/10.1007/s10723-026-09837-6)
   · [arXiv:2509.02449](https://arxiv.org/abs/2509.02449)

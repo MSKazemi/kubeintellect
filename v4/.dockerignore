@@ -31,7 +31,6 @@ build/
 # ── Project meta — not needed at runtime ──────────────────────────────────────
 PROGRESS.md
 *.plan.md
-LICENSE
 CLAUDE.md
 docs/
 mkdocs.yml

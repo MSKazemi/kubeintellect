@@ -39,7 +39,6 @@
 /v4/packages/kubeintellect-server/app/autonomy/       @MSKazemi
 /SECURITY.md                                          @MSKazemi
 /GOVERNANCE.md                                        @MSKazemi
-/LICENSE                                              @MSKazemi
 
 # ── Release and CI plumbing ──────────────────────────────────────────────────
 /.github/workflows/                                   @MSKazemi

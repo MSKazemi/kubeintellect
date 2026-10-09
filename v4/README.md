@@ -5,7 +5,6 @@
 
   [![PyPI](https://img.shields.io/pypi/v/kubeintellect.svg)](https://pypi.org/project/kubeintellect/)
   [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
-  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
   [![Docs](https://img.shields.io/badge/docs-mskazemi.github.io-0075C4?logo=materialformkdocs&logoColor=white)](https://mskazemi.github.io/kubeintellect/)
   [![GitHub Stars](https://img.shields.io/github/stars/MSKazemi/kubeintellect?style=social)](https://github.com/MSKazemi/kubeintellect)
 
@@ -343,8 +342,6 @@ The original KubeIntellect used a LibreChat frontend with a LangGraph multi-agen
 
 ---
 
-## License
-
-KubeIntellect is released under the [MIT License](LICENSE).
+## Citation
 
 If you use KubeIntellect in academic work, please cite it — see [CITATION.cff](CITATION.cff).

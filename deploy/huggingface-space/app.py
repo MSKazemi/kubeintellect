@@ -446,7 +446,7 @@ def footer_panel() -> str:
         "LLM provider.</p>"
         "<p>Run it on <strong>your own</strong> cluster: <code>pip install kube-q</code> · "
         '<a href="https://github.com/MSKazemi/kubeintellect#quick-start" target="_blank" '
-        'rel="noopener">quick start</a> · MIT · built by '
+        'rel="noopener">quick start</a> · built by '
         '<a href="https://github.com/MSKazemi" target="_blank" rel="noopener">'
         "Mohsen Seyedkazemi Ardebili</a></p>"
         "</div>"

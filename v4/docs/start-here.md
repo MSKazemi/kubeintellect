@@ -51,7 +51,7 @@ detectors may open an investigation, never apply a fix. That default is delibera
 
 ## :material-domain: For enterprise evaluators
 
-You want to know the trust boundary, the audit story, the data path, and the licence — usually
+You want to know the trust boundary, the audit story, the data path — usually
 in that order, and usually before a pilot is approved.
 
 1. **[Security](security.md)** — RBAC scoping, the human-in-the-loop approval gate, and where
@@ -66,10 +66,9 @@ in that order, and usually before a pilot is approved.
    [AWS EKS](deploy/aws.md), [GCP GKE](deploy/gcp.md), [Alibaba Cloud](deploy/alibaba.md).
 6. **[Operations guide](operations.md)** — running it day to day.
 
-**Two things worth surfacing early in an evaluation**, because they usually come up anyway:
-cluster context leaves your network unless you point the system at a self-hosted model, and
-the software is **MIT-licensed**. Neither is buried — see [Data handling](data-handling.md) and
-the repository `LICENSE`.
+**Worth surfacing early in an evaluation**, because it usually comes up anyway: cluster
+context leaves your network unless you point the system at a self-hosted model — see
+[Data handling](data-handling.md).
 
 ---
 

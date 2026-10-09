@@ -44,7 +44,7 @@ d.text((698, 392), "HITL> approve", font=R.mono(40, "Bold"), fill=R.AMBER)
 d.text((698, 470), "restarted, and", font=R.mono(34, "Medium"), fill=R.TEXT)
 d.text((698, 514), "still failing", font=R.mono(34, "Medium"), fill=R.CORAL)
 
-d.text((64, 646), "human-governed AI SRE for Kubernetes  ·  self-hosted  ·  MIT",
+d.text((64, 646), "human-governed AI SRE for Kubernetes  ·  self-hosted",
        font=R.mono(24, "Medium"), fill=R.FAINT)
 d.rectangle((0, H - 9, W, H), fill=R.ACCENT)
 

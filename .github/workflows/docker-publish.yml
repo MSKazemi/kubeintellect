@@ -113,7 +113,6 @@ jobs:
             org.opencontainers.image.source=https://github.com/MSKazemi/kubeintellect
             org.opencontainers.image.url=https://kubeintellect.com
             org.opencontainers.image.documentation=https://mskazemi.github.io/kubeintellect/
-            org.opencontainers.image.licenses=MIT
 
       - name: Resolve version metadata
         id: version

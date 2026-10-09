@@ -79,9 +79,7 @@ Written down now, while it is hypothetical and nobody is upset.
   document. Today there are no other maintainers, which is exactly why recruiting them is the
   project's top priority.
 - **If the project is ever abandoned**, the intent is to archive it publicly with a clear
-  notice in the README rather than let it rot silently, and to say so on PyPI. The MIT license means
-  the code cannot be taken away from you regardless.
-- **Licensing.** The project is released under the [MIT License](LICENSE).
+  notice in the README rather than let it rot silently, and to say so on PyPI.
 
 ### Code of Conduct enforcement
 Reports go to **mohsen.seyedkazemi@gmail.com** and are handled per
@@ -113,10 +111,9 @@ Contributions are held to the project's core principles — most importantly:
 
 A change that violates these will be asked to change, no matter how useful it otherwise is.
 
-## Licensing & contributions
+## Contributions
 
-no DCO sign-off, no copyright assignment. Contributors **keep the copyright in their own work**,
-licensed to the project under the same MIT terms. See [CONTRIBUTING.md](CONTRIBUTING.md).
+no DCO sign-off, no copyright assignment. Contributors **keep the copyright in their own work**. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Changing this document
 

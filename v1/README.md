@@ -320,12 +320,6 @@ Contributions are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for dev setu
 
 ---
 
-## License
-
-Released under the [MIT License](../LICENSE). Third-party dependency licenses are archived in [`DEPENDENCY-LICENSES-LEGACY.md`](DEPENDENCY-LICENSES-LEGACY.md).
-
----
-
 ## Citation
 
 ```bibtex
