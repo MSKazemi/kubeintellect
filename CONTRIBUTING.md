@@ -340,8 +340,6 @@ account to create, and nothing for an employer's legal team to review. Opening t
 request is the whole contract, and nothing checks for a sign-off — so there is nothing you can
 get wrong.
 
-You keep the copyright in your work and can use your own code anywhere else you like.
-
 Questions about any of this? **Open a Discussion** — we would rather adapt than lose your work.
 
 ---

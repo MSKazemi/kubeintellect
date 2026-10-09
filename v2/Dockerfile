@@ -74,8 +74,7 @@ LABEL org.opencontainers.image.title="KubeIntellect" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${GIT_SHA}" \
       org.opencontainers.image.description="AI-powered Kubernetes management" \
-      org.opencontainers.image.source="https://github.com/mskazemi/kubeintellect" \
-      org.opencontainers.image.licenses="MIT"
+      org.opencontainers.image.source="https://github.com/mskazemi/kubeintellect"
 
 # ca-certificates: TLS verification for Azure OpenAI, LangSmith, Langfuse, and similar APIs.
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \

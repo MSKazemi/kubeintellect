@@ -59,9 +59,7 @@ high-quality contributions and good community judgment.
 
 ### Lead maintainer / BDFL (for now)
 KubeIntellect was created by **Mohsen Seyedkazemi Ardebili**, who currently maintains the
-repository. Economic copyright ownership for research-era code is being reviewed; project
-maintainership alone does not determine copyright ownership. Maintainer project decisions
-are subject to the rights of copyright holders. We intend to grow a maintainer group
+repository. We intend to grow a maintainer group
 as the project matures.
 
 ### Stepping back, and what happens if the lead maintainer disappears
@@ -113,7 +111,7 @@ A change that violates these will be asked to change, no matter how useful it ot
 
 ## Contributions
 
-no DCO sign-off, no copyright assignment. Contributors **keep the copyright in their own work**. See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Changing this document
 

@@ -8,7 +8,6 @@ site_author: Mohsen Seyedkazemi Ardebili
 repo_url: https://github.com/MSKazemi/kubeintellect
 repo_name: MSKazemi/kubeintellect
 edit_uri: edit/main/docs/
-copyright: Copyright &copy; 2024–2025 Mohsen Seyedkazemi Ardebili
 
 theme:
   name: material

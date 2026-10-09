@@ -27,7 +27,6 @@ different points on one axis: **how much the tool is allowed to _do_.**
 | Human-in-the-loop approval | ✅ | n/a | n/a |
 | Kubectl safety guard | ✅ 7-layer, `shell=False` | n/a | n/a |
 | Multi-agent architecture | ✅ on-demand 4-subagent RCA | ❌ | Agent-based |
-| License | **MIT** | Apache-2.0 | Apache-2.0 |
 | Peer-reviewed lineage | ✅ (v1, JGC 2026) | — | — |
 
 </div>
@@ -44,8 +43,7 @@ context, and you want to keep the tool strictly read-only.
 
 **Choose KubeIntellect** when you want to go from *diagnosis* to *doing something about it* in the
 same conversation, while keeping a hard safety gate. It can scale, restart, and delete, but every
-mutating action pauses for an explicit human approval — and unlike the other two, it ships under
-the **MIT license**, so there's no copyleft to work around if you're embedding it.
+mutating action pauses for an explicit human approval.
 
 ## What KubeIntellect is *not*
 
