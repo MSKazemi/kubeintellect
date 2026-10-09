@@ -65,7 +65,7 @@ Skip the interactive wizard and configure manually. Copy the block below, save i
 # REQUIRED — fill in exactly one LLM provider
 # ═══════════════════════════════════════════════════════
 
-LLM_PROVIDER=openai                     # openai | azure | qwen | anthropic
+LLM_PROVIDER=openai                     # openai | azure | qwen | anthropic | local
 
 # ── Option A: OpenAI ─────────────────────────────────────────────────────────
 OPENAI_API_KEY=sk-...                   # ← your key (platform.openai.com/api-keys)
@@ -92,11 +92,21 @@ OPENAI_SUBAGENT_MODEL=gpt-4o-mini
 # OPENAI_COORDINATOR_MODEL=qwen-max     # synthesis / large tier
 # OPENAI_SUBAGENT_MODEL=qwen-plus       # parallel RCA subagents / small tier
 
-# ── Option D: Anthropic / Claude (V4 Cortex) ─────────────────────────────────
+# ── Option D: Anthropic / Claude (V4 Cortex only) ────────────────────────────
+# Requires CORTEX_V4_ENABLED=true — the server refuses to start without it.
 # LLM_PROVIDER=anthropic
+# CORTEX_V4_ENABLED=true
 # ANTHROPIC_API_KEY=sk-ant-...
 # ANTHROPIC_LARGE_MODEL=claude-sonnet-4-6
 # ANTHROPIC_SMALL_MODEL=claude-haiku-4-5-20251001
+
+# ── Option E: Local / self-hosted (Ollama, vLLM, LM Studio, llama.cpp) ───────
+# No API key needed. The server checks the endpoint and tool calling before it
+# starts. Full guide: docs/local-llm.md
+# LLM_PROVIDER=local
+# OPENAI_BASE_URL=http://localhost:11434/v1   # default for `local` (Ollama)
+# OPENAI_COORDINATOR_MODEL=qwen2.5:14b        # must be served by your endpoint
+# OPENAI_SUBAGENT_MODEL=qwen2.5:14b
 
 
 # ═══════════════════════════════════════════════════════
@@ -155,7 +165,26 @@ LOG_FORMAT=text
 
 | Variable | Default | Values | Description |
 |---|---|---|---|
-| `LLM_PROVIDER` | `azure` | `openai` \| `azure` \| `qwen` \| `anthropic` | Which LLM backend to use. `qwen` is OpenAI-compatible via Alibaba DashScope (set `OPENAI_BASE_URL`); `anthropic` is used only by the V4 cortex layer. |
+| `LLM_PROVIDER` | `openai` | `openai` \| `azure` \| `qwen` \| `anthropic` \| `local` | Which LLM backend to use. `qwen` is OpenAI-compatible via Alibaba DashScope (set `OPENAI_BASE_URL`); `local` is a self-hosted OpenAI-compatible server such as Ollama — see [Local / self-hosted LLM](local-llm.md); `anthropic` is served only by the V4 cortex graph — see the table below. |
+
+Which providers each graph supports:
+
+| Provider | V2 graph (default) | V4 cortex (`CORTEX_V4_ENABLED=true`) |
+|---|---|---|
+| `openai` | ✅ | ✅ |
+| `azure` | ✅ | ✅ |
+| `qwen` | ✅ | ✅ |
+| `anthropic` | ❌ **refused at startup** | ✅ (needs `langchain-anthropic`) |
+| `local` | ✅ | ✅ |
+
+`LLM_PROVIDER=anthropic` with `CORTEX_V4_ENABLED=false` is a startup error, not a
+fallback. The V2 graph has no Anthropic backend, and the server will not substitute
+another vendor: it logs `LLM_PROVIDER=anthropic requires CORTEX_V4_ENABLED=true …` and
+exits with status 1 before the port opens. Before
+[#192](https://github.com/MSKazemi/kubeintellect/issues/192) this combination silently
+sent every prompt, cluster data included, to OpenAI using `OPENAI_API_KEY`. Fix it by
+setting `CORTEX_V4_ENABLED=true`, or by setting `LLM_PROVIDER` to the provider you
+actually want.
 
 **OpenAI:**
 
@@ -164,6 +193,21 @@ LOG_FORMAT=text
 | `OPENAI_API_KEY` | — | Your OpenAI API key |
 | `OPENAI_COORDINATOR_MODEL` | `gpt-4o` | Model for the coordinator agent |
 | `OPENAI_SUBAGENT_MODEL` | `gpt-4o-mini` | Model for domain subagents |
+
+**Local / self-hosted** (`LLM_PROVIDER=local`) — uses the OpenAI variables above against your
+own server. Guide: [Local / self-hosted LLM](local-llm.md).
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENAI_BASE_URL` | `http://localhost:11434/v1` with `local` (empty → `api.openai.com` otherwise) | Your server's OpenAI-compatible URL. With `local` it is never empty, so requests cannot fall back to OpenAI. |
+| `LOCAL_LLM_PROBE_TIMEOUT_SECONDS` | `180` | How long the startup check waits for each model's tool-calling probe; the first request loads the model. |
+
+With `local`, `OPENAI_API_KEY` is optional (set it only if your server checks a key) and
+`OPENAI_COORDINATOR_MODEL` / `OPENAI_SUBAGENT_MODEL` must name models your server serves.
+Before opening its port, the server checks that the endpoint is reachable, that both models
+are served, and that each one makes a tool call; if any check fails it exits with status 1
+and says what to change. A model that cannot call tools is refused, because the agents read
+the cluster only through tool calls.
 
 **Azure OpenAI:**
 
@@ -518,7 +562,7 @@ and the Anthropic model provider.
 | `MEMORY_CHAIN_VERIFY_INTERVAL_S` | `900` | Seconds between re-verifications of the memory audit hash chain when `MEMORY_SECURITY_HARDENING` is on. The verdict is recorded and reported under `memory.chain` on `GET /healthz` (`state`: `off` / `never-checked` / `unverified` / `intact` / `TAMPERED`); only `TAMPERED` makes `memory.healthy` false. `0` keeps the startup verification and drops the schedule; a negative value disables both. Verifying reads every audit row for the cluster, so this is deliberately not done on the health-probe path. |
 | `MEMORY_SUMMARY_TREE` | `false` | **Memory V5 (experimental, spec R7).** RAPTOR/GraphRAG-style theme summaries: the consolidation worker builds one deterministic summary per `(cluster, playbook\|namespace)` signature into `memory_summaries`, so theme-level questions are answered without scanning every episode. Regeneration is tied to **KG change-rate** (rebuilt only when new episodes arrived or the cluster's KG edge count moved), never a fixed clock. Off ⇒ no summary tree. |
 | `MEMORY_SUMMARY_MIN_CLUSTER` | `3` | Minimum episodes in a theme before it gets a summary (when `MEMORY_SUMMARY_TREE` is on). |
-| `MEMORY_RETENTION_DAYS` | `0` | **Data retention / lifecycle.** Age out the telemetry and completed-work tables (`request_log`, `session_notes`, `fleet_signals`, terminal `prospective_memory` rows, `promotion_outcomes`) so a long-lived install stays bounded. `0` = keep everything, the default — a data-deleting default would silently discard history on upgrade. Bounded: at most 5 000 rows per table per consolidation pass. **The hash-chained ledgers `decision_log` and `memory_audit` (and their head anchors) are never pruned by this setting** — deleting their newest rows breaks no hash link, so it is invisible to chain verification while contradicting the head anchor; truncating an audit ledger needs a signed export, not a clock. `episodes` are excluded too (that is what the agent recalls; deliberate deletion goes through RTBF). `promotion_outcomes` has a hard floor at the ADR-102 90-day window, so a shorter setting cannot delete the samples the A3 statistical brake demotes on. |
+| `MEMORY_RETENTION_DAYS` | `0` | **Data retention / lifecycle.** Age out the telemetry and completed-work tables (`request_log`, `session_notes`, `fleet_signals`, terminal `prospective_memory` rows, `promotion_outcomes`) so a long-lived install stays bounded. `0` = keep everything, the default — a data-deleting default would silently discard history on upgrade. Bounded: at most 5 000 rows per table per consolidation pass. **The hash-chained ledgers `decision_log` and `memory_audit` (and their head anchors) are never pruned by this setting** — deleting their newest rows breaks no hash link, so it is invisible to chain verification while contradicting the head anchor; truncating an audit ledger needs a signed export, not a clock. `episodes` are excluded too (that is what the agent recalls; deliberate deletion goes through RTBF), and so is the ADR-008 `effect_log` (pruning it would let an irreversible call or a used approval run again). `promotion_outcomes` has a hard floor at the ADR-102 90-day window, so a shorter setting cannot delete the samples the A3 statistical brake demotes on. |
 | `RATE_LIMIT_ENABLED` | `true` | **API rate limiting.** Per-caller token bucket on every route, keyed by a SHA-256 of the bearer token (the key itself is never stored or logged); the caller's **address** is used whenever a request carries no bearer token — a property of the request, not of the auth configuration. On by default — a limiter that ships off is not a limiter. |
 | `RATE_LIMIT_PER_MIN` | `120` | Sustained requests per minute per caller. Far above any interactive `kq` use; lower it for a shared or public deployment. |
 | `RATE_LIMIT_BURST` | `30` | Bucket capacity — how much idle allowance a caller may accrue and spend at once. |
@@ -545,28 +589,44 @@ and the Anthropic model provider.
 | `PREFERENCE_DECAY_DAYS` | `60` | Inferred preferences not re-seen within this window decay and are purged by the consolidation worker (`preference_purge()`). |
 | `PREFERENCE_MIN_CONFIDENCE` | `0.3` | Inferred preferences below this confidence are not injected. |
 | `PREFERENCE_INFER_MIN_OCCURRENCE` | `3` | How many times a behaviour must recur before it's inferred as a preference. |
-| `CORTEX_V4_ENABLED` | `false` | Enables the V4 reasoning graph (triage → gather loop → synthesize → remember). When `false`, the V2 graph is used. |
+| `CORTEX_V4_ENABLED` | `false` | Enables the V4 reasoning graph (triage → gather loop → synthesize → remember; with `SELF_GOVERN_ENABLED`, synthesize → ground_check → remember). When `false`, the V2 graph is used. |
 | `CORTEX_MAX_GATHER_ROUNDS` | `8` | Bound on gather-loop LLM↔tool iterations per turn. |
 
 ### Predictive detection (ADR-010)
 
 | Variable | Default | Description |
 |---|---|---|
-| `PREDICTIVE_DETECTION_ENABLED` | `false` | Anticipatory detection: trend predicates project a range-PromQL metric toward its threshold (least-squares slope, zero tokens) and fire a `predicted` finding *before* the failure manifests. Predicted findings are capped at autonomy `A1` (never auto-fix). Fail-open — but **not silently**: if Prometheus cannot be queried, `GET /v1/findings` reports `predictive: blind` with the reason and `kq findings` withholds its all-clear line. |
+| `PREDICTIVE_DETECTION_ENABLED` | `false` | Anticipatory detection: trend predicates project a range-PromQL metric toward its threshold (least-squares slope, zero tokens) and fire a `predicted` finding *before* the failure manifests. Predicted findings are capped at autonomy `A1` (never auto-fix). Shadow detectors (NL-authored candidates) are projected in the same sweep, but their predictions go to the shadow buffer only and never reach the watchtower; with this flag off, neither active nor shadow trend predicates are evaluated, and `GET /v1/detectors/{name}/shadow-findings` says so (`watching: false`). Fail-open — but **not silently**: if Prometheus cannot be queried, `GET /v1/findings` reports `predictive: blind` with the reason and `kq findings` withholds its all-clear line. |
 | `PREDICTIVE_TREND_INTERVAL_SECONDS` | `60` | How often the trend-projection loop runs (range queries are expensive — separate from the 1s reactive tick). |
+
+### PromQL detection (#20)
+
+| Variable | Default | Description |
+|---|---|---|
+| `PROMQL_DETECTION_ENABLED` | `false` | Evaluate the instant `promql:` queries in `detect:` blocks (playbooks and stored detectors, active and shadow). Every series in a query's result vector is a match for the object its labels name, debounced and deduplicated like a watch predicate; zero tokens. Needs `PROMETHEUS_URL`. Off by default because the shipped playbooks carry queries that never ran before, so enabling it changes what fires. Fail-loud: a query that cannot run fires nothing, clears nothing, and `GET /v1/findings` reports `promql: blind` with the reason. While off, the NL-authoring gate refuses any `promql` entry with this reason. See [Agent Behaviors](agent-behaviors.md). |
+| `PROMQL_DETECTION_INTERVAL_SECONDS` | `30` | How often every PromQL query is run (floored at 5s). A `debounce_seconds` is effectively rounded up to this interval. |
 
 ### Incident postmortems (ADR-011)
 
 | Variable | Default | Description |
 |---|---|---|
 | `POSTMORTEM_ENABLED` | `true` | Read-only grounded postmortem view over the flight recorder (`GET /v1/episodes/{id}/postmortem`, `kq postmortem`). The deterministic seq-cited timeline is always available. |
-| `POSTMORTEM_LLM_NARRATIVE` | `false` | Add an LLM narrative (the only token-spending part) constrained to the recorded events; falls back to the deterministic timeline on any failure. |
+| `POSTMORTEM_LLM_NARRATIVE` | `false` | Add an LLM narrative (the only token-spending part) constrained to the recorded events; falls back to the deterministic timeline on any failure. Every narrative passes the claim-level grounding gate below. |
+| `POSTMORTEM_MIN_GROUNDING` | `0.9` | Minimum share of narrative claims (0.0–1.0) that must be supported by the recorded events. Each sentence of the narrative is checked deterministically (no second LLM call); unsupported claims are always removed, and below this floor the whole narrative is withheld and the deterministic postmortem is returned with the reason in `narrative_withheld`. The measured rate is reported per postmortem as `grounding_rate`, `claims_total`, `claims_ungrounded`. |
+
+**Narrative grounding gate.** A claim is *unsupported* — and never shown — when it cites a
+`[#seq]` that is not in the timeline; when a resource name, backticked span, number or clock
+time in it does not appear in the evidence the model was given (the deterministic postmortem
+itself); when it asserts a cause (*because*, *caused*, *led to*, *root cause*, …) that the
+recorded conclusion or the events it cites do not carry; or when it has nothing checkable at
+all (no citation and no named anchor). A field campaign measured the ungated narrative at a
+grounding rate of 0.70 and 0.61, which is why the default floor is 0.9.
 
 ### Natural-language detector authoring (ADR-012)
 
 | Variable | Default | Description |
 |---|---|---|
-| `NL_DETECTOR_AUTHORING_ENABLED` | `false` | Compile a plain-English failure into a detect block and stage it as a **shadow** detector (observes only, never reaches the watchtower) until a human promotes it. `POST /v1/detectors`, `kq detector`. |
+| `NL_DETECTOR_AUTHORING_ENABLED` | `false` | Compile a plain-English failure into a detect block and stage it as a **shadow** detector (observes only, never reaches the watchtower) until a human promotes it. `POST /v1/detectors`, `kq detector`. Compiles at temperature 0 regardless of `LLM_TEMPERATURE`, stores the compilation, and reuses it for identical prose; a compiled detector that cannot fire is refused (`422`) — see [API reference](api-reference.md#authoring-outcomes). |
 | `DB_DETECTOR_REFRESH_SECONDS` | `120` | How often the engine reloads promoted (active) + shadow detectors from the database so promotions take effect without a restart. A refresh whose query fails keeps the detectors already loaded rather than reloading an empty set. |
 
 ### Watchtower & autonomy ladder
@@ -577,12 +637,14 @@ and the Anthropic model provider.
 | `WATCHTOWER_ROLE` | `operator` | Role the watchtower acts with (same role model as [API keys](#authentication-rbac)). |
 | `AUTONOMY_LEVEL` | `A1` | Default autonomy level: `A0` observe, `A1` investigate + report, `A2` propose, `A3` auto-fix (allowlist only). |
 | `AUTONOMY_NAMESPACE_LEVELS` | `""` | Per-namespace overrides, e.g. `prod=A0,dev=A2`. **Exact match, no globs** — unlike the row below; an unmatchable entry is reported, not silently ignored. Protected namespaces are always pinned to `A0` for autonomous action. |
+| `SELF_GOVERN_ENABLED` | `false` | Self-governance master switch (ADR-007/008/009). On: **(1) exactly-once irreversible calls** (ADR-008) — every `kubectl` call in the IRREVERSIBLE rollback class is checked against the `effect_log` ledger before it runs: an equivalent retry in the same turn returns the recorded result instead of executing, a retry that drifted onto a different target is blocked until a human approves an explicit fork, and approvals become **single-use tokens** consumed server-side. Needs the flight recorder on Postgres (`db-init` for the `effect_log` table); without it every irreversible call falls back to a fresh human approval, even on auto-approve. See [security](security.md#exactly-once-irreversible-calls-and-single-use-approvals-adr-008). **(2) grounding check** (ADR-009, Cortex graph only) — a `ground_check` node between `synthesize` and `remember` labels each claim of the answer `supported` / `partial` / `none` against the evidence already gathered (one cheap-tier call; skipped when the answer makes no actionable claim). Unsupported claims are hedged and withdrawn, and demote the turn to advisory (A1); partly supported claims cap it at propose (A2). An A3 fix runs only after a diagnosis in which every claim is supported. A checker error never raises autonomy. See [Autonomy](autonomy.md#grounded-auto-fix-adr-009). Off: behaviour, graph and watchtower are exactly as before. |
 | `AUTONOMY_A3_ALLOWLIST` | `""` | Patterns eligible for `A3` auto-fix, as `<playbook>/<namespace-glob>` entries, e.g. `CrashLoopBackOff/dev-*`. |
 
 ### Anthropic provider
 
 Optional model provider for the V4 reasoning graph (`LLM_PROVIDER=anthropic`).
-Requires the `langchain-anthropic` package.
+Requires the `langchain-anthropic` package **and** `CORTEX_V4_ENABLED=true`; on the
+default V2 graph the server refuses to start (see [LLM provider](#llm-provider)).
 
 | Variable | Default | Description |
 |---|---|---|

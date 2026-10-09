@@ -70,6 +70,9 @@ class Settings(BaseSettings):
     # DASHSCOPE_API_KEY (Alibaba's own convention) or QWEN_API_KEY populate it.
     DASHSCOPE_API_KEY: str | None = None
     QWEN_API_KEY: str | None = None
+    # LLM_PROVIDER=local: how long the startup check waits for each model's tool-calling probe.
+    # Generous on purpose -- the first request to a local server loads the model into memory.
+    LOCAL_LLM_PROBE_TIMEOUT_SECONDS: float = 180.0
 
     # ── PostgreSQL ────────────────────────────────────────────────────────────
     # When DATABASE_URL is set (e.g. external managed DB), it takes precedence
@@ -338,6 +341,17 @@ class Settings(BaseSettings):
     PREDICTIVE_DETECTION_ENABLED: bool = False
     PREDICTIVE_TREND_INTERVAL_SECONDS: int = 60
 
+    # ── PromQL detection (#20, ADR-006) ───────────────────────────────────────
+    # Evaluate the instant `promql:` queries in `detect:` blocks: every series in the
+    # result vector is a firing candidate for (playbook, namespace, object), debounced
+    # like a watch predicate, zero tokens. Default off: most shipped playbooks carry
+    # queries that were never run before, so turning this on changes what fires on every
+    # cluster. Needs PROMETHEUS_URL. An unreachable Prometheus is reported as
+    # `promql: blind` on GET /v1/findings — never as "nothing fired". The interval is
+    # floored at 5s by the engine loop.
+    PROMQL_DETECTION_ENABLED: bool = False
+    PROMQL_DETECTION_INTERVAL_SECONDS: int = 30
+
     # ── Natural-language detector authoring (V4 ADR-012) ──────────────────────
     # Compile a plain-English failure into a detect block, stage it as a SHADOW
     # candidate, and require human promotion before it can act. Shadow detectors
@@ -351,6 +365,11 @@ class Settings(BaseSettings):
     # only token-spending part) and falls back to the timeline on any failure.
     POSTMORTEM_ENABLED: bool = True
     POSTMORTEM_LLM_NARRATIVE: bool = False
+    # Claim-level grounding gate on that narrative. Each sentence is checked against the
+    # recorded evidence; unsupported claims are removed, and if the share of supported
+    # claims falls below this floor the narrative is withheld entirely (the deterministic
+    # postmortem is returned with the reason). A measured field campaign found 0.61-0.70.
+    POSTMORTEM_MIN_GROUNDING: float = Field(default=0.9, ge=0.0, le=1.0)
 
     # ── Memory hierarchy (V4 ADR-002) ─────────────────────────────────────────
     # L1 episodic + L2 temporal KG + consolidation worker. Postgres-native;
@@ -660,6 +679,7 @@ class Settings(BaseSettings):
     WATCHTOWER_ROLE: str = "operator"
     AUTONOMY_LEVEL: str = "A1"
     AUTONOMY_NAMESPACE_LEVELS: str = ""     # "prod=A0,dev=A2"
+    SELF_GOVERN_ENABLED: bool = False   # ADR-007/008/009 self-governance (default off)
     AUTONOMY_A3_ALLOWLIST: str = ""         # "CrashLoopBackOff/dev-*"
 
     # ── Auth / RBAC ───────────────────────────────────────────────────────────
@@ -735,11 +755,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_provider(self) -> Settings:
-        valid = {"azure", "openai", "anthropic", "qwen"}
+        valid = {"azure", "openai", "anthropic", "qwen", "local"}
         if self.LLM_PROVIDER not in valid:
             raise ValueError(
                 f"LLM_PROVIDER must be one of {sorted(valid)}, got {self.LLM_PROVIDER!r}.\n"
-                f"  Fix: set LLM_PROVIDER=qwen (or openai / azure / anthropic) in ~/.kubeintellect/.env"
+                f"  Fix: set LLM_PROVIDER=qwen (or openai / azure / anthropic / local) in ~/.kubeintellect/.env"
             )
         # 'qwen' is a first-class alias for the OpenAI-compatible DashScope path:
         # it auto-targets the DashScope endpoint and qwen-* model defaults so an
@@ -753,24 +773,23 @@ class Settings(BaseSettings):
                 self.OPENAI_COORDINATOR_MODEL = "qwen-max"
             if self.OPENAI_SUBAGENT_MODEL == "gpt-4o-mini":
                 self.OPENAI_SUBAGENT_MODEL = "qwen-plus"
+        # 'local' is a self-hosted OpenAI-compatible server (Ollama, vLLM, LM Studio, llama.cpp)
+        # on the same client as 'openai' and 'qwen' -- OPENAI_BASE_URL and OPENAI_*_MODEL. Its
+        # base URL is never left empty: an empty one means api.openai.com, and an operator who
+        # chose 'local' to keep cluster data on their own hardware must not reach OpenAI by
+        # omission. No API key is required; reachability and tool calling are checked before
+        # the server opens its port (app.core.local_llm).
+        if self.LLM_PROVIDER == "local" and not self.OPENAI_BASE_URL:
+            self.OPENAI_BASE_URL = LOCAL_LLM_DEFAULT_BASE_URL
         if self.LLM_PROVIDER == "anthropic":
-            if not self.CORTEX_V4_ENABLED:
-                # Name the CONSEQUENCE, not just the cause. The previous wording --
-                # "anthropic is only used by the V4 cortex" -- reads as "Anthropic will not
-                # be used", i.e. it will fail or do nothing. What actually happens is that
-                # the default V2 graph builds a ChatOpenAI client and sends every prompt,
-                # cluster data included, to OpenAI using OPENAI_API_KEY. Provider choice is
-                # often a compliance decision, so a reader deciding whether to act on this
-                # line needs to know which vendor receives the data.
-                logging.warning(
-                    "LLM_PROVIDER=anthropic but CORTEX_V4_ENABLED is false. The default V2 "
-                    "graph has no Anthropic backend, so every coordinator and subagent call "
-                    "-- including the cluster data in each prompt -- will be sent to OpenAI "
-                    "at %s using OPENAI_API_KEY, not to Anthropic, and ANTHROPIC_API_KEY "
-                    "will be ignored. Set CORTEX_V4_ENABLED=true to actually use Anthropic, "
-                    "or set LLM_PROVIDER=openai to make the current behaviour explicit.",
-                    self.OPENAI_BASE_URL or "https://api.openai.com/v1",
-                )
+            refusal = v2_provider_refusal(self)
+            if refusal:
+                # Logged here so every process that loads the config says it, but NOT raised
+                # here: a model-validator ValueError becomes a pydantic ValidationError whose
+                # text embeds every env-sourced setting, API keys included, and
+                # `_load_settings` re-raises it. The refusal itself is enforced where the
+                # V2 client would be built (app.core.llm) and before the port opens (main).
+                logging.error(refusal)
             if not self.ANTHROPIC_API_KEY:
                 logging.warning(
                     "LLM_PROVIDER=anthropic but ANTHROPIC_API_KEY is not set. "
@@ -805,6 +824,35 @@ class Settings(BaseSettings):
                 f"got {self.SNAPSHOT_SUFFICIENCY_MODE!r}."
             )
         return self
+
+
+#: Ollama's OpenAI-compatible endpoint on its default port -- the `local` provider's default.
+LOCAL_LLM_DEFAULT_BASE_URL = "http://localhost:11434/v1"
+
+
+def v2_provider_refusal(s: Settings) -> str | None:
+    """Why the default V2 graph must not start with this provider, or None if it may.
+
+    The V2 model factory (app.core.llm) has an Azure backend and an OpenAI-compatible one,
+    and nothing else. Before #192, `LLM_PROVIDER=anthropic` fell through to the
+    OpenAI-compatible one: the run looked normal and every prompt -- pod specs, events,
+    log excerpts -- went to OpenAI with OPENAI_API_KEY, for an operator who had selected
+    Anthropic, often as a compliance decision. A configuration whose meaning cannot be
+    honoured is refused, the way an unknown provider is; it is never quietly re-routed.
+    """
+    if s.LLM_PROVIDER == "anthropic" and not s.CORTEX_V4_ENABLED:
+        return (
+            "LLM_PROVIDER=anthropic requires CORTEX_V4_ENABLED=true. The default V2 graph has "
+            "no Anthropic backend: running it would send every coordinator and subagent "
+            "prompt -- including the cluster data in it -- to OpenAI at "
+            f"{s.OPENAI_BASE_URL or 'https://api.openai.com/v1'} using OPENAI_API_KEY, and "
+            "ANTHROPIC_API_KEY would be ignored. KubeIntellect refuses to start rather than "
+            "send cluster data to a vendor you did not select.\n"
+            "  Fix: set CORTEX_V4_ENABLED=true (and install langchain-anthropic) to use "
+            "Anthropic, or set LLM_PROVIDER to the provider you actually want "
+            "(openai / azure / qwen / local)."
+        )
+    return None
 
 
 def _load_settings() -> Settings:

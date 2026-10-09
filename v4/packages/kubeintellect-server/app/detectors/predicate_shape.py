@@ -186,7 +186,21 @@ def predicate_health_errors(pred) -> list[str]:
     Deliberately narrow, and deliberately not a guess: it asks the predicate the same question
     the engine will — `status_regex.search(status)` — against the statuses the observer emits for
     a healthy object. Nothing here reasons about whether a detector is a *good* one.
+
+    An Event predicate with neither `reason_regex` nor `message_regex` is the Event-channel form
+    of the same mistake: `WatchPredicate.matches` treats an absent regex as "matches anything",
+    so it fires on EVERY Warning event (of `involved_kind`, when set) — routine BackOff, Unhealthy
+    and FailedScheduling noise included. No shipped playbook has this shape; every shipped Event
+    predicate names a reason. It is not an intended catch-all, so it is named here.
     """
+    if pred.kind == "Event" and pred.reason_regex is None and pred.message_regex is None:
+        scope = (f"every Warning event about a {pred.involved_kind}" if pred.involved_kind
+                 else "every Warning event on the cluster")
+        return [
+            f"an Event predicate with no reason_regex and no message_regex matches {scope} — "
+            "it fires on routine noise, not on a fault. Name the reason (and, if needed, the "
+            "message) the failure produces."
+        ]
     if pred.kind not in HEALTHY_STATUS or pred.status_regex is None:
         return []
     hits = [s for s in HEALTHY_STATUS[pred.kind] if pred.status_regex.search(s)]
@@ -287,4 +301,107 @@ def trend_liveness_errors(trend) -> list[str]:
             "the time — say which one you mean"
         )
 
+    return errors
+
+
+# ── Instant PromQL predicates (#20) ─────────────────────────────────────────────────────────────
+# A `promql:` entry fires on every element of its instant result vector (Prometheus alerting-rule
+# semantics, see `engine.DetectorEngine.evaluate_promql`). There is no PromQL parser in this
+# workspace, so this is a static pre-check, not a grammar: it refuses the shapes that provably
+# cannot fire, fire on everything, or cost an unbounded query on every evaluation interval. The
+# authoritative syntax check is Prometheus itself — the authoring endpoint runs each query once
+# (`authoring.promql_probe_errors`) before anything is stored.
+
+#: Longest expression accepted. The longest shipped query is under 200 characters.
+MAX_PROMQL_LENGTH = 2000
+#: Longest range selector accepted. The query runs on every evaluation interval; a `[365d]`
+#: window is a load test on Prometheus, not a detector. The shipped queries use at most 15m.
+MAX_PROMQL_RANGE_SECONDS = 24 * 3600
+
+_PROMQL_STRING_RE = re.compile(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'|`[^`]*`')
+_PROMQL_RANGE_RE = re.compile(r"\[([^\]]*)\]")
+_PROMQL_DURATION_RE = re.compile(r"^(?:\d+(?:ms|[smhdwy]))+$")
+_PROMQL_DURATION_PART_RE = re.compile(r"(\d+)(ms|[smhdwy])")
+_PROMQL_UNIT_SECONDS = {"ms": 0.001, "s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800,
+                        "y": 31536000}
+_PROMQL_BOOL_RE = re.compile(r"(?:==|!=|>=|<=|>|<)\s*bool\b")
+_PROMQL_BARE_RANGE_RE = re.compile(r"\]\s*(?:offset\s+-?\S+\s*)?$")
+
+
+def _promql_duration_seconds(text: str) -> float | None:
+    text = text.strip()
+    if not _PROMQL_DURATION_RE.match(text):
+        return None
+    return sum(int(n) * _PROMQL_UNIT_SECONDS[u]
+               for n, u in _PROMQL_DURATION_PART_RE.findall(text))
+
+
+def promql_shape_errors(expr: object) -> list[str]:
+    """Reasons the instant PromQL predicate `expr` cannot work as a detector. Empty ⇒ it can.
+
+    Structural checks run on the expression with its string literals blanked out, so a label
+    VALUE containing `[`, `bool` or a bracket never trips them.
+    """
+    if not isinstance(expr, str):
+        return [f"promql entry must be a string, got {type(expr).__name__}"]
+    text = expr.strip()
+    if not text:
+        return ["promql entry is empty — there is no query to run"]
+    if len(text) > MAX_PROMQL_LENGTH:
+        return [f"promql entry is {len(text)} characters; the limit is {MAX_PROMQL_LENGTH}"]
+
+    errors: list[str] = []
+    for label, _op, value in _LABEL_MATCHER_RE.findall(text):
+        if _PLACEHOLDER_RE.match(value):
+            errors.append(
+                f"promql pins {label}={value!r}, which is an unfilled template rather than a "
+                f"cluster object — the selector matches no series, so it can never fire"
+            )
+
+    # Quotes must close before anything structural can be read.
+    stripped = _PROMQL_STRING_RE.sub('""', text)
+    if any(q in stripped.replace('""', "") for q in ('"', "'", "`")):
+        return [*errors, f"promql {text[:80]!r} has an unterminated string literal"]
+
+    stack: list[str] = []
+    opener = {")": "(", "]": "[", "}": "{"}
+    for ch in stripped:
+        if ch in "([{":
+            stack.append(ch)
+        elif ch in ")]}" and (not stack or stack.pop() != opener[ch]):
+            return [*errors, f"promql {text[:80]!r} has unbalanced brackets"]
+    if stack:
+        return [*errors, f"promql {text[:80]!r} has unbalanced brackets"]
+
+    for inner in _PROMQL_RANGE_RE.findall(stripped):
+        # `[5m]` is a range, `[5m:1m]` a subquery (range:resolution). Either way the range part
+        # must be a duration: `[]` is not a range at all.
+        seconds = _promql_duration_seconds(inner.split(":", 1)[0])
+        if seconds is None:
+            errors.append(
+                f"promql range selector [{inner}] has no valid duration (write e.g. [5m]) — "
+                "Prometheus would reject the query"
+            )
+        elif seconds > MAX_PROMQL_RANGE_SECONDS:
+            errors.append(
+                f"promql range selector [{inner}] spans more than 24h — it is re-run on every "
+                "evaluation interval; narrow it"
+            )
+
+    # `metric[5m]` with no function around it answers an instant query with a MATRIX: one window
+    # of samples per series, not a current condition. Nothing could fire on it.
+    if _PROMQL_BARE_RANGE_RE.search(stripped):
+        errors.append(
+            "promql ends in a bare range selector, so an instant query returns a range vector "
+            "with no current value to fire on — wrap it in a function such as max_over_time(...)"
+        )
+
+    # `x > bool 1` keeps EVERY series (value 0 or 1) instead of filtering, and a detector fires
+    # on every element of the result — so this fires on every object the metric covers.
+    if _PROMQL_BOOL_RE.search(stripped):
+        errors.append(
+            "promql uses a `bool` comparison modifier, which returns every series (0 or 1) "
+            "instead of only the matching ones — a detector fires on every element of the "
+            "result, so it would fire on every object the metric covers. Drop `bool`."
+        )
     return errors

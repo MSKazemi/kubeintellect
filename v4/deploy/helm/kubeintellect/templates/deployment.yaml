@@ -116,6 +116,20 @@ spec:
               exec:
                 command: ["/bin/sleep", "{{ .Values.drainSeconds }}"]
           {{- end }}
+          {{- if eq (.Values.config.llmProvider | default "openai") "local" }}
+          # llmProvider=local only. The startup check makes one real tool call per model before
+          # the port opens, and a cold local model load can outlast the liveness window (105s),
+          # which would restart the pod forever. Liveness and readiness are held off until
+          # /healthz answers once. Window = periodSeconds x failureThreshold >= probe timeout x
+          # models + margin (see startupProbe in values.yaml). Absent for every other provider.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            periodSeconds: {{ .Values.startupProbe.periodSeconds | default 10 }}
+            timeoutSeconds: 10
+            failureThreshold: {{ include "kubeintellect.localStartupThreshold" . }}
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz

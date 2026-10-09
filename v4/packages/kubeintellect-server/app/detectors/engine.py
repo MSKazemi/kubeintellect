@@ -13,6 +13,13 @@ Semantics (per design/v4/detector-predicates.md):
 - **Zero tokens**: nothing in this module calls an LLM. Firings become
   Findings: an in-memory ring (served by /v1/findings) plus a flight-recorder
   entry under episode "findings:<cluster_id>".
+- **PromQL predicates** (#20, `evaluate_promql`): each instant query runs on its
+  own interval; every element of the result vector is a match for the object its
+  labels name — Prometheus alerting-rule semantics. A key arms on the first
+  evaluation that returns it, fires on the first evaluation at least
+  debounce_seconds later, and clears on the first *complete* evaluation that no
+  longer returns it. A query that could not run settles nothing: the engine
+  reports itself `promql: blind`, which is never "nothing fired".
 """
 from __future__ import annotations
 
@@ -25,16 +32,29 @@ from dataclasses import dataclass, field, replace
 
 from app.core.config import settings
 from app.db import flight_recorder
-from app.detectors.models import DetectBlock, Finding, TrendPredicate
+from app.detectors.models import EVALUATED_PREDICATE_KEYS, DetectBlock, Finding, TrendPredicate
 from app.sensorium.observations import Observation
-from app.tools.prometheus_tool import query_prometheus_series
+from app.tools.prometheus_tool import query_prometheus_series, query_prometheus_vector
 from app.utils.logger import get_logger
+from app.utils.redact import redact_secrets
 
 logger = get_logger(__name__)
 
 _EVENT_ARM_TTL = 600.0   # seconds an event-armed key survives without a new match
 _TICK_INTERVAL = 1.0
 _TREND_INTERVAL = 60.0       # range queries are expensive — poll once a minute
+_PROMQL_INTERVAL = 30.0      # instant queries; overridden by PROMQL_DETECTION_INTERVAL_SECONDS
+_PROMQL_MIN_INTERVAL = 5.0   # floor: a 0 or negative setting must not become a hot loop
+
+# Labels that name the object a PromQL series is about, most specific first. Wider than
+# `_series_target`'s list (trend predicates), because the shipped instant queries are about
+# Deployments, Jobs, HPAs, Services and quotas too, and a series none of these name must not
+# collapse into one "unknown" key with every other such series — see `_promql_target`.
+_PROMQL_OBJECT_LABELS = (
+    "pod", "persistentvolumeclaim", "node", "deployment", "statefulset", "daemonset",
+    "job_name", "cronjob", "horizontalpodautoscaler", "service", "endpoint", "resourcequota",
+    "container", "instance",
+)
 _PREDICTED_REFIRE_TTL = 1800.0   # don't re-emit the same prediction within this window
 
 _FINDINGS_RING_SIZE = 500
@@ -64,12 +84,20 @@ class DetectorEngine:
     _states: dict[tuple[str, str, str], _KeyState] = field(default_factory=dict)
     _shadow_states: dict[tuple[str, str, str], _KeyState] = field(default_factory=dict)
     _predicted_fired: dict[tuple[str, str, str], float] = field(default_factory=dict)
+    _shadow_predicted_fired: dict[tuple[str, str, str], float] = field(default_factory=dict)
     _tick_task: asyncio.Task | None = None
     # Predictive-detection visibility (ADR-010). None ⇒ the last trend sweep reached Prometheus.
     # Set ⇒ it did not, and every "no prediction" since then is an absence of evidence, not
     # evidence of absence. Surfaced by GET /v1/findings as `predictive: blind`.
     trend_blind_since: float | None = None
     last_trend_error: str | None = None
+    # PromQL-detection visibility (#20), same contract as the two fields above but stricter:
+    # blind as soon as ANY query in the last sweep could not run, because that detector's
+    # silence is then not evidence. `promql_last_sweep_at` is None until a sweep has finished,
+    # so "has not looked yet" is distinguishable from "looked and found nothing".
+    promql_blind_since: float | None = None
+    last_promql_error: str | None = None
+    promql_last_sweep_at: float | None = None
 
     # ── Stream input ──────────────────────────────────────────────────────────
 
@@ -146,22 +174,27 @@ class DetectorEngine:
 
     def _emit_shadow(self, det: DetectBlock, namespace: str, name: str, state: _KeyState) -> Finding:
         state.fired = True
-        finding = Finding(
-            playbook=det.playbook,
-            cluster_id=self.cluster_id,
-            namespace=namespace,
-            object_name=name,
-            evidence=state.evidence,
-            first_seen=state.armed_at,
-            source="shadow",
+        return self._publish_shadow(
+            Finding(
+                playbook=det.playbook,
+                cluster_id=self.cluster_id,
+                namespace=namespace,
+                object_name=name,
+                evidence=state.evidence,
+                first_seen=state.armed_at,
+                source="shadow",
+            )
         )
+
+    def _publish_shadow(self, finding: Finding) -> Finding:
+        """Shadow publish path: shadow ring + shadow flight-recorder episode, nothing else."""
         self.shadow_findings.append(finding)
         flight_recorder.record(
             f"shadow-findings:{self.cluster_id}", "finding", finding.to_dict()
         )
         logger.info(
-            f"shadow_detector_fired playbook={det.playbook} ns={namespace} object={name}"
-            f" evidence={state.evidence[:120]!r}"
+            f"shadow_detector_fired playbook={finding.playbook} ns={finding.namespace}"
+            f" object={finding.object_name} evidence={finding.evidence[:120]!r}"
         )
         # Deliberately NEVER calls self.on_finding — shadow detectors cannot act.
         return finding
@@ -175,6 +208,13 @@ class DetectorEngine:
             det = self._by_name(playbook)
             if det is None:
                 del self._states[key]
+                continue
+            if state.source == "promql":
+                # A PromQL-armed key fires only from `evaluate_promql`, which re-confirms the
+                # condition first; firing it here on the clock would fire on a condition last
+                # seen up to one interval ago. Only stale-key cleanup applies.
+                if now - state.last_match > _EVENT_ARM_TTL:
+                    del self._states[key]
                 continue
             if not state.fired and now - state.armed_at >= det.debounce_seconds:
                 fired.append(self._fire(det, namespace, name, state))
@@ -234,10 +274,24 @@ class DetectorEngine:
         is worthless if it stops warning without saying so, and that is what happened: the
         outage arrived as the discarded half of a tuple, so `trend_blind_since` /
         `last_trend_error` now hold it and `GET /v1/findings` reports `predictive: blind`.
+
+        Returns the ACTIVE findings fired. Shadow detectors (ADR-012) are projected in the same
+        sweep and fire into the shadow buffer only, never the watchtower — exactly as
+        `_process_shadow` and `evaluate_promql` treat them. They were skipped until 2026-10-02,
+        while the shadow-findings `watching` field reported a trend-only shadow detector as
+        "evaluated on the predictive interval": its zero firings meant "never asked", and the
+        NL compiler is told to express a metric condition as a trend predicate ALONE.
+
+        Blindness is decided per sweep, like `evaluate_promql`: ANY query that could not run
+        leaves the sweep blind. It used to be decided per query, so a later success reset an
+        earlier failure — harmless while one Prometheus answered every query alike, wrong once
+        the shadow queries run after the active ones and can mask an active detector's outage.
         """
         now = now if now is not None else time.time()
         fired: list[Finding] = []
-        for det in self.detectors:
+        first_error: str | None = None
+        for det, shadow in ([(d, False) for d in self.detectors]
+                            + [(d, True) for d in self.shadow_detectors]):
             for tp in det.trend_predicates:
                 try:
                     series, query_error = await asyncio.to_thread(
@@ -250,23 +304,27 @@ class DetectorEngine:
                     # the exception handler above could not see a Prometheus outage at all: the
                     # error came back as the discarded half of a tuple, the loop saw `[]`, and
                     # the predictive layer went silent with no finding and no log line.
-                    self.trend_blind_since = self.trend_blind_since or now
-                    self.last_trend_error = query_error
+                    first_error = first_error or query_error
                     logger.warning(
                         f"trend_query_unavailable playbook={det.playbook} "
                         f"metric={tp.metric[:80]!r}: {query_error}"
                     )
                     continue
-                self.trend_blind_since = None
-                self.last_trend_error = None
                 for s in series or []:
-                    finding = self._project_series(det, tp, s, now)
-                    if finding is not None:
+                    finding = self._project_series(det, tp, s, now, shadow)
+                    if finding is not None and not shadow:
                         fired.append(finding)
+        if first_error is not None:
+            self.trend_blind_since = self.trend_blind_since or now
+            self.last_trend_error = first_error
+        else:
+            self.trend_blind_since = None
+            self.last_trend_error = None
         return fired
 
     def _project_series(
-        self, det: DetectBlock, tp: TrendPredicate, series: dict, now: float
+        self, det: DetectBlock, tp: TrendPredicate, series: dict, now: float,
+        shadow: bool = False,
     ) -> Finding | None:
         samples = _extract_samples(series)
         if len(samples) < 3:
@@ -281,28 +339,30 @@ class DetectorEngine:
             return None
         namespace, name = _series_target(series, tp.object_label)
         key = (det.playbook, namespace, name)
-        last = self._predicted_fired.get(key)
+        refired = self._shadow_predicted_fired if shadow else self._predicted_fired
+        last = refired.get(key)
         if last is not None and now - last < _PREDICTED_REFIRE_TTL:
             return None
-        self._predicted_fired[key] = now
+        refired[key] = now
         evidence = (
             f"predicted {det.playbook}: {tp.metric[:80]} {tp.direction} toward "
             f"{tp.threshold} — crossing in ~{eta_min:.0f}m"
         )
-        return self._emit(
-            Finding(
-                playbook=det.playbook,
-                cluster_id=self.cluster_id,
-                namespace=namespace,
-                object_name=name,
-                evidence=evidence,
-                first_seen=now,
-                fired_at=now,
-                source="trend",
-                severity="predicted",
-                eta_minutes=round(eta_min, 1),
-            )
+        finding = Finding(
+            playbook=det.playbook,
+            cluster_id=self.cluster_id,
+            namespace=namespace,
+            object_name=name,
+            evidence=evidence,
+            first_seen=now,
+            fired_at=now,
+            source="shadow" if shadow else "trend",
+            severity="predicted",
+            eta_minutes=round(eta_min, 1),
         )
+        # A shadow prediction reaches the shadow buffer only — never `_emit`, which is the path
+        # to the watchtower (ADR-012).
+        return self._publish_shadow(finding) if shadow else self._emit(finding)
 
     async def run(self) -> None:
         """Background tick loop (debounce expiry + stale-arm cleanup)."""
@@ -321,6 +381,116 @@ class DetectorEngine:
                 await self.evaluate_trends()
             except Exception as exc:
                 logger.warning(f"detector_trend_error: {exc}")
+
+    # ── Instant PromQL predicates (#20) ─────────────────────────────────────────
+
+    async def evaluate_promql(self, now: float | None = None) -> list[Finding]:
+        """Run every `promql:` query of every loaded detector once; fire what is due.
+
+        Returns the ACTIVE findings fired. Shadow detectors (ADR-012) are evaluated in the same
+        sweep — an NL-authored detector is only ever shadow until promoted, so skipping them
+        would stage a candidate whose zero firings mean "never asked" — and fire into the shadow
+        buffer only, never the watchtower.
+
+        Semantics, per detector (all of its queries together):
+
+        * every element of each query's result vector is a match for `(playbook, namespace,
+          object)` read off its labels (`_promql_target`);
+        * a match arms the key, or refreshes it; the key fires on the first evaluation at which
+          it has been armed for `debounce_seconds` (so the effective debounce is rounded up to
+          the evaluation interval; 0 fires on the first evaluation that sees it);
+        * a fired key does not re-fire while it keeps matching (transition dedup, as for watch
+          predicates — the key is shared with them, so a pod both arms fire for fires once);
+        * a PromQL-armed key that NO query of the detector returns any more is cleared — but
+          only after a sweep in which every one of that detector's queries ran. A query that
+          failed proves nothing about absence, so it clears nothing and fires nothing.
+
+        Never raises. A failed query (unconfigured, unreachable, timeout, HTTP/PromQL error, or
+        a result that is not an instant vector) sets `promql_blind_since` / `last_promql_error`,
+        which `GET /v1/findings` reports as `promql: blind` — the error state, never a quiet
+        zero. The reason is redacted before it is stored or logged.
+        """
+        now = now if now is not None else time.time()
+        fired: list[Finding] = []
+        failures: list[str] = []
+        total = 0
+        for det, shadow in ([(d, False) for d in self.detectors]
+                            + [(d, True) for d in self.shadow_detectors]):
+            if not det.promql:
+                continue
+            matched: dict[tuple[str, str], str] = {}
+            complete = True
+            for query in det.promql:
+                total += 1
+                try:
+                    series, error = await asyncio.to_thread(query_prometheus_vector, query)
+                except Exception as exc:   # the reader never raises; this is belt and braces
+                    series, error = [], f"{type(exc).__name__}: {exc}"
+                if error is not None:
+                    complete = False
+                    reason = redact_secrets(str(error), max_chars=300)
+                    failures.append(f"{det.playbook}: {reason}")
+                    logger.warning(
+                        f"promql_query_unavailable playbook={det.playbook} "
+                        f"query={query[:80]!r}: {reason}"
+                    )
+                    continue
+                for s in series:
+                    matched.setdefault(_promql_target(s), _promql_evidence(query, s))
+            fired += self._settle_promql(det, matched, complete, now, shadow)
+
+        self.promql_last_sweep_at = now
+        if failures:
+            self.promql_blind_since = self.promql_blind_since or now
+            self.last_promql_error = (
+                f"{len(failures)} of {total} PromQL quer{'y' if total == 1 else 'ies'} could not "
+                f"be evaluated — first: {failures[0]}"
+            )
+        else:
+            self.promql_blind_since = None
+            self.last_promql_error = None
+        return fired
+
+    def _settle_promql(
+        self, det: DetectBlock, matched: dict[tuple[str, str], str], complete: bool,
+        now: float, shadow: bool,
+    ) -> list[Finding]:
+        states = self._shadow_states if shadow else self._states
+        fired: list[Finding] = []
+        for (namespace, name), evidence in matched.items():
+            key = (det.playbook, namespace, name)
+            state = states.get(key)
+            if state is None:
+                state = _KeyState(armed_at=now, last_match=now, evidence=evidence,
+                                  source="promql")
+                states[key] = state
+            else:
+                state.last_match = now
+            if not state.fired and now - state.armed_at >= det.debounce_seconds:
+                if shadow:
+                    self._emit_shadow(det, namespace, name, state)
+                else:
+                    fired.append(self._fire(det, namespace, name, state))
+        if complete:
+            for key, state in list(states.items()):
+                if (key[0] == det.playbook and state.source == "promql"
+                        and (key[1], key[2]) not in matched):
+                    del states[key]   # the condition cleared — a recurrence may fire again
+        return fired
+
+    async def run_promql(self, interval: float = _PROMQL_INTERVAL) -> None:
+        """Background PromQL-predicate loop (#20); separate from the 1s tick and the trend loop."""
+        interval = max(float(interval), _PROMQL_MIN_INTERVAL)
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                await self.evaluate_promql()
+            except Exception as exc:
+                # A sweep that died part-way looked at some detectors and not others.
+                self.promql_blind_since = self.promql_blind_since or time.time()
+                self.last_promql_error = redact_secrets(
+                    f"the PromQL sweep failed: {exc}", max_chars=300)
+                logger.warning(f"detector_promql_error: {self.last_promql_error}")
 
     def recent_findings(self, limit: int = 100, since: float = 0.0) -> list[dict]:
         out = [f.to_dict() for f in self.findings if f.fired_at >= since]
@@ -401,6 +571,50 @@ def _series_target(series: dict, object_label: str | None) -> tuple[str, str]:
     return namespace, name
 
 
+def _promql_target(series: dict) -> tuple[str, str]:
+    """(namespace, object) for one element of a PromQL result vector.
+
+    The first label in `_PROMQL_OBJECT_LABELS` names the object. A series carrying none of them
+    is keyed by its full label set instead of `"unknown"`: two different series must never share
+    a debounce key, or the second one could never fire while the first is held.
+    """
+    labels = series.get("metric", {}) or {}
+    namespace = labels.get("namespace") or "cluster"
+    for label in _PROMQL_OBJECT_LABELS:
+        if labels.get(label):
+            return namespace, str(labels[label])
+    rest = sorted((k, v) for k, v in labels.items() if k not in ("__name__", "namespace"))
+    if not rest:
+        return namespace, str(labels.get("__name__") or "cluster")
+    return namespace, "{" + ",".join(f"{k}={v}" for k, v in rest) + "}"
+
+
+def _promql_evidence(query: str, series: dict) -> str:
+    """One line of evidence: the query that matched and the series' current value.
+
+    Only the value is quoted from the result. Labels are not: the object and namespace are
+    already on the finding, and the remaining label values are cluster text that the
+    protected-namespace rule in `_summarise` keeps out of findings.
+    """
+    value = series.get("value")
+    current = value[1] if isinstance(value, (list, tuple)) and len(value) == 2 else "?"
+    return f"promql {' '.join(query.split())[:120]!r} = {current}"
+
+
+def promql_unavailable_reason() -> str | None:
+    """Why this deployment would not evaluate `promql:` predicates — None when it would.
+
+    Read by the loaders (a block whose only predicates are PromQL is not loaded where nothing
+    evaluates them), by the NL-authoring gate (`authoring.deployment_errors`) and by the
+    shadow-findings `watching` field, so all three give the same answer.
+    """
+    if not settings.PROMQL_DETECTION_ENABLED:
+        return "PROMQL_DETECTION_ENABLED is false"
+    if not (settings.PROMETHEUS_URL or "").strip():
+        return "PROMETHEUS_URL is not set"
+    return None
+
+
 # A Kubernetes event `message` is arbitrary cluster text: mount failures name Secrets, image
 # pulls name registries and auth errors, probe failures quote URLs and payloads. Every other
 # field a finding carries is an enum or an object name; this one is not.
@@ -441,10 +655,21 @@ def load_detectors() -> tuple[DetectBlock, ...]:
     from app.agent.playbooks import list_playbooks
 
     blocks = []
+    promql_off = promql_unavailable_reason()
     for pb in list_playbooks():
         det = getattr(pb, "detect", None)
-        if det is not None:
-            blocks.append(det)
+        if det is None:
+            continue
+        if promql_off and det.promql and not (det.watch_predicates or det.trend_predicates):
+            # Would load, count toward the detector total, and never fire. No shipped playbook
+            # has this shape (all of them pair PromQL with watch predicates); a hand-written one
+            # is refused out loud rather than loaded inert.
+            logger.warning(
+                "detector %r has only promql predicates and PromQL detection is unavailable "
+                "(%s) — not loaded; it could never fire here", det.playbook, promql_off,
+            )
+            continue
+        blocks.append(det)
     return tuple(blocks)
 
 
@@ -454,11 +679,11 @@ def _is_detect_block(predicate: object) -> bool:
     (Consolidation 'learned' rows store {derived_from_playbooks, pattern} — those
     are not detect blocks and are skipped.)
 
-    ``promql`` is not in the list: nothing evaluates it, so a row carrying only
-    PromQL compiles to a detector that can never fire. See ``parse_detect_block``.
+    ``promql`` is in the list since #20 (it is evaluated). Whether this deployment evaluates it
+    is decided per predicate in ``load_db_detectors``.
     """
     return isinstance(predicate, dict) and any(
-        k in predicate for k in ("watch_predicates", "trend_predicates")
+        k in predicate for k in EVALUATED_PREDICATE_KEYS
     )
 
 
@@ -502,6 +727,7 @@ async def load_db_detectors(
     from app.detectors.predicate_shape import (
         predicate_health_errors,
         predicate_liveness_errors,
+        promql_shape_errors,
         trend_liveness_errors,
     )
     from app.detectors.review import DetectorStoreUnavailable
@@ -570,7 +796,18 @@ async def load_db_detectors(
                            if not trend_liveness_errors(tp))
         dropped = [msg for p in block.watch_predicates for msg in predicate_liveness_errors(p)]
         dropped += [msg for tp in block.trend_predicates for msg in trend_liveness_errors(tp)]
-        if dropped and not (live_watch or live_trend):
+        # PromQL (#20): a query of a shape that cannot fire is dropped like a dead watch
+        # predicate; on a deployment that does not evaluate PromQL at all, EVERY query is
+        # dropped, with the reason, so the row is not counted as watching with them.
+        promql_off = promql_unavailable_reason()
+        live_promql = tuple(q for q in block.promql
+                            if not promql_off and not promql_shape_errors(q))
+        if promql_off:
+            dropped += [f"promql {q[:60]!r} is not evaluated on this deployment ({promql_off})"
+                        for q in block.promql]
+        else:
+            dropped += [msg for q in block.promql for msg in promql_shape_errors(q)]
+        if dropped and not (live_watch or live_trend or live_promql):
             logger.warning(
                 "db_detector_can_never_fire name=%r status=%r reason=%s — not loaded",
                 r["name"], r["status"], dropped[0],
@@ -580,10 +817,11 @@ async def load_db_detectors(
             logger.warning(
                 "db_detector_predicate_can_never_fire name=%r status=%r reason=%s — that "
                 "predicate is dropped; the detector still loads with %d live predicate(s)",
-                r["name"], r["status"], dropped[0], len(live_watch) + len(live_trend),
+                r["name"], r["status"], dropped[0],
+                len(live_watch) + len(live_trend) + len(live_promql),
             )
             block = replace(block, watch_predicates=live_watch, trend_predicates=live_trend,
-                            dropped_predicates=tuple(dropped))
+                            promql=live_promql, dropped_predicates=tuple(dropped))
         # A live predicate that matches a healthy object is NOT dropped — see
         # `DetectBlock.fires_on_healthy`. It is loaded, evaluated, and named, so an operator
         # reading the detector's findings can see why there are so many of them.

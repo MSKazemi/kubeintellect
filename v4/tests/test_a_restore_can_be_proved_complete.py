@@ -38,8 +38,8 @@ class FakeDb:
                  unreached: dict[str, int] | None = None,
                  missing: tuple[str, ...] = ()) -> None:
         self.counts = counts
-        self.anchors = anchors or {"decision_log": 0, "memory_audit": 0}
-        self.unreached = unreached or {"decision_log": 0, "memory_audit": 0}
+        self.anchors = {c: 0 for c, _, _ in CHAINS} | (anchors or {})
+        self.unreached = {c: 0 for c, _, _ in CHAINS} | (unreached or {})
         self.missing = set(missing)
         self.seen: list[str] = []
 
@@ -62,7 +62,7 @@ class FakeDb:
 def _healthy(**over) -> FakeDb:
     counts = {t: 10 for t in COUNTED_TABLES}
     counts.update(over.pop("counts", {}))
-    return FakeDb(counts, anchors={"decision_log": 4, "memory_audit": 2}, **over)
+    return FakeDb(counts, anchors={"decision_log": 4, "memory_audit": 2, "effect_log": 3}, **over)
 
 
 def _manifest(db: FakeDb | None = None) -> dict:
@@ -80,6 +80,28 @@ class TestTheManifestMeasuresTheRightThings:
         assert set(m["row_counts"]) == set(COUNTED_TABLES)
         for table in ("episodes", "decision_log", "memory_audit"):
             assert table in m["row_counts"]
+
+    def test_it_counts_the_adr008_effect_log(self):
+        """Dropped effect_log rows are how an irreversible call or a spent token runs again."""
+        assert "effect_log" in COUNTED_TABLES
+        assert "effect_log" in _manifest()["row_counts"]
+
+    def test_the_effect_log_chain_is_anchored_like_the_other_two(self):
+        assert ("effect_log", "effect_log_head", "session_id") in CHAINS
+        assert _manifest()["chains"]["effect_log"]["anchors"] == 3
+
+    def test_a_truncated_effect_log_tail_is_reported_as_a_broken_chain(self):
+        """Dropped newest rows leave a valid prefix; only the head anchor can see it."""
+        restored = _healthy(unreached={"effect_log": 1})
+        result = verify(restored, _manifest())
+        assert result["ok"] is False
+        assert any(p.startswith("effect_log:") and "truncated tail" in p
+                   for p in result["problems"])
+
+    def test_a_restore_that_lost_effect_log_rows_is_reported(self):
+        result = verify(_healthy(counts={"effect_log": 4}), _manifest())
+        assert result["ok"] is False
+        assert any("effect_log: 4 rows" in p and "6 MISSING" in p for p in result["problems"])
 
     def test_it_records_how_far_each_chain_got(self):
         """The part no row count can replace."""

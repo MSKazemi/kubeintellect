@@ -141,6 +141,7 @@ nav:
     - AWS EKS: deploy/aws.md
     - Google Cloud GKE: deploy/gcp.md
     - Alibaba Cloud: deploy/alibaba.md
+    - Local / self-hosted LLM: local-llm.md
 
   - Reference:
     - Architecture: architecture.md

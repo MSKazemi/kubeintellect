@@ -336,6 +336,9 @@ Response:
   "predictive": "active",
   "predictive_detectors": 3,
   "predictive_error": null,
+  "promql": "off",
+  "promql_detectors": 18,
+  "promql_error": null,
   "streams": [
     {"name": "get pods -A", "connected": true, "stopped": false,
      "consecutive_failures": 0, "last_error": null}
@@ -399,7 +402,24 @@ Prometheus is answering.
 | `blind` | Prometheus could not be queried; `predictive_error` carries the reason, and no prediction *could* have fired |
 | `off` | `PREDICTIVE_DETECTION_ENABLED=false`, or no loaded detector has a `trend_predicates` block |
 
-`predictive_detectors` counts the detectors that carry trend predicates.
+`predictive_detectors` counts the active **and shadow** detectors that carry trend predicates. Shadow
+trend predicates are projected in the same sweep, with firings routed to the shadow buffer only
+(never the watchtower, ADR-012); one failing trend query anywhere in the sweep makes it `blind`.
+
+`promql` is the same claim for the instant **`promql:` predicates** of `detect:` blocks (#20),
+which also see through Prometheus. They run on their own loop, every
+`PROMQL_DETECTION_INTERVAL_SECONDS`, only when `PROMQL_DETECTION_ENABLED` is on:
+
+| Value | Meaning |
+|---|---|
+| `active` | every query in the last sweep ran — an absent metric-side finding means the condition does not hold |
+| `starting` | the flag is on but no sweep has finished yet — nothing metric-side could have fired |
+| `blind` | at least one query in the last sweep could not run (Prometheus unconfigured, unreachable, timed out, rejected the query, or answered with something that is not an instant vector); `promql_error` says how many failed and the first reason |
+| `off` | `PROMQL_DETECTION_ENABLED=false`, or no loaded detector carries a `promql:` query |
+
+`promql_detectors` counts active and shadow detectors that carry PromQL queries. `blind` is
+stricter than `predictive: blind`: one failing query blinds the sweep, because that detector's
+silence is then not evidence even if every other query answered.
 
 !!! danger "An empty `findings` list is only an all-clear when `sensorium` is `active`"
     In every other state nothing is being watched, so no finding *could* have
@@ -415,6 +435,11 @@ Prometheus is answering.
     saw an empty series, and the documented `trend_query_error` log line was in an `except` block
     that a Prometheus outage can never reach — `_query_raw` returns its errors, it does not raise.
     A layer whose entire job is to warn *before* a failure had stopped warning, silently.
+
+!!! danger "…and only when `promql` is neither `blind` nor `starting`"
+    The PromQL sweep never turns "could not ask" into "nothing matched": a failed query fires
+    nothing, clears nothing (a key it had armed stays armed), and marks the sweep `blind` with
+    the reason. `kq findings` and the morning digest withhold their all-clear while it is.
 
 ---
 
@@ -565,6 +590,8 @@ any events for this episode — intact and complete are different claims. Requir
   "root_cause": "…", "follow_ups": [], "narrative": null,
   "events_lost": 0,
   "gaps": [],
+  "grounding_rate": null, "claims_total": 0, "claims_ungrounded": 0,
+  "narrative_withheld": null,
   "summary": "… audit chain intact."
 }
 ```
@@ -586,7 +613,13 @@ banner beside the chain verdict, and `kq export` exits `5`.
 
 The [`kq postmortem`](cli-reference.md#kq-postmortem-session-id) subcommand wraps
 this with `format=markdown`. An optional LLM narrative (`POSTMORTEM_LLM_NARRATIVE`)
-is constrained to the recorded events.
+is constrained to the recorded events and then checked **claim by claim** against them:
+unsupported claims are removed, and when fewer than `POSTMORTEM_MIN_GROUNDING` (default
+`0.9`) of its claims are supported the narrative is withheld (`narrative: null`) with the
+reason in `narrative_withheld`. `grounding_rate` is `null` when no narrative was checked —
+that is "not measured", not a perfect score. `format=markdown` returns these four fields
+alongside the verdict fields. See [configuration](configuration.md#incident-postmortems-adr-011)
+for the rules.
 
 ---
 
@@ -599,7 +632,7 @@ candidate that observes but never reaches the watchtower until promoted. Gated b
 
 | Method & path | Purpose |
 |---|---|
-| `POST /v1/detectors` | Body `{"description": "...", "name"?: "..."}` → compile + validate + stage as shadow. Returns the compiled block + any validation errors. |
+| `POST /v1/detectors` | Body `{"description": "...", "name"?: "...", "recompile"?: false}` → compile + validate + stage as shadow + confirm the engine loaded it. See [Authoring outcomes](#authoring-outcomes) below. |
 | `GET /v1/detectors?status=` | List detectors (`candidate`/`shadow`/`active`/`demoted`). |
 | `POST /v1/detectors/{name}/promote` | Promote shadow → active (it now reaches the watchtower). **409** if its predicates can never match — see below. |
 | `POST /v1/detectors/{name}/demote` | Demote/reject — stop it firing. |
@@ -626,10 +659,71 @@ without checking. The load path reads the same way, for the same reason: a detec
 through this API is evaluated by the cluster running it, not only by a deployment that happens
 to leave `CLUSTER_ID` unset.
 
+### Authoring outcomes
+
+`POST /v1/detectors` never reports a detector it could not stand behind. Each outcome has its
+own status code, and `staged` means one thing only: **this server's detector engine has loaded
+the detector and evaluates it**.
+
+| HTTP | `staged` | `stored` | Meaning |
+|---|---|---|---|
+| `200` | `true` | `true` | Stored as `shadow`, loaded by the engine, and evaluated. |
+| `202` | `false` | `true` | Stored, but not loaded or not evaluated *here* — `staged_reason` says why (e.g. the engine runs on another replica, or a refresh failed). Resubmitting the same description re-checks without recompiling. |
+| `422` | `false` | `false` | The compiled detector was refused by the validation gate — `errors` names every reason, `compiled` shows what the model produced. Nothing was stored. |
+| `409` | `false` | — | The name is taken, or this exact description was already compiled and then demoted. Nothing changed. |
+| `502` | — | — | The compiler model could not be called. Retryable; says nothing about the description. |
+| `503` | — | — | The detector store is unavailable. Nothing was compiled or stored. |
+
+The validation gate refuses, by name, every compiled detector that could not fire, or whose
+loaded form would differ from what was compiled:
+
+- an empty object, or one with **zero** watch/trend/PromQL predicates;
+- any `promql` entry on a deployment that does not evaluate PromQL — `PROMQL_DETECTION_ENABLED`
+  is false, or `PROMETHEUS_URL` is not set; the reason names which. The query would be stored
+  and never evaluated, even beside a live watch predicate;
+- a `promql` entry of a shape that cannot work as a detector: not a string, empty, over 2000
+  characters, unbalanced brackets or quotes, a range selector with no duration (`[]`) or one
+  wider than 24h, an expression ending in a bare range selector (`metric[5m]` — an instant query
+  then returns a range vector), a `bool` comparison modifier (it returns every series, so the
+  detector would fire on every object), or an unfilled template label value;
+- a `promql` entry Prometheus itself rejects or cannot be asked about: where PromQL is
+  evaluated, each query is run **once** against Prometheus before anything is stored, and any
+  error (parse error, unreachable, timeout, a non-vector answer) is a refusal. An empty answer
+  is accepted — the condition simply does not hold right now;
+- an unknown top-level key, or an unknown field on a predicate (e.g. `namespace` on a watch
+  predicate) — the engine has no reader for it, so the condition would be silently dropped;
+- a predicate missing `kind` (watch) or `metric`/`threshold` (trend), a non-string regex, or a
+  non-numeric threshold — the loader would drop the predicate without saying so;
+- a trend knob or `debounce_seconds` the loader would replace with its default (e.g.
+  `min_r2: 1.5`), and any difference between the number of predicates written and loaded;
+- every liveness check described above (unsupported or wrong-case `kind`, no `status_regex`,
+  a regex only an impossible value satisfies, a template in a PromQL selector, a bad
+  `direction`), and a predicate that matches a **healthy** object;
+- an `Event` watch predicate with neither `reason_regex` nor `message_regex` — an absent regex
+  matches anything, so it fires on every Warning event (of `involved_kind`, if set). Promotion
+  refuses it too; a stored one still loads, flagged in `fires_on_healthy`;
+- a detector whose only predicates are trend predicates while `PREDICTIVE_DETECTION_ENABLED` is
+  false — nothing on that deployment would evaluate it.
+
+**Compilation is pinned and stored.** The model is called at temperature 0, and the compiled
+block is stored together with its provenance (`compilation`: `description_sha256`, `model`,
+`temperature`, `compiled_at`). Loading, listing and promoting a detector read that stored block —
+nothing recompiles it. Submitting the **same description again** (compared whitespace-insensitively)
+answers from the stored compilation without calling the model (`compilation.source: "stored"`,
+`reused: true`), re-checked against the gate. Pass `"recompile": true` with a new `name` to ask
+the model again; the response then carries `compilation.source: "fresh"`. Temperature 0 narrows
+but does not eliminate run-to-run variation in a hosted model, so two fresh compilations of one
+sentence can still differ — which is why reuse, not recompilation, is the default. A model that
+rejects `temperature=0` makes authoring fail with `502` rather than compile at a temperature
+nobody chose.
+
 ```json
-{"staged": true, "status": "shadow", "name": "nl:OOMKilled",
+{"staged": true, "stored": true, "status": "shadow", "name": "nl:OOMKilled",
  "compiled": {"watch_predicates": [{"kind": "Pod", "status_regex": "^OOMKilled$"}]},
- "errors": []}
+ "errors": [],
+ "staged_reason": "loaded, with watch predicates evaluated on every observation",
+ "compilation": {"description_sha256": "…", "model": "gpt-4o-mini", "temperature": 0.0,
+                 "compiled_at": 1790000000.0, "source": "fresh"}}
 ```
 
 `GET /v1/detectors/{name}/shadow-findings` answers with the firings **and** two fields about
@@ -644,8 +738,15 @@ whether the number means anything:
 are different for a detector whose only predicates are `trend_predicates`: those are evaluated on
 the predictive interval, which does not run when `PREDICTIVE_DETECTION_ENABLED` is false. Such a
 detector is in the shadow set, lists as `shadow`, and is evaluated by nothing — so `"findings":
-[]` is a fact about the flag, not about the cluster. `watching_reason` names the case in words,
-including which flag to change. **A precision or recall figure computed over shadow detectors
+[]` is a fact about the flag, not about the cluster. With the flag **on**, shadow trend predicates
+are evaluated and fire into the shadow buffer only; if the last trend sweep was blind,
+`watching_reason` says so. A detector with watch predicates *and* trend predicates stays
+`watching: true` while the flag is off, but `watching_reason` states that its trend predicates are
+not evaluated. `watching_reason` names the case in words,
+including which flag to change. A detector with PromQL predicates is `watching` when
+`PROMQL_DETECTION_ENABLED` is on and `PROMETHEUS_URL` is set (on any other deployment the loader
+drops its queries and says so); if the last PromQL sweep was blind, `watching_reason` says that
+too, because the detector's recent silence is then not evidence. **A precision or recall figure computed over shadow detectors
 must take its denominator from `watching`, never from the row count in the store.**
 
 `watching_reason` also carries the opposite problem, because `watching: true` on its own can be

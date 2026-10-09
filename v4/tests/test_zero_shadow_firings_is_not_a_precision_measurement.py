@@ -41,10 +41,13 @@ class FakeDetector:
     cannot exercise that.
     """
 
-    def __init__(self, playbook, *, watch=("pod-status",), trend=()):
+    def __init__(self, playbook, *, watch=("pod-status",), trend=(), promql=()):
         self.playbook = playbook
         self.watch_predicates = tuple(watch)
         self.trend_predicates = tuple(trend)
+        # #20: `watching` also asks whether a loaded detector has a PromQL predicate, and the real
+        # `DetectBlock` always carries that tuple too.
+        self.promql = tuple(promql)
 
 
 class FakeFinding:

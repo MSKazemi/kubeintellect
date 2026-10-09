@@ -63,7 +63,7 @@ opt-in ones are called out. Defaults below are verified against
 | `CORTEX_V4_ENABLED` | `false` | The V4 explicit-node reasoning graph (triage→gather→synthesize→remember) with tiered models. | — | Medium — swaps the reasoning engine; opt-in preview (flips when `cluster_resolved` reaches V2 parity). |
 | `PREDICTIVE_DETECTION_ENABLED` | `false` | Anticipatory (trend) detection that warns before a slow-burn failure; still zero-token, capped at `A1`. | `PROMETHEUS_URL` | Low–Medium — never auto-fixes; fail-open. |
 | `NL_DETECTOR_AUTHORING_ENABLED` | `false` | Compile a plain-English failure into a **shadow** detector; `kq detector`. | Sensorium | Low — shadow detectors never reach the watchtower until a human promotes them. |
-| `POSTMORTEM_LLM_NARRATIVE` | `false` | Adds an LLM narrative on top of the deterministic postmortem timeline. | `POSTMORTEM_ENABLED` | Low — the only token-spending part; falls back to the deterministic timeline on failure, and says in the document that it did. |
+| `POSTMORTEM_LLM_NARRATIVE` | `false` | Adds an LLM narrative on top of the deterministic postmortem timeline. | `POSTMORTEM_ENABLED` | Low — the only token-spending part; falls back to the deterministic timeline on failure, and says in the document that it did. Unsupported claims are removed and, below `POSTMORTEM_MIN_GROUNDING` (`0.9`), the narrative is withheld. |
 
 > **Anthropic note.** `LLM_PROVIDER=anthropic` is only wired through the V4 cortex —
 > it has no effect unless `CORTEX_V4_ENABLED=true`.
@@ -155,6 +155,46 @@ additive, so disabling one returns to the prior behavior with no migration:
 ```bash
 kubeintellect set PREDICTIVE_DETECTION_ENABLED=false
 ```
+
+---
+
+## Upgrading to the next release (after 2.5.0)
+
+These changes are in `CHANGELOG.md` under **[Unreleased]**. Read the breaking changes before you
+upgrade; everything new is default-off.
+
+### Breaking changes
+
+1. **`LLM_PROVIDER=anthropic` on the default V2 graph now refuses to start.** Before, the server
+   logged a warning and sent cluster data to OpenAI/Azure instead. It now exits with code 1 before
+   the port opens and says which vendor the data would have gone to. Fix: set
+   `CORTEX_V4_ENABLED=true` (the Cortex graph supports Anthropic), or choose `openai`, `azure`,
+   `qwen` or the new `local` provider. See [Configuration](configuration.md).
+2. **NL detector authoring (`POST /v1/detectors`) no longer always answers 200.** It returns
+   `422` (the compiled detector cannot fire), `409` (name or prose clash), `202` (stored but not
+   loaded — `staged:false` with a reason), `502` (model unavailable) or `503` (store unavailable).
+   `kq detector new` reports 422, 409 and 202 explicitly (it exits successfully only when the
+   new rule is staged; 422 and 409 exit with code 3, and 202 with code 1) and treats 502 and 503
+   as an ordinary failed request; any other client must handle all six. Authoring compiles at a
+   temperature of zero, so a model that rejects that setting cannot author rules. See the
+   [API reference](api-reference.md).
+
+### New default-off flags
+
+| Flag | What it adds | Before you enable it |
+|---|---|---|
+| `LLM_PROVIDER=local` | Ollama / vLLM / LM Studio / llama.cpp as a first-class provider | [Local LLM guide](local-llm.md). Startup makes one real tool call per model; a cold CPU load can exceed a short liveness probe |
+| `SELF_GOVERN_ENABLED` | Exactly-once irreversible calls with single-use approvals (ADR-008), and a grounding check on the Cortex graph (ADR-009) | Needs the flight recorder on Postgres and **`kubeintellect db-init`** (schema version 3 adds the `effect_log` table). Without the ledger every irreversible call falls back to a human approval |
+| `PROMQL_DETECTION_ENABLED` | Evaluates the `promql:` queries in `detect:` blocks | Needs `PROMETHEUS_URL`. The 20 shipped queries have never run before, so expect new findings; an unreachable Prometheus shows as `promql: blind` on `GET /v1/findings`, never as "all clear" |
+| `POSTMORTEM_MIN_GROUNDING` | Threshold for the claim-level grounding gate on postmortem narratives | Only matters with `POSTMORTEM_LLM_NARRATIVE=true` (still default-off). Below the threshold the narrative is withheld and the deterministic postmortem returned |
+
+Enable them one at a time, as in [the runbook above](#runbook-enable-a-flag-safely).
+
+### Database
+
+Schema version goes from 2 to 3 (two additive tables, `effect_log` and its `effect_log_head`
+anchor; append-only, never pruned by retention). `kubeintellect db-init` applies it; `/healthz` reports a mismatch between the applied
+and expected version. Nothing in version 2 is altered.
 
 ---
 

@@ -174,11 +174,17 @@ disabled if that destination is not acceptable.
 
 ## Self-hosted inference
 
-`OPENAI_BASE_URL` is passed to the OpenAI-compatible client and is used by the
-Qwen/DashScope path as well. That setting is a compatibility hook, not proof
-that an arbitrary local or air-gapped provider is tested or supported. The
-project tracks first-class, tested self-hosted provider support in [issue
-#17](https://github.com/MSKazemi/kubeintellect/issues/17).
+`LLM_PROVIDER=local` sends model requests to a self-hosted OpenAI-compatible
+server (Ollama, vLLM, LM Studio, llama.cpp) at `OPENAI_BASE_URL`, which defaults
+to `http://localhost:11434/v1` and is never left empty — so a `local`
+deployment cannot fall back to `api.openai.com` by omission. No API key is
+required. Before the server opens its port it checks that the endpoint is
+reachable and that each configured model makes a tool call, and refuses to
+start otherwise. See [Local / self-hosted LLM](local-llm.md).
+
+The unit tests cover the configuration, the client wiring and the startup check
+against stubbed endpoints; answer quality on a given local model is not
+benchmarked by this project.
 
 An in-cluster endpoint can keep the model request inside the cluster network,
 but the endpoint operator can still see the prompt. It also does not disable
@@ -204,9 +210,9 @@ Before connecting a real cluster:
    tool telemetry. Protect the PostgreSQL database, checkpoint file, backups,
    and replicas with the same care.
 6. If using a hosted model, review its data-use and retention terms. If using a
-   compatible self-hosted endpoint, validate the deployment yourself; issue
-   [#17](https://github.com/MSKazemi/kubeintellect/issues/17) tracks the missing
-   first-class support and test coverage.
+   self-hosted endpoint, use `LLM_PROVIDER=local` (see
+   [Local / self-hosted LLM](local-llm.md)) and protect the model server like
+   any other recipient of cluster data — its operator can read the prompts.
 
 This page documents the existing boundaries. It does not add an egress-redaction
 layer or make a claim that cluster-derived text is safe to disclose.

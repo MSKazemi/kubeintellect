@@ -40,8 +40,11 @@ the wizard installs `kubectl`, optionally creates a Kind cluster, and configures
 The default is **Azure OpenAI** (`LLM_PROVIDER=azure`), driving `gpt-4o` for the
 coordinator/synthesis tier and `gpt-4o-mini` for the subagents. Three other
 providers are supported: `openai` (same models, OpenAI-hosted), `qwen` (Alibaba
-DashScope, OpenAI-compatible — `qwen-max` / `qwen-plus`), and `anthropic`
-(`claude-sonnet-4-6` / `claude-haiku-4-5`, wired only through the V4 cortex). You
+DashScope, OpenAI-compatible — `qwen-max` / `qwen-plus`), `local` (a self-hosted
+OpenAI-compatible server such as Ollama, vLLM or LM Studio — no API key; see
+[Local / self-hosted LLM](local-llm.md)), and `anthropic`
+(`claude-sonnet-4-6` / `claude-haiku-4-5`, wired only through the V4 cortex — the
+server refuses to start with `anthropic` unless `CORTEX_V4_ENABLED=true`). You
 set exactly one. See [Configuration → LLM provider](configuration.md#llm-provider).
 
 ### Do I need PostgreSQL?
@@ -56,7 +59,11 @@ PostgreSQL unlocks the cross-session cognitive layers: the
 [audit log](operations.md#audit-log), which has no SQLite equivalent: on SQLite the
 server starts with `audit: SQLite mode — audit logging disabled`, so there is no
 stored record of who asked for what. In SQLite mode these are disabled; nothing else
-is. See [Configuration → Database](configuration.md#database).
+is. (One opt-in feature changes behaviour rather than switching off: with
+`SELF_GOVERN_ENABLED=true`, the ADR-008 effect log lives beside the flight recorder, so on
+SQLite every irreversible call asks for a fresh human approval — see
+[security](security.md#exactly-once-irreversible-calls-and-single-use-approvals-adr-008).)
+See [Configuration → Database](configuration.md#database).
 
 ---
 

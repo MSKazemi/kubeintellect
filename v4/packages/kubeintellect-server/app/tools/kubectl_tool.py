@@ -2,6 +2,7 @@
 run_kubectl — the single execution surface for all Kubernetes operations.
 
 Safety layers (in order):
+  0. Placeholder guard           — reject unresolved planning notation (`<pod>`, `{ns}`, `POD_NAME`)
   1. Shell injection prevention  — reject dangerous shell metacharacters
   2. YAML pre-validation         — validate stdin YAML before touching cluster
   3. Risk classification         — destructive verbs trigger LangGraph interrupt
@@ -156,6 +157,154 @@ _REJECTED_SUBCOMMANDS: dict[str, set[str]] = {"cluster-info": {"dump"}}
 # shell=False (backslashes are passed literally to kubectl, not interpreted
 # by a shell).
 _SHELL_METACHAR = re.compile(r"[;&`$<>]")
+
+# ── Unresolved placeholder guard (#173) ───────────────────────────────────────
+# The coordinator has emitted planning notation as a real argument — `kubectl describe node
+# <node-name>` batched alongside the `get nodes` that would have named the node. The `<`/`>`
+# form is already refused by `_SHELL_METACHAR`, but as "disallowed shell characters", which
+# tells the model nothing about what it did wrong; `{namespace}` and `POD_NAME` are refused by
+# nothing and reach kubectl, which fails with a NotFound the model reads as evidence. This guard
+# only *narrows* what executes: it never admits a command another gate refuses.
+#
+# Shapes, matched outside the excluded spans below:
+#   angle   `<pod-name>`, `pod/<pod>`        — scanned in quoted text too (it is refused anyway)
+#   dollar  `$NODE`, `${NODE}`               — likewise
+#   brace   `{namespace}`, `{{pod}}`         — unquoted text only; the inside is a bare name, so
+#                                              jsonpath `{.items[*]}` and JSON never match
+#   caps    `POD_NAME`, `YOUR_NAMESPACE`     — only as a positional operand (or its `kind/NAME`
+#                                              suffix) or a `-n`/`-c` value: object, namespace
+#                                              and container names are lowercase RFC 1123, so
+#                                              an UPPER_SNAKE value there can never resolve
+# Excluded: the value of `-o`/`--output`/`--template`/`--sort-by` (jsonpath, go-template and
+# custom-columns legitimately carry `{name}`-like text, and an unquoted jsonpath with spaces is
+# followed until its braces balance); quoted text for the brace and caps shapes (a JSON patch or
+# an annotation value); everything after `--` (the container's own command line); and the caps
+# shape under `kubectl config`, whose context names are free-form.
+_PLACEHOLDER_ANGLE = re.compile(r"<[A-Za-z_][\w.-]*>")
+_PLACEHOLDER_DOLLAR = re.compile(r"\$\{?[A-Za-z_]\w*\}?")
+_PLACEHOLDER_BRACE = re.compile(r"\{\{?\s*[A-Za-z_][\w-]*\s*\}\}?")
+_PLACEHOLDER_CAPS = re.compile(r"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+")
+_TEMPLATE_VALUE_FLAGS = ("-o", "--output", "--template", "--sort-by")
+_IDENTIFIER_VALUE_FLAGS = ("-n", "--namespace", "-c", "--container")
+
+
+def _quote_aware_tokens(command: str) -> list[tuple[str, str]] | None:
+    """Split on unquoted whitespace into ``(text, unquoted_text)`` pairs, or None if a quote is
+    left open. ``text`` drops the quote characters; ``unquoted_text`` also drops what they
+    enclosed. `shlex` cannot say which part of a token was quoted, and that is the exclusion."""
+    tokens: list[tuple[str, str]] = []
+    text: list[str] = []
+    bare: list[str] = []
+    quote = ""
+    started = False
+    for ch in command:
+        if quote:
+            if ch == quote:
+                quote = ""
+            else:
+                text.append(ch)
+        elif ch in ("'", '"'):
+            quote, started = ch, True
+        elif ch.isspace():
+            if started:
+                tokens.append(("".join(text), "".join(bare)))
+            text, bare, started = [], [], False
+        else:
+            text.append(ch)
+            bare.append(ch)
+            started = True
+    if quote:
+        return None
+    if started:
+        tokens.append(("".join(text), "".join(bare)))
+    return tokens
+
+
+def _template_flag_value(tok: str) -> str | None:
+    """The inline value of a template-carrying flag (`-o=X`, `-oX`, `--output=X`), "" when the
+    value is the next token, or None when `tok` is not one of those flags."""
+    for flag in _TEMPLATE_VALUE_FLAGS:
+        if tok == flag:
+            return ""
+        if tok.startswith(flag + "="):
+            return tok[len(flag) + 1:]
+    if tok.startswith("-o") and not tok.startswith("--") and len(tok) > 2:
+        return tok[2:]
+    return None
+
+
+def _unresolved_placeholder_in(tokens: list[tuple[str, str]]) -> str | None:
+    """The first placeholder in a quote-aware token list, or None. See the table above."""
+    verb = _extract_verb([t for t, _ in tokens])
+    depth = 0           # unbalanced `{` in a template value that spilled across tokens
+    skip_value = False  # the previous token was a template flag whose value is this token
+    prev = ""
+    for text, bare in tokens:
+        if skip_value or depth > 0:
+            skip_value = False
+            depth = max(0, depth + bare.count("{") - bare.count("}"))
+            prev = text
+            continue
+        if text == "--" and bare == "--":
+            return None
+        # Detected on the full text, so `--template='{{.x}}'` is known to carry its value inline;
+        # braces are counted on the unquoted text, so a quoted `{"\n"}` does not unbalance them.
+        inline = _template_flag_value(text)
+        if inline is not None:
+            if inline == "":
+                skip_value = True
+            else:
+                bare_inline = _template_flag_value(bare) or ""
+                depth = max(0, bare_inline.count("{") - bare_inline.count("}"))
+            prev = text
+            continue
+        for shape in (_PLACEHOLDER_ANGLE, _PLACEHOLDER_DOLLAR):
+            hit = shape.search(text)
+            if hit:
+                return hit.group(0)
+        hit = _PLACEHOLDER_BRACE.search(bare)
+        if hit:
+            return hit.group(0)
+        if verb != "config" and text == bare:
+            candidate: str | None = None
+            if prev in _IDENTIFIER_VALUE_FLAGS:
+                candidate = text
+            elif "=" in text and text.split("=", 1)[0] in _IDENTIFIER_VALUE_FLAGS:
+                candidate = text.split("=", 1)[1]
+            elif not text.startswith("-") and "=" not in text and (
+                not prev.startswith("-") or "=" in prev
+            ):
+                candidate = text.rsplit("/", 1)[-1]
+            if candidate and _PLACEHOLDER_CAPS.fullmatch(candidate):
+                return candidate
+        prev = text
+    return None
+
+
+def _unresolved_placeholder(command: str) -> str | None:
+    """The first unresolved placeholder in a kubectl command line, or None.
+
+    An unparseable line (an open quote) returns None: the parser after this reports it.
+    """
+    tokens = _quote_aware_tokens(command)
+    return _unresolved_placeholder_in(tokens) if tokens else None
+
+
+def _unresolved_placeholder_in_args(args: list[str]) -> str | None:
+    """Same rule for an already-split argv (no quoting left to honour), `kubectl` optional."""
+    argv = args if args and args[0] == "kubectl" else ["kubectl", *args]
+    return _unresolved_placeholder_in([(a, a) for a in argv])
+
+
+def _placeholder_message(placeholder: str, command: str) -> str:
+    return (
+        f"Command contains an unresolved placeholder {placeholder!r}: {command!r}. "
+        "That is planning notation, not a real name, so kubectl was not run. Resolve the "
+        "actual identifier first — take it from the cluster snapshot or an earlier result, or "
+        "list the resource (for example `kubectl get nodes -o wide` or `kubectl get pods -A`) "
+        "and wait for that result — then call run_kubectl again with the concrete name. Do not "
+        "guess a name."
+    )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1493,6 +1642,14 @@ def run_kubectl(
                 "Only 'grep' is allowed after '|'."
             )
 
+    # ── 0b. Unresolved placeholders (#173) ───────────────────────────────────
+    # Ahead of the metacharacter gate only so `<node-name>` is refused with a reason the model
+    # can act on; that gate still refuses every `<`, `>` and `$` this one does not catch.
+    placeholder = _unresolved_placeholder(cmd)
+    if placeholder:
+        logger.warning(f"run_kubectl: refused unresolved placeholder {placeholder!r}: {cmd!r}")
+        raise ValueError(_placeholder_message(placeholder, cmd))
+
     # ── 1. Shell injection prevention ────────────────────────────────────────
     if _SHELL_METACHAR.search(cmd):
         raise ValueError(
@@ -1621,13 +1778,25 @@ def run_kubectl(
         return protected_err
 
     # ── 4c. Risk classification → HITL interrupt ─────────────────────────────
+    # ADR-008 exactly-once + single-use approvals for irreversible calls. Inert (PASS) unless
+    # SELF_GOVERN_ENABLED. Imported here, not at the top: app.tools.aci imports this module.
+    from app.tools import effect_guard
+    admission = effect_guard.PASS
     if verb in DESTRUCTIVE_VERBS or _destructive_verbs_in(args) or _is_write_verb(verb, args):
         has_dry_run = any(
             flag in args for flag in ("--dry-run=client", "--dry-run=server", "--dry-run")
         )
         hitl_bypass = bool((config.get("configurable") or {}).get("hitl_bypass", False)) if config else False
         always_confirm = _requires_always_confirm(verb, args)
-        if not has_dry_run and (not hitl_bypass or always_confirm):
+        admission = effect_guard.admit(
+            cmd, args, stdin, config, has_dry_run=has_dry_run,
+            hitl_bypass=hitl_bypass, always_confirm=always_confirm,
+        )
+        if admission.response is not None:
+            return admission.response
+        if admission.approved:
+            logger.info(f"run_kubectl: single-use approval consumed by the effect guard for {cmd!r}")
+        elif not has_dry_run and (not hitl_bypass or always_confirm):
             hidden = sorted(_destructive_verbs_in(args))
             effective = verb if (verb in DESTRUCTIVE_VERBS or not hidden) else hidden[0]
             risk = "high" if always_confirm else _classify_risk(effective, args)
@@ -1769,4 +1938,4 @@ def run_kubectl(
         )
         logger.debug(f"run_kubectl: output truncated ({omitted} chars omitted)")
 
-    return output
+    return effect_guard.settle(admission, output)

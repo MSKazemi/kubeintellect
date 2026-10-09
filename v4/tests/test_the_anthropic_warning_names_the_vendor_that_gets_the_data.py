@@ -1,19 +1,19 @@
-"""`LLM_PROVIDER=anthropic` on the default graph routes to OpenAI — say so, in those words.
+"""`LLM_PROVIDER=anthropic` on the default graph would route to OpenAI — say so, in those words.
 
-The V2 graph (the default; `CORTEX_V4_ENABLED` is false) has no Anthropic backend, so
-`app.core.llm._coordinator_llm` falls through to `_make_openai`. A user who selected
-`anthropic` therefore gets a `ChatOpenAI` client talking to `api.openai.com` with
-`OPENAI_API_KEY`, and their `ANTHROPIC_API_KEY` is never read.
+The V2 graph (the default; `CORTEX_V4_ENABLED` is false) has no Anthropic backend. Before
+#192 was closed, `app.core.llm._coordinator_llm` fell through to `_make_openai`, so a user
+who selected `anthropic` got a `ChatOpenAI` client talking to `api.openai.com` with
+`OPENAI_API_KEY`, and their `ANTHROPIC_API_KEY` was never read. That configuration is now
+refused (see `test_anthropic_on_v2_is_refused_not_rerouted.py`); the message logged when the
+config loads is the same text the refusal carries.
 
-That behaviour is deliberate and it is warned about. What this file pins is the *wording*:
-the warning must name the vendor that receives the data. The previous text said only that
-`anthropic` "is only used by the V4 cortex", which reads as *Anthropic will not be used* --
-true, but it is the cause, not the consequence, and it leaves a reader believing the run will
-fail rather than succeed against a different provider. Provider choice is frequently a
-compliance decision (see `v4/docs/data-handling.md` and discussion #83), so the identity of
-the receiving vendor is the load-bearing fact, not the name of the graph.
+What this file pins is the *wording*: the message must name the vendor that would have
+received the data. An earlier text said only that `anthropic` "is only used by the V4
+cortex", which is the cause, not the consequence. Provider choice is frequently a compliance
+decision (see `v4/docs/data-handling.md` and discussion #83), so the identity of that vendor
+is the load-bearing fact, not the name of the graph.
 
-See issue #192. Deleting `OpenAI` from that message must fail this file.
+Deleting `OpenAI` from that message must fail this file.
 """
 from __future__ import annotations
 
@@ -68,4 +68,4 @@ class TestTheAnthropicFallbackWarning:
                 CORTEX_V4_ENABLED=True,
             )
         joined = "\n".join(r.getMessage() for r in caplog.records)
-        assert "will be sent to OpenAI" not in joined
+        assert "requires CORTEX_V4_ENABLED=true" not in joined

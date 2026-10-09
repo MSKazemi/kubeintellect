@@ -114,6 +114,14 @@ and any invented facts."* Record grounded-ratio + hallucination count per episod
 **If it fails (<90% or any hallucination):** keep `POSTMORTEM_LLM_NARRATIVE=false` — the
 deterministic seq-cited timeline ships alone (already validated).
 
+**Since the claim-level grounding gate:** the server now removes narrative claims the record
+does not support and withholds the narrative below `POSTMORTEM_MIN_GROUNDING` (`0.9`). Each
+postmortem reports its own `grounding_rate`, `claims_total`, `claims_ungrounded` and
+`narrative_withheld`. Record those alongside the judge's counts — the judge scores what the
+reader actually sees (the post-gate narrative), and the gate's own rate is the pre-gate one.
+Count a withheld narrative separately: it showed the reader no invented fact, but it also
+delivered no narrative, so it is neither a pass nor a missing data point.
+
 ---
 
 ## §3 — F3 natural-language detector 24h shadow soak  ⏳

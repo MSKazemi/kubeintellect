@@ -32,6 +32,8 @@ _PACKAGES = _ROOT / "packages"
 #: Wording the doc must carry for exactly as long as the module has no production caller.
 _NOT_WIRED = "it is not yet wired into the graph"
 _NO_WRITER = "has no production writer yet"
+#: The symbols of `mutating.py` that are the write-authority decision (not the classifier).
+_DECISION = frozenset({"decide_write", "plan_mutation", "validate_mutation", "MutationProposal"})
 
 
 def _production_sources() -> list[Path]:
@@ -47,11 +49,17 @@ def _production_sources() -> list[Path]:
     return sorted(found)
 
 
-def _modules_importing(target: str, *, exclude: str) -> list[str]:
+def _modules_importing(target: str, *, exclude: str, names: frozenset[str] | None = None) -> list[str]:
     """Production modules that import *target* — the only way to reach into it.
 
     Both surfaces live in modules nothing star-imports, so an import edge is necessary as well
     as sufficient: a caller must name the module to reach the symbol.
+
+    ``names`` narrows a ``from target import …`` edge to the symbols that ARE the surface.
+    `mutating.py` holds two things since ADR-008: the write-authority decision this gate is
+    about, and the rollback classifier the effect guard uses on its own. Importing only the
+    classifier does not put the decision in anyone's write path. A bare ``import target`` still
+    counts — it can reach every symbol, so it is treated as reaching the surface.
     """
     importers: list[str] = []
     for path in _production_sources():
@@ -59,7 +67,9 @@ def _modules_importing(target: str, *, exclude: str) -> list[str]:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module == target:
+            if isinstance(node, ast.ImportFrom) and node.module == target and (
+                names is None or any(a.name in names or a.name == "*" for a in node.names)
+            ):
                 importers.append(str(path.relative_to(_ROOT)))
                 break
             if isinstance(node, ast.Import) and any(a.name == target for a in node.names):
@@ -80,18 +90,30 @@ class TestTheScanItselfIsNotVacuous:
         # it cannot see any edge, and every "no production caller" claim below is meaningless.
         assert _modules_importing("app.autonomy.budget", exclude="budget.py")
 
+    def test_the_classifier_alone_is_not_the_decision(self):
+        # The ADR-008 effect guard imports `classify_rollback` from mutating.py. That edge must be
+        # visible to an unfiltered scan and invisible to the decision-filtered one — otherwise
+        # the narrowing above is either hiding a real caller or not narrowing anything.
+        everything = _modules_importing("app.tools.aci.mutating", exclude="mutating.py")
+        decision = _modules_importing("app.tools.aci.mutating", exclude="mutating.py",
+                                      names=_DECISION)
+        guard = "packages/kubeintellect-server/app/tools/effect_guard.py"
+        assert guard in everything
+        assert guard not in decision
+
 
 class TestTheDocAndTheWiringSayTheSameThing:
     @pytest.mark.parametrize(
-        ("module", "defining_file", "marker", "surface"),
+        ("module", "defining_file", "marker", "surface", "names"),
         [
-            ("app.tools.aci.mutating", "mutating.py", _NOT_WIRED, "the ACI write chokepoint"),
+            ("app.tools.aci.mutating", "mutating.py", _NOT_WIRED, "the ACI write chokepoint",
+             _DECISION),
             ("app.autonomy.promotion_source", "promotion_source.py", _NO_WRITER,
-             "the ADR-102 promotion store"),
+             "the ADR-102 promotion store", None),
         ],
     )
-    def test_unwired_iff_the_doc_says_unwired(self, module, defining_file, marker, surface):
-        importers = _modules_importing(module, exclude=defining_file)
+    def test_unwired_iff_the_doc_says_unwired(self, module, defining_file, marker, surface, names):
+        importers = _modules_importing(module, exclude=defining_file, names=names)
         doc = _DOC.read_text(encoding="utf-8")
         if importers:
             assert marker not in doc, (

@@ -4,8 +4,10 @@ detect:
     - kind: Event
       reason_regex: "^FailedScheduling$"
       message_regex: "Insufficient (cpu|memory)"
-  promql:
-    - 'kube_pod_status_unschedulable == 1'    # AMBIGUOUS — see note
+  promql: []        # deliberately omitted: kube_pod_status_unschedulable is 1 for EVERY
+                    # unschedulable pod (taints, affinity, PVC, quota, capacity) and cannot
+                    # say "Insufficient cpu/memory", so it would fire this playbook on causes
+                    # it does not describe. Same rule as pending_scheduling.yaml.
   debounce_seconds: 120
 triggers:
   - event_message_regex: "Insufficient (cpu|memory)"

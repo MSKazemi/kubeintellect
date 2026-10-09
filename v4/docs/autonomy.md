@@ -41,6 +41,7 @@ cluster on its own.
 | `WATCHTOWER_ROLE` | `operator` | The role the autonomous identity runs as. The normal role ceiling applies inside the tools — an `operator` watchtower cannot run high-risk verbs even at A3. |
 | `AUTONOMY_LEVEL` | `A1` | Default level for every namespace without an override. |
 | `AUTONOMY_NAMESPACE_LEVELS` | `""` (empty) | Per-namespace overrides, comma-separated: `prod=A0,dev=A2`. |
+| `SELF_GOVERN_ENABLED` | `False` | ADR-009: an A3 fix runs only after its diagnosis passes the Cortex grounding check — see [Grounded auto-fix](#grounded-auto-fix-adr-009). |
 | `AUTONOMY_A3_ALLOWLIST` | `""` (empty) | The only path to auto-fix: comma-separated `playbook/namespace` pairs, e.g. `CrashLoopBackOff/dev,ImagePullBackOff/staging`. The namespace part supports a trailing `*` glob: `CrashLoopBackOff/dev-*`. |
 
 A3 requires **both** conditions: the namespace's effective level must be `A3`
@@ -54,6 +55,32 @@ AUTONOMY_LEVEL=A1
 AUTONOMY_NAMESPACE_LEVELS=dev=A2,dev-sandbox=A3
 AUTONOMY_A3_ALLOWLIST=CrashLoopBackOff/dev-*
 ```
+
+### Grounded auto-fix (ADR-009)
+
+With `SELF_GOVERN_ENABLED=true` **and** `CORTEX_V4_ENABLED=true`, an A3
+auto-fix no longer runs in the same turn as the diagnosis:
+
+1. **Diagnose and propose.** The watchtower asks for the root cause and the
+   exact fix commands, with the approval gate on — like A2.
+2. **Grounding check.** The Cortex `ground_check` node labels each claim of
+   that diagnosis against the evidence gathered
+   ([details](agent-behaviors.md#cortex-v4-opt-in)).
+3. **Apply — only if grounded.** A second, auto-approved turn on the same
+   session applies the proposed fix, and only when every claim was
+   `supported`. A claim that is only `partial` (consistent with the evidence
+   but not established by it) caps the turn at A2: the fix is proposed for a
+   human to approve and never applied on its own. An unsupported claim (A1,
+   advisory), a checker error, a skipped check (nothing actionable to apply),
+   or a verdict that cannot be read all withhold the fix too: the proposal
+   stays in the report and nothing executes. The reasoning is that an action
+   that cannot be undone should rest on what the evidence establishes, not on
+   what it is merely consistent with.
+
+The ceiling only lowers what the ladder, the allowlist and the blast-radius
+gate already allow; it never grants A3. With either flag off, A3 is the single
+diagnose-and-fix turn described above. The V2 graph has no `ground_check`
+node, so it is not gated.
 
 ### Protected namespaces are always A0
 
@@ -109,6 +136,14 @@ Two built-in guards prevent investigation storms:
   same time; further findings queue behind the semaphore.
 
 Both values are fixed in this release (not configurable via env).
+
+With `SELF_GOVERN_ENABLED=true` an A3 auto-fix gets one more guard (ADR-008): the bypass
+authorises **one** execution of an irreversible call (a PVC, PV, namespace, CRD or StatefulSet
+delete, or a mutation the classifier cannot place). A retry of the same call inside the
+investigation returns the recorded result; a retry aimed at a different object stops for a human
+fork; and if the effect ledger is unavailable — or contradicts its head anchor because its newest
+rows were removed (`effect log tampered/truncated`) — the call waits for human approval instead of
+running. Kinds are matched exactly (`daemonset` is not a namespace). See [security](security.md#exactly-once-irreversible-calls-and-single-use-approvals-adr-008).
 
 Every autonomous investigation runs as session `auto-<finding-id>` and is
 recorded by the flight recorder, so you can replay it later:

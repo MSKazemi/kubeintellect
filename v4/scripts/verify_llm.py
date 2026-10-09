@@ -46,10 +46,6 @@ def _ok(msg: str) -> None:
     print(f"\033[32m✓ {msg}\033[0m")
 
 
-def _warn(msg: str) -> None:
-    print(f"\033[33m! {msg}\033[0m")
-
-
 @tool
 def get_pod_status(namespace: str, pod: str) -> str:
     """Return the status of a pod. (stub used only to test tool-calling)"""
@@ -109,10 +105,14 @@ def main() -> None:
         if not settings.OPENAI_API_KEY:
             _fail("OPENAI_API_KEY is not set. For Bedrock this is your Bedrock API key.", 2)
     elif settings.LLM_PROVIDER == "anthropic":
-        if not settings.ANTHROPIC_API_KEY:
-            _fail("LLM_PROVIDER=anthropic but ANTHROPIC_API_KEY is not set.", 2)
-        if not settings.CORTEX_V4_ENABLED:
-            _warn("LLM_PROVIDER=anthropic is only used by the V4 cortex (CORTEX_V4_ENABLED).")
+        # This script drives the V2 factory (app.core.llm), which has no Anthropic backend and
+        # refuses `anthropic` rather than substitute OpenAI (#192). It used to check OpenAI here
+        # and print "ready" -- the same misroute, reported as a pass.
+        _fail(
+            "LLM_PROVIDER=anthropic is served only by the V4 cortex (CORTEX_V4_ENABLED=true), "
+            "and this script checks the V2 model factory, so it cannot verify it.",
+            2,
+        )
 
     from app.core.llm import get_coordinator_llm, get_subagent_llm
 

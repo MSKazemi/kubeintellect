@@ -410,10 +410,26 @@ and produces false positives.
 
 ### Shell-metacharacter constraints
 
-The runner blocks any `kubectl` command containing `;`, `&`, `` ` ``, `$`, or
-`\`. (Pipes and redirection are excluded — `|` is reimplemented in Python and
-`<` / `>` are harmless under `shell=False`.) The constraint applies to the full
-command string, including arguments inside `--patch '[...]'` or `-- sh -c "..."`.
+The runner blocks any `kubectl` command containing `;`, `&`, `` ` ``, `$`, `<`
+or `>`. (Pipes are excluded — `|` is reimplemented in Python, and `\` is passed
+literally under `shell=False`.) The constraint applies to the full command
+string, including arguments inside `--patch '[...]'` or `-- sh -c "..."`.
+
+### Unresolved placeholders
+
+A tool argument must name real resources. A command that still carries planning
+notation — `<node-name>`, `{namespace}`, `$NODE`, or an upper-case operand such
+as `POD_NAME` where a pod, namespace or container name belongs — is refused
+before kubectl runs, with an error that names the placeholder and says to
+resolve it first (#173). In a parallel batch only that call fails; the others
+still return. The model is expected to take the identifier from the cluster
+snapshot or an earlier result, or to list the resource (`kubectl get nodes -o
+wide`), wait for the result, and call again with the concrete name.
+
+Values the guard deliberately does not inspect: `-o` / `--output` /
+`--template` / `--sort-by` (jsonpath, go-template and custom-columns use `{…}`
+and upper-case column headers), quoted values such as a JSON patch, and
+everything after `--` in `kubectl exec`.
 
 For container `command` / `args` changes (which usually contain shell
 metacharacters), the only reliable path is:
@@ -556,7 +572,12 @@ triggers:
   `kind: Node` regexes run against the computed STATUS column; `kind: Event`
   regexes run against Warning-event reason and message (when both
   `reason_regex` and `message_regex` are present, **both** must match;
-  `involved_kind` optionally narrows the involved object).
+  `involved_kind` optionally narrows the involved object). An Event predicate
+  needs at least one of the two regexes: with neither it matches **every**
+  Warning event, and the authoring and promotion gates refuse it.
+- `promql` lists instant PromQL filters; each series in the result is a match for
+  the object its labels name. Evaluated only with `PROMQL_DETECTION_ENABLED` — see
+  the note below.
 - `debounce_seconds` delays firing until the condition has persisted —
   one restart is not a crash loop.
 - `detect: null` marks a playbook as **LLM-only** (no machine signal exists,
@@ -600,15 +621,47 @@ change; zero allowed disruptions by itself can be intentional availability polic
     An absent key and an explicit YAML `null` still take the default in silence — those are
     genuinely "not set".
 
-!!! warning "`promql:` is recorded, not evaluated"
-    Only `watch_predicates` and `trend_predicates` run. `promql:` is parsed,
-    stored and exported, but **no code path evaluates it** — a detector whose
-    only predicate is PromQL can never fire, and is now rejected at parse time
-    rather than loading as a valid detector that silently does nothing. The 21
-    `promql:` queries in the shipped playbooks all sit alongside real
-    `watch_predicates`, so every shipped detector still fires; what those queries
-    do *not* provide is any additional detection. Treat them as documentation of
-    the metric signal until evaluation is built.
+!!! note "`promql:` is evaluated — when `PROMQL_DETECTION_ENABLED` is on"
+    Each `promql:` entry is an **instant** PromQL query, run on its own loop every
+    `PROMQL_DETECTION_INTERVAL_SECONDS` (default 30) when `PROMQL_DETECTION_ENABLED=true` and
+    `PROMETHEUS_URL` is set (#20). Before #20 nothing evaluated these queries; the flag is
+    **off by default** because turning it on adds firings from 20 shipped queries that had
+    never run. Every shipped detector also has `watch_predicates`, so with the flag off every
+    shipped detector still fires exactly as before.
+
+    **Firing semantics** follow Prometheus alerting rules:
+
+    - every element of the result vector is a match, so write a *filter* that returns only
+      the faulty series (`... == 1`, `... > 3`) — never the `bool` modifier, which returns
+      every series;
+    - the object is named by the series' labels — the first of `pod`,
+      `persistentvolumeclaim`, `node`, `deployment`, `statefulset`, `daemonset`, `job_name`,
+      `cronjob`, `horizontalpodautoscaler`, `service`, `endpoint`, `resourcequota`,
+      `container`, `instance`; `namespace` defaults to `cluster`. A series with none of these
+      is keyed by its full label set, so two different series never share a key;
+    - a key arms on the first sweep that returns it and fires on the first sweep at least
+      `debounce_seconds` later (the debounce is rounded up to the interval; `0` fires on the
+      first sweep). It does not re-fire while the condition holds, and clears on the first
+      complete sweep in which no query of that detector returns it — a recurrence then fires
+      again. The key is shared with `watch_predicates`, so a pod both arms catch fires once;
+    - findings carry `source: "promql"` and evidence `promql '<query>' = <value>`.
+
+    **A query that cannot run is an error, never "did not fire".** Unconfigured or unreachable
+    Prometheus, a timeout, a PromQL error, or an answer that is not an instant vector (a bare
+    `metric[5m]` returns a range vector) fires nothing, clears nothing, and marks the sweep
+    `promql: blind` on `GET /v1/findings` with the reason — `kq findings` and the digest then
+    withhold their all-clear.
+
+    A detector whose **only** predicates are PromQL is not loaded on a deployment that does not
+    evaluate PromQL (logged as such); a stored detector with PromQL beside other predicates
+    loads with its queries dropped and named in `dropped_predicates`.
+
+    ```yaml
+    detect:
+      promql:
+        - 'kube_persistentvolumeclaim_status_phase{phase="Pending"} == 1'
+      debounce_seconds: 300
+    ```
 
 !!! warning "`kind:` is the observation channel, not the Kubernetes object"
     `kind:` selects which normalised stream the predicate reads — it is one of
@@ -776,7 +829,7 @@ only while a watch stream is connected; in any other state an empty `findings`
 list means *nothing was watched*, not *nothing happened*. `predictive` is the
 independent claim for the anticipatory detectors, which read Prometheus rather
 than the watch stream: `blind` means the last trend sweep could not query it, so
-no prediction *could* have fired (see
+no prediction *could* have fired (shadow trend detectors are included in that sweep and fire to the shadow buffer only; see
 [the endpoint reference](api-reference.md#get-v1findings)). What happens *after* a finding fires is
 governed by the [autonomy ladder](autonomy.md).
 
@@ -815,6 +868,36 @@ What changes when it is on:
   the `langchain-anthropic` extra.
 - **Bounded gathering.** The LLM↔tools loop is capped at
   `CORTEX_MAX_GATHER_ROUNDS` (default `8`) iterations per turn.
+- **Grounding check (ADR-009, opt-in).** With `SELF_GOVERN_ENABLED` on, a
+  `ground_check` node runs between `synthesize` and `remember`:
+
+  ```
+  … → synthesize → ground_check → remember
+  ```
+
+  One cheap-tier structured call labels every atomic claim of the answer
+  `supported`, `partial` or `none` against the evidence already in state — this
+  turn's tool output, the detector firing that opened the turn, the cluster
+  snapshot and the recalled episodes. Nothing new is fetched.
+  - A `none` claim is listed under **⚠ Grounding check** after the answer (the
+    tokens are already streamed) and withdrawn from the stored copy, which is
+    what the next turn and the episode write read. `partial` claims are listed
+    as hypotheses.
+  - Any `none` claim demotes the turn to **advisory** (`autonomy_ceiling=A1`):
+    the diagnosis cannot trigger an autonomous fix — see
+    [Autonomy](autonomy.md#grounded-auto-fix-adr-009).
+  - A draft with no actionable claim (no root cause, cause, fix or mutating
+    command — e.g. a healthy-cluster listing) is skipped with **no LLM call**.
+  - **Fail-open, never fail-up.** A checker error returns the answer unchanged
+    plus a **"Grounding check NOT PERFORMED"** note, and sets the ceiling to
+    `A2`: autonomy may stay or drop, it is never raised on an unchecked answer.
+  - Every outcome is recorded: `state["grounding"]` holds the status, per-class
+    counts and ceiling, and the flight recorder chains a `ground_check` row.
+
+  The node is the graph's shared critique sub-stage: ADR-009 places
+  self-critique and the prompt-injection output check in the same call.
+  Neither exists yet; the extension point is the structured call in
+  `app/cortex/verify.py`.
 
 HITL approval gates, role enforcement, the reflexion outcome path, and episode
 writes are identical in both graphs. With the flag off (default), nothing in

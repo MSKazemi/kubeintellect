@@ -48,7 +48,7 @@ oci://ghcr.io/mskazemi/charts/kubeintellect` prints the full value list.
 
 ## LLM provider
 
-Set `config.llmProvider` to `azure` (default), `openai`, `qwen`, or `anthropic`,
+Set `config.llmProvider` to `openai` (default), `azure`, `qwen`, `anthropic` or `local`,
 then supply the matching secret. `anthropic` is only used by the V4 cortex path.
 
 | Provider | Required values |
@@ -56,10 +56,36 @@ then supply the matching secret. `anthropic` is only used by the V4 cortex path.
 | `openai` | `secrets.openaiApiKey`; optionally `secrets.openaiBaseUrl` for any OpenAI-compatible endpoint |
 | `azure` | `secrets.azureOpenaiApiKey`, `secrets.azureOpenaiEndpoint` |
 | `qwen` | `secrets.openaiApiKey` + `secrets.openaiBaseUrl=https://dashscope-intl.aliyuncs.com/compatible-mode/v1` |
-| `anthropic` | `secrets.anthropicApiKey` |
+| `anthropic` | `secrets.anthropicApiKey` **and** `config.cortexV4Enabled=true` |
+| `local` | `secrets.openaiBaseUrl` (the model server's in-cluster URL); no API key. See [Local LLM](../../../docs/local-llm.md) |
 
 Never put these in a committed values file — pass them with `--set`, or use a
 gitignored override file.
+
+The chart refuses to render (`helm template` / `helm install` fails with an explanation) for
+combinations the server would reject at startup: `anthropic` without `config.cortexV4Enabled`,
+`local` without `secrets.openaiBaseUrl`, and `config.promqlDetectionEnabled` without
+`config.prometheusUrl`.
+
+With `llmProvider=local` the chart also emits a `startupProbe` on `/healthz` (no other provider
+gets one). The server's startup check makes a real tool call per model before it opens its port,
+and a cold model load can outlast the liveness window (~105 s). The probe window is
+`config.localLlmProbeTimeoutSeconds` x `startupProbe.models` + `startupProbe.marginSeconds`
+(default 180 x 2 + 120 = 480 s, i.e. `failureThreshold` 48 at a 10 s period). Set
+`startupProbe.models=1` if the coordinator and subagent models are the same.
+
+## Optional server features
+
+All off (or at the server's default) unless set; each value maps 1:1 to the setting in
+[Configuration](../../../docs/configuration.md).
+
+| Value | Default | Setting |
+|---|---|---|
+| `config.selfGovernEnabled` | `false` | `SELF_GOVERN_ENABLED` — needs Postgres schema v3 (`effect_log`); the db-init Job applies it |
+| `config.promqlDetectionEnabled` | `false` | `PROMQL_DETECTION_ENABLED` — needs `config.prometheusUrl` |
+| `config.promqlDetectionIntervalSeconds` | `30` | `PROMQL_DETECTION_INTERVAL_SECONDS` |
+| `config.postmortemMinGrounding` | `0.9` | `POSTMORTEM_MIN_GROUNDING` (0.0–1.0) |
+| `config.localLlmProbeTimeoutSeconds` | `180` | `LOCAL_LLM_PROBE_TIMEOUT_SECONDS` |
 
 ## Safety model
 

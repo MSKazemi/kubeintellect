@@ -39,5 +39,11 @@ async def get_postmortem(
             "events_lost": pm.get("events_lost", 0),
             "gaps": pm.get("gaps", []),
             "enrichment_failed": pm.get("enrichment_failed", []),
+            # The narrative grounding gate's measurement, for the same reason: a caller should
+            # not have to parse "LLM NARRATIVE WITHHELD" out of prose. None = not measured.
+            "grounding_rate": pm.get("grounding_rate"),
+            "claims_total": pm.get("claims_total", 0),
+            "claims_ungrounded": pm.get("claims_ungrounded", 0),
+            "narrative_withheld": pm.get("narrative_withheld"),
         }
     return pm

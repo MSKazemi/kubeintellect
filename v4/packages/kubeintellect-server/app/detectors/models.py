@@ -10,6 +10,17 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+#: The `detect:` keys something actually EVALUATES: `DetectorEngine.process()` matches
+#: `watch_predicates`, the predictive tick evaluates `trend_predicates`, and the PromQL tick
+#: evaluates `promql` (#20, `DetectorEngine.evaluate_promql`). One tuple, read by the engine's
+#: loader and by the NL-authoring gate, so the two cannot disagree about what can fire.
+#:
+#: `promql` and `trend_predicates` are evaluated only where their loop runs
+#: (`PROMQL_DETECTION_ENABLED` / `PREDICTIVE_DETECTION_ENABLED`). That is a fact about the
+#: deployment, not the block, so it is checked where the deployment is known:
+#: `authoring.deployment_errors`, `engine.load_detectors` and `engine.load_db_detectors`.
+EVALUATED_PREDICATE_KEYS = ("watch_predicates", "trend_predicates", "promql")
+
 
 @dataclass(frozen=True)
 class WatchPredicate:
@@ -106,8 +117,7 @@ class Finding:
     id: str = field(default_factory=lambda: f"fnd-{uuid.uuid4().hex[:12]}")
     first_seen: float = field(default_factory=time.time)
     fired_at: float = field(default_factory=time.time)
-    source: str = "watch"         # watch | trend  ("promql" is reserved but
-                                  # unreachable — promql is not evaluated)
+    source: str = "watch"         # watch | trend | promql | shadow
     severity: str = "warning"     # warning (realized) | predicted (anticipatory)
     eta_minutes: float | None = None   # for predicted findings: projected time-to-failure
 
@@ -159,7 +169,7 @@ def parse_detect_block(playbook_name: str, raw: dict | None) -> DetectBlock | No
         `if r2 < min_r2`), so silently restoring 0.5 makes a detector quieter than its author
         wrote it — a false negative nobody notices. The three interval knobs go the other way:
         the engine turns 0 into a predicate that can never fire, which is the dead-detector trap
-        this module already refuses to ship for promql-only blocks. So zero is honoured where it
+        the loaders refuse to ship elsewhere. So zero is honoured where it
         means something and rejected *out loud* where it means a no-op — never swapped in silence.
         """
         if key not in entry or entry[key] is None:
@@ -207,27 +217,18 @@ def parse_detect_block(playbook_name: str, raw: dict | None) -> DetectBlock | No
             )
         )
 
-    # ⚠️ ``promql`` is DECLARATIVE ONLY — nothing evaluates it.
-    #
-    # `DetectorEngine.process()` matches `watch_predicates`; the periodic tick
-    # evaluates `trend_predicates`. No code path has ever read `DetectBlock.promql`
-    # (verified 2026-08-20 across the whole server package). It is parsed, stored,
-    # exported to consolidation, advertised to the NL-authoring model as a valid
-    # predicate type — and never run. So it must not, on its own, make a block
-    # valid: a promql-only detector would load, count toward the detector total,
-    # pass the schema check, and then never fire. That is the same trap the
-    # `kind:` warning in docs/agent-behaviors.md documents.
+    # ``promql`` is evaluated since #20 — by `DetectorEngine.evaluate_promql`, on its own loop,
+    # and only where `PROMQL_DETECTION_ENABLED` is on. Until then it was declarative only (no
+    # code path read `DetectBlock.promql`, verified 2026-08-20), and a promql-only block was
+    # refused here because it would have loaded and never fired. It is now a predicate like
+    # the other two, so it makes a block valid on its own; whether THIS deployment evaluates it
+    # is decided by the loaders (`engine.load_detectors`, `engine.load_db_detectors`), which
+    # know the settings and refuse to load a block whose every predicate is unevaluated.
     #
     # The 19 `promql:` queries in the shipped playbooks all sit alongside real
-    # `watch_predicates`, so nothing that fires today stops firing; what is not
-    # true is the extra coverage those queries appear to claim.
-    if not predicates and not trends:
-        if promql:
-            logger.warning(
-                "detector %r declares only promql predicates, which are not evaluated — "
-                "it can never fire. Add watch_predicates or trend_predicates.",
-                playbook_name,
-            )
+    # `watch_predicates`, so with PromQL detection off every shipped detector still fires
+    # exactly as before; with it on, those queries add metric-side coverage.
+    if not predicates and not trends and not promql:
         return None
     return DetectBlock(
         playbook=playbook_name,

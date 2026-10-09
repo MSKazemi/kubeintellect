@@ -44,6 +44,9 @@ COUNTED_TABLES: tuple[str, ...] = (
     "episodes", "decision_log", "memory_audit", "kg_entities", "kg_edges",
     "semantic_rules", "detectors", "runbooks", "failure_patterns", "rca_outcomes",
     "prospective_memory", "promotion_outcomes", "user_prefs",
+    # ADR-008: losing effect_log rows is how an irreversible call or a used approval token runs
+    # again, so it is counted like the other ledgers (it is never pruned — see retention.py).
+    "effect_log",
 )
 
 #: ``(chain table, anchor table, the column both key on)``. The anchor records how far the chain
@@ -52,6 +55,7 @@ COUNTED_TABLES: tuple[str, ...] = (
 CHAINS: tuple[tuple[str, str, str], ...] = (
     ("decision_log", "decision_log_head", "episode_id"),
     ("memory_audit", "memory_chain_head", "cluster_id"),
+    ("effect_log", "effect_log_head", "session_id"),
 )
 
 

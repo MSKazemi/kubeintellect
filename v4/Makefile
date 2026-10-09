@@ -273,7 +273,7 @@ gcp-deploy-kubeintellect: ## Deploy KubeIntellect to Google Cloud GKE (any LLM p
 	@$(MAKE) --no-print-directory _cloud-deploy CLOUD=gcp
 
 # Shared multi-cloud deploy recipe. CLOUD=aws|gcp selects the values-<CLOUD>.yaml
-# overlay. LLM provider is decoupled from the cloud: azure | openai | qwen | anthropic.
+# overlay. LLM provider is decoupled from the cloud: azure | openai | qwen | anthropic | local.
 _cloud-deploy:
 	@bash -c '\
 	  set -euo pipefail; \
@@ -285,11 +285,13 @@ _cloud-deploy:
 	  case "$$LLM_PROVIDER" in \
 	    azure) : "$${AZURE_OPENAI_API_KEY:?ERROR: AZURE_OPENAI_API_KEY not set in .env}"; \
 	           : "$${AZURE_OPENAI_ENDPOINT:?ERROR: AZURE_OPENAI_ENDPOINT not set in .env}";; \
-	    anthropic) : "$${ANTHROPIC_API_KEY:?ERROR: ANTHROPIC_API_KEY not set in .env}";; \
+	    anthropic) : "$${ANTHROPIC_API_KEY:?ERROR: ANTHROPIC_API_KEY not set in .env}"; \
+	               [ "$${CORTEX_V4_ENABLED:-false}" = "true" ] || { echo "ERROR: LLM_PROVIDER=anthropic needs CORTEX_V4_ENABLED=true in .env - the default V2 graph supports azure, openai, qwen and local only, and the server refuses to start rather than send cluster data to a vendor you did not choose"; exit 1; };; \
 	    qwen) : "$${OPENAI_API_KEY:?ERROR: OPENAI_API_KEY (DashScope key) not set in .env}"; \
 	          OPENAI_BASE_URL=$${OPENAI_BASE_URL:-https://dashscope-intl.aliyuncs.com/compatible-mode/v1};; \
 	    openai) : "$${OPENAI_API_KEY:?ERROR: OPENAI_API_KEY not set in .env}";; \
-	    *) echo "ERROR: unknown LLM_PROVIDER=$$LLM_PROVIDER (want azure|openai|qwen|anthropic)"; exit 1;; \
+	    local) : "$${OPENAI_BASE_URL:?ERROR: OPENAI_BASE_URL (your model server, reachable from the pod) not set in .env}";; \
+	    *) echo "ERROR: unknown LLM_PROVIDER=$$LLM_PROVIDER (want azure|openai|qwen|anthropic|local)"; exit 1;; \
 	  esac; \
 	  helm upgrade --install kubeintellect deploy/helm/kubeintellect \
 	    -f deploy/helm/kubeintellect/values.yaml \
@@ -297,6 +299,7 @@ _cloud-deploy:
 	    --namespace $(NAMESPACE) --create-namespace \
 	    --set postgres.password="$${POSTGRES_PASSWORD:-}" \
 	    --set-string config.llmProvider="$$LLM_PROVIDER" \
+	    --set config.cortexV4Enabled="$${CORTEX_V4_ENABLED:-false}" \
 	    --set-string secrets.openaiApiKey="$${OPENAI_API_KEY:-}" \
 	    --set-string secrets.openaiBaseUrl="$${OPENAI_BASE_URL:-}" \
 	    --set-string secrets.openaiCoordinatorModel="$${OPENAI_COORDINATOR_MODEL:-gpt-4o}" \

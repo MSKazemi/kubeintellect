@@ -9,9 +9,13 @@ from typing import Any
 from langchain_core.language_models import BaseChatModel
 from pydantic import SecretStr
 
-from app.core.config import settings
+from app.core.config import settings, v2_provider_refusal
 
 logger = logging.getLogger(__name__)
+
+
+#: Sent as the bearer token to a `local` endpoint when OPENAI_API_KEY is unset. Not a secret.
+LOCAL_LLM_PLACEHOLDER_KEY = "kubeintellect-local"
 
 
 def _secret(value: str | None) -> SecretStr | None:
@@ -135,10 +139,22 @@ def _make_azure(deployment: str, temperature: float | None = None, max_tokens: i
 def _make_openai(model: str, temperature: float | None = None, max_tokens: int = 4096, streaming: bool = True) -> BaseChatModel:
     from langchain_openai import ChatOpenAI
     temperature = settings.LLM_TEMPERATURE if temperature is None else temperature
+    api_key = settings.OPENAI_API_KEY
+    if settings.LLM_PROVIDER == "local":
+        if not settings.OPENAI_BASE_URL:
+            # Settings fills this in; reaching here empty means something cleared it, and an
+            # empty base URL is api.openai.com -- exactly where `local` promises data never goes.
+            raise RuntimeError(
+                "LLM_PROVIDER=local but OPENAI_BASE_URL is empty. Set it to your server's "
+                "OpenAI-compatible URL, e.g. OPENAI_BASE_URL=http://localhost:11434/v1 (Ollama)."
+            )
+        # Ollama, LM Studio and an unauthenticated vLLM need no key, but the OpenAI client
+        # refuses to start without one. A vLLM started with --api-key reads OPENAI_API_KEY.
+        api_key = api_key or LOCAL_LLM_PLACEHOLDER_KEY
     return ChatOpenAI(
         model=model,
-        api_key=_secret(settings.OPENAI_API_KEY),
-        base_url=settings.OPENAI_BASE_URL or None,  # OpenAI-compatible providers (Qwen/DashScope, LiteLLM); None → api.openai.com
+        api_key=_secret(api_key),
+        base_url=settings.OPENAI_BASE_URL or None,  # OpenAI-compatible providers (Qwen/DashScope, LiteLLM, local); None → api.openai.com
         temperature=temperature,
         max_completion_tokens=max_tokens,  # public alias of `max_tokens` — see _make_azure
         streaming=streaming,
@@ -146,8 +162,28 @@ def _make_openai(model: str, temperature: float | None = None, max_tokens: int =
     )
 
 
+def _refuse_unsupported_provider() -> None:
+    """Never fall through to the OpenAI-compatible client for a provider it does not serve.
+
+    The fall-through is what sent `LLM_PROVIDER=anthropic` cluster data to OpenAI (#192).
+    Checked on every build, not only at startup, so no caller can obtain a V2 client for a
+    configuration the startup check would have refused. Anthropic is refused even with
+    CORTEX_V4_ENABLED=true: the Cortex graph builds its own Anthropic client
+    (app.cortex.models), so reaching this factory then is a caller bug, not a reason to
+    hand back an OpenAI client.
+    """
+    if settings.LLM_PROVIDER == "anthropic":
+        raise RuntimeError(
+            v2_provider_refusal(settings)
+            or "LLM_PROVIDER=anthropic: the V2 model factory has no Anthropic backend and "
+            "will not substitute an OpenAI client. With CORTEX_V4_ENABLED=true, models "
+            "come from app.cortex.models; this call is a bug in its caller."
+        )
+
+
 @lru_cache(maxsize=4)
 def _coordinator_llm() -> BaseChatModel:
+    _refuse_unsupported_provider()
     if settings.LLM_PROVIDER == "azure":
         return _make_azure(settings.AZURE_COORDINATOR_DEPLOYMENT, max_tokens=4096)
     return _make_openai(settings.OPENAI_COORDINATOR_MODEL, max_tokens=4096)
@@ -155,6 +191,7 @@ def _coordinator_llm() -> BaseChatModel:
 
 @lru_cache(maxsize=4)
 def _subagent_llm() -> BaseChatModel:
+    _refuse_unsupported_provider()
     if settings.LLM_PROVIDER == "azure":
         return _make_azure(settings.AZURE_SUBAGENT_DEPLOYMENT, max_tokens=2048)
     return _make_openai(settings.OPENAI_SUBAGENT_MODEL, max_tokens=2048)

@@ -37,9 +37,85 @@ IRREVERSIBLE = "irreversible"               # no safe automatic revert — never
 _VERSIONED_VERBS = {"scale", "rollout", "set", "autoscale"}
 _DECLARATIVE_VERBS = {"apply", "patch", "edit", "replace", "label", "annotate"}
 _IRREVERSIBLE_VERBS = {"delete"}
-# stateful / cluster-scoped kinds whose deletion is irreversible (data / cascade loss).
-_IRREVERSIBLE_TARGETS = ("pvc", "persistentvolumeclaim", "pv", "persistentvolume", "namespace",
-                         "ns", "crd", "customresourcedefinition", "statefulset", "sts")
+# stateful / cluster-scoped kinds whose deletion is irreversible (data / cascade loss), as
+# canonical (folded) kinds — matched EXACTLY, never as a substring of the command.
+_IRREVERSIBLE_TARGETS = frozenset({
+    "persistentvolumeclaim", "persistentvolume", "namespace", "customresourcedefinition",
+    "statefulset",
+})
+
+# kind aliases (short names; plural forms are folded by `fold_kind`).
+_KIND_ALIASES = {
+    "po": "pod", "svc": "service", "deploy": "deployment", "ds": "daemonset",
+    "sts": "statefulset", "rs": "replicaset", "rc": "replicationcontroller",
+    "cm": "configmap", "ns": "namespace", "pvc": "persistentvolumeclaim",
+    "pv": "persistentvolume", "crd": "customresourcedefinition", "crds": "customresourcedefinition",
+    "no": "node", "sa": "serviceaccount", "ing": "ingress", "cj": "cronjob",
+    "hpa": "horizontalpodautoscaler", "pdb": "poddisruptionbudget", "netpol": "networkpolicy",
+    "sc": "storageclass", "ep": "endpoints", "ev": "event", "limits": "limitrange",
+    "quota": "resourcequota",
+}
+
+
+def fold_kind(raw: str) -> str:
+    """Fold a resource kind: `PVC`, `pvc`, `persistentvolumeclaims` → `persistentvolumeclaim`.
+
+    The single folding used by both `classify_rollback` here and the ADR-008 effect guard's
+    canonical intent (`app/tools/effect_guard.py`), so the two cannot disagree on what a kind is.
+    """
+    head, dot, group = raw.strip().lower().partition(".")
+    head = _KIND_ALIASES.get(head, head)
+    if head not in _KIND_ALIASES.values():
+        if head.endswith("ies"):
+            head = head[:-3] + "y"
+        elif head.endswith("sses"):
+            head = head[:-2]
+        elif head.endswith("s") and not head.endswith("ss"):
+            head = head[:-1]
+        head = _KIND_ALIASES.get(head, head)
+    return head + (dot + group if dot else "")
+
+
+# flags that take a value as the next token (so the value is not mistaken for a kind/name).
+_VALUE_FLAGS = frozenset({
+    "-n", "--namespace", "-l", "--selector", "--field-selector", "-o", "--output", "-c",
+    "--container", "--context", "--cluster", "--user", "--kubeconfig", "--grace-period",
+    "--timeout", "--cascade", "--request-timeout", "--as", "--as-group", "--as-uid", "--server",
+    "-s", "--token", "--cache-dir", "--certificate-authority", "--client-certificate",
+    "--client-key", "--tls-server-name", "--username", "--password", "--chunk-size",
+})
+
+
+def _delete_kinds(toks: list[str]) -> set[str] | None:
+    """Folded kinds a `delete` names, or None when the target cannot be parsed (⇒ fail-closed).
+
+    `-f`/`--filename`/`-k` name a manifest whose kinds are not visible here, so they are
+    unparseable. Otherwise: `kind/name` operands carry their kind; else the first operand is a
+    (comma-separated) kind list and the rest are names.
+    """
+    operands: list[str] = []
+    i = 0
+    while i < len(toks):
+        tok = toks[i]
+        if tok.startswith("-") and tok != "-":
+            name, eq, _ = tok.partition("=")
+            if name in ("-f", "--filename", "-k", "--kustomize"):
+                return None
+            if not eq and name in _VALUE_FLAGS:
+                i += 1
+        else:
+            operands.append(tok)
+        i += 1
+    if not operands:
+        return None
+    slashed = [o for o in operands if "/" in o]
+    if slashed:
+        raw = [o.partition("/")[0] for o in slashed]
+    else:
+        raw = operands[0].split(",")
+    # `statefulset.apps` / `customresourcedefinitions.apiextensions.k8s.io`: the API group does
+    # not change what the kind is (conservative for a custom resource that reuses a core name).
+    return {fold_kind(k).partition(".")[0] for k in raw}
 
 
 def classify_rollback(command: str) -> str:
@@ -50,11 +126,12 @@ def classify_rollback(command: str) -> str:
     if not toks:
         return IRREVERSIBLE          # unparseable ⇒ treat as unsafe (fail-closed)
     verb = toks[0].lower()
-    target = " ".join(toks[1:]).lower()
     if verb in _IRREVERSIBLE_VERBS:
         # a delete is irreversible if it hits stateful/cluster-scoped data; a bare pod delete is
-        # versioned (the controller recreates it).
-        if any(t in target for t in _IRREVERSIBLE_TARGETS):
+        # versioned (the controller recreates it). Kinds are matched exactly after folding; a
+        # target that cannot be parsed stays irreversible (fail-closed).
+        kinds = _delete_kinds(toks[1:])
+        if kinds is None or kinds & _IRREVERSIBLE_TARGETS:
             return IRREVERSIBLE
         return VERSIONED_WORKLOAD
     if verb in _VERSIONED_VERBS:

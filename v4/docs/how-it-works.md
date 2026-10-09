@@ -187,7 +187,10 @@ action class's earned rung, and reversibility — returning **auto**, **approve*
 *before anything executes*, and dry-running the command server-side before an `auto` stands.
 That chokepoint is built and tested, but **it is not yet wired into the graph**: `earned_rung`
 still arrives as its `L2` default. It is the designed destination for A3, not a brake running
-in your cluster today.
+in your cluster today. (Its rollback *classifier* alone is used by the ADR-008 effect guard,
+behind `SELF_GOVERN_ENABLED`, to pick the calls that must run at most once — see
+[security](security.md#exactly-once-irreversible-calls-and-single-use-approvals-adr-008). That
+does not put the write-authority decision in the path.)
 
 `promotion_outcomes` — the ADR-102 store that would earn that rung — **does** now have a
 production writer, behind `KI_V5_STATISTICAL_PROMOTION` (default off). When an autonomous

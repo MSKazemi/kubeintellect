@@ -145,7 +145,8 @@ def _query_raw(promql: str, range_minutes: int) -> tuple[list[dict], str | None]
     A `scalar`/`string` answer is reported as an **error**, not as an empty list: these callers
     feed verdicts, and "no series" and "an answer of a shape I cannot project" are different
     facts (the lens of pass 79). The detector engine's trend predicates always use range
-    queries, so this can only be reached by a hand-written scalar expression.
+    queries, so this can only be reached by a hand-written scalar expression. (Instant
+    `promql:` detector predicates read through `query_prometheus_vector` instead.)
     """
     result_type, result, error = _query_typed(promql, range_minutes)
     if error is not None:
@@ -167,6 +168,39 @@ def query_prometheus_series(promql: str, range_minutes: int) -> tuple[list[dict]
     to tell them apart — `[]` alone cannot.
     """
     return _query_raw(promql, range_minutes)
+
+
+def query_prometheus_vector(promql: str) -> tuple[list[dict], str | None]:
+    """Instant query that must answer with an instant **vector** — the PromQL detector's reader.
+
+    Same transport, 15s timeout and error strings as every other query here (`_query_typed`).
+    A detector fires on each element of the result vector, the way a Prometheus alerting rule
+    does, so any other shape is reported as an error rather than read as "no series":
+
+    * `matrix` — the expression ends in a bare range selector (`metric[5m]`). Each element is a
+      window of samples, not a current condition, so there is nothing to fire on.
+    * `scalar` / `string` — no labels, so no object a finding could name.
+
+    "Empty vector" (the condition does not hold anywhere) and "could not ask" stay different
+    answers: `([], None)` versus `([], "<why>")`.
+    """
+    result_type, result, error = _query_typed(promql, 0)
+    if error is not None:
+        return [], error
+    if result_type != "vector":
+        if result_type == "matrix":
+            return [], (
+                "Prometheus returned a range vector (matrix) for an instant query — the "
+                "expression ends in a bare range selector. Wrap it in a function such as "
+                "max_over_time(...) so it yields one current value per series."
+            )
+        return [], (
+            f"Prometheus returned a '{result_type or 'unknown'}' result, which carries no "
+            "labelled series, so no object could be named. Write the condition as a vector."
+        )
+    if not isinstance(result, list) or any(not isinstance(r, dict) for r in result):
+        return [], "Prometheus returned an unreadable vector result."
+    return result, None
 
 
 def query_prometheus_range_raw(promql: str, range_minutes: int) -> list[dict]:

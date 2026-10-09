@@ -386,6 +386,64 @@ skipping parse as the verb, so `kubectl -n prod delete namespace shop` and `kube
 -n prod namespace shop` behave identically. Until 2026-08-20 it read a fixed `args[2]`, and a
 single flag in front of the target turned it off on an auto-approve session.
 
+### Exactly-once irreversible calls and single-use approvals (ADR-008) {#exactly-once-irreversible-calls-and-single-use-approvals-adr-008}
+
+**Off by default** (`SELF_GOVERN_ENABLED=false`); with the flag off nothing below runs and the
+gate behaves exactly as described above.
+
+An agent's state can be rolled back and retried; the cluster cannot. Inside one turn a step can
+run again — LangGraph re-executes a node when it resumes it, a failed step is retried, the model
+re-issues a call after a rollback — and an irreversible call that already ran would run a second
+time. Worse, LangGraph hands a resumed node the stored approval **by position**, so a `yes` the
+operator gave for one command can be applied to whatever command now sits at that position
+("Authority Resurrection").
+
+With the flag on, `run_kubectl` interposes on every call in the **IRREVERSIBLE** rollback class
+(`app/tools/aci/mutating.py::classify_rollback` — deletes of PVCs, PVs, namespaces, CRDs and
+StatefulSets, and any mutating verb it cannot classify) before the approval gate:
+
+| Situation in this turn (same session, same branch) | What happens |
+|---|---|
+| The same canonical intent already ran successfully | The recorded result is returned, labelled `[Replayed — not re-executed]`. Nothing runs. |
+| A *different* target of the same action (same verb, same kind) already ran | Blocked. The prior record is shown and a human must approve an **explicit fork** (a new branch id is recorded); a denial returns `[Blocked]`. Applies on auto-approve sessions too. |
+| An earlier attempt has no known-good outcome (claimed but never recorded, or failed) | Neither replayed nor re-run silently: a human re-approves. |
+| First attempt, interactive | A single-use approval token bound to this exact call is issued and shown in the prompt. |
+| First attempt, auto-approve / A3 | An `a3` token is issued and consumed in the same transaction as the intent: the bypass authorises one execution of one intent, not every replay of it. |
+
+**Approvals are single-use and validated server-side.** A token is consumed exactly once (a
+unique index in the database enforces it), and an approval only counts if the resume value
+carries the token minted for *this* call — a bare `yes`, another call's token, or an
+already-consumed token is rejected with `[Rejected]` and nothing runs.
+
+**Canonical intent** — what makes two calls "the same": the verb and subcommand, the resource kind
+(short names and plurals folded: `pvc` = `persistentvolumeclaims`), names, namespace, selectors,
+`--all`/`-A`, replica count, cascade mode, image, container, revision, `key=value` assignments,
+and for a stdin manifest each object's kind/name/namespace plus a digest of the manifest. Not
+intent: output format, timeouts, grace periods and other execution modifiers, server-set
+metadata (`uid`, `resourceVersion`, `creationTimestamp`, `managedFields`, `status`, the
+last-applied annotation), and any label, annotation or assignment whose key names a request id,
+trace id, nonce or timestamp.
+
+**Rollback point = the turn.** A new user message is a new instruction and starts a new rollback
+point, so "delete it again" in a later message runs normally (through the gate). The ledger is the
+append-only, hash-chained `effect_log` table, mirrored into the [flight
+recorder](flight-recorder.md#effect-log-adr-008).
+
+**Kind matching is exact.** The IRREVERSIBLE class for a `delete` is decided on the resource
+*kind* after the same folding the canonical intent uses (one shared function, so they cannot
+disagree): `pv`/`pvc`/`ns`/`crd`/`sts` and their long and plural forms (`persistentvolumeclaims`,
+`statefulset.apps`) are irreversible; `daemonset`, `deployment`, `pod`, `configmap` and a name that
+merely contains `pv` or `ns` are not. A `delete` whose kinds cannot be read (`-f`, no operand) stays
+irreversible.
+
+**Fail-closed.** If the ledger is unavailable — flight recorder off, SQLite mode, Postgres
+unreachable, `db-init` not run, a chain that does not verify, or a chain that contradicts its
+head anchor (`effect log tampered/truncated` — newest rows removed, see [flight
+recorder](flight-recorder.md#effect-log-adr-008)) — an irreversible call is never
+replayed and never run on the strength of auto-approve: it falls back to a fresh human approval,
+whose prompt says the ledger is unavailable. A call with no session id has no rollback point and
+is refused.
+
 ---
 
 ## 5. Secret protection — why users can't steal the API key
@@ -528,12 +586,25 @@ This is logged as a future roadmap item. The current model is pragmatic and secu
 `run_kubectl` (`app/tools/kubectl_tool.py`) has multiple layers preventing command injection:
 
 ```
+Layer 0 — unresolved placeholder guard (#173)
+  Reject a command that still carries planning notation where a real value belongs:
+  <node-name>, {namespace}, {{pod}}, $NODE / ${NODE}, or an UPPER_SNAKE operand such
+  as POD_NAME in a name, namespace (-n) or container (-c) position. kubectl is not run;
+  the error names the placeholder and tells the model to resolve the identifier first
+  (from the snapshot, an earlier result, or a listing such as `kubectl get nodes`).
+  Not inspected: the value of -o / --output / --template / --sort-by (jsonpath,
+  go-template and custom-columns legitimately contain {…} and upper-case headers),
+  quoted text for the {…} and UPPER_SNAKE shapes (JSON patches, annotation values),
+  anything after `--` (the container's own command), and UPPER_SNAKE under
+  `kubectl config`. This layer only narrows what runs: every <, > and $ it does not
+  name is still refused by Layer 1. The snapshot reads `targeted_investigator` builds
+  from a model-written `TARGETED:` line apply the same rule.
+
 Layer 1 — metacharacter guard
-  Reject any command containing: ; & ` $ \
+  Reject any command containing: ; & ` $ < >
   Pipe (|) is allowed and handled in Python (not the shell).
-  < and > are intentionally allowed — they are only dangerous for shell I/O
-  redirection, which is impossible under shell=False, and excluding them allows
-  --from-literal values that contain HTML / template content.
+  Backslash (\) is allowed — jsonpath separators such as {"\n"} need it, and it is
+  passed to kubectl literally under shell=False.
 
 Layer 2 — rejected verbs
   `kubectl edit` is hard-blocked at parse time — it requires an interactive
@@ -634,9 +705,12 @@ components can reach the cluster or its data, and each enforces the same blockli
 | `query_prometheus` | agent tool call | blocked namespaces — on the query **and** on the returned series labels |
 | `GET /v1/namespaces` | `kq` namespace picker | blocked namespaces |
 
-One path is deliberately **not** gated: `query_prometheus_series` / `query_prometheus_range_raw`,
-the detector engine's trend-evaluation path (ADR-010). Its PromQL comes from human-reviewed
-playbooks rather than from a chat message, and detectors are *supposed* to watch `kube-system`
+One path is deliberately **not** gated: `query_prometheus_series` / `query_prometheus_range_raw`
+/ `query_prometheus_vector`, the detector engine's trend- and PromQL-evaluation paths (ADR-010,
+#20). Findings from either carry the query and the current value as evidence, never the series'
+other label values. Their PromQL comes from human-reviewed
+playbooks or the gated detector-authoring path (operator role; shadow until promoted) rather
+than from a chat message, and detectors are *supposed* to watch `kube-system`
 for control-plane and node problems. The guard sits on the tool the LLM calls, not on the
 shared query path.
 

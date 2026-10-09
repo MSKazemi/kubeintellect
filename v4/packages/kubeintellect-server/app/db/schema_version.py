@@ -42,13 +42,13 @@ logger = get_logger(__name__)
 #: Bumped by hand when `schema.sql` changes. This integer is what a database records, and what
 #: makes a *downgrade* (a database newer than the running binary) distinguishable from drift.
 #: It also appears as a literal in `schema.sql`'s own stamping INSERT — a test asserts they agree.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 #: The fingerprint of `schema.sql` at :data:`SCHEMA_VERSION`. This is the **build-time** half of
 #: A11 and the part that actually enforces the discipline: change one line of DDL without bumping
 #: the version and updating this pin, and the suite fails. Without it, `SCHEMA_VERSION` is a
 #: number somebody has to remember to increment, which is not a migration policy.
-PINNED_FINGERPRINT = "85dd2e78e2c324e23c0754660dc9ed2aa8c20852e8769b42991e89891ae09ec4"
+PINNED_FINGERPRINT = "ea5d927d991ff9d7936950960d90b4d7a58277d67ff7875c0da7b57b9448d52f"
 
 #: Set once at startup by :func:`check_schema`. Read by `/healthz` — never a live query, because
 #: `/healthz` is liveness and a probe that touches Postgres turns one blip into a restart loop.
