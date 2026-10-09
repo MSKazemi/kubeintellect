@@ -71,7 +71,7 @@ kq --api-key ki-ro-dev            # kq defaults to https://api.kubeintellect.com
 ```bash
 docker run --rm -p 8000:8000 \
   -e LLM_PROVIDER=openai -e OPENAI_API_KEY=sk-... -e USE_SQLITE=true \
-  ghcr.io/mskazemi/kubeintellect:2.5.2
+  ghcr.io/mskazemi/kubeintellect:2.6.0
 curl localhost:8000/healthz          # {"status":"ok","arm":"v4",...}
 ```
 
