@@ -15,12 +15,12 @@ See [the text proposed for review](MIT-LICENSE-TEMPLATE.md).
 - The repository, including its earlier research implementation and later code generations, currently publishes **AGPL-3.0-or-later** license files and a separate commercial-license offer.
 - The historical AGPL-licensed releases and permissions validly granted under them are **not retroactively withdrawn or converted** by any future change.
 - The project contains outside contributors whose code may require their separate authorization to relicense.
-- The University of Bologna has raised a question about IP ownership and licensing authority for research-fellowship work; this is **not yet resolved**. The project’s GitHub ownership or maintainer status does not itself settle economic copyright ownership.
+- Institutional and third-party licensing authority over some research-era code is under review; this is **not yet resolved**. The project’s GitHub ownership or maintainer status does not itself settle economic copyright ownership.
 - A MIT relicensing statement affecting code with uncertain or third-party ownership must not be published as though authorized.
 
 ## Conditions before making MIT the active license
 
-- [ ] Determine the economic copyright holder(s) for the research-era v1 implementation, and obtain written authorization from the University of Bologna / authorized rights holder(s) as needed.
+- [ ] Determine the economic copyright holder(s) for the research-era v1 implementation, and obtain written authorization from the relevant institutional and individual rights holder(s) as needed.
 - [ ] Inspect the research fellowship agreement, applicable institutional policies, grants, existing agreements, previous disclosures, and relevant correspondence.
 - [ ] Review source-code provenance across `v1/`, `v2/`, `v3/`, `v4/`, shared `deploy/`, `scripts/`, and distributable packages. A later rewrite can still be derivative of an earlier work; creation after the fellowship is not by itself proof of independent ownership.
 - [ ] Inventory all outside code and contributors (merged pull requests, commits, copied code, dependencies, assets, documentation) and record any written permission to relicense each copyrightable contribution under MIT. Exclude/rewrite code without necessary rights rather than assuming silence means consent.
