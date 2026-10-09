@@ -1,6 +1,6 @@
 [project]
 name = "kubeintellect"
-version = "2.5.1"
+version = "2.5.2"
 description = "AI-powered Kubernetes management — local server and CLI"
 readme = "README.md"
 requires-python = ">=3.12"

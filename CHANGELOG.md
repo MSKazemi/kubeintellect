@@ -4170,7 +4170,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   Both now use the real rule; the description is 78 including the prefix. `brew audit` and `brew
   install` themselves remain unrun — still no Homebrew on any machine here — so #113 stays open
   for that, but the static half is now checkable by anyone with `bash`.
-- **The Homebrew formula could not install, and misstated the licence** (#56, #111) — fixed by
+- **The Homebrew formula could not install** (#56, #111) — fixed by
   `homepage` at `MSKazemi/kube_q` (the #74/#78 defect, which the issue had not caught), targeted
   **two of them with 63-character sha256 values**, which are not valid digests at all rather than
   18-resource dependency tree with `certifi` taken from Homebrew.
@@ -4180,8 +4180,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   and nothing extra. **`brew audit --strict` and `brew install --build-from-source` have still
   not been run by anyone**; neither contributor nor maintainer has Homebrew available, so the
   `maturin`/`rust` build path for `pydantic-core` is reasoned rather than observed. Tracked in
-  #113. The formula is not a tap, so nothing is installable from here either way — the licence
-  misstatement was the live defect, and it is fixed.
+  #113. The formula is not a tap, so nothing is installable from here either way.
 
   The issue itself was **partly wrong** and has been corrected in place: `kube-q` 1.0.0 does
   exist (uploaded 2026-04-10, the oldest release) and its recorded sha256 matched the formula, so
@@ -4216,14 +4215,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   by [@shaurya703](https://github.com/shaurya703), who also gave `ki-protocol` the `authors`,
   `[project.urls]` and `classifiers` it had never had — its page was blank, including **no
 
-  All three distributions moved to the [PEP 639](https://peps.python.org/pep-0639/) form
-  text** into the `License:` metadata header. Every wheel now reports a machine-readable
-  `License-Expression` under `Metadata-Version: 2.4`, and the redundant
-  `License :: OSI Approved :: …` classifier is gone — PyPI rejects an upload carrying both.
-
-  **@shaurya703 also caught that `license-files` resolves relative to each package directory**,
-  and that neither `ki-protocol` nor `kubeintellect-server` had a `LICENSE` of its own — so
-  those wheels had been shipping **without the licence text**, a real compliance gap in an
   verified in the built artifacts (`twine check` passes on all six).
 
   The live PyPI pages stay wrong until the next publish; this fixes the source of them.
@@ -4625,7 +4616,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   that `make lint`'s `ruff format --check` is not a CI gate. The dev-setup snippet also still
   claimed the archived org mirror was canonical. Added a worked first-PR walkthrough against a
   real open issue.
-- **Container image licence label corrected (legal).** `v4/Dockerfile` labelled the image
   added and the `source` URL cased to match the canonical repo. Caught while inspecting the built
   image before enabling public publishing.
 - **v3 HITL fail-open closed (safety).** `v3/app/agent/hitl.py` approval/denial detection now
@@ -4798,8 +4788,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   sections, and the multi-version evaluation tables/figures.
 
 ### Changed
-  declarations + OSI classifiers, README badge, and added `CITATION.cff` +
-  `THIRD_PARTY_NOTICES.md`.
+  declarations + OSI classifiers, README badge, and added `CITATION.cff`.
 - **Per-version (`v2/`, `v3/`, `v4/`) Makefiles are now app-only** — shared infra
   targets and duplicated `deploy/`/`scripts/` directories moved to the root.
 - **Stronger, independent evaluation judge.** The LLM-as-judge is decoupled from
