@@ -309,3 +309,4 @@ The original KubeIntellect used a LibreChat frontend with a LangGraph multi-agen
 
 ## License
 
+Released under the [MIT License](../LICENSE).
