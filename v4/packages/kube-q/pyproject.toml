@@ -2,7 +2,7 @@
 name = "kube-q"
 # Static since the monorepo merge (ADR-004): hatch-vcs would read kubeintellect's
 # tags here. Last standalone tag was v1.4.3; 1.5.0 adds --auto-approve + plan rendering.
-version = "1.6.0"
+version = "1.6.1"
 requires-python = ">=3.12"
 description = "Interactive terminal CLI for chatting with your Kubernetes cluster via an AI backend."
 readme = "README.md"
