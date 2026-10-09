@@ -329,7 +329,7 @@ thing the project cannot get any other way.
 
 ## License
 
-KubeIntellect is free software, released under the [MIT License](LICENSE). There is no paid edition, no paid tier and no sponsorship.
+KubeIntellect is released under [MIT License](LICENSE).
 
 ## Citation
 
