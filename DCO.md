@@ -25,8 +25,9 @@ projects such as the Linux kernel adopted a DCO in the first place. We have deci
 certainty it adds is not worth turning a newcomer's first pull request red — but that is a
 judgement call, not a technicality, and it is recorded here rather than hidden.
 
-**The commercial licence offered elsewhere covers the copyright holder's own code.** It does
-not reach your contribution, and nothing here asks you to let it.
+**No separate proprietary/commercial license is currently offered.** An MIT license
+transition is only proposed and would require authorization from all relevant
+copyright holders, including contributors where applicable.
 
 If you *prefer* to sign off your commits out of habit, that is welcome and changes nothing.
 
