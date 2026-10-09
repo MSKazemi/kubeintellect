@@ -345,14 +345,6 @@ The original KubeIntellect used a LibreChat frontend with a LangGraph multi-agen
 
 ## License
 
-KubeIntellect is **dual-licensed**:
-
-- **Open source — GNU AGPL-3.0-or-later** ([LICENSE](LICENSE)). You may use, modify, and
-  self-host it freely. Because AGPL-3.0 includes the network-use clause, if you run a
-  **modified** version as a network service you must make the modified source available to
-  its users under the same license.
-- **Commercial license** — if you want to use KubeIntellect (modified or not) in a closed-
-  source or proprietary product/service without the AGPL obligations, a separate commercial
-  license is available. Contact **mohsen.seyedkazemi@gmail.com**.
+KubeIntellect carries [AGPL-3.0-or-later](LICENSE) notices. No separate proprietary/commercial license is being offered. MIT is proposed but has **not** been adopted pending a rights review. See [LICENSING.md](LICENSING.md).
 
 If you use KubeIntellect in academic work, please cite it — see [CITATION.cff](CITATION.cff).
