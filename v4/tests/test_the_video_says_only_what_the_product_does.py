@@ -127,8 +127,8 @@ class TestTheClaimsItDoesMakeAreTrue:
         assert "FLIGHT_RECORDER_ENABLED: bool = True" in CONFIG.read_text(encoding="utf-8")
 
     def test_the_licence_claim_matches_the_licence(self, spoken):
-        assert "a g p l three" in spoken
-            encoding="utf-8")[:200]
+        assert "m i t licensed" in spoken
+        assert (ROOT / "LICENSE").read_text(encoding="utf-8").startswith("MIT License")
 
     def test_the_paper_claim_is_about_an_earlier_version(self, spoken):
         """The published paper describes an earlier system; the v4 paper is not accepted."""
@@ -522,8 +522,8 @@ class TestNothingIsSpelledPhoneticallyOnScreen:
         assert "caption = written(caption)" in src
 
     def test_the_narration_keeps_the_phonetic_spelling(self, scenes):
+        """The fix must not reach the narration — Piper reads that, and `kubectl` is
         pronounced as a mess. The two forms are supposed to differ."""
         narration = " ".join(sc.get("narration", "") for sc in scenes.SCENES
                              if sc.get("enabled", True))
-        assert "A G P L three" in narration
         assert "kube control" in narration

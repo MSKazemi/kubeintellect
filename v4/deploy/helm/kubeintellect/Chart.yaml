@@ -31,6 +31,7 @@ maintainers:
     url: https://github.com/MSKazemi
 
 annotations:
+  artifacthub.io/license: MIT
   artifacthub.io/operator: "false"
   artifacthub.io/prerelease: "false"
   artifacthub.io/links: |

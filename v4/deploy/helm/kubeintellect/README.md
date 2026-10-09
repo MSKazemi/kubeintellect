@@ -108,3 +108,4 @@ Observability services are expected in the `monitoring` namespace, e.g.
 - Documentation: <https://mskazemi.github.io/kubeintellect/>
 - Questions: <https://github.com/MSKazemi/kubeintellect/discussions>
 
+Licensed under the MIT License.

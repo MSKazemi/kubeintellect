@@ -20,6 +20,7 @@ Each component remains under its own license, held by its respective copyright h
 | PostgreSQL | Memory/audit persistence via the wire protocol | PostgreSQL License |
 
 > KubeIntellect does not copy, modify, or statically/dynamically link their source, so their
+> licensed under the MIT License; see [LICENSE](LICENSE).)
 
 ## Libraries (linked dependencies — all permissive)
 

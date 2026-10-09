@@ -340,10 +340,8 @@ account to create, and nothing for an employer's legal team to review. Opening t
 request is the whole contract, and nothing checks for a sign-off — so there is nothing you can
 get wrong.
 
-explains the reasoning and the trade-off in full.
-
-same license as the rest of the project, and you can keep using your own code anywhere else you like.
-
+Your contribution is licensed under the [MIT License](LICENSE), the same license as the rest of
+the project, and you keep the copyright in your work and can use your own code anywhere else you like.
 
 Questions about any of this? **Open a Discussion** — we would rather adapt than lose your work.
 

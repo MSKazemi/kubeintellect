@@ -20,6 +20,7 @@ hide:
 <div class="kq-badges">
   <span class="kq-badge">:material-tag: v1.4.0</span>
   <span class="kq-badge">:material-language-python: Python 3.12+</span>
+  <span class="kq-badge">:material-scale-balance: MIT</span>
   <span class="kq-badge">:material-lightning-bolt: Streaming SSE</span>
   <span class="kq-badge">:material-docker: Docker Ready</span>
   <span class="kq-badge">:material-database: SQLite History</span>

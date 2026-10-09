@@ -25,6 +25,7 @@ Short version:
 | Can **perform** cluster actions | ✅ (approval-gated) | ❌ read-only | ❌ read-only |
 | Human-in-the-loop approval + RBAC | ✅ | n/a | n/a |
 | Multi-agent architecture | ✅ | ❌ | Agent-based |
+| License | MIT | Apache-2.0 | Apache-2.0 |
 | Peer-reviewed architecture | ✅ (JGC 2026) | — | — |
 
 *(Feature sets change — check each project's current docs before deciding.)*

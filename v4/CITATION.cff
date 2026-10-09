@@ -16,6 +16,7 @@ authors:
     website: "https://mskazemi.com"
 repository-code: "https://github.com/MSKazemi/kubeintellect"
 url: "https://github.com/MSKazemi/kubeintellect"
+license: MIT
 keywords:
   - kubernetes
   - llm-agents

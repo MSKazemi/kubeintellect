@@ -571,3 +571,4 @@ To require a token before clients can spawn `kq`, set `PTY_AUTH_TOKEN` on the se
 
 ## License
 
+Released under the [MIT License](LICENSE).

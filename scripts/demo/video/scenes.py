@@ -402,6 +402,7 @@ SCENES = [
         title="Self-hosted. Your cluster,\nyour keys, your gate.",
         subtitle="",
         bullets=[
+            ("MIT, self-hosted", "it runs where your cluster runs"),
             ("Published", "an earlier version is described in a peer reviewed paper"),
             ("Nothing changes without you", "every mutating command stops at a gate you answer"),
         ],
@@ -410,7 +411,7 @@ SCENES = [
         logo=True,
         sources=["../../../README.md (licence badge, DOI badge)"],
         narration=(
-            "KubeIntellect is A G P L three and self hosted. It runs where your cluster runs, "
+            "KubeIntellect is M I T licensed and self hosted. It runs where your cluster runs, "
             "with your keys, and it does not change anything without a human answering a gate. "
             "The recordings in this video, and the page listing everything they did not do, "
             "are both in the repository. "

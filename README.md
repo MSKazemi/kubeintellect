@@ -9,6 +9,7 @@
   [![kq downloads](https://img.shields.io/pypi/dm/kube-q?label=kq%20installs)](https://pypi.org/project/kube-q/)
   [![Snap Store](https://img.shields.io/snapcraft/v/kubeintellect/latest/stable?logo=snapcraft&label=snap)](https://snapcraft.io/kubeintellect)
   [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
   [![DOI](https://img.shields.io/badge/DOI-10.1007%2Fs10723--026--09837--6-blue)](https://doi.org/10.1007/s10723-026-09837-6)
   [![arXiv](https://img.shields.io/badge/arXiv-2509.02449-b31b1b.svg)](https://arxiv.org/abs/2509.02449)
   [![Website](https://img.shields.io/badge/website-kubeintellect.com-0075C4)](https://kubeintellect.com/)
@@ -339,6 +340,7 @@ this one — and if you have contributed here, you already know how they are run
 
 ## License
 
+KubeIntellect is released under the [MIT License](LICENSE).
 
 ## Citation
 

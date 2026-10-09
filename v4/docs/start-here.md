@@ -68,6 +68,8 @@ in that order, and usually before a pilot is approved.
 
 **Two things worth surfacing early in an evaluation**, because they usually come up anyway:
 cluster context leaves your network unless you point the system at a self-hosted model, and
+the software is **MIT-licensed**. Neither is buried — see [Data handling](data-handling.md) and
+the repository `LICENSE`.
 
 ---
 
