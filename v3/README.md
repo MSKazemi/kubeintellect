@@ -310,4 +310,4 @@ The original KubeIntellect used a LibreChat frontend with a LangGraph multi-agen
 
 ## License
 
-AGPL-3.0. Commercial licenses available — see [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md).
+Published with AGPL-3.0 notices. No separate proprietary/commercial license is currently offered. A potential MIT transition is pending rights review; see [LICENSING.md](../LICENSING.md).
