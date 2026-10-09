@@ -342,7 +342,7 @@ this one — and if you have contributed here, you already know how they are run
 
 ## License
 
-KubeIntellect is **dual-licensed** under the **[GNU AGPL-3.0-or-later](LICENSE)** *or* a **commercial license**. Self-host and modify freely under the AGPL; for closed/SaaS use without AGPL's network-copyleft obligations, a commercial license is available. See **[LICENSING.md](LICENSING.md)**; contact **mohsen.seyedkazemi@gmail.com**.
+KubeIntellect carries [AGPL-3.0-or-later](LICENSE) notices. No separate proprietary/commercial license is being offered. The MIT transition remains a proposal pending authorization by relevant rights holders. See [LICENSING.md](LICENSING.md).
 
 ## Citation
 
