@@ -58,10 +58,11 @@ New maintainers are invited by existing maintainers based on a sustained track r
 high-quality contributions and good community judgment.
 
 ### Lead maintainer / BDFL (for now)
-KubeIntellect was created by **Mohsen Seyedkazemi Ardebili**, who currently leads it and holds
-the copyright that makes the dual-license model possible (see below). The lead maintainer has
-final say on direction and on decisions where consensus can't be reached — a role we intend to
-dilute into a maintainer group as the project matures.
+KubeIntellect was created by **Mohsen Seyedkazemi Ardebili**, who currently maintains the
+repository. Economic copyright ownership for research-era code is being reviewed; project
+maintainership alone does not determine copyright ownership. Maintainer project decisions
+are subject to the rights of copyright holders. We intend to grow a maintainer group
+as the project matures.
 
 ### Stepping back, and what happens if the lead maintainer disappears
 
@@ -80,10 +81,10 @@ Written down now, while it is hypothetical and nobody is upset.
 - **If the project is ever abandoned**, the intent is to archive it publicly with a clear
   notice in the README rather than let it rot silently, and to say so on PyPI. The AGPL means
   the code cannot be taken away from you regardless.
-- **Copyright in the project's own code, and the dual license, stay with the lead
-  maintainer**; that is a legal fact, not a governance lever, and it does not affect anyone's
-  AGPL rights. **Contributors keep the copyright in their own work** — there is no CLA and no
-  copyright assignment, and the commercial license does not reach contributed code. See
+- **Copyright and licensing rights are independent of maintainership.** Ownership of
+  research-era code is under review, while contributors retain their rights in their own
+  contributions. No separate proprietary/commercial license is being offered. Existing AGPL
+  notices and rights validly granted under them are unaffected by this policy update. See
   [LICENSING.md](LICENSING.md) and [DCO.md](DCO.md).
 
 ### Code of Conduct enforcement
@@ -118,14 +119,12 @@ A change that violates these will be asked to change, no matter how useful it ot
 
 ## Licensing & contributions
 
-KubeIntellect is **dual-licensed** (AGPL-3.0-or-later **or** commercial — see
-[LICENSING.md](LICENSING.md)). **Contributing asks nothing of you** — no CLA, no DCO sign-off,
-no copyright assignment. Your contribution is licensed under AGPL-3.0-or-later and **you keep
-the copyright in it.**
-
-The commercial licence covers the copyright holder's own code. It does **not** reach your
-contribution, and nothing here asks you to let it. See [CONTRIBUTING.md](CONTRIBUTING.md) and
-[`DCO.md`](DCO.md).
+KubeIntellect has been distributed with AGPL-3.0-or-later notices
+(see [LICENSING.md](LICENSING.md)). **Contributing asks nothing of you** — no CLA,
+no DCO sign-off, no copyright assignment. Contributions have been licensed under AGPL and
+contributors **keep the copyright in their own work**. No separate proprietary/commercial
+license is offered. Any MIT transition must separately address the rights of all relevant
+copyright holders. See [CONTRIBUTING.md](CONTRIBUTING.md) and [`DCO.md`](DCO.md).
 
 ## Changing this document
 
