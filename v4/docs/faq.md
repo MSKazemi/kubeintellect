@@ -150,8 +150,9 @@ gate they cannot inspect, which would defeat the point of having one.
 - **Modifying it and keeping that private to your own operators**: also fine.
 - **The obligation only triggers** when you offer a *modified* version to users
   over a network, or redistribute it — then those users get the source.
-- **If that does not fit** (you want to ship a closed derivative or a hosted
-  product built on a modified version), a separate commercial licence exists.
+- **If that does not fit**, no separate proprietary/commercial license is
+  currently offered. MIT relicensing is being evaluated but has not taken effect,
+  and would require authorization from the relevant rights holders.
 
 The full text, the exact obligations, and how contributions are licensed are in
 [LICENSING.md](https://github.com/MSKazemi/kubeintellect/blob/main/LICENSING.md).
