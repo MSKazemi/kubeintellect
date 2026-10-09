@@ -16,7 +16,7 @@ here is a formality — every channel below is read.
 | **Show what you built / where you run it** | [Show and tell](https://github.com/MSKazemi/kubeintellect/discussions/categories/show-and-tell) |
 | **Tell us you're using it** | [Who's using KubeIntellect? (#51)](https://github.com/MSKazemi/kubeintellect/issues/51) — one comment, or a PR adding a row to [`ADOPTERS.md`](ADOPTERS.md) |
 | **Report a security vulnerability** | **Privately** — [open a security advisory](https://github.com/MSKazemi/kubeintellect/security/advisories/new). See [SECURITY.md](SECURITY.md). Never in a public issue. |
-| **Ask about commercial licensing** | mohsen.seyedkazemi@gmail.com — see [LICENSING.md](LICENSING.md) |
+| **Questions about licensing** | See [LICENSING.md](LICENSING.md); separate proprietary/commercial licenses are not currently offered |
 
 ## Read these first
 
