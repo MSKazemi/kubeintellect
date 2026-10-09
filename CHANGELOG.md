@@ -102,9 +102,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Changed
 
 - **Package metadata declares the MIT license** (`license = "MIT"`, SPDX) in `kubeintellect`,
-  `kube-q` and `ki-protocol`. The 2.5.1 and 2.5.2 uploads carried no license field, and 2.5.0 and
-  earlier declared AGPL-3.0-or-later; PyPI metadata cannot be edited after upload, so this release
-  is what makes the project page show MIT. The repository carries a single root `LICENSE`.
+  `kube-q` and `ki-protocol`. Earlier uploads carried no or different license metadata, and PyPI
+  metadata cannot be edited after upload, so this release is what makes the project page show MIT.
+  The repository carries a single root `LICENSE`.
 - The repository no longer ships a `FUNDING.yml` (it rendered a Sponsor button). There is no
   paid edition, paid tier or sponsorship.
 - **Breaking — `LLM_PROVIDER=anthropic` on the default V2 graph now refuses to start** instead of
