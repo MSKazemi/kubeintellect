@@ -58,7 +58,7 @@ data:
   # PromQL `detect:` evaluation — default off, needs PROMETHEUS_URL (enforced by the validate helper).
   PROMQL_DETECTION_ENABLED: {{ .Values.config.promqlDetectionEnabled | default false | toString | quote }}
   PROMQL_DETECTION_INTERVAL_SECONDS: {{ .Values.config.promqlDetectionIntervalSeconds | default 30 | int | toString | quote }}
-  # LLM_PROVIDER=local — per-model tool-calling probe timeout at startup (see startupProbe in values.yaml).
+  # LLM_PROVIDER=local — per-model tool-calling probe timeout at startup (the pod start-up probe window in values.yaml is sized from this).
   LOCAL_LLM_PROBE_TIMEOUT_SECONDS: {{ .Values.config.localLlmProbeTimeoutSeconds | default 180 | toString | quote }}
   # Cluster identity for memory / findings / learned patterns. An in-cluster pod has no
   # kubeconfig context to derive a name from, so without this the id falls back to the
