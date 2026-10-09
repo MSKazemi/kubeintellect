@@ -322,7 +322,7 @@ Contributions are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for dev setu
 
 ## License
 
-
+is archived in [`DEPENDENCY-LICENSES-LEGACY.md`](DEPENDENCY-LICENSES-LEGACY.md).
 
 ---
 

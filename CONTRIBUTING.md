@@ -344,7 +344,6 @@ explains the reasoning and the trade-off in full.
 
 same license as the rest of the project, and you can keep using your own code anywhere else you like.
 
-not reach your contribution, and nothing here asks you to let it.
 
 Questions about any of this? **Open a Discussion** — we would rather adapt than lose your work.
 

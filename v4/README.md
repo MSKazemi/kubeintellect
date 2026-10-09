@@ -345,8 +345,4 @@ The original KubeIntellect used a LibreChat frontend with a LangGraph multi-agen
 ## License
 
 
-  **modified** version as a network service you must make the modified source available to
-  its users under the same license.
-  license is available. Contact **mohsen.seyedkazemi@gmail.com**.
-
 If you use KubeIntellect in academic work, please cite it — see [CITATION.cff](CITATION.cff).

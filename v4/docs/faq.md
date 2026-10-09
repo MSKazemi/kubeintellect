@@ -147,7 +147,7 @@ gate they cannot inspect, which would defeat the point of having one.
 - **Modifying it and keeping that private to your own operators**: also fine.
 - **The obligation only triggers** when you offer a *modified* version to users
   over a network, or redistribute it — then those users get the source.
-- **If that does not fit** (you want to ship a closed derivative or a hosted
+  and would require authorization from the relevant rights holders.
 
 The full text, the exact obligations, and how contributions are licensed are in
 This answer is a plain-English summary for orientation, not legal advice — the

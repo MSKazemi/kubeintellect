@@ -58,9 +58,11 @@ New maintainers are invited by existing maintainers based on a sustained track r
 high-quality contributions and good community judgment.
 
 ### Lead maintainer / BDFL (for now)
-KubeIntellect was created by **Mohsen Seyedkazemi Ardebili**, who currently leads it and holds
-final say on direction and on decisions where consensus can't be reached — a role we intend to
-dilute into a maintainer group as the project matures.
+KubeIntellect was created by **Mohsen Seyedkazemi Ardebili**, who currently maintains the
+repository. Economic copyright ownership for research-era code is being reviewed; project
+maintainership alone does not determine copyright ownership. Maintainer project decisions
+are subject to the rights of copyright holders. We intend to grow a maintainer group
+as the project matures.
 
 ### Stepping back, and what happens if the lead maintainer disappears
 
@@ -78,8 +80,9 @@ Written down now, while it is hypothetical and nobody is upset.
   project's top priority.
 - **If the project is ever abandoned**, the intent is to archive it publicly with a clear
   the code cannot be taken away from you regardless.
-- **Copyright in the project's own code, and the dual license, stay with the lead
-  maintainer**; that is a legal fact, not a governance lever, and it does not affect anyone's
+- **Copyright and licensing rights are independent of maintainership.** Ownership of
+  research-era code is under review, while contributors retain their rights in their own
+  notices and rights validly granted under them are unaffected by this policy update. See
 
 ### Code of Conduct enforcement
 Reports go to **mohsen.seyedkazemi@gmail.com** and are handled per
@@ -113,9 +116,6 @@ A change that violates these will be asked to change, no matter how useful it ot
 
 ## Licensing & contributions
 
-the copyright in it.**
-
-contribution, and nothing here asks you to let it. See [CONTRIBUTING.md](CONTRIBUTING.md) and
 
 ## Changing this document
 
