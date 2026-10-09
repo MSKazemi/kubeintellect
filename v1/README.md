@@ -323,9 +323,11 @@ Contributions are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for dev setu
 
 ## License
 
-KubeIntellect is licensed under **AGPL-3.0**. Any service or product built on this code must open-source its modifications under the same license, or obtain a commercial license.
-
-Commercial licenses for proprietary use: [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md)
+The v1 research implementation carries **[AGPL-3.0](LICENSE)** notices. AGPL permits
+research, education, and commercial activities subject to its terms. No separate
+proprietary/commercial license is currently offered. See [the root licensing status](../LICENSING.md)
+for the proposed MIT transition, which is not yet active. A historical dependency inventory
+is archived in [`DEPENDENCY-LICENSES-LEGACY.md`](DEPENDENCY-LICENSES-LEGACY.md).
 
 ---
 
