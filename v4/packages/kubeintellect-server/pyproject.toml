@@ -21,7 +21,7 @@ classifiers = [
 ]
 dependencies = [
     # API
-    "fastapi>=0.115",
+    "fastapi>=0.142.2",
     "uvicorn[standard]>=0.52.4",
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
