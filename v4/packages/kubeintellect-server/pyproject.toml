@@ -33,7 +33,7 @@ dependencies = [
     "langsmith>=0.8",
     # Database
     "asyncpg>=0.30",
-    "psycopg[binary,pool]>=3.3.5",
+    "psycopg[binary,pool]>=3.3.6",
     "langgraph-checkpoint-postgres>=3.0",
     "langgraph-checkpoint-sqlite>=3.0",
     # YAML validation
