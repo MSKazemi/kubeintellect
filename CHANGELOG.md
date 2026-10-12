@@ -11,6 +11,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Documentation
+
+- **Alibaba Cloud ACK verified for the local install path** (`docs/install/existing-cluster.md`; #237, #253).
+  Client-certificate kubeconfig works with no extra tooling and `readonly` RBAC held. Thanks to
+  [@Lumbenlengo](https://github.com/Lumbenlengo).
+
 ## [2.6.0] - 2026-10-09
 
 ### Added
