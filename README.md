@@ -342,3 +342,9 @@ If you use KubeIntellect in your research, please cite the paper (metadata in [C
 
 The materials in this repository are made available without warranties to the extent permitted by applicable law. **Please read the [Disclaimer and Responsible-Use Notice](DISCLAIMER.md)** before relying on or deploying them. This notice does not change any existing software license or limit rights that cannot legally be waived.
 <!-- legal-notice: end -->
+
+<!-- risk-guidance: start -->
+### Operational safety and limitations
+
+Before connecting accounts, running automation, relying on consequential outputs, or using production systems, review [project-specific safety risks and pre-deployment checks](SAFETY.md). The checklist describes precautions to **verify**, not a certification that the software currently enforces every safeguard.
+<!-- risk-guidance: end -->
