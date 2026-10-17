@@ -336,3 +336,9 @@ thing the project cannot get any other way.
 If you use KubeIntellect in your research, please cite the paper (metadata in [CITATION.cff](CITATION.cff)):
 
 > Seyedkazemi Ardebili, M., & Bartolini, A. (2026). *KubeIntellect: A Modular LLM-Orchestrated Agent Framework for End-to-End Kubernetes Management.* Journal of Grid Computing, 24(3). https://doi.org/10.1007/s10723-026-09837-6
+
+<!-- legal-notice: start -->
+### Legal notice and responsible use
+
+The materials in this repository are made available without warranties to the extent permitted by applicable law. **Please read the [Disclaimer and Responsible-Use Notice](DISCLAIMER.md)** before relying on or deploying them. This notice does not change any existing software license or limit rights that cannot legally be waived.
+<!-- legal-notice: end -->
