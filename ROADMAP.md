@@ -1,6 +1,6 @@
 # KubeIntellect Roadmap
 
-_Last updated: 2026-08-06 · Maintained by [@MSKazemi](https://github.com/MSKazemi)_
+_Last updated: 2026-10-28 · Maintained by [@MSKazemi](https://github.com/MSKazemi)_
 
 This is a statement of **direction, not a set of commitments**. Nothing here is a promised
 feature with a date. If something matters to you, say so in
@@ -83,6 +83,16 @@ dishonest.
   everything in this section.
 
 ---
+
+## Hugging Face adoption experiment — proposed, not shipped
+
+The existing [Hugging Face Space](https://huggingface.co/spaces/mskazemi/kubeintellect)
+already offers a read-only live-cluster chat. A [new experimental roadmap (#275)](https://github.com/MSKazemi/kubeintellect/issues/275)
+tracks first-use improvements, optional *synthetic* incident replays, local open-weight
+decision-model comparisons, Chronos-Bolt Tiny forecasting, paper/dataset discoverability,
+and reliable Space publishing. **These are proposals, not implemented capabilities**.
+No additional cluster permissions, live auto-remediation, or claim of free hosted Jev
+weights is part of this experiment.
 
 ## Explicitly *not* planned
 
