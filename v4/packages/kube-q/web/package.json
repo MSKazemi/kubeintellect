@@ -24,7 +24,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "concurrently": "^10.0.6",
-    "eslint": "^9.39.4",
+    "eslint": "^10.13.0",
     "eslint-config-next": "16.4.2",
     "tailwindcss": "^4",
     "typescript": "^5.9.3"
