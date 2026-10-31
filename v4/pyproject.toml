@@ -11,8 +11,8 @@ members = ["packages/*"]
 dev = [
     # Pulls every workspace member (editable) into the dev environment.
     "kubeintellect[tracing,metrics]",
-    "pytest>=8",
-    "pytest-asyncio>=1.0",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1",
     "pytest-mock>=3.17.0",
     "pytest-timeout>=2.4",
     "pytest-cov>=7.0",
@@ -27,7 +27,7 @@ dev = [
     "ruff>=0.15,<0.16",
     "mypy>=2.4.0",
     "types-PyYAML>=6.0.12",
-    "mkdocs-material>=9.5",
+    "mkdocs-material>=9.8.0",
     "mkdocstrings[python]>=1.0.7",
     "scipy>=1.18.1",
     "matplotlib>=3.11.2",
