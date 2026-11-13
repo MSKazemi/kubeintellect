@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **An image or resources change is always-confirm however it is spelled.** `set image` / `set resources` always prompted, but the same change as `kubectl patch` (JSON, merge or strategic) or `apply`/`replace` of a workload manifest ran unprompted under auto-approve. The gate now follows the effect: a `patch`, `apply` or `replace` that sets a container `image` or `resources` field is always-confirm, and a patch that cannot be read fails closed. Found in model-driven A3 pilots, where the image-pull repair rate of each model tracked which command it wrote. Consequence: an unattended A3 session no longer repairs an image fault; it needs a human. Not covered: `rollout undo`, `create`.
 - **Auto-approve granted to an autonomous investigation is bound to its namespace.** The watchtower passes the
   finding's namespace into the run config; `run_kubectl` drops the bypass for any write that does not provably stay in
   it (fail-closed), so the command goes to the approval prompt instead. Found in model-driven A3 pilots, where a session

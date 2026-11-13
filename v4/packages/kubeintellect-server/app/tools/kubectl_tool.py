@@ -322,7 +322,93 @@ def _classify_risk(verb: str, args: list[str] | None = None) -> str:
     return "low"
 
 
-def _requires_always_confirm(verb: str, args: list[str]) -> bool:
+#: The container fields that `set image` / `set resources` change. Matched as whole field names (or whole
+#: JSON-patch path segments), never as substrings: `imagePullPolicy` and `imagePullSecrets` are other fields.
+_GATED_CONTAINER_FIELDS = frozenset({"image", "resources"})
+
+_GATED_FIELD_WORD = re.compile(r"(?<![A-Za-z0-9_])(?:image|resources)(?![A-Za-z0-9_])")
+
+#: Kinds whose manifest carries a pod template or pod spec, i.e. the ones where `image` / `resources` are workload fields.
+_POD_BEARING_KINDS = frozenset({
+    "pod", "deployment", "statefulset", "daemonset", "replicaset", "replicationcontroller", "job", "cronjob",
+})
+
+
+def _touches_gated_field(node: object) -> bool:
+    """True if a parsed patch/manifest names an `image` or `resources` field anywhere.
+
+    Handles all three payload shapes through one walk: a merge/strategic patch (nested mappings), a manifest, and an
+    RFC 6902 JSON patch (a list of `{op, path, value}`), where the field is a *path segment* rather than a key.
+    """
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key in _GATED_CONTAINER_FIELDS:
+                return True
+            if key in ("path", "from") and isinstance(value, str) and _GATED_CONTAINER_FIELDS & set(value.split("/")):
+                return True
+            if _touches_gated_field(value):
+                return True
+    elif isinstance(node, list):
+        return any(_touches_gated_field(item) for item in node)
+    return False
+
+
+def _patch_payload(args: list[str]) -> tuple[bool, str | None]:
+    """(readable, payload) for a `kubectl patch`. Unreadable means the patch comes from a file or names no payload.
+
+    The tool cannot open a file on the server and a patch with no payload is malformed, so both are reported as
+    unreadable and the caller fails closed.
+    """
+    for i, tok in enumerate(args):
+        if tok in ("-p", "--patch"):
+            return (True, args[i + 1]) if i + 1 < len(args) else (False, None)
+        if tok.startswith("--patch="):
+            return True, tok.split("=", 1)[1]
+        if tok.startswith("-p=") or (tok.startswith("-p") and len(tok) > 2 and tok[2] in "{[\"'"):
+            return True, tok[3:] if tok.startswith("-p=") else tok[2:]
+        if tok == "--patch-file" or tok.startswith("--patch-file="):
+            return False, None
+    return False, None
+
+
+def _changes_container_image_or_resources(verb: str, args: list[str], stdin: str | None) -> bool:
+    """True when a `patch` / `apply` / `replace` changes a workload's container `image` or `resources`.
+
+    `set image` and `set resources` are always-confirm, but the same change spelled as `patch` or `apply` was not:
+    measured 2026-11-12 with a real model, a JSON patch replacing `/spec/template/spec/containers/0/image` ran under
+    auto-approve with no prompt while `kubectl set image` for the same field stopped and asked. The gate keyed on the
+    spelling, not the effect. Fail-closed where the payload cannot be read.
+
+    NOT covered, deliberately: `rollout undo` (restores an earlier revision, which can change the image) and `create`
+    (cannot update an existing object); `edit` needs an editor and cannot run through this tool.
+    """
+    if verb == "patch":
+        readable, payload = _patch_payload(args)
+        if not readable or payload is None:
+            return True
+        # Text backstop, independent of any parser: PyYAML and kubectl's own YAML reader can disagree about a
+        # malformed flow mapping (`{image:b:1}` is ONE key to PyYAML), and a gate that trusts one parser's view is
+        # only as strong as the two parsers' agreement. Whole-word match, so `imagePullPolicy` does not trip it.
+        if _GATED_FIELD_WORD.search(payload):
+            return True
+        # The parse below catches what the text cannot: JSON escapes such as "image" decode to `image`.
+        try:
+            parsed = json.loads(payload)
+        except ValueError:
+            try:
+                parsed = yaml.safe_load(payload)
+            except yaml.YAMLError:
+                return True
+        return not isinstance(parsed, (dict, list)) or _touches_gated_field(parsed)
+    if verb in ("apply", "replace"):
+        return any(
+            str(doc.get("kind", "")).lower() in _POD_BEARING_KINDS and _touches_gated_field(doc)
+            for doc in _manifest_docs(stdin)
+        )
+    return False
+
+
+def _requires_always_confirm(verb: str, args: list[str], stdin: str | None = None) -> bool:
     """True for actions whose blast radius is too large to auto-approve.
 
     Always-confirm actions trigger an HITL interrupt even when
@@ -330,6 +416,8 @@ def _requires_always_confirm(verb: str, args: list[str]) -> bool:
     confirm; there is no way to silently auto-approve them.
     """
     if verb == "drain":
+        return True
+    if _changes_container_image_or_resources(verb, args, stdin):
         return True
     # `args[2]` is the operand only when the command is written verb-first with nothing in
     # between. `kubectl delete -n prod namespace shop` — the *natural* way to write it — put
@@ -1872,7 +1960,7 @@ def run_kubectl(
                 f"{bound_ns!r}: {cmd!r}"
             )
             hitl_bypass = False
-        always_confirm = _requires_always_confirm(verb, args)
+        always_confirm = _requires_always_confirm(verb, args, stdin)
         admission = effect_guard.admit(
             cmd, args, stdin, config, has_dry_run=has_dry_run,
             hitl_bypass=hitl_bypass, always_confirm=always_confirm,

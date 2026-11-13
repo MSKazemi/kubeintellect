@@ -476,21 +476,30 @@ and `always_confirm=true`; there is no way to silently auto-approve them.
 | `delete pv\|persistentvolume` | Releases user data; CSI drivers may delete the underlying disk. |
 | `delete crd\|customresourcedefinition` | Cascades to every CR of that kind cluster-wide. |
 | `set image \|set resources` | Live mutation of running workloads; use `rollout undo` to revert. |
+| `patch` or `apply`/`replace` that changes a container `image` or `resources` field | The same change as `set image`/`set resources`, written another way. The gate follows the **effect**, not the spelling (see below). |
 | `drain` | Evicts every pod on the node; depends on PDB compliance. |
 | `delete <kind> --all` / `--all=true` | Names no object, only a whole class of them: every pod (or every object, with `delete all --all`) in the namespace. Measured on a real cluster: `kubectl delete pods --all -n ns` used to run unprompted under auto-approve and replaced every pod. `--all=false` is not unscoped. |
 
 Defined in `app/tools/kubectl_tool.py` (`_ALWAYS_CONFIRM_DELETE_TARGETS`,
-`_ALWAYS_CONFIRM_SET_SUBCOMMANDS`, `_is_unscoped_delete`, `_requires_always_confirm`). Plain
-`delete pod`, a selector-scoped `delete pods -l app=web`, `apply`, `patch`, `scale` continue to
-auto-approve under `auto_approve=true`. For an autonomous investigation that holds only inside
+`_ALWAYS_CONFIRM_SET_SUBCOMMANDS`, `_is_unscoped_delete`, `_changes_container_image_or_resources`,
+`_requires_always_confirm`). Plain
+`delete pod`, a selector-scoped `delete pods -l app=web`, a `patch` or `apply` that touches neither
+`image` nor `resources`, `scale` continue to auto-approve under `auto_approve=true`. For an autonomous investigation that holds only inside
 its own namespace (see [namespace-bound auto-approve](security.md#namespace-bound-auto-approve)).
 Tests: `tests/test_an_unscoped_delete_is_always_confirm.py`.
 
-!!! warning "The image gate depends on spelling"
-    `set image` is always-confirm, but `kubectl patch deployment x --type=json -p
-    '[{"op":"replace","path":"/spec/template/spec/containers/0/image",…}]'` changes the same
-    field and is **not**. In the A3 pilots the repair rate for image-pull faults tracked which of
-    the two commands the model chose. This is known and not yet decided; see the CHANGELOG.
+!!! note "The image gate follows the effect, not the spelling"
+    `kubectl patch deployment x --type=json -p '[{"op":"replace","path":"/spec/template/spec/containers/0/image",…}]'`
+    changes the same field as `set image` and is therefore also always-confirm. So is a `patch`
+    (JSON, merge or strategic) naming `image` or `resources` anywhere, and an `apply`/`replace`
+    of a Deployment, StatefulSet, DaemonSet, ReplicaSet, ReplicationController, Pod, Job or
+    CronJob manifest that sets either. A patch that cannot be read (`--patch-file`, unparseable)
+    is confirmed too. Matching is by whole field name, so `imagePullPolicy` is not caught.
+    Not covered: `rollout undo` (restores an earlier revision) and `create`.
+    Consequence: an **unattended** A3 session can no longer repair an image fault; it proposes
+    the fix and a human approves it. Before this, the repair rate of image-pull faults in the A3
+    pilots tracked which of the two commands the model happened to write.
+    Tests: `tests/test_an_image_change_is_always_confirm_however_it_is_spelled.py`.
 
 The gate reads the target through `_operand_after_verb()`, the same parse
 `_extract_verb` and `_extract_resource_type` use, so **where the flags sit does
