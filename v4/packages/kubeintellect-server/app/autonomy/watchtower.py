@@ -179,7 +179,7 @@ async def _investigate(finding: Finding, level: str) -> None:
         )
         try:
             if grounding_gated:
-                await _run_turn(ask, session_id, auto_approve=False)
+                await _run_turn(ask, session_id, auto_approve=False, bound_namespace=finding.namespace)
                 grounding = await _turn_grounding(session_id)
                 from app.cortex.verify import grounding_permits_autofix
                 if not grounding_permits_autofix(grounding):
@@ -193,10 +193,10 @@ async def _investigate(finding: Finding, level: str) -> None:
                     return
                 await _run_turn(
                     "Apply the fix you proposed above and verify it worked.",
-                    session_id, auto_approve=True,
+                    session_id, auto_approve=True, bound_namespace=finding.namespace,
                 )
             else:
-                await _run_turn(ask, session_id, auto_approve=auto_fix)
+                await _run_turn(ask, session_id, auto_approve=auto_fix, bound_namespace=finding.namespace)
             logger.info(f"watchtower_done session={session_id}")
             if auto_fix:
                 await _schedule_post_fix_recheck(finding)
@@ -211,8 +211,15 @@ def _grounding_gates_autofix() -> bool:
     return settings.SELF_GOVERN_ENABLED and settings.CORTEX_V4_ENABLED
 
 
-async def _run_turn(ask: str, session_id: str, *, auto_approve: bool) -> None:
-    """Run one watchtower turn through the chat session machinery and drain its stream."""
+async def _run_turn(
+    ask: str, session_id: str, *, auto_approve: bool, bound_namespace: str | None = None,
+) -> None:
+    """Run one watchtower turn through the chat session machinery and drain its stream.
+
+    ``bound_namespace`` is the namespace the investigation was opened for. Authority to mutate without a
+    human (``auto_approve``) was decided for that namespace by the ladder and the A3 allowlist, so the tool
+    layer applies it there and nowhere else.
+    """
     from app.agent.workflow import run_session
     from app.streaming.emitter import prepare_session, stream
 
@@ -225,6 +232,7 @@ async def _run_turn(ask: str, session_id: str, *, auto_approve: bool) -> None:
         auto_approve=auto_approve,
         # In-process, detector-triggered: the one caller entitled to sensor trust.
         trigger_source="detector",
+        bound_namespace=bound_namespace,
     ))
     # Drain the event stream (no human is attached); the flight
     # recorder + episode write are the durable outputs.

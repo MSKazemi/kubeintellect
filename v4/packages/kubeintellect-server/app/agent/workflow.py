@@ -424,6 +424,7 @@ async def stream_events(
     user_role: str = "admin",
     auto_approve: bool = False,
     trigger_source: str = "user_query",
+    bound_namespace: str | None = None,
 ):
     """Async generator yielding LangGraph astream_events for SSE.
 
@@ -443,6 +444,12 @@ async def stream_events(
         # Explicit runaway backstop — see settings.AGENT_GRAPH_RECURSION_LIMIT.
         "recursion_limit": settings.AGENT_GRAPH_RECURSION_LIMIT,
     }
+    # Autonomy ladder: an autonomous investigation is opened for ONE namespace, and its authority to
+    # mutate without a human (`hitl_bypass`) was decided for that namespace only. Carrying the namespace
+    # in the run config lets `run_kubectl` refuse to apply that authority anywhere else. Injected by the
+    # graph, never writable by a model, exactly like `user_role` and `hitl_bypass`. None = unbound.
+    if bound_namespace:
+        config["configurable"]["bound_namespace"] = bound_namespace
 
     # "approve all" bypasses HITL for **this turn only**, not for the session.
     #
@@ -614,6 +621,7 @@ async def run_session(
     user_role: str = "admin",
     auto_approve: bool = False,
     trigger_source: str = "user_query",
+    bound_namespace: str | None = None,
 ) -> None:
     """
     Run the graph for one turn and emit typed events to the per-session queue.
@@ -638,6 +646,7 @@ async def run_session(
         async for raw in stream_events(
             user_message, session_id, user_id, user_role,
             auto_approve=auto_approve, trigger_source=trigger_source,
+            bound_namespace=bound_namespace,
         ):
             kind = raw.get("event", "")
 

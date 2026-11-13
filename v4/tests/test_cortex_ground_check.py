@@ -304,7 +304,8 @@ async def _watchtower_runs(mocker, *, grounding, self_govern=True, cortex=True):
     """Drive `_investigate` at A3 on an allowlisted finding; return every turn it ran."""
     runs: list[dict] = []
 
-    async def fake_run_session(ask, session_id, user_id, user_role, auto_approve, trigger_source):
+    async def fake_run_session(ask, session_id, user_id, user_role, auto_approve, trigger_source,
+                               bound_namespace=None):
         runs.append({"ask": ask, "auto": auto_approve})
 
     async def empty_stream(sid, heartbeat_interval=5.0):

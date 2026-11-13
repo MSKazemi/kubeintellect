@@ -345,7 +345,22 @@ def _requires_always_confirm(verb: str, args: list[str]) -> bool:
         return True
     if verb == "delete" and operand.split("/")[0] in _ALWAYS_CONFIRM_DELETE_TARGETS:
         return True
+    # A delete that names no object but a whole class of them (`--all`, `-A`) has a blast radius the
+    # namespace-level rules above only cover when the TARGET is a namespace. Measured 2026-11-12 on a real
+    # cluster through this tool: `kubectl delete pods --all -n ns` ran under auto-approve with no prompt and
+    # replaced every pod. A named delete, or one scoped by a label selector, is still a deliberate, narrower
+    # request and still honours auto-approve; only the unscoped forms are always-confirm.
+    if verb == "delete" and _is_unscoped_delete(args):
+        return True
     return False
+
+
+def _is_unscoped_delete(args: list[str]) -> bool:
+    """True for `delete --all` / `delete -A`: no object is named and no selector narrows the set."""
+    for arg in args:
+        if arg == "--all" or arg.lower() == "--all=true":
+            return True
+    return _is_all_namespaces(args)
 
 
 def _normalise(command: str) -> str:
@@ -1123,6 +1138,46 @@ _SUBCOMMAND_VERBS = frozenset({"rollout"})
 
 # Size cap for one captured pre-state. Anything larger is truncated, and a truncated object is
 # not a restore point — the capture records that rather than letting it pass as one.
+# Fields the API server owns. Every live object carries them, a restore cannot use them (`kubectl apply`
+# ignores or rejects them), and the secret redactor treats a UUID as a token: left in, `metadata.uid`
+# became `<redacted-token>` and cleared `restorable` for essentially every capture. Measured 2026-11-12 on a
+# stock Deployment. The existing fixtures omitted these fields, which is why nothing caught it.
+_SERVER_MANAGED_METADATA = ("uid", "resourceVersion", "creationTimestamp", "generation", "selfLink",
+                            "managedFields", "ownerReferences")
+
+
+def _strip_server_managed(text: str) -> str:
+    """Drop API-server-owned fields from `kubectl get -o yaml` output.
+
+    Returns the text unchanged when it cannot be parsed as plain mappings, so the worst case is the
+    previous behaviour, never a silently altered capture.
+    """
+    try:
+        docs = list(yaml.safe_load_all(text))
+    except yaml.YAMLError:
+        return text
+    if not docs or any(not isinstance(d, dict) for d in docs):
+        return text
+
+    def scrub(node):
+        if isinstance(node, dict):
+            meta = node.get("metadata")
+            if isinstance(meta, dict):
+                for key in _SERVER_MANAGED_METADATA:
+                    meta.pop(key, None)
+            if "apiVersion" in node and "kind" in node:
+                node.pop("status", None)  # observed state: not part of what a restore applies
+            for value in node.values():
+                scrub(value)
+        elif isinstance(node, list):
+            for value in node:
+                scrub(value)
+
+    for doc in docs:
+        scrub(doc)
+    return yaml.safe_dump_all(docs, sort_keys=False, default_flow_style=False)
+
+
 _ROLLBACK_MAX_CHARS = 4000
 # How many objects one rollback point will fetch. The cap bounds latency on a large
 # `apply -f -`; it was previously an unnamed `[:5]` slice, so objects past it were
@@ -1216,6 +1271,23 @@ def _blocked_resource_hit(verb: str, args: list[str], stdin: str | None = None) 
         if _resource_spellings(kind) & blocked:
             return kind
     return None
+
+
+def _stays_within_namespace(verb: str, args: list[str], stdin: str | None, bound: str) -> bool:
+    """True only when every namespace the command touches is `bound`, shown by the command itself.
+
+    Fail-closed on purpose. A command that names no namespace runs in kubectl's *default* namespace, a
+    cluster-scoped object has none, and `-A` is every namespace: none of those can be shown to be inside
+    `bound`, so none of them keeps the bypass. A stdin manifest contributes the namespaces it declares.
+    """
+    if _is_all_namespaces(args):
+        return False
+    names = {n.lower() for n in _targeted_namespaces(verb, args)}
+    flagged = _extract_namespace(args, verb)
+    if flagged:
+        names.add(flagged.lower())
+    names |= _manifest_namespaces(stdin)
+    return bool(names) and names == {bound.lower()}
 
 
 def _is_all_namespaces(args: list[str]) -> bool:
@@ -1546,13 +1618,14 @@ def _capture_rollback_point(verb: str, args: list, stdin: str | None, config, en
                     target, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5, env=env, shell=False
                 )
                 if pre.returncode == 0 and pre.stdout:
-                    kept = redact_secrets(pre.stdout, max_chars=_ROLLBACK_MAX_CHARS)
+                    source = _strip_server_managed(pre.stdout)
+                    kept = redact_secrets(source, max_chars=_ROLLBACK_MAX_CHARS)
                     # `redact_secrets` drops the final newline; that alone is not a change to
                     # the object, so it must not cost a capture its restorable flag.
-                    if kept.rstrip("\n") != pre.stdout.rstrip("\n"):
+                    if kept.rstrip("\n") != source.rstrip("\n"):
                         restorable = False
                         notes.append(f"{label}: "
-                                     f"{_capture_note(pre.stdout, kept, _ROLLBACK_MAX_CHARS)}")
+                                     f"{_capture_note(source, kept, _ROLLBACK_MAX_CHARS)}")
                     states.append(kept)
                 else:
                     reason = (pre.stderr or "").strip().splitlines()
@@ -1787,6 +1860,18 @@ def run_kubectl(
             flag in args for flag in ("--dry-run=client", "--dry-run=server", "--dry-run")
         )
         hitl_bypass = bool((config.get("configurable") or {}).get("hitl_bypass", False)) if config else False
+        # An autonomous investigation's authority to mutate without a human was decided for ONE namespace.
+        # Measured 2026-11-12 with a real model: an auto-approved session opened for namespace A searched
+        # the cluster and patched a deployment in namespace B, which the ladder pins to A2 (propose only).
+        # Outside the bound namespace the bypass does not apply: the command goes to the approval prompt,
+        # which an unattended turn cannot answer, so nothing runs. Unbound sessions (chat) are unchanged.
+        bound_ns = (config.get("configurable") or {}).get("bound_namespace") if config else None
+        if hitl_bypass and bound_ns and not _stays_within_namespace(verb, args, stdin, str(bound_ns)):
+            logger.warning(
+                f"run_kubectl: auto-approve withheld, command leaves the investigation's namespace "
+                f"{bound_ns!r}: {cmd!r}"
+            )
+            hitl_bypass = False
         always_confirm = _requires_always_confirm(verb, args)
         admission = effect_guard.admit(
             cmd, args, stdin, config, has_dry_run=has_dry_run,
