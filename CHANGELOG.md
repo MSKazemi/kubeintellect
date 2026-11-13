@@ -32,6 +32,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - **Rollback points for live objects are restorable.** Server-managed metadata (`uid`, `resourceVersion`,
   `managedFields`, `ownerReferences`, `status`, ...) is stripped before secret redaction, which had been turning every
   object's `metadata.uid` into a redacted token and marking the capture non-restorable. Redaction itself is unchanged.
+- **The namespace binding is now tested end to end through the graph's run config.** Before, no test failed if
+  `stream_events` stopped writing `bound_namespace` into `config["configurable"]` or `run_session` stopped forwarding it,
+  which would have silently switched the binding off. Both mutations are now caught.
+- Documentation: the binding rule, its fail-closed cases and the incidents that led to it
+  ([security](v4/docs/security.md#namespace-bound-auto-approve)); `delete --all` in the always-confirm table; the run-config
+  keys `user_role` / `hitl_bypass` / `bound_namespace` ([architecture](v4/docs/architecture.md)); restorable rollback points
+  ([flight recorder](v4/docs/flight-recorder.md)); the breaking change ([upgrade](v4/docs/upgrade.md)).
+- **Known, not changed:** `kubectl set image` is always-confirm, but a JSON `patch` of the same image field is not, so
+  whether an image fix needs a human depends on how the command is spelled.
 
 ### Documentation
 

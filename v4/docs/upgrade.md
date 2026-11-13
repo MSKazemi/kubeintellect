@@ -178,6 +178,14 @@ upgrade; everything new is default-off.
    as an ordinary failed request; any other client must handle all six. Authoring compiles at a
    temperature of zero, so a model that rejects that setting cannot author rules. See the
    [API reference](api-reference.md).
+3. **Auto-approve is off unless `AUTO_APPROVE_ENABLED=true`.** The `auto_approve` request flag,
+   `kq --auto-approve` and the "approve all" phrase are ignored, and A3 namespaces propose their
+   fix instead of applying it. If you run the evaluation harness, a demo, or automation that relied
+   on auto-approve, set `AUTO_APPROVE_ENABLED=true` on **that** server only. Even then, an
+   autonomous investigation's bypass now applies only inside the namespace it was opened for
+   ([details](security.md#namespace-bound-auto-approve)). A fix that touched a sibling namespace,
+   used no `-n`, or piped a manifest without `metadata.namespace` now stops at the approval prompt.
+   `kubectl delete <kind> --all` is now always-confirm.
 
 ### New default-off flags
 

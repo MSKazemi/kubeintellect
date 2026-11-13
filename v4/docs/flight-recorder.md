@@ -260,7 +260,8 @@ Redaction is not the flaw and is not optional — the alternative is credentials
 Postgres. So each capture is compared with what kubectl produced and the record states which
 of the two it is:
 
-- `restorable: true` — byte-identical to the live object; the recovery above works.
+- `restorable: true` — after the server-managed fields are removed (see below), byte-identical
+  to what was read; the recovery above works.
 - `restorable: false` — redacted or truncated. Keep it as **evidence of what the object looked
   like**; do not pipe it into `kubectl apply`. `capture_notes` says what changed
   (`secret db-creds: redacted: 2 value(s) replaced`, `redacted: 1 line(s) dropped`,
@@ -270,6 +271,25 @@ of the two it is:
   key or a Secret's `data:` block said, in full, `redacted`.
 - field absent — recorded before this was tracked; the digest reports it as *unknown*, never
   as armed.
+
+**Server-managed fields are removed before redaction (fixed after 2.5.0).** Every live object
+carries fields the API server owns: `metadata.uid`, `resourceVersion`, `creationTimestamp`,
+`generation`, `selfLink`, `managedFields`, `ownerReferences`, and top-level `status`. A UUID
+looks like a token to the redactor, so `metadata.uid` became `<redacted-token>`, and any
+redaction clears `restorable`. **Before this fix, practically every capture of a real object was
+`restorable: false`.** It was measured on a stock Deployment in the 2026-11-12 tool-layer pilot.
+The unit fixtures had omitted these fields, which is why no test caught it. They are now
+stripped first (`_strip_server_managed` in `app/tools/kubectl_tool.py`), and the comparison runs
+against the stripped text. Redaction is not relaxed: a token-shaped value in the object's own
+fields still costs the flag. Two consequences:
+
+- The capture is a **re-creatable manifest**, not a faithful snapshot of the live object. It has
+  no observed `status` and no owner link. For a Pod owned by a ReplicaSet, the controller
+  re-creates it anyway.
+- Text that is not plain YAML mappings (a parse error, a bare list, a scalar) is stored
+  unchanged. The worst case is the previous behaviour, never a silently altered capture.
+
+Tests: `tests/test_a_live_object_is_a_restore_point.py`.
 
 ---
 

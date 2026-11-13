@@ -49,6 +49,17 @@ cluster on its own.
 A3 requires **both** conditions: the namespace's effective level must be `A3`
 *and* the firing playbook must match an allowlist entry for that namespace.
 An empty allowlist means A3 behaves like A2 — nothing auto-executes.
+A third condition applies on every release after 2.5.0: the server must run with
+`AUTO_APPROVE_ENABLED=true`. Without it, A3 also behaves like A2.
+
+**The authority is granted for the finding's namespace and nowhere else.** The watchtower carries
+`finding.namespace` into the session's run config as `bound_namespace`, and the tool layer
+withholds auto-approve from any write it cannot show stays inside it. Writes into a sibling
+namespace, into the default namespace (no `-n`), into cluster-scoped objects, or into a namespace
+named only by a stdin manifest go to the approval prompt, and an unattended turn cannot answer it.
+Reads are unaffected. The rule, its cases and the incidents that led to it (one session patched a
+namespace pinned to A2, and an injected instruction scaled another namespace's deployment to zero)
+are in [Security → namespace-bound auto-approve](security.md#namespace-bound-auto-approve).
 
 ```bash
 # Example: investigate everywhere, propose in dev, auto-fix only

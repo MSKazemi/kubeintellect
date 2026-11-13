@@ -193,6 +193,16 @@ Two modes, same node:
 | `user_id` | `str` | API key-derived user identifier. |
 | `user_role` | `str` | `superadmin \| admin \| operator \| readonly` |
 
+Three values that decide what a tool may do travel in the **run config**
+(`config["configurable"]`), not in the graph state. The graph sets them and no model can write
+them. Tools receive them through the injected `RunnableConfig` (safety invariant #6):
+
+| `configurable` key | Set by | Read by | Meaning |
+|---|---|---|---|
+| `user_role` | `stream_events` from the API key | `run_kubectl` and other tools | the RBAC role |
+| `hitl_bypass` | `stream_events` (request flag / "approve all", only if `AUTO_APPROVE_ENABLED`) | `run_kubectl` | skip the approval prompt for this turn |
+| `bound_namespace` | `stream_events`, from the watchtower's `finding.namespace` | `run_kubectl` | the only namespace where `hitl_bypass` applies; absent for chat sessions ([security](security.md#namespace-bound-auto-approve)) |
+
 ---
 
 ## Tool Architecture

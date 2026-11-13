@@ -138,3 +138,68 @@ class TestTheBoundaryItself:
     ])
     def test_the_rule(self, verb, args, stdin, expected):
         assert _stays_within_namespace(verb, args, stdin, "a3-1") is expected
+
+
+class TestTheBindingReachesTheTool:
+    """The watchtower -> run_session -> stream_events -> run-config hop, which no other test covers.
+
+    The watchtower test mocks `run_session`, and every `run_kubectl` test above injects the run config by hand. So
+    deleting the one line in `stream_events` that writes `bound_namespace` into `config["configurable"]` left the
+    whole suite green while turning the binding off. The A3 pilot harness had the same blind spot: it replaces
+    `watchtower._run_turn` and did not forward the namespace, so a post-fix run would have tested nothing.
+    """
+
+    @staticmethod
+    async def _configurable_for(**kwargs) -> dict:
+        from unittest.mock import AsyncMock
+
+        from app.agent import workflow
+
+        seen: list[dict] = []
+
+        class _NoInterrupt:
+            tasks = ()
+
+        async def _astream_events(input_data, config=None, version=None):
+            seen.append(dict(config["configurable"]))
+            return
+            yield  # pragma: no cover - makes this an async generator
+
+        graph = MagicMock()
+        graph.aget_state = AsyncMock(return_value=_NoInterrupt())
+        graph.astream_events = _astream_events
+        with patch.object(workflow, "get_graph", AsyncMock(return_value=graph)), \
+                patch.object(workflow, "get_langfuse_callbacks", lambda: None):
+            async for _ in workflow.stream_events("fix it", "auto-x", "watchtower", "operator", **kwargs):
+                pass
+        assert len(seen) == 1
+        return seen[0]
+
+    @pytest.mark.asyncio
+    async def test_stream_events_puts_the_namespace_into_the_run_config(self):
+        assert (await self._configurable_for(bound_namespace="a3-1")).get("bound_namespace") == "a3-1"
+
+    @pytest.mark.asyncio
+    async def test_an_unbound_turn_carries_no_namespace(self):
+        assert "bound_namespace" not in await self._configurable_for()
+
+    @pytest.mark.asyncio
+    async def test_run_session_forwards_the_namespace_to_stream_events(self):
+        from app.agent import workflow
+
+        forwarded: dict = {}
+
+        async def fake_stream_events(*args, **kwargs):
+            forwarded.update(kwargs)
+            return
+            yield  # pragma: no cover
+
+        with patch.object(workflow, "stream_events", fake_stream_events), \
+                patch("app.agent.workflow.close_session", create=True), \
+                patch("app.agent.workflow.emit", create=True):
+            try:
+                await workflow.run_session("fix it", "auto-x", "watchtower", "operator",
+                                           auto_approve=True, trigger_source="detector", bound_namespace="a3-1")
+            except Exception:  # noqa: BLE001 - only the forwarded kwargs matter here
+                pass
+        assert forwarded.get("bound_namespace") == "a3-1"
