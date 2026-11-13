@@ -136,6 +136,8 @@ class TestWatchtower:
 
     async def test_investigation_prompt_levels(self, mocker):
         """A2 asks for proposals; A3-allowlisted asks for the fix + bypasses HITL."""
+        # A3 auto-fix exists only in the demonstration/evaluation mode (AUTO_APPROVE_ENABLED, default off).
+        mocker.patch.object(watchtower.settings, "AUTO_APPROVE_ENABLED", True)
         captured = {}
 
         async def fake_run_session(
@@ -169,6 +171,8 @@ class TestWatchtower:
 
     async def test_autofix_schedules_post_fix_recheck(self, mocker):
         """Memory V5 P6 (ADR-017): an autonomous fix records a prospective re-check."""
+        # A3 auto-fix exists only in the demonstration/evaluation mode (AUTO_APPROVE_ENABLED, default off).
+        mocker.patch.object(watchtower.settings, "AUTO_APPROVE_ENABLED", True)
         async def fake_run_session(*a, **k):
             return
 

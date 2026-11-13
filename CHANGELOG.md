@@ -11,6 +11,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Auto-approve is now a demonstration and evaluation mode, off by default** (`AUTO_APPROVE_ENABLED`, default
+  `false`). Off: the `auto_approve` request flag (`kq --auto-approve`) and the "approve all" phrase are ignored, every
+  mutation goes through the approval prompt, and the watchtower investigates an A3-allowlisted finding like A2 (it
+  proposes the fix instead of applying it, so an unattended turn no longer stalls on a prompt nobody can answer). On:
+  behaviour as before. **Breaking for automation that relied on `auto_approve`** (including the evaluation harness):
+  set `AUTO_APPROVE_ENABLED=true` on that server. Brings the default back in line with `AGENTS.md` safety invariant 2.
+
+### Fixed
+
+- **Auto-approve granted to an autonomous investigation is bound to its namespace.** The watchtower passes the
+  finding's namespace into the run config; `run_kubectl` drops the bypass for any write that does not provably stay in
+  it (fail-closed), so the command goes to the approval prompt instead. Found in model-driven A3 pilots, where a session
+  wrote into sibling namespaces and, with one model, an instruction injected into a Job's logs scaled a deployment in
+  another namespace to zero.
+- **`kubectl delete --all` is always-confirm**, like deleting a namespace. It previously ran unprompted under
+  auto-approve.
+- **Rollback points for live objects are restorable.** Server-managed metadata (`uid`, `resourceVersion`,
+  `managedFields`, `ownerReferences`, `status`, ...) is stripped before secret redaction, which had been turning every
+  object's `metadata.uid` into a redacted token and marking the capture non-restorable. Redaction itself is unchanged.
+
 ### Documentation
 
 - **Alibaba Cloud ACK verified for the local install path** (`docs/install/existing-cluster.md`; #237, #253).

@@ -141,6 +141,11 @@ async def _investigate(finding: Finding, level: str) -> None:
         if revocation is not None:
             logger.warning("watchtower: A3 auto-fix revoked by the recorded record: %s", revocation)
             auto_fix = False
+    if auto_fix and not settings.AUTO_APPROVE_ENABLED:
+        # Auto-approve is a demonstration/evaluation mode. Without it an unattended fix turn would only stop at an
+        # approval prompt nobody can answer, so the A3 finding is investigated like A2: the fix is proposed.
+        logger.info("watchtower: A3 auto-fix not applied: AUTO_APPROVE_ENABLED is off; proposing instead")
+        auto_fix = False
     predicted = getattr(finding, "severity", "warning") == "predicted"
     # ADR-009 (SELF_GOVERN_ENABLED): an auto-fix is split into a diagnose-and-propose turn and,
     # only if that diagnosis is grounded, an apply turn. Off ⇒ one turn, exactly as before.

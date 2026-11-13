@@ -35,6 +35,8 @@ cluster on its own.
 
 ### Configuration
 
+> **Off by default: auto-approve is a demonstration and evaluation mode.** Unless the server runs with `AUTO_APPROVE_ENABLED=true`, the request flag (`auto_approve`, `kq --auto-approve`) and the "approve all" phrase are ignored and every mutation goes through the approval prompt; the watchtower investigates an A3-allowlisted finding like A2 (it proposes the fix). Even when it is on, the bypass of an autonomous investigation applies only inside the namespace that investigation was opened for.
+
 | Flag | Default | Effect |
 |---|---|---|
 | `WATCHTOWER_ENABLED` | `True` | Master switch for autonomous investigations. Off = detectors still fire (findings/digest keep working), but nothing is investigated automatically. |

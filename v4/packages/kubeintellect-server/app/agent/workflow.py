@@ -466,6 +466,16 @@ async def stream_events(
         config["configurable"]["hitl_bypass"] = True
         logger.info(f"stream_events: HITL bypassed for this turn session={session_id}")
 
+    # Auto-approve is a demonstration and evaluation mode (settings.AUTO_APPROVE_ENABLED, default off). With it off,
+    # nothing above may switch the approval gate off: the request flag and the phrase are both ignored.
+    if config["configurable"]["hitl_bypass"] and not settings.AUTO_APPROVE_ENABLED:
+        logger.warning(
+            f"stream_events: auto-approve requested but AUTO_APPROVE_ENABLED is off "
+            f"(demonstration/evaluation only); the approval gate stays on session={session_id}"
+        )
+        auto_approve = False
+        config["configurable"]["hitl_bypass"] = False
+
     # Check whether this thread is paused at a HITL interrupt
     graph_state = await graph.aget_state(config)
     has_interrupt = bool(graph_state.tasks and any(

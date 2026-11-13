@@ -15,6 +15,8 @@ Fake-classifier tests (no network). What each class pins:
 """
 from __future__ import annotations
 
+import pytest
+
 from app.autonomy import watchtower
 from app.cortex import graph as cx
 from app.cortex import verify
@@ -27,6 +29,13 @@ _DIAGNOSIS = (
     "Fix: raise the memory limit to 512Mi."
 )
 _LEAK_CLAIM = "The root cause is a memory leak introduced by the v2.3 image."
+
+
+@pytest.fixture(autouse=True)
+def _demo_mode_on(monkeypatch):
+    # Every watchtower case here exercises the A3 auto-fix path, which exists only in the demonstration/evaluation
+    # mode (settings.AUTO_APPROVE_ENABLED, default off; see test_auto_approve_is_a_demo_and_evaluation_mode.py).
+    monkeypatch.setattr(watchtower.settings, "AUTO_APPROVE_ENABLED", True)
 
 
 class _LLM:

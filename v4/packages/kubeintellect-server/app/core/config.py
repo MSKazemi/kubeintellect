@@ -681,6 +681,11 @@ class Settings(BaseSettings):
     AUTONOMY_NAMESPACE_LEVELS: str = ""     # "prod=A0,dev=A2"
     SELF_GOVERN_ENABLED: bool = False   # ADR-007/008/009 self-governance (default off)
     AUTONOMY_A3_ALLOWLIST: str = ""         # "CrashLoopBackOff/dev-*"
+    # Auto-approve (`hitl_bypass`) is a DEMONSTRATION AND EVALUATION mode. Off (the default): no request flag
+    # (`kq --auto-approve`), no "approve all" message and no watchtower turn skips the approval gate, and an
+    # A3-allowlisted finding is investigated like A2 (the fix is proposed, not applied). On: as before, and the
+    # bypass still applies only inside the namespace an autonomous investigation was opened for.
+    AUTO_APPROVE_ENABLED: bool = False
 
     # ── Auth / RBAC ───────────────────────────────────────────────────────────
     # Four-tier role model (all comma-separated; empty = auth disabled):

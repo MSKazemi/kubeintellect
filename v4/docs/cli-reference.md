@@ -442,6 +442,8 @@ for what always requires confirmation.
 
 Skip HITL approval prompts entirely — all destructive operations are executed
 automatically without asking for confirmation. **Use for testing only.**
+It takes effect only when the server runs with `AUTO_APPROVE_ENABLED=true` (a demonstration and evaluation mode,
+off by default); otherwise the server ignores it and every write is still gated.
 
 ```bash
 kq --auto-approve --query "restart the checkout deployment"

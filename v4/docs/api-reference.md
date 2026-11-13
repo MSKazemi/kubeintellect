@@ -69,7 +69,7 @@ Body (`application/json`):
 | `messages` | array | — | Chat messages. The **last `user` message** is the query. At least one `user` message is required (`422` otherwise). |
 | `stream` | bool | `true` | Must be `true` — `stream=false` returns `422`. |
 | `user` | string | `"default"` | Opaque caller id, recorded in the audit log. |
-| `auto_approve` | bool | `false` | Skip approval gates for this request (trusted automation / evaluation). The [always-confirm gate](agent-behaviors.md#always-confirm-gate-overrides-auto_approve) still fires for cascading-blast actions. |
+| `auto_approve` | bool | `false` | Skip approval gates for this request (trusted automation / evaluation). Ignored unless the server runs with `AUTO_APPROVE_ENABLED=true` (demonstration and evaluation mode, off by default). The [always-confirm gate](agent-behaviors.md#always-confirm-gate-overrides-auto_approve) still fires for cascading-blast actions. |
 
 ### Response — SSE stream
 

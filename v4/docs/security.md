@@ -364,6 +364,8 @@ The graph is frozen in the checkpoint store (PostgreSQL or SQLite) during the wa
 
 ### Auto-approve (`auto_approve=true`)
 
+**Off by default: auto-approve is a demonstration and evaluation mode.** Unless the server runs with `AUTO_APPROVE_ENABLED=true`, the request flag (`auto_approve`, `kq --auto-approve`) and the "approve all" phrase are ignored and every mutation goes through the approval prompt; the watchtower investigates an A3-allowlisted finding like A2 (it proposes the fix). Even when it is on, the bypass of an autonomous investigation applies only inside the namespace that investigation was opened for.
+
 Setting `auto_approve: true` in the chat-completions request body bypasses
 step 4 entirely (steps 1–3 still apply). The Proactive Fix Mode prompt block
 is appended to the coordinator's system prompt so it knows it should apply
