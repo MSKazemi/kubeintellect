@@ -240,6 +240,9 @@ class Settings(BaseSettings):
     # Check a manifest (apply/create/replace with stdin) against the cluster's own OpenAPI v3 schema before sending
     # it, and refuse it with the wrong field named. Fails open: no schema, no check. See app/tools/manifest_lint.py.
     MANIFEST_LINT_ENABLED: bool = True
+    # Before an UNATTENDED (auto-approved) apply/replace with a stdin manifest, run `kubectl diff`: no difference =>
+    # refused as a no-op; an API-server rejection => refused with the field it names. Fails open on anything else.
+    PREFLIGHT_DIFF_ENABLED: bool = True
     INVESTIGATION_PLAN_ENABLED: bool = True
     PLAYBOOKS_ENABLED: bool = True
     # off | lenient | strict

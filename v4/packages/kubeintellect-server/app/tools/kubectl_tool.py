@@ -1532,6 +1532,51 @@ def _remember(thread_id: str, call_fp: str, output: str) -> str:
     return output
 
 
+def _preflight_manifest_write(args: list[str], stdin: str) -> str | None:
+    """Dry-run an unattended manifest write with `kubectl diff`; a refusal message, or None to let it proceed.
+
+    Probed on Kind v1.37 (2026-11-14): plain `kubectl diff -f -` exits 0 when the cluster already matches the manifest
+    and 1 when it would change; `kubectl diff --server-side` cannot tell a no-op (field ownership differs) but its
+    error names the field. Anything that is not a plain 0/1 or an API-server rejection fails open: the write proceeds
+    and the API server still validates it.
+    """
+    env = {**os.environ, "KUBECONFIG": os.path.expanduser(settings.KUBECONFIG_PATH)}
+    verb_at = next((i for i, a in enumerate(args) if a in ("apply", "replace")), None)
+    if verb_at is None:
+        return None
+    tail = [a for a in args[verb_at + 1:] if a not in ("--server-side", "--force-conflicts")]
+    diff = [args[0], *args[1:verb_at], "diff", *tail]
+
+    def run(cmd: list[str]):
+        try:
+            return subprocess.run(cmd, input=stdin, capture_output=True, text=True, encoding="utf-8",
+                                  errors="replace", timeout=settings.KUBECTL_TIMEOUT_SECONDS, env=env, shell=False)
+        except Exception:  # noqa: BLE001 - a dry run that cannot run never blocks the write
+            return None
+
+    plain = run(diff)
+    if plain is None:
+        return None
+    if plain.returncode == 0:
+        return (
+            "[No change] kubectl diff shows the cluster already matches this manifest, so applying it would change "
+            "nothing. It was not sent. If it was meant to fix the fault, the cause is somewhere else.\n"
+            "[permanent error: resending this manifest unchanged cannot succeed — change the approach, or stop and "
+            "report what you found]"
+        )
+    if plain.returncode == 1:
+        return None
+    ssa = run([*diff, "--server-side", "--force-conflicts"])
+    reason = (ssa.stderr if ssa is not None else "") or ""
+    if "Error from server" in reason or "is invalid" in reason or "failed to create typed patch" in reason:
+        return (
+            "[Invalid: rejected by the API server's dry run, not applied] " + reason.strip()[:600] + "\n"
+            "[permanent error: resending this manifest unchanged cannot succeed — fix the field named above]"
+        )
+    logger.info(f"run_kubectl: preflight diff could not judge the write (exit {plain.returncode}); proceeding")
+    return None
+
+
 def _first_line(text: str) -> str:
     return next((line.strip() for line in text.splitlines() if line.strip()), text.strip())[:300]
 
@@ -2178,6 +2223,16 @@ def run_kubectl(
             )
             hitl_bypass = False
         always_confirm = _requires_always_confirm(verb, args, stdin)
+        # Dry-run a write that would run with nobody approving it: refuse a no-op, explain a rejection.
+        if (
+            hitl_bypass and not always_confirm and not has_dry_run and stdin and guard_fp
+            and verb in ("apply", "replace") and settings.PREFLIGHT_DIFF_ENABLED
+        ):
+            refusal = _preflight_manifest_write(args, stdin)
+            if refusal is not None:
+                _record_permanent_failure(thread_id, guard_fp, _first_line(refusal))
+                logger.warning(f"run_kubectl: preflight refused an unattended write session={thread_id}: {cmd!r}")
+                return _remember(thread_id, call_fp, refusal) if call_fp else refusal
         admission = effect_guard.admit(
             cmd, args, stdin, config, has_dry_run=has_dry_run,
             hitl_bypass=hitl_bypass, always_confirm=always_confirm,

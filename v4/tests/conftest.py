@@ -57,6 +57,8 @@ os.environ["MANIFEST_LINT_ENABLED"] = "false"
 # Same reason: verifying an autonomous fix reads the workload with kubectl and the real kubeconfig. Its own tests patch
 # the read (tests/test_an_autonomous_fix_is_judged_on_the_original_object.py).
 os.environ["AUTOFIX_VERIFY_TIMEOUT_SECONDS"] = "0"
+# Same reason: the preflight runs `kubectl diff` with the real kubeconfig. Its own tests turn it on with kubectl faked.
+os.environ["PREFLIGHT_DIFF_ENABLED"] = "false"
 
 # ── Stub langgraph postgres checkpointer ─────────────────────────────────────
 # AsyncPostgresSaver.from_conn_string is called inside init_graph() at startup.
