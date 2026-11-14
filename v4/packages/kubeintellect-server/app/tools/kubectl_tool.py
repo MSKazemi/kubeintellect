@@ -1568,7 +1568,7 @@ def _preflight_manifest_write(args: list[str], stdin: str) -> str | None:
         return None
     ssa = run([*diff, "--server-side", "--force-conflicts"])
     reason = (ssa.stderr if ssa is not None else "") or ""
-    if "Error from server" in reason or "is invalid" in reason or "failed to create typed patch" in reason:
+    if any(marker in reason for marker in _SERVER_REJECTION):
         return (
             "[Invalid: rejected by the API server's dry run, not applied] " + reason.strip()[:600] + "\n"
             "[permanent error: resending this manifest unchanged cannot succeed — fix the field named above]"
@@ -1604,6 +1604,39 @@ def session_ledger(thread_id: str) -> str:
         f"{rows}{note}\n"
         "Do not resend a write that failed permanently; if a write changed nothing, the cause is somewhere else."
     )
+
+
+_SERVER_REJECTION = ("Error from server", "is invalid", "failed to create typed patch", "cannot unmarshal")
+
+
+def _preflight_patch(args: list[str]) -> str | None:
+    """Dry-run an unattended `kubectl patch` on the server; a refusal message, or None to let it proceed.
+
+    Probed on Kind v1.37 (2026-11-14): `--dry-run=server` prints "<obj> patched (no change)" when the patch changes
+    nothing (merge and JSON patches alike) and the server's rejection when it is invalid. A patch that changes a field
+    to no useful effect is a real change and is NOT caught here; outcome verification reports it as not fixed.
+    Anything that is neither a clear no-op nor a server rejection fails open.
+    """
+    env = {**os.environ, "KUBECONFIG": os.path.expanduser(settings.KUBECONFIG_PATH)}
+    try:
+        proc = subprocess.run([*args, "--dry-run=server"], capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", timeout=settings.KUBECTL_TIMEOUT_SECONDS, env=env, shell=False)
+    except Exception:  # noqa: BLE001 - a dry run that cannot run never blocks the write
+        return None
+    if proc.returncode == 0 and "(no change)" in (proc.stdout or ""):
+        return (
+            "[No change] A server dry run shows this patch changes nothing, so it was not sent. If it was meant to "
+            "fix the fault, the cause is somewhere else.\n"
+            "[permanent error: resending this patch unchanged cannot succeed — change the approach, or stop and "
+            "report what you found]"
+        )
+    reason = (proc.stderr or "").strip()
+    if proc.returncode != 0 and any(marker in reason for marker in _SERVER_REJECTION):
+        return (
+            "[Invalid: rejected by the API server's dry run, not applied] " + reason[:600] + "\n"
+            "[permanent error: resending this patch unchanged cannot succeed — fix what the error names]"
+        )
+    return None
 
 
 def _first_line(text: str) -> str:
@@ -2256,11 +2289,12 @@ def run_kubectl(
             hitl_bypass = False
         always_confirm = _requires_always_confirm(verb, args, stdin)
         # Dry-run a write that would run with nobody approving it: refuse a no-op, explain a rejection.
-        if (
-            hitl_bypass and not always_confirm and not has_dry_run and stdin and guard_fp
-            and verb in ("apply", "replace") and settings.PREFLIGHT_DIFF_ENABLED
+        if hitl_bypass and not always_confirm and not has_dry_run and guard_fp and settings.PREFLIGHT_DIFF_ENABLED and (
+            (verb in ("apply", "replace") and stdin) or verb == "patch"
         ):
-            preflight_refusal = _preflight_manifest_write(args, stdin)
+            preflight_refusal = (
+                _preflight_patch(args) if verb == "patch" else _preflight_manifest_write(args, stdin or "")
+            )
             if preflight_refusal is not None:
                 _record_permanent_failure(thread_id, guard_fp, _first_line(preflight_refusal))
                 _note_write(thread_id, cmd, preflight_refusal)

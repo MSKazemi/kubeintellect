@@ -116,3 +116,73 @@ def test_a_resent_no_op_is_refused_by_the_repeat_guard():
 def test_a_chat_session_is_not_dry_run():
     applied, calls, _ = _send(plain_rc=0, bypass=False)
     assert applied and not [c for c in calls if "diff" in c]
+
+
+# ── patch ─────────────────────────────────────────────────────────────────────
+# Probed on Kind v1.37 (2026-11-14): `kubectl patch … --dry-run=server` prints "<obj> patched (no change)" when the
+# patch changes nothing (merge and JSON patches alike), "<obj> patched" when it would change the object, and the
+# server's rejection otherwise. Note what this cannot catch: a patch that changes a field to no useful effect (raising
+# `backoffLimit` on a Job that already failed, seen in the re-runs) is a real change; outcome verification
+# (`watchtower._record_fix_outcome`) is what reports it as not fixed.
+
+PATCH = (
+    'kubectl patch configmap app-config -n b3-c1 --type=merge -p \'{"data":{"k":"v"}}\''
+)
+
+
+def _patch(dry_rc: int, dry_out: str, dry_err: str = "", *, bypass: bool = True):
+    calls: list[list[str]] = []
+
+    def fake_run(argv, *a, **k):
+        calls.append(list(argv))
+        if "--dry-run=server" in argv:
+            return SimpleNamespace(returncode=dry_rc, stdout=dry_out, stderr=dry_err)
+        return SimpleNamespace(
+            returncode=0, stdout="configmap/app-config patched\n", stderr=""
+        )
+
+    cfg = {
+        "configurable": {
+            "user_role": "operator",
+            "hitl_bypass": bypass,
+            "thread_id": "auto-pp",
+            "bound_namespace": "b3-c1",
+        }
+    }
+    with (
+        mock.patch.object(settings, "PREFLIGHT_DIFF_ENABLED", True),
+        mock.patch.object(kt.subprocess, "run", fake_run),
+        mock.patch.object(kt, "_capture_rollback_point", lambda *a, **k: None),
+        mock.patch.object(kt, "interrupt", lambda p: True),
+    ):
+        out = kt.run_kubectl.invoke({"command": PATCH}, config=cfg)
+    sent = [c for c in calls if "patch" in c and "--dry-run=server" not in c]
+    return sent, out
+
+
+def test_a_patch_that_changes_nothing_is_refused():
+    sent, out = _patch(0, "configmap/app-config patched (no change) (server dry run)\n")
+    assert not sent and out.startswith("[No change]")
+
+
+def test_a_patch_that_changes_something_is_sent():
+    sent, out = _patch(0, "configmap/app-config patched (server dry run)\n")
+    assert sent and "patched" in out
+
+
+def test_a_rejected_patch_is_explained_and_not_sent():
+    err = 'The request is invalid: patch: Invalid value: "{...}": json: cannot unmarshal object into Go struct field ConfigMap.data of type string'
+    sent, out = _patch(1, "", err)
+    assert not sent and out.startswith(
+        "[Invalid: rejected by the API server's dry run, not applied]"
+    )
+
+
+def test_a_patch_dry_run_that_cannot_run_fails_open():
+    sent, _ = _patch(1, "", "Unable to connect to the server: dial tcp: i/o timeout")
+    assert sent
+
+
+def test_a_chat_patch_is_not_dry_run():
+    sent, _ = _patch(0, "configmap/app-config patched (no change)\n", bypass=False)
+    assert sent
