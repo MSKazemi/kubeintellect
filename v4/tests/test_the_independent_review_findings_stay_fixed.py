@@ -866,3 +866,93 @@ def test_n10_an_ordinary_logs_command_still_runs():
         "kubectl logs web -n default -f --tail=5", bound=None, bypass=False
     )
     assert calls
+
+
+# ── Ninth review pass (pre-existing): every resource named is checked; config view --raw is credentials ──
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "kubectl get pods,secrets -n default -o yaml",
+        "kubectl get pod/x,secret/db -n default",
+        "kubectl get pod/x secret/db -n default",
+        "kubectl describe pod/x secret/db -n default",
+        "kubectl get pod/x sa/default -o yaml",
+        "kubectl get pods,serviceaccounts",
+        "kubectl get pods,secrets -A",
+        "kubectl get pod/x,secrets.v1./db",
+    ],
+)
+def test_n12_a_secret_named_anywhere_in_the_command_is_refused(command):
+    calls, _, out = _run(command, bound=None, bypass=False)
+    assert not calls and out.startswith("[Protected]"), out[:80]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "kubectl get pods web -n default",
+        "kubectl get pod/x pod/y -n default",
+        "kubectl get pods,deployments -n default",
+        "kubectl get pods secret-rotator -n default",  # a POD named like a secret is a name, not a type
+    ],
+)
+def test_n12_ordinary_multi_resource_reads_still_work(command):
+    calls, _, out = _run(command, bound=None, bypass=False)
+    assert calls and not out.startswith("[Protected]")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "kubectl config view --raw",
+        "kubectl config view --minify --raw",
+        "kubectl config view --flatten",
+    ],
+)
+def test_n13_config_view_never_returns_credentials(command):
+    calls, _, out = _run(command, bound=None, bypass=False)
+    assert not calls and out.startswith("[Protected]")
+
+
+def test_n13_config_view_without_credentials_still_works():
+    calls, _, _ = _run("kubectl config view --minify", bound=None, bypass=False)
+    assert calls
+
+
+# ── Tenth review pass (pre-existing): fail closed on every operand; wait; set env --resolve; config view redaction ──
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "kubectl get --sort-by .metadata.name secrets -n default -o yaml",
+        "kubectl get -L app secrets -n default",
+        "kubectl get --sort-by .metadata.name pods,secrets -n default -o yaml",
+        "kubectl wait --for=create secret/db -n default -o yaml",
+    ],
+)
+def test_n14_a_secret_behind_an_unknown_value_flag_or_in_wait_is_refused(command):
+    calls, _, out = _run(command, bound=None, bypass=False)
+    assert not calls and out.startswith("[Protected]"), out[:80]
+
+
+def test_n15_set_env_resolve_is_refused_even_unattended():
+    calls, prompts, out = _run("kubectl set env deploy/web -n b3-c1 --list --resolve")
+    assert not calls and out.startswith("[Protected]")
+
+
+def test_n16_config_view_output_is_redacted():
+    leaked = (
+        "users:\n- name: oidc\n  user:\n    auth-provider:\n      config:\n        client-secret: s3cr3t-value\n"
+        "        id-token: eyJhbGciOiJSUzI1NiJ9.payload.sig\n"
+    )
+
+    def fake(argv, *a, **k):
+        return SimpleNamespace(returncode=0, stdout=leaked, stderr="")
+
+    calls, _, out = _run(
+        "kubectl config view --minify", bound=None, bypass=False, fake=fake
+    )
+    assert calls and "s3cr3t-value" not in out and "eyJhbGciOiJSUzI1NiJ9" not in out

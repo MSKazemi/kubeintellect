@@ -487,6 +487,17 @@ two pilot commands are among them, and on the pre-fix code the tool logged
 `HITL bypassed (auto-approve)` for both), plus the `bound_namespace` plumbing assertions in
 `tests/test_autonomy.py`.
 
+### Every word that could name a Secret is checked {#every-resource-named}
+
+The Secret/ServiceAccount block used to check only the first operand, unsplit, so `get pods,secrets`,
+`get pod/x secret/db`, `describe pod/x sa/default`, `wait … secret/db -o yaml`, and a type hidden behind a flag the
+tool does not know takes a value (`get --sort-by .metadata.name secrets`) returned Secret data to any role, readonly
+included. Every non-flag word before `--` (for every verb except `explain`, `auth`, `api-resources`) is now split on
+`,` and `/` and checked; over-matching only refuses a pod literally named `secrets`. `--resolve` (which prints the
+values behind secret references) is refused, `config view --raw|--flatten` is refused, and `config view` output is
+passed through the secret redactor (kubectl leaves OIDC tokens and exec-plugin env values in it). All found by an
+independent review and present before 2026-11-14.
+
 ### `--raw` is refused except for a few read-only paths {#raw-requests}
 
 `kubectl get --raw <path>` sends an arbitrary API request that the protected-namespace and protected-resource checks

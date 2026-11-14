@@ -1388,12 +1388,42 @@ def _manifest_namespaces(stdin: str | None) -> set[str]:
     return out
 
 
+# Verbs whose operands name no resource to read (a schema, a permission question, discovery).
+_NO_RESOURCE_READ_VERBS = frozenset({"explain", "auth", "api-resources", "api-versions", "version"})
+
+
+def _resource_types_named(verb: str, args: list[str]) -> list[str]:
+    """Every word on the command line that could be a resource TYPE, for every verb that reads or acts on objects.
+
+    Fails closed. Reading operands the way kubectl does needs every verb's value-taking flags, which this module does
+    not have: an unknown one (`--sort-by .metadata.name`, `-L app`) made its value look like the type and hid
+    `secrets` behind it, and `wait … secret/db -o yaml` was not checked at all (independent review, ninth and tenth
+    passes; present before this series). So every non-flag token before `--` is split on `,` and `/` and its type part
+    is checked. Over-matching only refuses (a pod literally named `secrets`); missing a type leaks Secret data.
+    """
+    if verb in _NO_RESOURCE_READ_VERBS:
+        return []
+    end = args.index("--") if "--" in args else len(args)
+    verb_at = _skip_flags(args, 1)
+    types: list[str] = []
+    for tok in args[verb_at + 1:end]:
+        if tok.startswith("-"):
+            continue
+        for part in tok.split(","):
+            if part:
+                types.append(part.split("/")[0])
+    return types
+
+
 def _blocked_resource_hit(verb: str, args: list[str], stdin: str | None = None) -> str | None:
-    """The protected resource this command touches, named on the command line or in a manifest."""
+    """The protected resource this command touches, named anywhere on the command line or in a manifest."""
     blocked = _blocked_resources()
     resource = _extract_resource_type(verb, args)
     if _resource_spellings(resource) & blocked:
         return resource
+    for named in _resource_types_named(verb, args):
+        if _resource_spellings(named) & blocked:
+            return named
     for kind in sorted(_manifest_kinds(stdin)):
         if _resource_spellings(kind) & blocked:
             return kind
@@ -2308,6 +2338,24 @@ def run_kubectl(
             "read it as the value of the flag before it, which changes how everything after it is parsed. Remove it."
         )
 
+    # ── 3b1a. `--resolve` prints the values behind secret references ─────────
+    # `kubectl set env deploy/web --list --resolve` prints the Secret values a workload's env refers to; in an
+    # unattended session it auto-ran (tenth review pass). Refused for every verb.
+    if any(a == "--resolve" or a.startswith("--resolve=") for a in args[1:]):
+        return "[Protected] `--resolve` prints the values of the Secrets a workload refers to. It is not permitted."
+
+    # ── 3b2a. `config view --raw|--flatten` prints the deployment's own credentials ──
+    # `kubectl config view --raw` returned the bearer token and client-key-data verbatim (ninth review pass; present
+    # before this series). Refused; `config view` without them shows the structure with secrets elided by kubectl.
+    if verb == "config" and _operand_after_verb(args) == "view" and any(
+        a in ("--raw", "--flatten") or a.startswith(("--raw=", "--flatten=")) for a in args[1:]
+    ):
+        logger.warning(f"run_kubectl: refused config view with credentials: {cmd!r}")
+        return (
+            "[Protected] `kubectl config view --raw` / `--flatten` would print the credentials this deployment uses. "
+            "Use `kubectl config view --minify` (credentials are elided)."
+        )
+
     # ── 3b2b. `--raw` is an arbitrary API request no check here can inspect ──
     # `kubectl get --raw /api/v1/namespaces/kube-system/secrets` returned Secret objects with the deployment's own
     # credentials, past the protected-namespace and protected-resource checks, for any role — a read, so readonly too
@@ -2701,6 +2749,13 @@ def run_kubectl(
             "--tail, -n <namespace>, or -l <label> flags.]"
         )
         logger.debug(f"run_kubectl: output truncated ({omitted} chars omitted)")
+
+    if verb == "config" and _operand_after_verb(args) == "view":
+        # kubectl elides client keys and tokens, but not auth-provider config (OIDC id-token, refresh-token,
+        # client-secret) or exec-plugin env values (tenth review pass): the redactor runs over the whole output.
+        from app.utils.redact import redact_secrets
+
+        output = redact_secrets(output, max_chars=None)
 
     if injected_ns:
         output += (

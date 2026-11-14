@@ -28,6 +28,13 @@ flag's value, after which kubectl keeps parsing flags).
   an unattended `-n <bound> -n other` wrote outside its binding. Counted inside shorthand groups too (`-Rn x`); a
   second patch payload (`-p … -p …`) is refused, since the image/command gate read the first and kubectl applies the last.
 
+### Fixed — security: a Secret named anywhere in a command is refused
+
+Found by an independent review (2026-11-14), present before this release: only the first resource operand was checked,
+so `get pods,secrets`, `get pod/x secret/db`, `describe pod/x sa/default`, `wait … secret/db -o yaml` and a type behind
+an unknown value flag (`get --sort-by .metadata.name secrets`) returned Secret data to any role. Every non-flag word is
+now checked; `--resolve` and `config view --raw|--flatten` are refused, and `config view` output is redacted.
+
 ### Fixed — security: `kubectl get --raw` no longer bypasses the protected-namespace and Secret checks
 
 Found by an independent review (2026-11-14), present before this release: `--raw` was not inspected, so
