@@ -118,6 +118,23 @@ def _conclude(finding: Finding, session_id: str, outcome: str, detail: dict) -> 
         )
 
 
+async def _conclude_pending(finding: Finding, target: Target | None, session_id: str, pending: dict) -> str:
+    """An unattended turn stopped at an approval prompt: check the session's own workload before calling it stuck.
+
+    Measured 2026-11-14 (Sonnet 4.6): a session repaired its own missing ConfigMap, then tried to write a sibling
+    namespace's, which the namespace binding stopped at a prompt. `needs_approval` alone would hide that its own fault
+    was fixed. If the pinned workload is healthy the outcome is `fixed`, with the abandoned command recorded.
+    """
+    from app.autonomy import verify
+
+    if await verify.verify(target, settings.AUTOFIX_VERIFY_TIMEOUT_SECONDS) == "fixed":
+        _conclude(finding, session_id, "fixed", {"pending_command": pending.get("command"),
+                                                 "pending_risk": pending.get("risk_level")})
+        return "fixed"
+    _conclude(finding, session_id, "needs_approval", pending)
+    return "needs_approval"
+
+
 async def _pending_approval(session_id: str) -> dict | None:
     """The approval request an unattended turn stopped at (command, risk, always_confirm), or None."""
     try:
@@ -297,8 +314,10 @@ async def _investigate(finding: Finding, level: str) -> None:
                     pending = await _pending_approval(session_id)
                     if pending is not None:
                         # An unattended turn stopped at a prompt nobody can answer: say which command, so the
-                        # operator gets more than an empty report.
-                        outcome, detail = "needs_approval", pending
+                        # operator gets more than an empty report — after checking the session's own workload.
+                        logger.warning(f"watchtower_escalated session={session_id} outcome=needs_approval")
+                        await _conclude_pending(finding, target, session_id, pending)
+                        return
             if outcome is not None:
                 # Not done: the session stopped without a conclusion. Nothing to re-check as "held".
                 logger.warning(f"watchtower_escalated session={session_id} outcome={outcome}")

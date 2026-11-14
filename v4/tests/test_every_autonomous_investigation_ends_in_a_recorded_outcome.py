@@ -115,3 +115,36 @@ async def test_a_turn_waiting_at_an_approval_prompt_is_recognised(monkeypatch):
         "risk_level": "high",
         "always_confirm": True,
     }
+
+
+@pytest.mark.asyncio
+async def test_a_turn_stopped_at_a_prompt_is_verified_first(monkeypatch):
+    """Measured 2026-11-14 (Sonnet 4.6, ladder pilot): the b3-c1 session created its own missing ConfigMap (the fault
+    recovered), then tried to write a SIBLING namespace's ConfigMap, which the namespace binding stopped at a prompt.
+    Concluding needs_approval hid that the session's own fault was fixed. The workload is checked first."""
+    from app.autonomy import verify
+
+    concluded = []
+    monkeypatch.setattr(wt, "_conclude", lambda f, s, o, d: concluded.append((o, d)))
+    pending = {
+        "command": "kubectl apply -f -",
+        "risk_level": "medium",
+        "always_confirm": False,
+    }
+
+    async def healthy(target, timeout):
+        return "fixed"
+
+    async def broken(target, timeout):
+        return "not_fixed"
+
+    monkeypatch.setattr(verify, "verify", healthy)
+    await wt._conclude_pending(_finding(), object(), "auto-p", pending)
+    assert (
+        concluded[-1][0] == "fixed"
+        and concluded[-1][1]["pending_command"] == "kubectl apply -f -"
+    )
+
+    monkeypatch.setattr(verify, "verify", broken)
+    await wt._conclude_pending(_finding(), object(), "auto-p", pending)
+    assert concluded[-1] == ("needs_approval", pending)
