@@ -20,7 +20,7 @@ import json
 import shlex
 import subprocess
 import threading
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from typing import Annotated
 
 import yaml
@@ -1457,7 +1457,7 @@ def reset_session_guard() -> None:
 def _guard_session(thread_id: str) -> dict:
     record = _guard.get(thread_id)
     if record is None:
-        record = {"failed": {}, "writes": 0}
+        record = {"failed": {}, "writes": 0, "history": deque(maxlen=8), "stuck": False}
         _guard[thread_id] = record
         while len(_guard) > _GUARD_MAX_SESSIONS:
             _guard.popitem(last=False)
@@ -1490,6 +1490,46 @@ def _auto_writes(thread_id: str) -> int:
 def _count_auto_write(thread_id: str) -> None:
     with _guard_lock:
         _guard_session(thread_id)["writes"] += 1
+
+
+_STUCK_NOTE = (
+    "\n[stuck: this session has repeated the same step(s) with the same result(s). Nothing is changing. Stop "
+    "calling tools and write your report: what you found, what you tried, and why it did not work]"
+)
+_STOPPED = (
+    "[Stopped] This session repeated the same step(s) with the same result(s) and has been stopped from running "
+    "further commands. Write your report now: what you found, what you tried, and why it did not work."
+)
+
+
+def session_is_stuck(thread_id: str) -> bool:
+    """True once an auto-approved session has been seen repeating itself (read by the watchtower)."""
+    with _guard_lock:
+        record = _guard.get(thread_id)
+        return bool(record and record["stuck"])
+
+
+def _remember(thread_id: str, call_fp: str, output: str) -> str:
+    """Record one call and its reply; mark the session stuck on a repeat or A-B cycle with unchanged replies.
+
+    The shapes are OpenHands StuckDetector's: the same call with the same reply 4 times in a row, or two call/reply
+    pairs alternating 3 times (A B A B A B). Measured 2026-11-14: the 73-attempt loop was such an A-B cycle. A reply
+    that changes between rounds (new information) is not a repeat, so a long but progressing session is not stopped.
+    """
+    step = (call_fp, hashlib.sha256(output.encode("utf-8", "replace")).hexdigest())
+    with _guard_lock:
+        record = _guard_session(thread_id)
+        history = record["history"]
+        history.append(step)
+        last = list(history)
+        same = len(last) >= 4 and len(set(last[-4:])) == 1
+        six = last[-6:]
+        cycle = len(six) == 6 and six[0] == six[2] == six[4] and six[1] == six[3] == six[5] and six[0] != six[1]
+        if (same or cycle) and not record["stuck"]:
+            record["stuck"] = True
+            logger.warning(f"run_kubectl: session {thread_id!r} is repeating itself; tool use stopped")
+            return output + _STUCK_NOTE
+    return output
 
 
 def _first_line(text: str) -> str:
@@ -2017,6 +2057,10 @@ def run_kubectl(
         if session_auto and thread_id and is_write and "--dry-run" not in " ".join(args)
         else None
     )
+    # Every call of an auto-approved session (reads too) feeds the stuck detector.
+    call_fp = _write_fingerprint(args, stdin) if session_auto and thread_id else None
+    if call_fp and session_is_stuck(thread_id):
+        return _STOPPED
 
     # Both checks consider any destructive verb present, not only the parsed one. If a command
     # shape ever slips past `_extract_verb` again, it fails closed here instead of executing
@@ -2079,11 +2123,14 @@ def run_kubectl(
             count, reason = previous
             _record_permanent_failure(thread_id, guard_fp, reason)
             logger.warning(f"run_kubectl: repeat refused (failed {count}x before) session={thread_id}: {cmd!r}")
-            return (
-                f"[Repeat refused] This exact command already failed in this session ({count} time(s)) with: {reason}\n"
+            refused = (
+                # No attempt count in the reply: it must stay identical round after round, or the stuck
+                # detector would read every refusal as new information. The count is in the log line above.
+                f"[Repeat refused] This exact command already failed in this session with: {reason}\n"
                 "[permanent error: resending it unchanged cannot succeed — change the approach, or stop and report "
                 "what you found]"
             )
+            return _remember(thread_id, guard_fp, refused)
 
     # ── 4b2. Check a manifest against the cluster's schema before sending it ─
     # Before the approval prompt too: a human should never be asked to approve a manifest the cluster would reject.
@@ -2300,5 +2347,8 @@ def run_kubectl(
             f"\n[namespace: this ran in '{injected_ns}', the namespace this investigation is bound to, "
             "because the command named none]"
         )
+
+    if call_fp:
+        output = _remember(thread_id, call_fp, output)
 
     return effect_guard.settle(admission, output)
