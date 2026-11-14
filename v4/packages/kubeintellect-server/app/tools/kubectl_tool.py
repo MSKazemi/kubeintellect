@@ -2260,12 +2260,12 @@ def run_kubectl(
             hitl_bypass and not always_confirm and not has_dry_run and stdin and guard_fp
             and verb in ("apply", "replace") and settings.PREFLIGHT_DIFF_ENABLED
         ):
-            refusal = _preflight_manifest_write(args, stdin)
-            if refusal is not None:
-                _record_permanent_failure(thread_id, guard_fp, _first_line(refusal))
-                _note_write(thread_id, cmd, refusal)
+            preflight_refusal = _preflight_manifest_write(args, stdin)
+            if preflight_refusal is not None:
+                _record_permanent_failure(thread_id, guard_fp, _first_line(preflight_refusal))
+                _note_write(thread_id, cmd, preflight_refusal)
                 logger.warning(f"run_kubectl: preflight refused an unattended write session={thread_id}: {cmd!r}")
-                return _remember(thread_id, call_fp, refusal) if call_fp else refusal
+                return _remember(thread_id, call_fp, preflight_refusal) if call_fp else preflight_refusal
         admission = effect_guard.admit(
             cmd, args, stdin, config, has_dry_run=has_dry_run,
             hitl_bypass=hitl_bypass, always_confirm=always_confirm,
