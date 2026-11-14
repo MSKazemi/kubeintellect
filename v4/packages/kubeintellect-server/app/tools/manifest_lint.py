@@ -169,8 +169,12 @@ def _walk(
     alternatives = schema.get("oneOf") or schema.get("anyOf")
     if alternatives:
         resolved = [_resolve(a, schemas) for a in alternatives]
-        types = [a.get("type") for a in resolved]
-        if all(types) and not any(_matches(value, t) for t in types):
+        raw_types = [a.get("type") for a in resolved]
+        # Only judge when every alternative names a type; an alternative without one could accept anything.
+        if not all(isinstance(t, str) for t in raw_types):
+            return
+        types = [str(t) for t in raw_types]
+        if not any(_matches(value, t) for t in types):
             out.append(
                 f"{path or '<root>'} is {_type_name(value)}; the schema wants one of {', '.join(types)}"
             )
