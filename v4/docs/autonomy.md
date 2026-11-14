@@ -55,7 +55,8 @@ A fourth: the playbook must not declare `auto_fixable: false`. `JobBackoffLimitE
 fails on its own program's exit code cannot be repaired from the cluster; such a finding is investigated and reported
 even at A3 on the allowlist. Measured 2026-11-14: unattended sessions asked to fix one re-sent the Job 73 times, or
 created a stub Job that printed SUCCESS and reported it fixed. After any A3 fix the watchtower judges the outcome on
-the finding's own workload, not on the model's report (see
+the finding's own workload, not on the model's report, and a bad outcome (`not_fixed`, `stuck`, `budget_exhausted`)
+opens a circuit breaker that demotes that (namespace, playbook) to A2 for `AUTOFIX_BREAKER_SECONDS` (see
 [security: what else bounds an unattended session](security.md#unattended-session-bounds)).
 
 **The authority is granted for the finding's namespace and nowhere else.** The watchtower carries

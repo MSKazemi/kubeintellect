@@ -70,6 +70,72 @@ def on_finding(finding: Finding) -> None:
         logger.warning(f"watchtower: on_finding error: {exc}")
 
 
+# ── Outcomes and the circuit breaker ─────────────────────────────────────────
+# Every autonomous investigation ends in one typed outcome, recorded. The bad ones open a breaker for that
+# (namespace, playbook): the next finding of the same kind there is proposed to a human instead of retried unattended.
+_BREAKER_TRIPPING = frozenset({"not_fixed", "stuck", "budget_exhausted"})
+_breaker: dict[tuple[str, str], float] = {}
+
+
+def reset_breaker() -> None:
+    """Close every breaker (tests, or an operator after fixing what tripped it)."""
+    _breaker.clear()
+
+
+def _breaker_open(namespace: str, playbook: str) -> bool:
+    until = _breaker.get((namespace, playbook))
+    if until is None:
+        return False
+    if time.monotonic() >= until:
+        del _breaker[(namespace, playbook)]
+        return False
+    return True
+
+
+def _conclude(finding: Finding, session_id: str, outcome: str, detail: dict) -> None:
+    """Record how an autonomous investigation ended, and open the breaker on a bad ending."""
+    payload = {
+        "type": "autonomy_outcome", "outcome": outcome, "playbook": finding.playbook,
+        "namespace": finding.namespace, "object": finding.object_name, "finding_id": finding.id, **detail,
+    }
+    try:
+        from app.db import flight_recorder
+
+        flight_recorder.record(session_id, "autonomy_outcome", payload)
+    except Exception as exc:  # recording must never break the investigation
+        logger.warning(f"watchtower: could not record the outcome session={session_id}: {exc}")
+    level = logger.info if outcome in ("fixed", "unknown") else logger.warning
+    level(
+        f"watchtower_outcome session={session_id} outcome={outcome} playbook={finding.playbook} "
+        f"ns={finding.namespace} object={finding.object_name}"
+        + (f" command={detail['command']!r}" if detail.get("command") else "")
+    )
+    if outcome in _BREAKER_TRIPPING and settings.AUTOFIX_BREAKER_SECONDS > 0:
+        _breaker[(finding.namespace, finding.playbook)] = time.monotonic() + settings.AUTOFIX_BREAKER_SECONDS
+        logger.warning(
+            f"watchtower: A3 breaker open for {finding.playbook} in {finding.namespace} for "
+            f"{settings.AUTOFIX_BREAKER_SECONDS}s after outcome={outcome}; findings there are proposed, not auto-fixed"
+        )
+
+
+async def _pending_approval(session_id: str) -> dict | None:
+    """The approval request an unattended turn stopped at (command, risk, always_confirm), or None."""
+    try:
+        from app.agent.workflow import get_graph
+
+        graph = await get_graph()
+        snapshot = await graph.aget_state({"configurable": {"thread_id": session_id}})
+        for task in getattr(snapshot, "tasks", None) or ():
+            for intr in getattr(task, "interrupts", None) or ():
+                value = getattr(intr, "value", intr)
+                if isinstance(value, dict) and value.get("type") == "hitl":
+                    return {k: value.get(k) for k in ("command", "risk_level", "always_confirm")}
+        return None
+    except Exception as exc:
+        logger.warning(f"watchtower: could not read a pending approval session={session_id}: {exc}")
+        return None
+
+
 def _should_auto_fix(finding: Finding, level: str) -> bool:
     """A3 auto-fix is allowed only for realized failures on allowlisted pairs.
 
@@ -86,6 +152,9 @@ def _should_auto_fix(finding: Finding, level: str) -> bool:
     playbook = get_playbook(finding.playbook)
     if playbook is not None and not playbook.auto_fixable:
         logger.info("watchtower: A3 auto-fix not applied: playbook %s is not auto_fixable", finding.playbook)
+        return False
+    if _breaker_open(finding.namespace, finding.playbook):
+        logger.info("watchtower: A3 auto-fix not applied: breaker open for %s in %s", finding.playbook, finding.namespace)
         return False
     # P3 blast-radius gate: an additional fail-closed brake (kill switch / change freeze) on top of
     # the allowlist. Off ⇒ no change to A3 behavior.
@@ -218,9 +287,23 @@ async def _investigate(finding: Finding, level: str) -> None:
             else:
                 await _run_turn(ask, session_id, auto_approve=auto_fix, bound_namespace=finding.namespace)
             outcome = await _turn_outcome(session_id)
+            detail: dict = {}
+            if outcome is None and auto_fix:
+                from app.tools.kubectl_tool import session_is_stuck
+
+                if session_is_stuck(session_id):
+                    outcome = "stuck"
+                else:
+                    pending = await _pending_approval(session_id)
+                    if pending is not None:
+                        # An unattended turn stopped at a prompt nobody can answer: say which command, so the
+                        # operator gets more than an empty report.
+                        outcome, detail = "needs_approval", pending
             if outcome is not None:
                 # Not done: the session stopped without a conclusion. Nothing to re-check as "held".
                 logger.warning(f"watchtower_escalated session={session_id} outcome={outcome}")
+                if auto_fix:
+                    _conclude(finding, session_id, outcome, detail)
                 return
             logger.info(f"watchtower_done session={session_id}")
             if auto_fix:
@@ -316,6 +399,7 @@ async def _record_fix_outcome(finding: Finding, target: Target | None, session_i
     from app.autonomy import verify
 
     outcome = await verify.verify(target, settings.AUTOFIX_VERIFY_TIMEOUT_SECONDS)
+    _conclude(finding, session_id, outcome, {})
     if outcome == "not_fixed":
         logger.warning(
             f"watchtower_fix_not_verified session={session_id} playbook={finding.playbook} "

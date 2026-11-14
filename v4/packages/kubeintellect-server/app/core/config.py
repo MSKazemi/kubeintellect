@@ -696,6 +696,9 @@ class Settings(BaseSettings):
     # After an autonomous fix turn the watchtower polls the finding's own workload (pinned by uid before the turn) for
     # up to this long and records fixed / not_fixed / unknown, whatever the model reported. 0 = do not verify.
     AUTOFIX_VERIFY_TIMEOUT_SECONDS: int = Field(default=120, ge=0)
+    # An autonomous investigation that ends not_fixed, stuck or budget_exhausted demotes its (namespace, playbook)
+    # from A3 to A2 (propose, a human approves) for this long; a server restart also resets it. 0 = no breaker.
+    AUTOFIX_BREAKER_SECONDS: int = Field(default=86400, ge=0)
 
     # ── Auth / RBAC ───────────────────────────────────────────────────────────
     # Four-tier role model (all comma-separated; empty = auth disabled):
