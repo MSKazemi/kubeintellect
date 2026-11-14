@@ -11,6 +11,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed — an unattended session is corrected first, stopped second, and never reports a fix that did not happen
+
+Measured 2026-11-14 on Kind with a real model: one auto-approved session alternated a read that named no namespace
+(NotFound from `default` for a Job that existed) with a re-typed manifest the cluster rejected, **73 times**, until
+LangGraph's step limit ended it — and was then recorded as finished; in 2 of 4 re-runs another session created a stub
+Job printing SUCCESS and reported the failing Job fixed. Each change below stops one of those on its own.
+
+- **A bound session's read looks in its own namespace** when the command names none (`-n <bound>` added for `get`,
+  `describe`, `logs`, `top`, `events`, `wait`; the reply says so). Writes are unchanged and keep failing closed.
+- **A manifest is checked against the cluster's own schema before it is sent** (`MANIFEST_LINT_ENABLED`, default on):
+  a wrong-typed or misspelt field is refused with the path, the YAML cause and the fix, before any approval prompt.
+  Fails open — no schema, no check.
+- **kubectl errors say whether resending can help** (`[permanent error: …]` / `[transient error: …]`), with new hints
+  for a wrong-typed manifest field, `already exists` and unknown flags; `field is immutable` no longer recommends
+  recreating the resource.
+- **An auto-approved session does not resend a write that already failed permanently**, and runs at most
+  `AUTO_APPROVE_MAX_WRITES` (default 10) writes without a human.
+- **Running out of steps is an escalation, not an answer**: LangGraph's "Sorry, need more steps…" ending (which it
+  returns instead of raising at the default limits) becomes the budget escalation, and the watchtower logs
+  `watchtower_escalated`. `AGENT_COORDINATOR_RECURSION_LIMIT=150` allows 74 tool calls (the docs said ~50).
+- **No substitute workloads under auto-approve**: `run`, `create` of a workload, and a change to a container's
+  `command`/`args` (any spelling) are always-confirm.
+- **An autonomous fix is judged on the original object** (`AUTOFIX_VERIFY_TIMEOUT_SECONDS`, default 120): pinned by uid
+  before the fix turn; still unhealthy, deleted or replaced is `not_fixed`, whatever the model reported.
+- **A fault the cluster cannot fix is not auto-fixed**: playbooks may declare `auto_fixable: false`;
+  `JobBackoffLimitExceeded` does, and its fix template no longer says "recreate the job".
+
 ### Changed
 
 - **Auto-approve is now a demonstration and evaluation mode, off by default** (`AUTO_APPROVE_ENABLED`, default
