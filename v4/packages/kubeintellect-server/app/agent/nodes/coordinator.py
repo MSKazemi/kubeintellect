@@ -625,6 +625,30 @@ _BUDGET_EXHAUSTED_MESSAGE = (
 )
 
 
+# LangGraph's `create_react_agent` ends a loop that runs out of `remaining_steps` with this exact message instead of
+# raising `GraphRecursionError` (documented in its `state_schema` notes). Measured 2026-11-14 at the production limit
+# (150): 74 tool calls, then this sentence, and no exception — so the `except GraphRecursionError` escalation below never
+# ran and an unattended session that had looped 73 times was recorded as done. Both endings are now the same escalation.
+_LANGGRAPH_OUT_OF_STEPS = "Sorry, need more steps to process this request."
+
+
+def _ran_out_of_steps(message: object) -> bool:
+    """True if `message` is LangGraph's out-of-steps ending (the whole final AI message, nothing else)."""
+    return (
+        isinstance(message, AIMessage)
+        and not getattr(message, "tool_calls", None)
+        and str(message.content).strip() == _LANGGRAPH_OUT_OF_STEPS
+    )
+
+
+def _budget_escalation() -> AIMessage:
+    # `ki_outcome` lets the watchtower tell an escalation from an answer without parsing prose.
+    return AIMessage(
+        content=_BUDGET_EXHAUSTED_MESSAGE.format(limit=settings.AGENT_COORDINATOR_RECURSION_LIMIT),
+        additional_kwargs={"ki_outcome": "budget_exhausted"},
+    )
+
+
 # ── Proactive Fix prompt block (injected when hitl_bypass=True) ───────────────
 
 _PROACTIVE_FIX_BLOCK = """\
@@ -915,11 +939,17 @@ async def _direct_answer(state: AgentState, config: Optional[RunnableConfig] = N
             "halting and escalating to the operator",
             extra={"session_id": session_id},
         )
-        return {
-            "messages": [AIMessage(content=_BUDGET_EXHAUSTED_MESSAGE.format(
-                limit=settings.AGENT_COORDINATOR_RECURSION_LIMIT,
-            ))],
-        }
+        return {"messages": [_budget_escalation()]}
+
+    if result["messages"] and _ran_out_of_steps(result["messages"][-1]):
+        logger.error(
+            "coordinator: tool-call budget exhausted (LangGraph remaining_steps) "
+            f"session={session_id} limit={settings.AGENT_COORDINATOR_RECURSION_LIMIT} — "
+            "halting and escalating to the operator",
+            extra={"session_id": session_id},
+        )
+        # Keep what was done before the limit (it is the evidence for the report); replace only the ending.
+        result["messages"][-1] = _budget_escalation()
 
     new_messages = result["messages"][len(input_messages):]
     new_messages = _trim_tool_messages(new_messages)  # A4: cap tool output before state storage

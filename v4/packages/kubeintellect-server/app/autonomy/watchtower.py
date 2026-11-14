@@ -202,6 +202,11 @@ async def _investigate(finding: Finding, level: str) -> None:
                 )
             else:
                 await _run_turn(ask, session_id, auto_approve=auto_fix, bound_namespace=finding.namespace)
+            outcome = await _turn_outcome(session_id)
+            if outcome is not None:
+                # Not done: the session stopped without a conclusion. Nothing to re-check as "held".
+                logger.warning(f"watchtower_escalated session={session_id} outcome={outcome}")
+                return
             logger.info(f"watchtower_done session={session_id}")
             if auto_fix:
                 await _schedule_post_fix_recheck(finding)
@@ -262,6 +267,27 @@ async def _turn_grounding(session_id: str) -> dict | None:
         return grounding if isinstance(grounding, dict) else None
     except Exception as exc:
         logger.warning(f"watchtower: could not read the grounding verdict session={session_id}: {exc}")
+        return None
+
+
+async def _turn_outcome(session_id: str) -> str | None:
+    """The `ki_outcome` mark on the session's last AI message (e.g. "budget_exhausted"), or None.
+
+    An escalation must not be recorded as a finished investigation, nor followed by a "the fix held" re-check.
+    """
+    try:
+        from app.agent.workflow import get_graph
+
+        graph = await get_graph()
+        snapshot = await graph.aget_state({"configurable": {"thread_id": session_id}})
+        messages = (dict(snapshot.values) if snapshot and snapshot.values else {}).get("messages") or []
+        for message in reversed(messages):
+            if getattr(message, "type", "") == "ai":
+                outcome = (getattr(message, "additional_kwargs", None) or {}).get("ki_outcome")
+                return outcome if isinstance(outcome, str) else None
+        return None
+    except Exception as exc:
+        logger.warning(f"watchtower: could not read the turn outcome session={session_id}: {exc}")
         return None
 
 

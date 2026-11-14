@@ -494,10 +494,15 @@ truncates silently and never fails the request with a bare error.
 | Variable | Default | Values | Description |
 |---|---|---|---|
 | `AGENT_GRAPH_RECURSION_LIMIT` | `120` | integer > 0 | Whole-turn budget for the outer graph. A turn costs 3 steps plus 2 per coordinator↔investigation cycle, so `120` allows ~58 cycles. Exhaustion returns the partial turn plus an explanation. |
-| `AGENT_COORDINATOR_RECURSION_LIMIT` | `150` | integer > 0 | Tool-call budget for the coordinator's inner ReAct loop. ~3 recursion units per step (LLM call + tool call + tool response), so `150` allows ~50 tool calls in one coordinator turn. Exhaustion ends the turn with an explanation. |
+| `AGENT_COORDINATOR_RECURSION_LIMIT` | `150` | integer > 0 | Tool-call budget for the coordinator's inner ReAct loop. Each step costs 2 recursion units (model call + tool call); measured 2026-11-14, `150` allowed **74** tool calls in one coordinator turn. Exhaustion ends the turn with an explanation marked as an escalation, which an autonomous investigation records as `watchtower_escalated`, not done. |
 
 The read-only RCA subagents carry their own fixed limit of `50` (~16 tool calls), set in
 `app/agent/nodes/subagent.py`.
+
+At the default limits LangGraph does not raise `GraphRecursionError` when the coordinator's loop runs out: its
+`remaining_steps` check ends the loop with the plain message *"Sorry, need more steps to process this request."*
+Both endings now produce the same escalation (measured 2026-11-14: before this, an unattended session that resent
+one rejected command 73 times ended with that message and was recorded as done).
 
 Lower either value to see the escalation path in a test environment. Raise
 `AGENT_COORDINATOR_RECURSION_LIMIT` if you have investigations that legitimately need more

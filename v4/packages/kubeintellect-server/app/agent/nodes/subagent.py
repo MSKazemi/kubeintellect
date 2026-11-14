@@ -105,6 +105,18 @@ async def run_subagent(payload: SubagentInput) -> AgentFinding:
     last_msg = result["messages"][-1]
     raw_content = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
 
+    # LangGraph ends a loop that runs out of steps with a plain message rather than raising (see the coordinator's
+    # `_ran_out_of_steps`). Say so, instead of reporting it as a finding that failed to parse.
+    if str(raw_content).strip() == "Sorry, need more steps to process this request.":
+        logger.warning(f"subagent [{domain}]: step budget exhausted (limit {_SUBAGENT_RECURSION_LIMIT})")
+        return AgentFinding(
+            domain=domain,
+            signals=["(step budget exhausted)"],
+            hypothesis=f"Subagent hit its step budget ({_SUBAGENT_RECURSION_LIMIT}) without reaching a conclusion",
+            confidence=0.0,
+            evidence=[],
+        )
+
     try:
         clean = raw_content.strip()
         if clean.startswith("```"):
