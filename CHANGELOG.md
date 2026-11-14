@@ -25,7 +25,8 @@ for `exec`, `run`, `debug`, `create` and `attach`, and a command containing `--`
 flag's value, after which kubectl keeps parsing flags).
 - **A repeated `-n`/`--namespace` or `-o`/`--output` is refused** (present before this release): kubectl uses the last
   value and the gates read the first, so `kubectl get pods -n default -n kube-system` listed a protected namespace and
-  an unattended `-n <bound> -n other` wrote outside its binding.
+  an unattended `-n <bound> -n other` wrote outside its binding. Counted inside shorthand groups too (`-Rn x`); a
+  second patch payload (`-p … -p …`) is refused, since the image/command gate read the first and kubectl applies the last.
 
 ### Fixed — an unattended session is corrected first, stopped second, and never reports a fix that did not happen
 

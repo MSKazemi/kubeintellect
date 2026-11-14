@@ -757,3 +757,57 @@ def test_n7_legitimate_commands_with_a_double_dash_still_reach_the_gate(command)
     calls, prompts, out = _run(command, bound=None, bypass=False)
     assert not out.startswith("[Unsupported]"), out
     assert prompts  # a write in chat: it reaches the approval prompt as before
+
+
+# ── Seventh review pass: combined shorthand groups (`-Rn x`) and a second patch payload ──
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "kubectl get pods -n default -Rn kube-system",
+        "kubectl get pods -n default -Rnkube-system",
+    ],
+)
+def test_n8_a_namespace_inside_a_shorthand_group_counts(command):
+    calls, _, out = _run(command, bound=None, bypass=False)
+    assert not calls and out.startswith("[Unsupported]")
+
+
+def test_n8_an_unattended_delete_cannot_hide_a_second_namespace_in_a_group():
+    calls, _, out = _run("kubectl delete pod x -n b3-c1 -Rn other")
+    assert not calls and out.startswith("[Unsupported]")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'kubectl patch deploy x -n b3-c1 -p \'{"spec":{"replicas":2}}\' '
+        '-p \'{"spec":{"template":{"spec":{"containers":[{"name":"c","image":"evil:1"}]}}}}\'',
+        'kubectl patch deploy x -n b3-c1 --patch=\'{"spec":{"replicas":2}}\' --patch-file=/tmp/p.json',
+    ],
+)
+def test_n9_a_second_patch_payload_is_refused(command):
+    calls, _, out = _run(command)
+    assert not calls and out.startswith("[Unsupported]")
+
+
+def test_n8_n9_ordinary_commands_are_untouched():
+    assert (
+        kt._flag_occurrences(
+            ["kubectl", "exec", "web", "-it", "-n", "ns"], "-n", "--namespace", 6
+        )
+        == 1
+    )
+    assert (
+        kt._flag_occurrences(["kubectl", "get", "pods", "-ojson"], "-o", "--output", 4)
+        == 1
+    )
+    assert (
+        kt._flag_occurrences(
+            ["kubectl", "scale", "d", "--replicas", "-1"], "-n", "--namespace", 5
+        )
+        == 0
+    )
+    calls, _, _ = _run('kubectl patch configmap c -n b3-c1 -p \'{"data":{"k":"v"}}\'')
+    assert calls

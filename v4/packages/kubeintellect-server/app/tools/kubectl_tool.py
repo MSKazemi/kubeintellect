@@ -1489,15 +1489,30 @@ _KNOWN_BOOLEAN_FLAGS = frozenset({
 }) | _BOOLEAN_GLOBAL_FLAGS
 
 
+# Shorthand letters that take a value: in a group such as `-Rn x` or `-Rnkube-system` the first of these ends the
+# group, and the rest of the token (or the next token) is its value. The others in a group are booleans.
+_SHORT_VALUE_LETTERS = frozenset("nolfcpskL")
+
+
 def _flag_occurrences(args: list[str], short: str, long: str, end: int) -> int:
-    """How many times a value flag appears in args[1:end], in every spelling kubectl accepts:
-    `-n x`, `-n=x`, `-nx`, `--namespace x`, `--namespace=x`."""
+    """How many times a value flag appears in args[1:end], in every spelling kubectl accepts: `-n x`, `-n=x`, `-nx`,
+    `--namespace x`, `--namespace=x`, and inside a shorthand group (`-Rn x`, `-Rnx`).
+
+    Walked the way pflag reads a group, letter by letter until the first value-taking letter: counting only tokens
+    that START with `-n` missed `-n default -Rn kube-system`, where kubectl reads the last (seventh review pass).
+    """
+    letter = short[1]
     count = 0
     for tok in args[1:end]:
-        if tok in (short, long) or tok.startswith((short + "=", long + "=")):
+        if tok == long or tok.startswith(long + "="):
             count += 1
-        elif tok.startswith(short) and not tok.startswith("--") and len(tok) > len(short):
-            count += 1  # attached shorthand value, e.g. `-nkube-system`, `-ojson`
+        elif tok.startswith("-") and not tok.startswith("--") and len(tok) > 1:
+            for ch in tok[1:]:
+                if ch == letter:
+                    count += 1
+                    break
+                if ch in _SHORT_VALUE_LETTERS or ch == "=":
+                    break  # the rest of the token is that flag's value
     return count
 
 
@@ -2304,6 +2319,14 @@ def run_kubectl(
             return (
                 f"[Unsupported] `{long}` is given more than once. kubectl would use only the last one; give it once."
             )
+    # A patch payload given twice: the image/command gate reads the first, kubectl applies the last (seventh review
+    # pass: `-p '{replicas}' -p '{image: evil}'` auto-ran an image change with no approval).
+    if verb == "patch":
+        payloads = _flag_occurrences(args, "-p", "--patch", flags_end) + sum(
+            1 for a in args[1:flags_end] if a == "--patch-file" or a.startswith("--patch-file=")
+        )
+        if payloads > 1:
+            return "[Unsupported] A patch payload is given more than once. kubectl would use only the last one; give one."
 
     # ── 3c. A bound session's read looks in the session's namespace ──────────
     injected_ns = _bound_read_namespace(verb, args, config)
