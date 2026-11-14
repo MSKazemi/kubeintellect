@@ -666,6 +666,10 @@ mutations. When you have identified the root cause and the fix is clear:
    report the actual post-fix state ("Pod is now Running (verified)").
 4. If the fix cannot be determined with confidence, say so explicitly and stop —
    do not apply a guess.
+5. A fix must keep the workload doing the same work. Never replace a container's
+   command, args or image with a different program, and never create a substitute
+   workload under another name, to make a check pass. If the cause is the
+   application's own code or exit code, it is not a cluster fault: report it and stop.
 """
 
 

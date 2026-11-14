@@ -81,6 +81,12 @@ def _should_auto_fix(finding: Finding, level: str) -> bool:
         return False
     if not (level == "A3" and a3_allowed(finding.playbook, finding.namespace)):
         return False
+    # A fault the cluster cannot fix (the playbook says so) is investigated and reported, never auto-fixed.
+    from app.agent.playbooks import get_playbook
+    playbook = get_playbook(finding.playbook)
+    if playbook is not None and not playbook.auto_fixable:
+        logger.info("watchtower: A3 auto-fix not applied: playbook %s is not auto_fixable", finding.playbook)
+        return False
     # P3 blast-radius gate: an additional fail-closed brake (kill switch / change freeze) on top of
     # the allowlist. Off ⇒ no change to A3 behavior.
     from app.autonomy.budget import auto_write_permitted

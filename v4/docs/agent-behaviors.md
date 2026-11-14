@@ -305,6 +305,7 @@ expected_evidence:
   - "<what to look for>"
 recommended_fix_template: |
   <multi-line fix template; placeholders welcome>
+auto_fixable: false   # optional, default true: false = never handed to an unattended A3 fix
 ```
 
 A playbook matches if any of its triggers matches. The coordinator still has

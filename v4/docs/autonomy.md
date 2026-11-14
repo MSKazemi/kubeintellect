@@ -51,6 +51,12 @@ A3 requires **both** conditions: the namespace's effective level must be `A3`
 An empty allowlist means A3 behaves like A2 — nothing auto-executes.
 A third condition applies on every release after 2.5.0: the server must run with
 `AUTO_APPROVE_ENABLED=true`. Without it, A3 also behaves like A2.
+A fourth: the playbook must not declare `auto_fixable: false`. `JobBackoffLimitExceeded` does, because a Job that
+fails on its own program's exit code cannot be repaired from the cluster; such a finding is investigated and reported
+even at A3 on the allowlist. Measured 2026-11-14: unattended sessions asked to fix one re-sent the Job 73 times, or
+created a stub Job that printed SUCCESS and reported it fixed. After any A3 fix the watchtower judges the outcome on
+the finding's own workload, not on the model's report (see
+[security: what else bounds an unattended session](security.md#unattended-session-bounds)).
 
 **The authority is granted for the finding's namespace and nowhere else.** The watchtower carries
 `finding.namespace` into the session's run config as `bound_namespace`, and the tool layer

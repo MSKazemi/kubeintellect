@@ -49,6 +49,9 @@ class Playbook:
     # Schema v2 (ADR-006): compiled zero-token detection predicate.
     # None = LLM/triage-detected only.
     detect: DetectBlock | None = None
+    # False for faults no change made from the cluster can repair (e.g. a Job whose own program exits non-zero). The
+    # watchtower then investigates and reports even at A3 on the allowlist; it never asks for an unattended fix.
+    auto_fixable: bool = True
 
 
 _TRIGGER_KEYS = ("pod_status_regex", "event_reason_regex", "event_message_regex")
@@ -97,6 +100,9 @@ def _load_one(path: Path) -> Playbook:
     steps = tuple(data.get("investigation_steps") or [])
     evidence = tuple(data.get("expected_evidence") or [])
     fix = (data.get("recommended_fix_template") or "").strip()
+    auto_fixable = data.get("auto_fixable", True)
+    if not isinstance(auto_fixable, bool):
+        raise ValueError(f"Playbook {path.name}: 'auto_fixable' must be true or false")
     return Playbook(
         name=name,
         triggers=triggers,
@@ -104,6 +110,7 @@ def _load_one(path: Path) -> Playbook:
         expected_evidence=evidence,
         recommended_fix_template=fix,
         detect=parse_detect_block(name, data.get("detect")),
+        auto_fixable=auto_fixable,
     )
 
 
