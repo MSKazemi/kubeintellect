@@ -180,6 +180,16 @@ listing reached the agent looking like a complete census with no sign a namespac
 been denied. Both are now returned, with the surviving rows explicitly marked as
 possibly partial — absence from them is not evidence.
 
+**A manifest is checked before it is sent.** For `apply`, `create` and `replace` with a stdin manifest, every
+field's type and name is checked against the cluster's own OpenAPI v3 schema (fetched once per group-version and
+cached). A field of the wrong type or a misspelt field name is refused before anything reaches the cluster, with the
+path, the likely YAML cause and the fix, and before any approval prompt, so a human is never asked to approve a
+manifest the cluster would reject. The check only reports what it can prove wrong: no schema for the kind (a CRD it
+cannot find) or an unreachable schema endpoint means no check, and the server's own validation still runs.
+Measured on the manifest that was resent 73 times: client-side `kubectl apply`, even with `--dry-run=server` and
+`--validate=strict`, answered with an error naming no field; this check names
+`spec.template.spec.containers[0].command[2]`. Disable with `MANIFEST_LINT_ENABLED=false`.
+
 **Disable:** `KUBECTL_ERROR_HINTS_ENABLED=false` (the exit-code line and the partial-output
 notice are not gated by it — they are statements of fact, not interpretation).
 

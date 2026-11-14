@@ -50,6 +50,11 @@ os.environ["KUBEINTELLECT_READONLY_KEYS"] = ""
 os.environ["KUBEINTELLECT_SUPERADMIN_KEYS"] = ""
 os.environ["DEMO_KEY_HMAC_SECRET"] = ""
 
+# The manifest lint fetches the cluster's OpenAPI schema with `kubectl get --raw`, using the developer's real
+# kubeconfig. No unit test may reach a real cluster that way, so it is off for the suite; its own tests turn it on
+# with the fetch patched out (tests/test_a_manifest_is_checked_against_the_cluster_schema_before_it_is_sent.py).
+os.environ["MANIFEST_LINT_ENABLED"] = "false"
+
 # ── Stub langgraph postgres checkpointer ─────────────────────────────────────
 # AsyncPostgresSaver.from_conn_string is called inside init_graph() at startup.
 # Stub the module so no TCP connection is attempted — the real app.agent.workflow

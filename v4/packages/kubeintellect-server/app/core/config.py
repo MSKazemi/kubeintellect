@@ -237,6 +237,9 @@ class Settings(BaseSettings):
     # ── KubeIntellect behavior flags ───────────────────────────────────────────
     # Each behavior is feature-flagged so it can be toggled without a redeploy.
     KUBECTL_ERROR_HINTS_ENABLED: bool = True
+    # Check a manifest (apply/create/replace with stdin) against the cluster's own OpenAPI v3 schema before sending
+    # it, and refuse it with the wrong field named. Fails open: no schema, no check. See app/tools/manifest_lint.py.
+    MANIFEST_LINT_ENABLED: bool = True
     INVESTIGATION_PLAN_ENABLED: bool = True
     PLAYBOOKS_ENABLED: bool = True
     # off | lenient | strict

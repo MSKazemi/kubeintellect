@@ -1975,6 +1975,21 @@ def run_kubectl(
         logger.warning(f"run_kubectl: blocked protected access: {cmd!r}")
         return protected_err
 
+    # ── 4b2. Check a manifest against the cluster's schema before sending it ─
+    # Before the approval prompt too: a human should never be asked to approve a manifest the cluster would reject.
+    # Measured 2026-11-14: a re-typed Job whose unquoted `ERROR: …` made `command[2]` a mapping was rejected 73
+    # times with an error naming no field. Fails open: no schema, no finding (the server still validates).
+    if stdin and verb in ("apply", "create", "replace") and settings.MANIFEST_LINT_ENABLED:
+        from app.tools import manifest_lint
+        findings = manifest_lint.lint(stdin, os.path.expanduser(settings.KUBECONFIG_PATH))
+        if findings:
+            logger.warning(f"run_kubectl: manifest refused before sending ({len(findings)} finding(s)): {cmd!r}")
+            return (
+                "[Invalid manifest: not sent to the cluster] Checked against the cluster's own schema:\n"
+                + "\n".join(f"- {f}" for f in findings)
+                + "\n[permanent error: resending this manifest unchanged cannot succeed — fix the fields named above]"
+            )
+
     # ── 4c. Risk classification → HITL interrupt ─────────────────────────────
     # ADR-008 exactly-once + single-use approvals for irreversible calls. Inert (PASS) unless
     # SELF_GOVERN_ENABLED. Imported here, not at the top: app.tools.aci imports this module.
