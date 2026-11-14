@@ -23,16 +23,18 @@ E3_APPLY = (
     'last-applied-configuration:{\\"apiVersion\\":\\"batch/v1\\"}]] spec:map[backoffLimit:5]]": unrecognized type: string'
 )
 SSA_TYPE = (
-    'Error from server: failed to create typed patch object (h3-2/report; batch/v1, Kind=Job): '
+    "Error from server: failed to create typed patch object (h3-2/report; batch/v1, Kind=Job): "
     '.spec.template.spec.containers[name="c"].command[2]: expected string, got &value.valueUnstructured{}'
 )
 CREATE_TYPE = (
     'Error from server (BadRequest): error when creating "STDIN": Job in version "v1" cannot be handled as a Job: '
-    'json: cannot unmarshal object into Go struct field Container.spec.template.spec.containers.command of type string'
+    "json: cannot unmarshal object into Go struct field Container.spec.template.spec.containers.command of type string"
 )
 IMMUTABLE = 'The Job "report" is invalid: spec.template: Invalid value: {"labels":{}}: field is immutable'
 EXISTS = 'error: failed to create job: jobs.batch "report" already exists'
-UNKNOWN_FLAG = "error: unknown flag: --command\nSee 'kubectl create job --help' for usage."
+UNKNOWN_FLAG = (
+    "error: unknown flag: --command\nSee 'kubectl create job --help' for usage."
+)
 
 
 class TestTheRecordedRejectionsAreExplained:
@@ -59,12 +61,16 @@ class TestTheRecordedRejectionsAreExplained:
 
 
 class TestEachErrorSaysWhetherResendingCanHelp:
-    @pytest.mark.parametrize("reply", [E3_APPLY, SSA_TYPE, CREATE_TYPE, IMMUTABLE, EXISTS, UNKNOWN_FLAG])
+    @pytest.mark.parametrize(
+        "reply", [E3_APPLY, SSA_TYPE, CREATE_TYPE, IMMUTABLE, EXISTS, UNKNOWN_FLAG]
+    )
     def test_permanent(self, reply):
         assert ke.error_class(ke.interpret(reply)[0]) == "permanent"
 
     def test_a_conflict_is_transient(self):
-        name, _ = ke.interpret('Operation cannot be fulfilled on jobs.batch "report": the object has been modified')
+        name, _ = ke.interpret(
+            'Operation cannot be fulfilled on jobs.batch "report": the object has been modified'
+        )
         assert ke.error_class(name) == "transient"
 
     def test_an_unmatched_error_has_no_class(self):
@@ -73,10 +79,21 @@ class TestEachErrorSaysWhetherResendingCanHelp:
 
 def test_the_tool_reply_carries_the_class():
     fake = SimpleNamespace(returncode=1, stdout="", stderr=E3_APPLY)
-    cfg = {"configurable": {"user_role": "operator", "hitl_bypass": True, "thread_id": "auto-x", "bound_namespace": "h3-2"}}
+    cfg = {
+        "configurable": {
+            "user_role": "operator",
+            "hitl_bypass": True,
+            "thread_id": "auto-x",
+            "bound_namespace": "h3-2",
+        }
+    }
     manifest = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: c\n  namespace: h3-2\ndata:\n  k: v\n"
-    with mock.patch.object(kt.subprocess, "run", lambda *a, **k: fake), \
-            mock.patch.object(kt, "_capture_rollback_point", lambda *a, **k: None):
-        out = kt.run_kubectl.invoke({"command": "kubectl apply -f - -n h3-2", "stdin": manifest}, config=cfg)
+    with (
+        mock.patch.object(kt.subprocess, "run", lambda *a, **k: fake),
+        mock.patch.object(kt, "_capture_rollback_point", lambda *a, **k: None),
+    ):
+        out = kt.run_kubectl.invoke(
+            {"command": "kubectl apply -f - -n h3-2", "stdin": manifest}, config=cfg
+        )
     assert out.startswith("[kubectl exited 1]")
     assert "[permanent error: resending this exact command cannot succeed" in out

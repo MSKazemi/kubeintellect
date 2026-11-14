@@ -36,19 +36,41 @@ def _fresh():
     kt.reset_session_guard()
 
 
-def _send(stdin: str, *, rc: int = 1, err: str = E3_REJECTION, session: str = "auto-a", bypass: bool = True):
+def _send(
+    stdin: str,
+    *,
+    rc: int = 1,
+    err: str = E3_REJECTION,
+    session: str = "auto-a",
+    bypass: bool = True,
+):
     calls: list[list[str]] = []
     prompts: list[dict] = []
 
     def fake_run(argv, *a, **k):
         calls.append(list(argv))
-        return SimpleNamespace(returncode=rc, stdout="" if rc else "configmap/c configured\n", stderr=err if rc else "")
+        return SimpleNamespace(
+            returncode=rc,
+            stdout="" if rc else "configmap/c configured\n",
+            stderr=err if rc else "",
+        )
 
-    cfg = {"configurable": {"user_role": "operator", "hitl_bypass": bypass, "thread_id": session, "bound_namespace": "h3-2"}}
-    with mock.patch.object(kt.subprocess, "run", fake_run), \
-            mock.patch.object(kt, "_capture_rollback_point", lambda *a, **k: None), \
-            mock.patch.object(kt, "interrupt", lambda p: prompts.append(p) or (not bypass)):
-        out = kt.run_kubectl.invoke({"command": "kubectl apply -f - -n h3-2", "stdin": stdin}, config=cfg)
+    cfg = {
+        "configurable": {
+            "user_role": "operator",
+            "hitl_bypass": bypass,
+            "thread_id": session,
+            "bound_namespace": "h3-2",
+        }
+    }
+    with (
+        mock.patch.object(kt.subprocess, "run", fake_run),
+        mock.patch.object(kt, "_capture_rollback_point", lambda *a, **k: None),
+        mock.patch.object(kt, "interrupt", lambda p: prompts.append(p) or (not bypass)),
+    ):
+        out = kt.run_kubectl.invoke(
+            {"command": "kubectl apply -f - -n h3-2", "stdin": stdin}, config=cfg
+        )
     return calls, prompts, out
 
 
@@ -79,7 +101,9 @@ class TestARepeatedFailedWrite:
     def test_a_chat_session_with_a_human_is_not_affected(self):
         _send(_cm("x"), bypass=False)
         calls, _, _ = _send(_cm("x"), bypass=False)
-        assert calls, "a human approved it; they may retry after fixing something outside the session"
+        assert calls, (
+            "a human approved it; they may retry after fixing something outside the session"
+        )
 
 
 class TestTheWriteBudget:

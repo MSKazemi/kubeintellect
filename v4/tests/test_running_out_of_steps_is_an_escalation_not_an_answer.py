@@ -43,18 +43,34 @@ def _forever():
     i = 0
     while True:
         i += 1
-        yield AIMessage(content="", tool_calls=[{"name": "run_kubectl", "args": {"command": "apply -f -"}, "id": f"c{i}"}])
+        yield AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "run_kubectl",
+                    "args": {"command": "apply -f -"},
+                    "id": f"c{i}",
+                }
+            ],
+        )
 
 
 @pytest.mark.asyncio
-async def test_the_coordinator_turns_langgraphs_step_message_into_the_escalation(monkeypatch):
+async def test_the_coordinator_turns_langgraphs_step_message_into_the_escalation(
+    monkeypatch,
+):
     calls["n"] = 0
-    monkeypatch.setattr(coord_mod, "get_coordinator_llm", lambda: _LoopingModel(messages=_forever()))
+    monkeypatch.setattr(
+        coord_mod, "get_coordinator_llm", lambda: _LoopingModel(messages=_forever())
+    )
     monkeypatch.setattr(coord_mod, "ALL_TOOLS", [run_kubectl])
     monkeypatch.setattr(coord_mod, "fault_isolated_tool_node", lambda tools: tools)
     state = {
         "messages": [HumanMessage(content="[autonomous investigation] fix the Job")],
-        "session_id": "sess-steps-1", "findings": [], "memory_context": "", "cluster_snapshot": "",
+        "session_id": "sess-steps-1",
+        "findings": [],
+        "memory_context": "",
+        "cluster_snapshot": "",
     }
     with mock.patch.object(coord_mod.logger, "error") as err:
         result = await coord_mod.coordinator(state, config={"configurable": {}})
@@ -65,7 +81,9 @@ async def test_the_coordinator_turns_langgraphs_step_message_into_the_escalation
     assert "without reaching a conclusion" in last.content
     assert str(settings.AGENT_COORDINATOR_RECURSION_LIMIT) in last.content
     assert last.additional_kwargs.get("ki_outcome") == "budget_exhausted"
-    assert err.called, "running out of steps is logged as an error, as the exception path does"
+    assert err.called, (
+        "running out of steps is logged as an error, as the exception path does"
+    )
     # The work done before the limit is kept for the report, not thrown away.
     assert any(getattr(m, "type", "") == "tool" for m in result["messages"])
 
@@ -73,7 +91,9 @@ async def test_the_coordinator_turns_langgraphs_step_message_into_the_escalation
 def test_the_sentinel_is_recognised_only_as_the_whole_final_message():
     s = "Sorry, need more steps to process this request."
     assert coord_mod._ran_out_of_steps(AIMessage(content=s))
-    assert not coord_mod._ran_out_of_steps(AIMessage(content="Here is the diagnosis. " + s))
+    assert not coord_mod._ran_out_of_steps(
+        AIMessage(content="Here is the diagnosis. " + s)
+    )
     assert not coord_mod._ran_out_of_steps(HumanMessage(content=s))
 
 
@@ -82,7 +102,14 @@ async def test_the_watchtower_records_an_escalation_not_done(monkeypatch):
     from app.autonomy import watchtower as wt
 
     class _Snap:
-        values = {"messages": [AIMessage(content="I stopped …", additional_kwargs={"ki_outcome": "budget_exhausted"})]}
+        values = {
+            "messages": [
+                AIMessage(
+                    content="I stopped …",
+                    additional_kwargs={"ki_outcome": "budget_exhausted"},
+                )
+            ]
+        }
 
     class _Graph:
         async def aget_state(self, config):

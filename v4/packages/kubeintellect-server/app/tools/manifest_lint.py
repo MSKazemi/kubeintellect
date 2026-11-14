@@ -55,7 +55,11 @@ def _fetch_openapi(gv_path: str, kubeconfig: str) -> dict | None:
     try:
         proc = subprocess.run(
             ["kubectl", "get", "--raw", f"/openapi/v3/{gv_path}"],
-            capture_output=True, text=True, encoding="utf-8", timeout=15, shell=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=15,
+            shell=False,
             env={**os.environ, "KUBECONFIG": kubeconfig},
         )
         if proc.returncode != 0:
@@ -71,7 +75,9 @@ def _schema_doc(api_version: str, kubeconfig: str) -> dict | None:
     now = time.monotonic()
     with _lock:
         hit = _cache.get(key)
-        if hit is not None and (hit[1] is not None or now - hit[0] < _FAILED_FETCH_TTL_SECONDS):
+        if hit is not None and (
+            hit[1] is not None or now - hit[0] < _FAILED_FETCH_TTL_SECONDS
+        ):
             return hit[1]
     doc = _fetch_openapi(key[1], kubeconfig)
     with _lock:
@@ -83,7 +89,11 @@ def _kind_schema(doc: dict, api_version: str, kind: str) -> dict | None:
     group, _, version = api_version.rpartition("/")
     for schema in (doc.get("components") or {}).get("schemas", {}).values():
         for gvk in schema.get("x-kubernetes-group-version-kind") or []:
-            if gvk.get("group", "") == group and gvk.get("version") == version and gvk.get("kind") == kind:
+            if (
+                gvk.get("group", "") == group
+                and gvk.get("version") == version
+                and gvk.get("kind") == kind
+            ):
                 return schema
     return None
 
@@ -93,7 +103,12 @@ def _resolve(schema: dict, schemas: dict, depth: int = 0) -> dict:
     while depth < 20:
         if "$ref" in schema:
             schema = schemas.get(schema["$ref"].rsplit("/", 1)[-1], {})
-        elif "allOf" in schema and len(schema["allOf"]) == 1 and "type" not in schema and "properties" not in schema:
+        elif (
+            "allOf" in schema
+            and len(schema["allOf"]) == 1
+            and "type" not in schema
+            and "properties" not in schema
+        ):
             schema = schema["allOf"][0]
         else:
             return schema
@@ -143,7 +158,9 @@ def _matches(value: object, typ: str) -> bool:
     return True
 
 
-def _walk(value: object, schema: dict, schemas: dict, path: str, out: list[str]) -> None:
+def _walk(
+    value: object, schema: dict, schemas: dict, path: str, out: list[str]
+) -> None:
     if len(out) >= _MAX_FINDINGS or value is None:
         return
     schema = _resolve(schema, schemas)
@@ -154,16 +171,26 @@ def _walk(value: object, schema: dict, schemas: dict, path: str, out: list[str])
         resolved = [_resolve(a, schemas) for a in alternatives]
         types = [a.get("type") for a in resolved]
         if all(types) and not any(_matches(value, t) for t in types):
-            out.append(f"{path or '<root>'} is {_type_name(value)}; the schema wants one of {', '.join(types)}")
+            out.append(
+                f"{path or '<root>'} is {_type_name(value)}; the schema wants one of {', '.join(types)}"
+            )
         return
     typ = schema.get("type") or ("object" if "properties" in schema else None)
     if typ is None:
         return
     if not _matches(value, typ):
-        want = {"string": "a string", "integer": "an integer", "number": "a number", "boolean": "a boolean",
-                "object": "a mapping", "array": "a list"}.get(typ, typ)
-        out.append(f"{path or '<root>'} is {_type_name(value)}, but the schema wants {want}: {_cause(value, typ)}"
-                   f" (value: {json.dumps(value, default=str)[:80]})")
+        want = {
+            "string": "a string",
+            "integer": "an integer",
+            "number": "a number",
+            "boolean": "a boolean",
+            "object": "a mapping",
+            "array": "a list",
+        }.get(typ, typ)
+        out.append(
+            f"{path or '<root>'} is {_type_name(value)}, but the schema wants {want}: {_cause(value, typ)}"
+            f" (value: {json.dumps(value, default=str)[:80]})"
+        )
         return
     if typ == "array" and isinstance(value, list):
         items = schema.get("items")
@@ -181,7 +208,10 @@ def _walk(value: object, schema: dict, schemas: dict, path: str, out: list[str])
                 _walk(sub, extra, schemas, child, out)
             elif props and extra is not True:
                 near = difflib.get_close_matches(str(key), list(props), n=1)
-                out.append(f"{child} is not a field of this object" + (f" — did you mean '{near[0]}'?" if near else ""))
+                out.append(
+                    f"{child} is not a field of this object"
+                    + (f" — did you mean '{near[0]}'?" if near else "")
+                )
             if len(out) >= _MAX_FINDINGS:
                 return
 

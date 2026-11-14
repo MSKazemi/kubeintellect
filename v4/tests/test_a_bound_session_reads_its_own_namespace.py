@@ -17,7 +17,13 @@ from unittest import mock
 from app.tools import kubectl_tool as kt
 
 
-def _run(command: str, *, bound: str | None = "h3-2", bypass: bool = True, stdin: str | None = None):
+def _run(
+    command: str,
+    *,
+    bound: str | None = "h3-2",
+    bypass: bool = True,
+    stdin: str | None = None,
+):
     calls: list[list[str]] = []
     prompts: list[dict] = []
 
@@ -25,12 +31,20 @@ def _run(command: str, *, bound: str | None = "h3-2", bypass: bool = True, stdin
         calls.append(list(argv))
         return SimpleNamespace(returncode=0, stdout="ok\n", stderr="")
 
-    cfg: dict = {"configurable": {"user_role": "operator", "hitl_bypass": bypass, "thread_id": "auto-t"}}
+    cfg: dict = {
+        "configurable": {
+            "user_role": "operator",
+            "hitl_bypass": bypass,
+            "thread_id": "auto-t",
+        }
+    }
     if bound:
         cfg["configurable"]["bound_namespace"] = bound
-    with mock.patch.object(kt.subprocess, "run", fake_run), \
-            mock.patch.object(kt, "interrupt", lambda p: prompts.append(p) or False), \
-            mock.patch.object(kt, "_capture_rollback_point", lambda *a, **k: None):
+    with (
+        mock.patch.object(kt.subprocess, "run", fake_run),
+        mock.patch.object(kt, "interrupt", lambda p: prompts.append(p) or False),
+        mock.patch.object(kt, "_capture_rollback_point", lambda *a, **k: None),
+    ):
         out = kt.run_kubectl.invoke({"command": command, "stdin": stdin}, config=cfg)
     return calls, prompts, out
 
@@ -40,10 +54,15 @@ class TestAReadWithoutANamespaceLooksInTheBoundOne:
         calls, _, out = _run("kubectl get job report -o yaml")
         argv = calls[-1]
         assert argv[argv.index("-n") + 1] == "h3-2"
-        assert "h3-2" in out and "named none" in out  # the model is told where it looked
+        assert (
+            "h3-2" in out and "named none" in out
+        )  # the model is told where it looked
 
     def test_describe_and_logs_too(self):
-        for cmd in ("kubectl describe job report", "kubectl logs -l job-name=report --tail=5"):
+        for cmd in (
+            "kubectl describe job report",
+            "kubectl logs -l job-name=report --tail=5",
+        ):
             calls, _, _ = _run(cmd)
             assert calls[-1][calls[-1].index("-n") + 1] == "h3-2", cmd
 
@@ -70,7 +89,9 @@ class TestWhatIsLeftAlone:
     def test_a_write_without_a_namespace_is_not_given_one_and_still_needs_a_human(self):
         # The binding must keep failing closed for writes that name no namespace.
         calls, prompts, out = _run("kubectl label node worker-1 role=x")
-        assert prompts, "a write that names no namespace must stop at the approval prompt"
+        assert prompts, (
+            "a write that names no namespace must stop at the approval prompt"
+        )
         assert not calls, "and must not run"
         assert out == "Action cancelled by user."
 
