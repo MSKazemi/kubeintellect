@@ -419,6 +419,37 @@ async def _maybe_seed_pattern(
         logger.warning(f"_maybe_seed_pattern: failed — {exc}")
 
 
+async def record_autonomy_lesson(playbook: str, namespace: str, outcome: str) -> None:
+    """Seed a failure pattern from a verified bad outcome of an unattended fix (L11, ADR-007).
+
+    The text is built only from system facts — the playbook name (from the detector registry) and the outcome the
+    watchtower verified — never from the model's words or a tool's output, so an injected instruction cannot become
+    a stored lesson. Loaded into later sessions as a failure hint once seen twice (the loader's existing threshold).
+    Never raises.
+    """
+    from app.cluster_id import get_cluster_id
+
+    try:
+        conn = await _get_conn()
+        try:
+            await _maybe_seed_pattern(
+                conn,
+                pattern_key=f"Unattended fix for {playbook} ended {outcome}",
+                recommended_fix=(
+                    f"An unattended (A3) fix for {playbook} ended {outcome}, as verified by the watchtower on the "
+                    "finding's own workload. Do not repeat the same approach unattended: propose the fix for a "
+                    "human to approve, or report why it cannot be fixed from the cluster."
+                ),
+                confidence=0.9,
+                cluster_id=get_cluster_id(),
+                namespace=namespace,
+            )
+        finally:
+            await conn.close()
+    except Exception as exc:
+        logger.warning(f"record_autonomy_lesson: not recorded — {exc}")
+
+
 async def demote_pattern(pattern_name: str, cluster_id: str | None = None) -> None:
     """Mark a pattern as demoted so it stops being injected. Idempotent.
 

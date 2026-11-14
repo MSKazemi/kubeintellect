@@ -110,12 +110,31 @@ def _conclude(finding: Finding, session_id: str, outcome: str, detail: dict) -> 
         f"ns={finding.namespace} object={finding.object_name}"
         + (f" command={detail['command']!r}" if detail.get("command") else "")
     )
+    if outcome in _BREAKER_TRIPPING:
+        _schedule_lesson(finding, outcome)
     if outcome in _BREAKER_TRIPPING and settings.AUTOFIX_BREAKER_SECONDS > 0:
         _breaker[(finding.namespace, finding.playbook)] = time.monotonic() + settings.AUTOFIX_BREAKER_SECONDS
         logger.warning(
             f"watchtower: A3 breaker open for {finding.playbook} in {finding.namespace} for "
             f"{settings.AUTOFIX_BREAKER_SECONDS}s after outcome={outcome}; findings there are proposed, not auto-fixed"
         )
+
+
+_lesson_tasks: set[asyncio.Task] = set()
+
+
+def _schedule_lesson(finding: Finding, outcome: str) -> None:
+    """Record a verified bad outcome as a cross-session lesson, without waiting for the database (fire-and-forget)."""
+    try:
+        from app.db import memory_store
+
+        task = asyncio.get_running_loop().create_task(
+            memory_store.record_autonomy_lesson(finding.playbook, finding.namespace, outcome)
+        )
+        _lesson_tasks.add(task)  # keep a reference until it finishes
+        task.add_done_callback(_lesson_tasks.discard)
+    except RuntimeError:
+        pass  # no running loop (a synchronous caller): nothing to schedule on
 
 
 async def _conclude_pending(finding: Finding, target: Target | None, session_id: str, pending: dict) -> str:
