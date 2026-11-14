@@ -1463,7 +1463,8 @@ def reset_session_guard() -> None:
 def _guard_session(thread_id: str) -> dict:
     record = _guard.get(thread_id)
     if record is None:
-        record = {"failed": {}, "writes": 0, "history": deque(maxlen=8), "stuck": False, "ledger": deque(maxlen=12)}
+        record = {"failed": {}, "writes": 0, "executed": 0, "history": deque(maxlen=8), "stuck": False,
+                  "ledger": deque(maxlen=12)}
         _guard[thread_id] = record
         while len(_guard) > _GUARD_MAX_SESSIONS:
             _guard.popitem(last=False)
@@ -1474,19 +1475,40 @@ def _guard_session(thread_id: str) -> dict:
 _DRY_RUN_FLAGS = frozenset({"--dry-run", "--dry-run=client", "--dry-run=server"})
 
 
+# Flags known to take no value, so a token after them is read by kubectl as a flag of its own.
+_KNOWN_BOOLEAN_FLAGS = frozenset({
+    "--overwrite", "--all", "--force", "--record", "--server-side", "--force-conflicts", "--local", "--wait",
+    "-A", "--all-namespaces", "--ignore-not-found", "--show-labels", "--now", "--recursive", "-R", "--prune",
+}) | _BOOLEAN_GLOBAL_FLAGS
+
+
 def _is_dry_run(args: list[str]) -> bool:
-    """True only for a real dry run. `--dry-run=none` is a real write, and so is any argument that merely contains the
-    text (an annotation value `note=--dry-run`) — independent review F4: a substring test switched the guard off."""
-    return any(a in _DRY_RUN_FLAGS for a in args)
+    """True only for a dry run kubectl will actually read as one. Fails closed: when in doubt it is a real write.
+
+    `--dry-run=none` is a real write, and so is an argument that merely contains the text (review F4). The flag also
+    does not count after `--` (kubectl reads it as a positional argument) or right after a flag that may take a value
+    (kubectl reads it as that value): `kubectl delete pod web -- --dry-run=server` deletes `web`, and treating it as a
+    dry run skipped the approval prompt in every session, chat included (second review, N1 — present since before this
+    series). Only a preceding token that cannot be a value-taking flag lets the dry-run flag count.
+    """
+    end = args.index("--") if "--" in args else len(args)
+    for i in range(1, end):
+        if args[i] in _DRY_RUN_FLAGS:
+            prev = args[i - 1]
+            if prev.startswith("-") and prev != "-" and "=" not in prev and prev not in _KNOWN_BOOLEAN_FLAGS:
+                return False  # may be the value of `prev`
+            return True
+    return False
 
 
-def _with_flag(args: list[str], flag: str) -> list[str]:
-    """`args` with `flag` added before any `--`: after `--` kubectl reads it as a positional argument, and a
-    `--dry-run=server` placed there makes the "dry run" a real write (independent review F1)."""
-    if "--" in args:
-        i = args.index("--")
-        return [*args[:i], flag, *args[i:]]
-    return [*args, flag]
+def _with_flag_after_verb(args: list[str], flag: str) -> list[str]:
+    """`args` with `flag` placed directly after the verb, where kubectl can only read it as a flag.
+
+    Appending it put it after `--` (a positional: review F1) or after a value-taking flag such as `--field-manager`
+    (its value: second review N2); either way the "dry run" was the real write.
+    """
+    verb_at = _skip_flags(args, 1)
+    return [*args[:verb_at + 1], flag, *args[verb_at + 1:]]
 
 
 def _reserve_auto_write(thread_id: str, limit: int) -> bool:
@@ -1522,6 +1544,13 @@ def _record_permanent_failure(thread_id: str, fingerprint: str, reason: str) -> 
 def _auto_writes(thread_id: str) -> int:
     with _guard_lock:
         return int(_guard_session(thread_id)["writes"])
+
+
+def _executed_writes(thread_id: str) -> int:
+    """Writes of the session that actually reached kubectl (a reserved write the dry run refused does not count)."""
+    with _guard_lock:
+        record = _guard.get(thread_id)
+        return int(record["executed"]) if record else 0
 
 
 def _count_auto_write(thread_id: str) -> None:
@@ -1675,7 +1704,7 @@ def _preflight_patch(args: list[str]) -> str | None:
     """
     env = {**os.environ, "KUBECONFIG": os.path.expanduser(settings.KUBECONFIG_PATH)}
     try:
-        proc = subprocess.run(_with_flag(args, "--dry-run=server"), capture_output=True, text=True, encoding="utf-8",
+        proc = subprocess.run(_with_flag_after_verb(args, "--dry-run=server"), capture_output=True, text=True, encoding="utf-8",
                               errors="replace", timeout=settings.KUBECTL_TIMEOUT_SECONDS, env=env, shell=False)
     except Exception:  # noqa: BLE001 - a dry run that cannot run never blocks the write
         return None
@@ -2441,6 +2470,9 @@ def run_kubectl(
         )
 
     stdout, stderr = proc.stdout or "", proc.stderr or ""
+    if guard_fp:
+        with _guard_lock:
+            _guard_session(thread_id)["executed"] += 1
     # Whether *kubectl* printed anything, decided before the emulator runs: `_apply_pipes` turns
     # an empty string into "(no matching lines)", and reporting that as output kubectl produced
     # would be a claim about the cluster made by our own grep.

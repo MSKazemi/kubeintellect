@@ -487,6 +487,16 @@ two pilot commands are among them, and on the pre-fix code the tool logged
 `HITL bypassed (auto-approve)` for both), plus the `bound_namespace` plumbing assertions in
 `tests/test_autonomy.py`.
 
+### A dry run must be one kubectl actually reads {#dry-run-detection}
+
+A write marked `--dry-run=server` skips the approval prompt, because it changes nothing. Until 2026-11-14 the flag
+counted wherever it appeared, so `kubectl delete pod web -- --dry-run=server` (after `--` kubectl reads it as a
+positional argument and deletes `web`) or `kubectl annotate … --field-manager --dry-run=server` (there it is the
+field manager's value) ran with no prompt in every session. It now counts only before any `--` and right after a
+token that cannot be a value-taking flag (a value, a `--flag=value`, or a known boolean flag); anything else is
+treated as a real write and goes to the prompt. Found by an independent review; tests in
+`tests/test_the_independent_review_findings_stay_fixed.py` (N1).
+
 ### What else bounds an unattended session {#unattended-session-bounds}
 
 The namespace binding limits **where** an auto-approved session may write. It does not limit **how often**, nor

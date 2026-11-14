@@ -11,6 +11,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed — security: a dry-run flag kubectl does not read as one no longer skips the approval prompt
+
+Found by an independent review (2026-11-14), present before this release: a write counted as a dry run if
+`--dry-run=server` appeared anywhere in it, so `kubectl delete pod web -- --dry-run=server` (after `--` the flag is a
+positional argument) or `kubectl annotate … --field-manager --dry-run=server` (there it is `--field-manager`'s value)
+ran with **no approval prompt, in every session, chat included**, and kubectl performed the real write. A dry run now
+counts only when it comes before any `--` and right after a token that cannot be a value-taking flag; when in doubt it
+is treated as a real write.
+
 ### Fixed — an unattended session is corrected first, stopped second, and never reports a fix that did not happen
 
 Measured 2026-11-14 on Kind with a real model: one auto-approved session alternated a read that named no namespace

@@ -44,6 +44,11 @@ class Target:
     uid: str
 
 
+# Returned by `_kubectl_json` when the API server said the object does not exist. Any OTHER failed read (timeout,
+# apiserver restarting) is None: no information, which must never be read as "gone" (second review, N3).
+NOT_FOUND: dict = {"__not_found__": True}
+
+
 def _kubectl_json(args: list[str]) -> dict | None:
     """`kubectl <args> -o json` with the deployment's kubeconfig; None on any failure (NotFound included)."""
     try:
@@ -60,7 +65,8 @@ def _kubectl_json(args: list[str]) -> dict | None:
             },
         )
         if proc.returncode != 0:
-            return None
+            err = proc.stderr or ""
+            return NOT_FOUND if ("(NotFound)" in err or " not found" in err) else None
         obj = json.loads(proc.stdout)
         return obj if isinstance(obj, dict) else None
     except Exception:  # noqa: BLE001 - an unreadable object is "unknown", never "fixed"
@@ -68,6 +74,7 @@ def _kubectl_json(args: list[str]) -> dict | None:
 
 
 def _get(kind: str, name: str, namespace: str) -> dict | None:
+    """The object, `NOT_FOUND`, or None (the read failed: no information)."""
     return _kubectl_json(["get", kind, name, "-n", namespace])
 
 
@@ -82,10 +89,14 @@ def resolve_target(playbook: str, namespace: str, object_name: str) -> Target | 
     """The workload a finding is about, pinned by uid; None when it cannot be read."""
     if playbook in _JOB_PLAYBOOKS:
         job = _get("job", object_name, namespace)
-        uid = ((job or {}).get("metadata") or {}).get("uid")
+        uid = (
+            (job.get("metadata") or {}).get("uid")
+            if job is not None and job is not NOT_FOUND
+            else None
+        )
         return Target("job", object_name, namespace, uid) if uid else None
     obj = _get("pod", object_name, namespace)
-    if obj is None:
+    if obj is None or obj is NOT_FOUND:
         return None
     kind, name = "pod", object_name
     for _ in range(
@@ -96,7 +107,7 @@ def resolve_target(playbook: str, namespace: str, object_name: str) -> Target | 
             break
         owner_kind, owner_name = owner
         parent = _get(owner_kind, owner_name, namespace)
-        if parent is None:
+        if parent is None or parent is NOT_FOUND:
             break
         obj, kind, name = parent, owner_kind, owner_name
         if kind != "replicaset":
@@ -181,6 +192,22 @@ def _healthy(target: Target, obj: dict) -> bool | None:
     return None
 
 
+def _workload_restarts(target: Target, obj: dict) -> int | None:
+    """Total container restarts of a workload's pods (by its matchLabels selector), or None when they cannot be read.
+
+    A crashlooping pod behind a Deployment can be Ready at both samples; the Deployment's own status does not show the
+    restarts (second review, F3 part 2).
+    """
+    labels = ((obj.get("spec") or {}).get("selector") or {}).get("matchLabels") or {}
+    if not labels:
+        return None
+    selector = ",".join(f"{k}={v}" for k, v in sorted(labels.items()))
+    pods = _kubectl_json(["get", "pods", "-n", target.namespace, "-l", selector])
+    if pods is None or pods is NOT_FOUND:
+        return None
+    return sum(_restarts(p) for p in pods.get("items") or [])
+
+
 def _restarts(obj: dict) -> int:
     return sum(
         int(c.get("restartCount", 0) or 0)
@@ -202,22 +229,38 @@ async def verify(
     if target is None or timeout_seconds <= 0 or target.kind not in _JUDGED_KINDS:
         return "unknown"
     deadline = time.monotonic() + timeout_seconds
-    healthy_in_a_row, last_restarts = 0, None
+    healthy_in_a_row, last_restarts, definitive, grace = 0, None, False, True
     while True:
         obj = await asyncio.to_thread(_get, target.kind, target.name, target.namespace)
-        if obj is None:
+        if obj is NOT_FOUND:
             return "not_fixed"  # gone: deleting the object is not a repair
-        if (obj.get("metadata") or {}).get("uid") != target.uid:
-            return "not_fixed"  # replaced by another object of the same name: a substitute, not a repair
-        health = _healthy(target, obj)
-        restarts = _restarts(obj)
-        steady = (
-            target.kind != "pod" or last_restarts is None or restarts == last_restarts
-        )
-        healthy_in_a_row = healthy_in_a_row + 1 if (health is True and steady) else 0
-        last_restarts = restarts
-        if healthy_in_a_row >= 2:
-            return "fixed"
-        if health is False or time.monotonic() >= deadline:
-            return "not_fixed"
+        if obj is not None:
+            definitive = True
+            if (obj.get("metadata") or {}).get("uid") != target.uid:
+                return "not_fixed"  # replaced by another object of the same name: a substitute, not a repair
+            health = _healthy(target, obj)
+            if health is False:
+                return "not_fixed"
+            restarts = (
+                _restarts(obj)
+                if target.kind == "pod"
+                else await asyncio.to_thread(_workload_restarts, target, obj)
+                if health is True
+                else None
+            )
+            steady = (
+                last_restarts is None or restarts is None or restarts == last_restarts
+            )
+            healthy_in_a_row = (
+                healthy_in_a_row + 1 if (health is True and steady) else 0
+            )
+            last_restarts = restarts if restarts is not None else last_restarts
+            if healthy_in_a_row >= 2:
+                return "fixed"
+        # A failed read (obj is None) is no information: it neither confirms nor refutes (second review, N3).
+        if time.monotonic() >= deadline:
+            if healthy_in_a_row == 1 and grace:
+                grace = False  # the first healthy sample landed at the deadline: take its confirming sample (N5)
+            else:
+                return "not_fixed" if definitive else "unknown"
         await asyncio.sleep(interval)

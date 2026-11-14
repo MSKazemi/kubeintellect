@@ -29,7 +29,9 @@ def _job(uid: str, *conditions: str) -> dict:
 def _cluster(objects: dict):
     def read(args):
         kind, name = args[1], args[2]
-        value = objects.get((kind, name))
+        value = objects.get(
+            (kind, name), verify.NOT_FOUND
+        )  # absent = the API server said NotFound
         return value() if callable(value) else value
 
     return mock.patch.object(verify, "_kubectl_json", read)

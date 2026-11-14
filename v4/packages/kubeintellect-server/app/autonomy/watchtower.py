@@ -346,10 +346,11 @@ async def _investigate(finding: Finding, level: str) -> None:
                 await _run_turn(ask, session_id, auto_approve=auto_fix, bound_namespace=finding.namespace)
             from app.agent.workflow import pop_turn_error
 
-            from app.tools.kubectl_tool import _auto_writes, session_is_stuck
+            from app.tools.kubectl_tool import _executed_writes, session_is_stuck
 
             turn_error = pop_turn_error(session_id)
-            if turn_error is not None and not (auto_fix and _auto_writes(session_id) > 0):
+            # Executed writes, not reservations: a write the dry run refused never reached the cluster (review N4).
+            if turn_error is not None and not (auto_fix and _executed_writes(session_id) > 0):
                 # The model (or the graph) failed before anything was written: this says nothing about the fix.
                 # Recorded as `error`, which does not open the breaker.
                 logger.warning(f"watchtower_escalated session={session_id} outcome=error: {turn_error}")
@@ -379,7 +380,7 @@ async def _investigate(finding: Finding, level: str) -> None:
                 return
             logger.info(f"watchtower_done session={session_id}")
             if auto_fix:
-                await _record_fix_outcome(finding, target, session_id)
+                await _record_fix_outcome(finding, target, session_id, detail)
         except Exception as exc:
             logger.warning(f"watchtower: investigation failed session={session_id}: {exc}")
 
@@ -461,7 +462,9 @@ async def _turn_outcome(session_id: str) -> str | None:
         return None
 
 
-async def _record_fix_outcome(finding: Finding, target: Target | None, session_id: str) -> str:
+async def _record_fix_outcome(
+    finding: Finding, target: Target | None, session_id: str, detail: dict | None = None,
+) -> str:
     """Judge an autonomous fix on the finding's own workload, not on the model's report.
 
     Measured 2026-11-14: a session reported "The job has been fixed" after verifying a stub it had created, while the
@@ -471,7 +474,7 @@ async def _record_fix_outcome(finding: Finding, target: Target | None, session_i
     from app.autonomy import verify
 
     outcome = await verify.verify(target, settings.AUTOFIX_VERIFY_TIMEOUT_SECONDS)
-    _conclude(finding, session_id, outcome, {})
+    _conclude(finding, session_id, outcome, dict(detail or {}))
     if outcome == "not_fixed":
         logger.warning(
             f"watchtower_fix_not_verified session={session_id} playbook={finding.playbook} "

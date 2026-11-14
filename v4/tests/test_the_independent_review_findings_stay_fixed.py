@@ -193,7 +193,8 @@ async def test_f5_a_model_error_after_writes_is_verified_not_called_error(
     from app.agent import workflow
 
     async def turn(ask, session_id, **kw):
-        kt._count_auto_write(session_id)  # a write ran before the model call failed
+        with kt._guard_lock:  # a write reached kubectl before the model call failed
+            kt._guard_session(session_id)["executed"] += 1
         workflow._record_turn_error(session_id, "context length exceeded")
 
     monkeypatch.setattr(wt, "_run_turn", turn)
@@ -414,3 +415,139 @@ def test_f13_a_configmap_key_named_like_command_is_not_gated():
         '-p \'{"data":{"startup-command":"run"}}\''
     )
     assert not prompts or not prompts[0].get("always_confirm")
+
+
+# ── Second review pass (N1-N5, F3 part 2) ────────────────────────────────────
+
+
+# N1 — "--dry-run=server" anywhere counted as a dry run, so a REAL write skipped the approval prompt in every session,
+# chat included, when the flag sat after `--` (a positional) or after a flag that takes a value (its value).
+@pytest.mark.parametrize(
+    "command",
+    [
+        "kubectl delete pod web -n default -- --dry-run=server",
+        "kubectl annotate pod web -n default a=b --field-manager --dry-run=server",
+    ],
+)
+def test_n1_a_dry_run_flag_kubectl_would_not_read_as_one_does_not_skip_the_prompt(
+    command,
+):
+    calls, prompts, out = _run(command, bound=None, bypass=False)
+    assert prompts, "a chat write must stop at the approval prompt"
+    assert not calls and out == "Action cancelled by user."
+
+
+def test_n1_a_real_dry_run_still_runs_without_a_prompt():
+    calls, prompts, _ = _run(
+        'kubectl patch cm c -n default -p \'{"data":{"k":"v"}}\' --dry-run=server',
+        bound=None,
+        bypass=False,
+    )
+    assert calls and not prompts
+
+
+# N2 — `--field-manager --` made the inserted dry-run flag the field manager's value: the dry run applied for real.
+def test_n2_the_patch_dry_run_flag_cannot_be_taken_as_another_flags_value():
+    calls, _, _ = _run(
+        'kubectl patch deploy x -n b3-c1 -p \'{"spec":{"replicas":2}}\' --field-manager --'
+    )
+    dry = [c for c in calls if "--dry-run=server" in c]
+    assert dry
+    i = dry[0].index("--dry-run=server")
+    assert dry[0][i - 1] == "patch", dry[0]
+
+
+# N3 — a read that merely failed (timeout, apiserver restarting) was read as "gone", i.e. not_fixed.
+@pytest.mark.asyncio
+async def test_n3_a_failed_read_is_not_evidence_the_object_is_gone():
+    with mock.patch.object(verify, "_kubectl_json", lambda args: None):
+        assert (
+            await verify.verify(verify.Target("deployment", "web", "ns", "d"), 0.05, 0)
+            == "unknown"
+        )
+    with mock.patch.object(verify, "_kubectl_json", lambda args: verify.NOT_FOUND):
+        assert (
+            await verify.verify(verify.Target("deployment", "web", "ns", "d"), 0.05, 0)
+            == "not_fixed"
+        )
+
+
+# N4 — the error path counted reserved writes, not executed ones.
+@pytest.mark.asyncio
+async def test_n4_a_model_error_after_only_refused_writes_is_an_error(
+    investigate, monkeypatch
+):
+    from app.agent import workflow
+
+    async def turn(ask, session_id, **kw):
+        kt._reserve_auto_write(
+            session_id, 10
+        )  # reserved, then refused by the dry run: nothing executed
+        workflow._record_turn_error(session_id, "model unreachable")
+
+    monkeypatch.setattr(wt, "_run_turn", turn)
+    await wt._investigate(_finding(), "A3")
+    assert investigate[-1][0] == "error"
+
+
+# N5 — a fix that turned healthy on the last poll before the deadline lost its confirming sample.
+@pytest.mark.asyncio
+async def test_n5_a_first_healthy_sample_at_the_deadline_gets_its_confirming_sample(
+    monkeypatch,
+):
+    ok = {
+        "metadata": {"uid": "j"},
+        "status": {"conditions": [{"type": "Complete", "status": "True"}]},
+    }
+
+    class _Clock:  # the deadline is set at 0; every later reading is past it
+        calls = 0
+
+        @classmethod
+        def monotonic(cls) -> float:
+            cls.calls += 1
+            return 0.0 if cls.calls == 1 else 99.0
+
+    monkeypatch.setattr(
+        verify, "time", _Clock
+    )  # verify's clock only; asyncio keeps the real one
+    with mock.patch.object(verify, "_kubectl_json", lambda args: ok):
+        assert (
+            await verify.verify(verify.Target("job", "r", "ns", "j"), 10, 0) == "fixed"
+        )
+
+
+# F3 (part 2) — restarts behind a Deployment: a crashlooping pod Ready at both samples read as fixed.
+@pytest.mark.asyncio
+async def test_f3_restarts_behind_a_deployment_are_seen():
+    dep = {
+        "metadata": {"uid": "d", "generation": 1},
+        "spec": {"replicas": 1, "selector": {"matchLabels": {"app": "w"}}},
+        "status": {
+            "observedGeneration": 1,
+            "replicas": 1,
+            "updatedReplicas": 1,
+            "readyReplicas": 1,
+            "availableReplicas": 1,
+        },
+    }
+    restarts = itertools.count(3)
+
+    def read(args):
+        if args[1] == "pods":
+            return {
+                "items": [
+                    {
+                        "status": {
+                            "containerStatuses": [{"restartCount": next(restarts)}]
+                        }
+                    }
+                ]
+            }
+        return dep
+
+    with mock.patch.object(verify, "_kubectl_json", read):
+        assert (
+            await verify.verify(verify.Target("deployment", "w", "ns", "d"), 0.05, 0)
+            == "not_fixed"
+        )
