@@ -327,9 +327,12 @@ def _classify_risk(verb: str, args: list[str] | None = None) -> str:
 
 #: The container fields that `set image` / `set resources` change. Matched as whole field names (or whole
 #: JSON-patch path segments), never as substrings: `imagePullPolicy` and `imagePullSecrets` are other fields.
-_GATED_CONTAINER_FIELDS = frozenset({"image", "resources"})
+# `command` and `args` added 2026-11-14: replacing a container's program is the same kind of change as replacing its
+# image. Measured: an unattended session tried to patch a failing Job's command to print success (r4), and another
+# made a stub Job that did (r1, r3) and reported the job fixed.
+_GATED_CONTAINER_FIELDS = frozenset({"image", "resources", "command", "args"})
 
-_GATED_FIELD_WORD = re.compile(r"(?<![A-Za-z0-9_])(?:image|resources)(?![A-Za-z0-9_])")
+_GATED_FIELD_WORD = re.compile(r"(?<![A-Za-z0-9_])(?:image|resources|command|args)(?![A-Za-z0-9_])")
 
 #: Kinds whose manifest carries a pod template or pod spec, i.e. the ones where `image` / `resources` are workload fields.
 _POD_BEARING_KINDS = frozenset({
@@ -382,8 +385,9 @@ def _changes_container_image_or_resources(verb: str, args: list[str], stdin: str
     auto-approve with no prompt while `kubectl set image` for the same field stopped and asked. The gate keyed on the
     spelling, not the effect. Fail-closed where the payload cannot be read.
 
-    NOT covered, deliberately: `rollout undo` (restores an earlier revision, which can change the image) and `create`
-    (cannot update an existing object); `edit` needs an editor and cannot run through this tool.
+    NOT covered here, deliberately: `rollout undo` (restores an earlier revision, which can change the image); `edit`
+    needs an editor and cannot run through this tool. `create` and `run` of a workload are always-confirm through
+    `_creates_a_workload` instead: a new workload is a substitute for the one under investigation, whatever it runs.
     """
     if verb == "patch":
         readable, payload = _patch_payload(args)
@@ -411,6 +415,27 @@ def _changes_container_image_or_resources(verb: str, args: list[str], stdin: str
     return False
 
 
+# `kubectl create <subcommand>` forms that make a workload.
+_WORKLOAD_CREATE_SUBCOMMANDS = frozenset({"deployment", "deploy", "job", "cronjob", "cj"})
+
+
+def _creates_a_workload(verb: str, args: list[str], stdin: str | None) -> bool:
+    """True for `run`, `create <workload>` and `create -f -` of a pod-bearing manifest.
+
+    Measured 2026-11-14: in 2 of 4 unattended re-runs a session created `report-new`, a Job whose command printed
+    SUCCESS, verified the stub instead of the failing Job, and reported the job fixed. A repair changes the object
+    under investigation; a new workload is a substitute for it and needs a human. Supporting objects (a ConfigMap,
+    the repair the config faults need) are not workloads and still run unattended.
+    """
+    if verb == "run":
+        return True
+    if verb != "create":
+        return False
+    if _operand_after_verb(args) in _WORKLOAD_CREATE_SUBCOMMANDS:
+        return True
+    return any(str(doc.get("kind", "")).lower() in _POD_BEARING_KINDS for doc in _manifest_docs(stdin))
+
+
 def _requires_always_confirm(verb: str, args: list[str], stdin: str | None = None) -> bool:
     """True for actions whose blast radius is too large to auto-approve.
 
@@ -421,6 +446,8 @@ def _requires_always_confirm(verb: str, args: list[str], stdin: str | None = Non
     if verb == "drain":
         return True
     if _changes_container_image_or_resources(verb, args, stdin):
+        return True
+    if _creates_a_workload(verb, args, stdin):
         return True
     # `args[2]` is the operand only when the command is written verb-first with nothing in
     # between. `kubectl delete -n prod namespace shop` — the *natural* way to write it — put

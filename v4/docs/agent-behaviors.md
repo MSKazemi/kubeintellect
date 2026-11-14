@@ -495,17 +495,18 @@ and `always_confirm=true`; there is no way to silently auto-approve them.
 | `delete pv\|persistentvolume` | Releases user data; CSI drivers may delete the underlying disk. |
 | `delete crd\|customresourcedefinition` | Cascades to every CR of that kind cluster-wide. |
 | `set image \|set resources` | Live mutation of running workloads; use `rollout undo` to revert. |
-| `patch` or `apply`/`replace` that changes a container `image` or `resources` field | The same change as `set image`/`set resources`, written another way. The gate follows the **effect**, not the spelling (see below). |
+| `patch` or `apply`/`replace` that changes a container `image`, `resources`, `command` or `args` field | The same change as `set image`/`set resources`, written another way; replacing a container's program (`command`/`args`) is the same kind of change as replacing its image. The gate follows the **effect**, not the spelling (see below). |
+| `run`, `create deployment\|job\|cronjob`, `create -f -` of a pod-bearing manifest | A new workload is a substitute for the one under investigation. Measured 2026-11-14: in 2 of 4 unattended re-runs a session created a stub Job that printed SUCCESS, verified the stub and reported the failing Job fixed. Supporting objects (`create configmap`, the repair the config faults need) still auto-approve. |
 | `drain` | Evicts every pod on the node; depends on PDB compliance. |
 | `delete <kind> --all` / `--all=true` | Names no object, only a whole class of them: every pod (or every object, with `delete all --all`) in the namespace. Measured on a real cluster: `kubectl delete pods --all -n ns` used to run unprompted under auto-approve and replaced every pod. `--all=false` is not unscoped. |
 
 Defined in `app/tools/kubectl_tool.py` (`_ALWAYS_CONFIRM_DELETE_TARGETS`,
-`_ALWAYS_CONFIRM_SET_SUBCOMMANDS`, `_is_unscoped_delete`, `_changes_container_image_or_resources`,
+`_ALWAYS_CONFIRM_SET_SUBCOMMANDS`, `_is_unscoped_delete`, `_changes_container_image_or_resources`, `_creates_a_workload`,
 `_requires_always_confirm`). Plain
-`delete pod`, a selector-scoped `delete pods -l app=web`, a `patch` or `apply` that touches neither
-`image` nor `resources`, `scale` continue to auto-approve under `auto_approve=true`. For an autonomous investigation that holds only inside
+`delete pod`, a selector-scoped `delete pods -l app=web`, a `patch` or `apply` that touches none of
+`image`, `resources`, `command` or `args`, `create configmap`, `scale` continue to auto-approve under `auto_approve=true`. For an autonomous investigation that holds only inside
 its own namespace (see [namespace-bound auto-approve](security.md#namespace-bound-auto-approve)).
-Tests: `tests/test_an_unscoped_delete_is_always_confirm.py`.
+Tests: `tests/test_an_unscoped_delete_is_always_confirm.py`, `tests/test_an_unattended_session_cannot_substitute_a_workload.py`.
 
 !!! note "The image gate follows the effect, not the spelling"
     `kubectl patch deployment x --type=json -p '[{"op":"replace","path":"/spec/template/spec/containers/0/image",…}]'`
@@ -514,7 +515,9 @@ Tests: `tests/test_an_unscoped_delete_is_always_confirm.py`.
     of a Deployment, StatefulSet, DaemonSet, ReplicaSet, ReplicationController, Pod, Job or
     CronJob manifest that sets either. A patch that cannot be read (`--patch-file`, unparseable)
     is confirmed too. Matching is by whole field name, so `imagePullPolicy` is not caught.
-    Not covered: `rollout undo` (restores an earlier revision) and `create`.
+    Not covered: `rollout undo` (restores an earlier revision). `create` and `run` of a workload are
+    always-confirm by their own rule (table above); since 2026-11-14 `command` and `args` are gated
+    like `image` and `resources`.
     Consequence: an **unattended** A3 session can no longer repair an image fault; it proposes
     the fix and a human approves it. Before this, the repair rate of image-pull faults in the A3
     pilots tracked which of the two commands the model happened to write.
