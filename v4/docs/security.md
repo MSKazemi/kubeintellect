@@ -487,6 +487,26 @@ two pilot commands are among them, and on the pre-fix code the tool logged
 `HITL bypassed (auto-approve)` for both), plus the `bound_namespace` plumbing assertions in
 `tests/test_autonomy.py`.
 
+### What else bounds an unattended session {#unattended-session-bounds}
+
+The namespace binding limits **where** an auto-approved session may write. It does not limit **how often**, nor
+whether the session keeps repeating something that cannot work. Measured 2026-11-14: one unattended session, bound
+to its namespace, alternated a read that named no namespace (kubectl answered NotFound from `default` for a Job that
+existed) with a re-typed manifest the cluster rejected, 73 times, until its step budget ran out; the session was then
+recorded as finished. Each of the following now stops that sequence on its own:
+
+| Bound | What it does | Where |
+|---|---|---|
+| **Reads look in the session's namespace** | In a bound session, a read (`get`, `describe`, `logs`, `top`, `events`, `wait`) that names no namespace and is not `-A` runs with `-n <bound>`, and the reply says so. Writes are not given a namespace: a write that names none must keep failing the binding. | `run_kubectl` §3c |
+| **A manifest is checked before it is sent** | `apply`/`create`/`replace` with stdin is checked against the cluster's own schema; a field of the wrong type or a misspelt field is refused with the path, cause and fix. | `manifest_lint.py`, `MANIFEST_LINT_ENABLED` |
+| **Errors say whether resending can help** | Classified errors end with `[permanent error: …]` or `[transient error: …]`. | `kubectl_errors.py` |
+| **An identical failed write is not resent** | In an auto-approved session, a write identical (argv and stdin) to one that already failed permanently is refused before it reaches the cluster. | `run_kubectl` §4b1 |
+| **A write budget** | An auto-approved session runs at most `AUTO_APPROVE_MAX_WRITES` (default 10) writes, accepted or rejected; each further write needs a human, so an unattended session stops there. | `run_kubectl` §4c |
+| **Running out of steps is an escalation** | At the default limits LangGraph ends a loop that runs out of steps with a plain message instead of raising; that ending is now the budget escalation, logged as an error and recorded by the watchtower as `watchtower_escalated`, with no "the fix held" re-check. | `coordinator.py`, `watchtower.py` |
+
+Chat sessions are unchanged by the repeat guard and the write budget: a human approves every write there and may
+retry after fixing something outside the session.
+
 ### Exactly-once irreversible calls and single-use approvals (ADR-008) {#exactly-once-irreversible-calls-and-single-use-approvals-adr-008}
 
 **Off by default** (`SELF_GOVERN_ENABLED=false`); with the flag off nothing below runs and the

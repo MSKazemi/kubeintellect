@@ -90,3 +90,14 @@ def _isolate_environment():
     if os.environ != saved:
         os.environ.clear()
         os.environ.update(saved)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_kubectl_session_guard():
+    """`run_kubectl` remembers each auto-approved session's writes (repeat guard, write budget) in process memory.
+    Tests share `thread_id`s, so without this a test would inherit another test's write count."""
+    from app.tools import kubectl_tool
+
+    kubectl_tool.reset_session_guard()
+    yield
+    kubectl_tool.reset_session_guard()

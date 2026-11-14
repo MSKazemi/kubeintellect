@@ -13,11 +13,14 @@ Safety layers (in order):
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import json
 import shlex
 import subprocess
+import threading
+from collections import OrderedDict
 from typing import Annotated
 
 import yaml
@@ -1409,6 +1412,63 @@ def _with_namespace(args: list[str], namespace: str) -> list[str]:
     return [*args, "-n", namespace]
 
 
+# ── Per-session memory of an auto-approved session's writes ─────────────────
+# Measured 2026-11-14: an unattended session sent the same rejected `kubectl apply` 73 times and nothing noticed. Kept
+# per `thread_id` for auto-approved sessions only (a chat has a human approving every write, who may retry after
+# fixing something outside the session). Bounded so a long-running server cannot grow it without limit.
+_GUARD_MAX_SESSIONS = 512
+_guard_lock = threading.Lock()
+_guard: OrderedDict[str, dict] = OrderedDict()
+
+
+def reset_session_guard() -> None:
+    """Test helper: forget every session's write history."""
+    with _guard_lock:
+        _guard.clear()
+
+
+def _guard_session(thread_id: str) -> dict:
+    record = _guard.get(thread_id)
+    if record is None:
+        record = {"failed": {}, "writes": 0}
+        _guard[thread_id] = record
+        while len(_guard) > _GUARD_MAX_SESSIONS:
+            _guard.popitem(last=False)
+    _guard.move_to_end(thread_id)
+    return record
+
+
+def _write_fingerprint(args: list[str], stdin: str | None) -> str:
+    """Identity of one write: the exact argv and the exact stdin."""
+    return hashlib.sha256(("\x00".join(args) + "\x01" + (stdin or "")).encode("utf-8")).hexdigest()
+
+
+def _previous_permanent_failure(thread_id: str, fingerprint: str) -> tuple[int, str] | None:
+    with _guard_lock:
+        return _guard_session(thread_id)["failed"].get(fingerprint)
+
+
+def _record_permanent_failure(thread_id: str, fingerprint: str, reason: str) -> None:
+    with _guard_lock:
+        failed = _guard_session(thread_id)["failed"]
+        count, first = failed.get(fingerprint, (0, reason))
+        failed[fingerprint] = (count + 1, first)
+
+
+def _auto_writes(thread_id: str) -> int:
+    with _guard_lock:
+        return int(_guard_session(thread_id)["writes"])
+
+
+def _count_auto_write(thread_id: str) -> None:
+    with _guard_lock:
+        _guard_session(thread_id)["writes"] += 1
+
+
+def _first_line(text: str) -> str:
+    return next((line.strip() for line in text.splitlines() if line.strip()), text.strip())[:300]
+
+
 def _is_all_namespaces(args: list[str]) -> bool:
     """True if the command targets every namespace at once.
 
@@ -1921,6 +1981,16 @@ def run_kubectl(
     if config:
         user_role = (config.get("configurable") or {}).get("user_role", "admin")
 
+    # Is this an unattended (auto-approved) session, and which one? The repeat guard and the write budget apply only here.
+    session_auto = bool((config.get("configurable") or {}).get("hitl_bypass", False)) if config else False
+    thread_id = str((config.get("configurable") or {}).get("thread_id") or "") if config else ""
+    is_write = verb in DESTRUCTIVE_VERBS or bool(_destructive_verbs_in(args)) or _is_write_verb(verb, args)
+    guard_fp = (
+        _write_fingerprint(args, stdin)
+        if session_auto and thread_id and is_write and "--dry-run" not in " ".join(args)
+        else None
+    )
+
     # Both checks consider any destructive verb present, not only the parsed one. If a command
     # shape ever slips past `_extract_verb` again, it fails closed here instead of executing
     # with the privileges of a verb we did not recognise.
@@ -1975,6 +2045,19 @@ def run_kubectl(
         logger.warning(f"run_kubectl: blocked protected access: {cmd!r}")
         return protected_err
 
+    # ── 4b1. An unattended session does not resend a write that already failed permanently ─
+    if guard_fp:
+        previous = _previous_permanent_failure(thread_id, guard_fp)
+        if previous:
+            count, reason = previous
+            _record_permanent_failure(thread_id, guard_fp, reason)
+            logger.warning(f"run_kubectl: repeat refused (failed {count}x before) session={thread_id}: {cmd!r}")
+            return (
+                f"[Repeat refused] This exact command already failed in this session ({count} time(s)) with: {reason}\n"
+                "[permanent error: resending it unchanged cannot succeed — change the approach, or stop and report "
+                "what you found]"
+            )
+
     # ── 4b2. Check a manifest against the cluster's schema before sending it ─
     # Before the approval prompt too: a human should never be asked to approve a manifest the cluster would reject.
     # Measured 2026-11-14: a re-typed Job whose unquoted `ERROR: …` made `command[2]` a mapping was rejected 73
@@ -1984,6 +2067,8 @@ def run_kubectl(
         findings = manifest_lint.lint(stdin, os.path.expanduser(settings.KUBECONFIG_PATH))
         if findings:
             logger.warning(f"run_kubectl: manifest refused before sending ({len(findings)} finding(s)): {cmd!r}")
+            if guard_fp:
+                _record_permanent_failure(thread_id, guard_fp, f"invalid manifest: {findings[0]}")
             return (
                 "[Invalid manifest: not sent to the cluster] Checked against the cluster's own schema:\n"
                 + "\n".join(f"- {f}" for f in findings)
@@ -2010,6 +2095,12 @@ def run_kubectl(
             logger.warning(
                 f"run_kubectl: auto-approve withheld, command leaves the investigation's namespace "
                 f"{bound_ns!r}: {cmd!r}"
+            )
+            hitl_bypass = False
+        if hitl_bypass and guard_fp and _auto_writes(thread_id) >= settings.AUTO_APPROVE_MAX_WRITES:
+            logger.warning(
+                f"run_kubectl: auto-approve withheld, session {thread_id!r} used its budget of "
+                f"{settings.AUTO_APPROVE_MAX_WRITES} unattended writes: {cmd!r}"
             )
             hitl_bypass = False
         always_confirm = _requires_always_confirm(verb, args, stdin)
@@ -2046,6 +2137,8 @@ def run_kubectl(
                 return "Action cancelled by user."
         elif not has_dry_run and hitl_bypass:
             logger.info(f"run_kubectl: HITL bypassed (auto-approve) for: {cmd!r}")
+            if guard_fp:
+                _count_auto_write(thread_id)
 
     # ── 5. Execute ───────────────────────────────────────────────────────────
     kubeconfig = os.path.expanduser(settings.KUBECONFIG_PATH)
@@ -2142,6 +2235,8 @@ def run_kubectl(
         # Say whether resending can help. An unattended session resent one rejected manifest 73 times
         # (2026-11-14) because nothing in the reply said the rejection would not change.
         err_class = kubectl_errors.error_class(pattern_name)
+        if err_class == "permanent" and guard_fp:
+            _record_permanent_failure(thread_id, guard_fp, _first_line(stderr) or f"exit {proc.returncode}")
         if err_class == "permanent":
             output += (
                 "\n[permanent error: resending this exact command cannot succeed — change it, or stop and report "

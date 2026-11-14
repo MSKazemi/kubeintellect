@@ -689,6 +689,10 @@ class Settings(BaseSettings):
     # A3-allowlisted finding is investigated like A2 (the fix is proposed, not applied). On: as before, and the
     # bypass still applies only inside the namespace an autonomous investigation was opened for.
     AUTO_APPROVE_ENABLED: bool = False
+    # An auto-approved session may run at most this many writes without a human; each further write goes to the
+    # approval prompt (unattended: it stops). Rejected writes count too. Measured 2026-11-14: one unattended session
+    # sent 73 writes (all rejected) before its step budget ended it.
+    AUTO_APPROVE_MAX_WRITES: int = Field(default=10, gt=0)
 
     # ── Auth / RBAC ───────────────────────────────────────────────────────────
     # Four-tier role model (all comma-separated; empty = auth disabled):
