@@ -2124,6 +2124,16 @@ def run_kubectl(
                     extra={"pattern": pattern_name, "exit_code": proc.returncode},
                 )
         output = f"[kubectl exited {proc.returncode}] {detail}"
+        # Say whether resending can help. An unattended session resent one rejected manifest 73 times
+        # (2026-11-14) because nothing in the reply said the rejection would not change.
+        err_class = kubectl_errors.error_class(pattern_name)
+        if err_class == "permanent":
+            output += (
+                "\n[permanent error: resending this exact command cannot succeed — change it, or stop and report "
+                "what you found]"
+            )
+        elif err_class == "transient":
+            output += "\n[transient error: the same command may succeed if retried after a short wait]"
         if pattern_name in kubectl_errors.TERMINAL_PATTERNS:
             # The apiserver is not answering — a second call to the same tool cannot get past
             # that, and the prompt's "do not retry" rule needs a string to key on.

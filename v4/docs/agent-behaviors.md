@@ -164,6 +164,15 @@ Every non-zero exit is stated outright, hint or no hint: the result begins
 message the agent did not write. When `stderr` is empty the result says so
 (`(kubectl wrote nothing to stderr)`) rather than reading as a blank tool result.
 
+**Each classified error says whether resending can help.** A request the cluster rejects as wrong — invalid,
+a field of the wrong type, immutable, already exists, an unknown flag, not found, forbidden — gets
+`[permanent error: resending this exact command cannot succeed — change it, or stop and report what you found]`; a
+write conflict or etcd re-election gets `[transient error: the same command may succeed if retried after a short
+wait]`. Measured 2026-11-14: an unattended session resent one rejected manifest 73 times, because the rejection
+(`… unrecognized type: string`, a YAML value with an unquoted `: ` parsed as a mapping) matched no hint. That error
+now gets the quoting hint, `already exists` says to change the object in place rather than create a substitute, and
+`field is immutable` no longer recommends recreating the resource as a retry.
+
 **A partial failure shows both halves.** `kubectl get pods -A` with one namespace
 forbidden exits non-zero *and* prints the namespaces it could read. Until 2026-08-24 the
 tool layer kept stdout and discarded stderr whenever stdout had anything, so that

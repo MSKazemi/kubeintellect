@@ -521,7 +521,7 @@ packages/
 │   └── emitter.py                — per-session queue, typed events, SSE serialization
 ├── tools/
 │   ├── kubectl_tool.py           — run_kubectl with RBAC + HITL
-│   ├── kubectl_errors.py         — error-pattern → one-line hint mapper (15 patterns)
+│   ├── kubectl_errors.py         — error-pattern → one-line hint + permanent/transient class (19 patterns)
 │   ├── prometheus_tool.py        — query_prometheus + query_prometheus_series (trend feed:
 │   │                                (series, error) — never decide health from the series alone)
 │   ├── loki_tool.py              — query_loki
