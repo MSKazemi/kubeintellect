@@ -23,6 +23,9 @@ in doubt it is treated as a real write. Flag names are normalised once at parse 
 kubectl), which also closes underscore spellings of connection/identity and all-namespaces flags. A bare `--` is refused except
 for `exec`, `run`, `debug`, `create` and `attach`, and a command containing `--` is never a dry run (a `--` can be a
 flag's value, after which kubectl keeps parsing flags).
+- **A repeated `-n`/`--namespace` or `-o`/`--output` is refused** (present before this release): kubectl uses the last
+  value and the gates read the first, so `kubectl get pods -n default -n kube-system` listed a protected namespace and
+  an unattended `-n <bound> -n other` wrote outside its binding.
 
 ### Fixed — an unattended session is corrected first, stopped second, and never reports a fix that did not happen
 

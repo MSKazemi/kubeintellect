@@ -501,7 +501,9 @@ once where the command is parsed (`--dry_run` → `--dry-run`, as kubectl itself
 passed by spelling a flag with underscores. A bare `--` is refused except for verbs that pass a command to a
 container (`exec`, `run`, `debug`, `create`, `attach`), and a command containing `--` is never treated as a dry run:
 a `--` can itself be a flag's value (`--field-manager --`), after which kubectl keeps parsing flags, so no position
-reliably marks where the flags end. Found by an independent review; tests in
+reliably marks where the flags end; for the five verbs that keep it, a `--` right after a flag that may take a value
+is refused. kubectl also uses the **last** value of a repeated flag while the tool's gates read the first, so a
+namespace or output format given twice (`-n default -n kube-system`) is refused. Found by an independent review; tests in
 `tests/test_the_independent_review_findings_stay_fixed.py` (N1).
 
 ### What else bounds an unattended session {#unattended-session-bounds}

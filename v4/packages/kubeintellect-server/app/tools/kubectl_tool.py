@@ -1485,7 +1485,20 @@ _DRY_RUN_FLAGS = frozenset({"--dry-run", "--dry-run=client", "--dry-run=server"}
 _KNOWN_BOOLEAN_FLAGS = frozenset({
     "--overwrite", "--all", "--force", "--record", "--server-side", "--force-conflicts", "--local", "--wait",
     "-A", "--all-namespaces", "--ignore-not-found", "--show-labels", "--now", "--recursive", "-R", "--prune",
+    "-i", "-t", "-it", "-ti", "--stdin", "--tty", "--rm", "-q", "--quiet",
 }) | _BOOLEAN_GLOBAL_FLAGS
+
+
+def _flag_occurrences(args: list[str], short: str, long: str, end: int) -> int:
+    """How many times a value flag appears in args[1:end], in every spelling kubectl accepts:
+    `-n x`, `-n=x`, `-nx`, `--namespace x`, `--namespace=x`."""
+    count = 0
+    for tok in args[1:end]:
+        if tok in (short, long) or tok.startswith((short + "=", long + "=")):
+            count += 1
+        elif tok.startswith(short) and not tok.startswith("--") and len(tok) > len(short):
+            count += 1  # attached shorthand value, e.g. `-nkube-system`, `-ojson`
+    return count
 
 
 # Verbs that have a `--dry-run` flag. An unknown verb (a kubectl plugin on PATH) receives the flag and may ignore it,
@@ -2268,6 +2281,29 @@ def run_kubectl(
             f"[Unsupported] A bare `--` is not accepted for `kubectl {verb}`: it is never needed there, and kubectl may "
             "read it as the value of the flag before it, which changes how everything after it is parsed. Remove it."
         )
+
+    # ── 3b3. Where the flags end, and flags kubectl reads by their LAST value ─
+    # For the verbs that keep a `--`, it must really end the flags: right after a flag that may take a value it IS that
+    # value, and kubectl goes on reading flags after it (sixth review pass: `create … -n b --field-manager -- -n other`
+    # auto-ran and kubectl used namespace `other`).
+    flags_end = len(args)
+    if "--" in args:
+        dd = args.index("--")
+        prev = args[dd - 1]
+        if prev.startswith("-") and prev != "-" and "=" not in prev and prev not in _KNOWN_BOOLEAN_FLAGS:
+            return (
+                f"[Unsupported] `--` right after `{prev}` would be read by kubectl as that flag's value, not as the end "
+                "of the flags. Give the flag its value explicitly (`--flag=value`) before `--`."
+            )
+        flags_end = dd
+    # kubectl uses the LAST value of a repeated flag; every gate here reads the first. `get pods -n default -n
+    # kube-system` listed a protected namespace, and an unattended `-n b -n other` wrote outside its binding (sixth
+    # review pass; present before this series). A namespace or output format given twice is refused.
+    for short, long in (("-n", "--namespace"), ("-o", "--output")):
+        if _flag_occurrences(args, short, long, flags_end) > 1:
+            return (
+                f"[Unsupported] `{long}` is given more than once. kubectl would use only the last one; give it once."
+            )
 
     # ── 3c. A bound session's read looks in the session's namespace ──────────
     injected_ns = _bound_read_namespace(verb, args, config)

@@ -714,3 +714,46 @@ def test_n6b_the_connection_guard_reads_every_token_in_normalised_form():
         bypass=False,
     )
     assert out.startswith("[Protected]") and not calls
+
+
+# ── Sixth review pass: kubectl uses the LAST value of a repeated flag; the tool read the first (pre-existing) ──
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "kubectl get pods -n default -n kube-system",
+        "kubectl get pods --namespace=default -nkube-system",
+        "kubectl get pods -A -o json -o wide",
+    ],
+)
+def test_n7_a_repeated_namespace_or_output_flag_is_refused(command):
+    calls, _, out = _run(command, bound=None, bypass=False)
+    assert not calls and out.startswith("[Unsupported]")
+
+
+def test_n7_an_unattended_write_cannot_name_two_namespaces():
+    calls, prompts, out = _run(
+        "kubectl create configmap c --from-literal=a=b -n b3-c1 -n other"
+    )
+    assert not calls and out.startswith("[Unsupported]")
+
+
+def test_n7_a_double_dash_after_a_value_taking_flag_is_refused_even_for_create():
+    calls, _, out = _run(
+        "kubectl create configmap c --from-literal=a=b -n b3-c1 --field-manager -- -n other"
+    )
+    assert not calls and out.startswith("[Unsupported]")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "kubectl run x -n default --image=busybox --restart=Never -- head -n 5 /etc/hosts",  # -n after `--` is the container's
+        "kubectl exec web -n default -it -- sh",
+    ],
+)
+def test_n7_legitimate_commands_with_a_double_dash_still_reach_the_gate(command):
+    calls, prompts, out = _run(command, bound=None, bypass=False)
+    assert not out.startswith("[Unsupported]"), out
+    assert prompts  # a write in chat: it reaches the approval prompt as before
