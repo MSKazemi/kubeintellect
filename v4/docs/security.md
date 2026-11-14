@@ -504,6 +504,9 @@ recorded as finished. Each of the following now stops that sequence on its own:
 | **A write budget** | An auto-approved session runs at most `AUTO_APPROVE_MAX_WRITES` (default 10) writes, accepted or rejected; each further write needs a human, so an unattended session stops there. | `run_kubectl` §4c |
 | **Running out of steps is an escalation** | At the default limits LangGraph ends a loop that runs out of steps with a plain message instead of raising; that ending is now the budget escalation, logged as an error and recorded by the watchtower as `watchtower_escalated`, with no "the fix held" re-check. | `coordinator.py`, `watchtower.py` |
 
+| **No substitute workloads, no swapped programs** | `run`, `create deployment\|job\|cronjob`, `create -f -` of a pod-bearing manifest, and a change to a container's `command`/`args` (any spelling, like `image`/`resources`) are always-confirm. Measured: a session created a stub Job printing SUCCESS and reported the failing Job fixed. | `_creates_a_workload`, `_GATED_CONTAINER_FIELDS` |
+| **The outcome is judged on the original object** | Before the fix turn the watchtower pins the finding to its workload by uid (a pod is followed to its Deployment); afterwards it polls that object for up to `AUTOFIX_VERIFY_TIMEOUT_SECONDS` (default 120). Still unhealthy, gone, or replaced by another object of the same name is `not_fixed` (logged `watchtower_fix_not_verified`, no "fix held" re-check), whatever the model reported. | `app/autonomy/verify.py` |
+
 Chat sessions are unchanged by the repeat guard and the write budget: a human approves every write there and may
 retry after fixing something outside the session.
 

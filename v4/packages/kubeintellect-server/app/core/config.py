@@ -693,6 +693,9 @@ class Settings(BaseSettings):
     # approval prompt (unattended: it stops). Rejected writes count too. Measured 2026-11-14: one unattended session
     # sent 73 writes (all rejected) before its step budget ended it.
     AUTO_APPROVE_MAX_WRITES: int = Field(default=10, gt=0)
+    # After an autonomous fix turn the watchtower polls the finding's own workload (pinned by uid before the turn) for
+    # up to this long and records fixed / not_fixed / unknown, whatever the model reported. 0 = do not verify.
+    AUTOFIX_VERIFY_TIMEOUT_SECONDS: int = Field(default=120, ge=0)
 
     # ── Auth / RBAC ───────────────────────────────────────────────────────────
     # Four-tier role model (all comma-separated; empty = auth disabled):

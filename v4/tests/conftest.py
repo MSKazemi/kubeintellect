@@ -54,6 +54,9 @@ os.environ["DEMO_KEY_HMAC_SECRET"] = ""
 # kubeconfig. No unit test may reach a real cluster that way, so it is off for the suite; its own tests turn it on
 # with the fetch patched out (tests/test_a_manifest_is_checked_against_the_cluster_schema_before_it_is_sent.py).
 os.environ["MANIFEST_LINT_ENABLED"] = "false"
+# Same reason: verifying an autonomous fix reads the workload with kubectl and the real kubeconfig. Its own tests patch
+# the read (tests/test_an_autonomous_fix_is_judged_on_the_original_object.py).
+os.environ["AUTOFIX_VERIFY_TIMEOUT_SECONDS"] = "0"
 
 # ── Stub langgraph postgres checkpointer ─────────────────────────────────────
 # AsyncPostgresSaver.from_conn_string is called inside init_graph() at startup.

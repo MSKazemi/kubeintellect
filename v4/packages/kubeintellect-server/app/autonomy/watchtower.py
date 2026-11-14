@@ -28,6 +28,7 @@ import time
 
 from app.autonomy.ladder import a3_allowed, at_least, level_for_namespace
 from app.core.config import settings
+from app.autonomy.verify import Target
 from app.detectors.models import Finding
 from app.utils.logger import get_logger
 
@@ -183,6 +184,14 @@ async def _investigate(finding: Finding, level: str) -> None:
             f" level={level} auto_fix={auto_fix} session={session_id}"
         )
         try:
+            # Pin the finding to its workload BEFORE the fix turn, so the outcome is judged on the same object (uid)
+            # and a deletion or a substitute under the same name cannot pass as a repair.
+            target: Target | None = None
+            if auto_fix and settings.AUTOFIX_VERIFY_TIMEOUT_SECONDS > 0:
+                from app.autonomy import verify
+                target = await asyncio.to_thread(
+                    verify.resolve_target, finding.playbook, finding.namespace, finding.object_name,
+                )
             if grounding_gated:
                 await _run_turn(ask, session_id, auto_approve=False, bound_namespace=finding.namespace)
                 grounding = await _turn_grounding(session_id)
@@ -209,7 +218,7 @@ async def _investigate(finding: Finding, level: str) -> None:
                 return
             logger.info(f"watchtower_done session={session_id}")
             if auto_fix:
-                await _schedule_post_fix_recheck(finding)
+                await _record_fix_outcome(finding, target, session_id)
         except Exception as exc:
             logger.warning(f"watchtower: investigation failed session={session_id}: {exc}")
 
@@ -289,6 +298,27 @@ async def _turn_outcome(session_id: str) -> str | None:
     except Exception as exc:
         logger.warning(f"watchtower: could not read the turn outcome session={session_id}: {exc}")
         return None
+
+
+async def _record_fix_outcome(finding: Finding, target: Target | None, session_id: str) -> str:
+    """Judge an autonomous fix on the finding's own workload, not on the model's report.
+
+    Measured 2026-11-14: a session reported "The job has been fixed" after verifying a stub it had created, while the
+    Job the detector fired on stayed Failed. `fixed` and `unknown` (verification off or unreadable — never claimed
+    as fixed) keep the existing "fix held" re-check; `not_fixed` is logged as a warning and gets none.
+    """
+    from app.autonomy import verify
+
+    outcome = await verify.verify(target, settings.AUTOFIX_VERIFY_TIMEOUT_SECONDS)
+    if outcome == "not_fixed":
+        logger.warning(
+            f"watchtower_fix_not_verified session={session_id} playbook={finding.playbook} "
+            f"ns={finding.namespace} object={finding.object_name} — the workload is still unhealthy, gone or replaced"
+        )
+        return outcome
+    logger.info(f"watchtower_fix_verified session={session_id} outcome={outcome}")
+    await _schedule_post_fix_recheck(finding)
+    return outcome
 
 
 async def _schedule_post_fix_recheck(finding: Finding) -> None:
