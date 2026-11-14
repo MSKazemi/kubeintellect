@@ -1750,6 +1750,25 @@ def _first_line(text: str) -> str:
     return next((line.strip() for line in text.splitlines() if line.strip()), text.strip())[:300]
 
 
+def _normalise_flag_names(args: list[str]) -> list[str]:
+    """`--a_b` → `--a-b` in every long flag's NAME (not its value), before any `--`.
+
+    kubectl normalises flag names with WordSepNormalizeFunc, so `--dry_run=none` IS `--dry-run=none` to it. Every gate
+    in this module matches the hyphen spelling, so an underscore spelling slipped past the dry-run check (a real write
+    without an approval prompt, in every session), the connection/identity guard and the all-namespaces check (fourth
+    review pass). Normalising once, where the argv is built, closes the whole class; kubectl receives an argv that
+    means exactly the same. Tokens after `--` belong to the container's command and are left alone.
+    """
+    end = args.index("--") if "--" in args else len(args)
+    out = []
+    for i, a in enumerate(args):
+        if i < end and a.startswith("--") and len(a) > 2:
+            name, sep, value = a.partition("=")
+            a = name.replace("_", "-") + sep + value
+        out.append(a)
+    return out
+
+
 def _is_all_namespaces(args: list[str]) -> bool:
     """True if the command targets every namespace at once.
 
@@ -2205,7 +2224,7 @@ def run_kubectl(
 
     # ── 3. Parse into arg list (shell=False) ─────────────────────────────────
     try:
-        args = shlex.split(cmd)
+        args = _normalise_flag_names(shlex.split(cmd))
     except ValueError as exc:
         # "No closing quotation" usually means a jsonpath expression was
         # truncated mid-generation. Provide an actionable error message

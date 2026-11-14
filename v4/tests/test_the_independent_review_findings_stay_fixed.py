@@ -620,3 +620,56 @@ def test_n3b_only_the_objects_own_notfound_means_gone(monkeypatch):
 
     monkeypatch.setattr(verify.subprocess, "run", fake)
     assert verify._kubectl_json(["get", "deployment", "web", "-n", "ns"]) is None
+
+
+# ── Fourth review pass: kubectl treats `_` and `-` alike in flag names (WordSepNormalizeFunc) ──
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "kubectl delete pod web -n default --dry-run=server --dry_run=none",
+        "kubectl delete pod web -n default --dry_run=none",
+    ],
+)
+def test_n1c_an_underscore_spelling_of_dry_run_is_seen(command):
+    calls, prompts, out = _run(command, bound=None, bypass=False)
+    assert prompts and not calls and out == "Action cancelled by user."
+
+
+def test_n2c_the_preflight_strips_an_underscore_dry_run_too():
+    calls, _, _ = _run(
+        'kubectl patch deploy x -n b3-c1 -p \'{"spec":{"replicas":2}}\' --dry_run=none'
+    )
+    dry = [c for c in calls if "--dry-run=server" in c]
+    assert dry and not [
+        t
+        for t in dry[0]
+        if t.replace("_", "-").startswith("--dry-run") and t != "--dry-run=server"
+    ]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "kubectl get pods -n default --insecure_skip_tls_verify",
+        "kubectl get pods -n default --client_certificate=/tmp/x.crt",
+    ],
+)
+def test_n6_an_underscore_spelling_of_a_connection_flag_is_refused(command):
+    calls, _, out = _run(command, bound=None, bypass=False)
+    assert out.startswith("[Protected]") and not calls
+
+
+def test_n6_flag_names_are_normalised_once_and_only_before_double_dash():
+    assert kt._normalise_flag_names(
+        ["kubectl", "get", "pods", "--all_namespaces", "--field_selector=a_b=c"]
+    ) == ["kubectl", "get", "pods", "--all-namespaces", "--field-selector=a_b=c"]
+    # after `--` the tokens are the container's command and must not change
+    assert (
+        kt._normalise_flag_names(["kubectl", "exec", "p", "--", "sh", "--my_flag"])[-1]
+        == "--my_flag"
+    )
+    assert kt._is_all_namespaces(
+        kt._normalise_flag_names(["kubectl", "get", "pods", "--all_namespaces"])
+    )

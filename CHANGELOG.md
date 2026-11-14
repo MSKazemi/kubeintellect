@@ -19,7 +19,8 @@ positional argument) or `kubectl annotate … --field-manager --dry-run=server` 
 ran with **no approval prompt, in every session, chat included**, and kubectl performed the real write. A dry run now
 counts only when the verb has the flag, every `--dry-run` token is a real one (kubectl's last value wins, so
 `--dry-run=server --dry-run=none` is a write), none follows `--`, and none sits right after a value-taking flag; when
-in doubt it is treated as a real write.
+in doubt it is treated as a real write. Flag names are normalised once at parse time (`--dry_run` is `--dry-run` to
+kubectl), which also closes underscore spellings of connection/identity and all-namespaces flags.
 
 ### Fixed — an unattended session is corrected first, stopped second, and never reports a fix that did not happen
 

@@ -496,7 +496,9 @@ field manager's value) ran with no prompt in every session. kubectl's `--dry-run
 value wins, so `--dry-run=server --dry-run=none` is a real write too. A command is now a dry run only if its verb has
 the flag (not a kubectl plugin), no dry-run token follows `--`, **every** dry-run token is a real one (`--dry-run`,
 `=client`, `=server`), and none sits right after a flag that may take a value; anything else is treated as a real
-write and goes to the prompt. The unattended preflight strips the model's own dry-run tokens before adding its own. Found by an independent review; tests in
+write and goes to the prompt. The unattended preflight strips the model's own dry-run tokens before adding its own. Flag names are normalised
+once where the command is parsed (`--dry_run` → `--dry-run`, as kubectl itself does), so no gate in the tool can be
+passed by spelling a flag with underscores. Found by an independent review; tests in
 `tests/test_the_independent_review_findings_stay_fixed.py` (N1).
 
 ### What else bounds an unattended session {#unattended-session-bounds}
