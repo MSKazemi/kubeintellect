@@ -1482,23 +1482,41 @@ _KNOWN_BOOLEAN_FLAGS = frozenset({
 }) | _BOOLEAN_GLOBAL_FLAGS
 
 
-def _is_dry_run(args: list[str]) -> bool:
-    """True only for a dry run kubectl will actually read as one. Fails closed: when in doubt it is a real write.
+# Verbs that have a `--dry-run` flag. An unknown verb (a kubectl plugin on PATH) receives the flag and may ignore it,
+# so a "dry run" there is not one (third review pass).
+_DRY_RUN_VERBS = frozenset({
+    "apply", "create", "delete", "patch", "replace", "scale", "annotate", "label", "set", "expose", "run",
+    "autoscale", "drain", "cordon", "uncordon", "taint", "rollout",
+})
 
-    `--dry-run=none` is a real write, and so is an argument that merely contains the text (review F4). The flag also
-    does not count after `--` (kubectl reads it as a positional argument) or right after a flag that may take a value
-    (kubectl reads it as that value): `kubectl delete pod web -- --dry-run=server` deletes `web`, and treating it as a
-    dry run skipped the approval prompt in every session, chat included (second review, N1 — present since before this
-    series). Only a preceding token that cannot be a value-taking flag lets the dry-run flag count.
+
+def _is_dry_run(args: list[str]) -> bool:
+    """True only for a dry run kubectl will actually perform as one. Fails closed: when in doubt it is a real write.
+
+    kubectl's `--dry-run` is a STRING flag and the LAST value given wins, so every dry-run token counts, not the first
+    (third review pass: `--dry-run=server --dry-run=none` is a real write). It is a dry run only if:
+      * the verb has the flag (not a plugin);
+      * no dry-run token appears after `--` (a positional there — review N1);
+      * every dry-run token is a real one (`--dry-run`, `=client`, `=server`; `=none`, `=false`, `=` are writes — F4);
+      * none of them sits right after a flag that may take a value, where kubectl reads it as that value (N1).
+    Misreading a write as a dry run skips the approval prompt in every session; misreading a dry run as a write only
+    costs a prompt. Hence the asymmetry.
     """
+    if _extract_verb(args) not in _DRY_RUN_VERBS:
+        return False
     end = args.index("--") if "--" in args else len(args)
-    for i in range(1, end):
-        if args[i] in _DRY_RUN_FLAGS:
-            prev = args[i - 1]
-            if prev.startswith("-") and prev != "-" and "=" not in prev and prev not in _KNOWN_BOOLEAN_FLAGS:
-                return False  # may be the value of `prev`
-            return True
-    return False
+    if any(a.startswith("--dry-run") for a in args[end:]):
+        return False
+    tokens = [(i, a) for i, a in enumerate(args[:end]) if a.startswith("--dry-run")]
+    if not tokens:
+        return False
+    for i, a in tokens:
+        if a not in _DRY_RUN_FLAGS:
+            return False
+        prev = args[i - 1]
+        if prev.startswith("-") and prev != "-" and "=" not in prev and prev not in _KNOWN_BOOLEAN_FLAGS:
+            return False  # may be the value of `prev`
+    return True
 
 
 def _with_flag_after_verb(args: list[str], flag: str) -> list[str]:
@@ -1507,8 +1525,12 @@ def _with_flag_after_verb(args: list[str], flag: str) -> list[str]:
     Appending it put it after `--` (a positional: review F1) or after a value-taking flag such as `--field-manager`
     (its value: second review N2); either way the "dry run" was the real write.
     """
-    verb_at = _skip_flags(args, 1)
-    return [*args[:verb_at + 1], flag, *args[verb_at + 1:]]
+    # Drop every dry-run token first: kubectl's last `--dry-run` wins, so a model-written `--dry-run=none` later in
+    # the argv would override the inserted flag and make the "dry run" the real write (third review pass).
+    end = args.index("--") if "--" in args else len(args)
+    kept = [a for a in args[:end] if not a.startswith("--dry-run")] + args[end:]
+    verb_at = _skip_flags(kept, 1)
+    return [*kept[:verb_at + 1], flag, *kept[verb_at + 1:]]
 
 
 def _reserve_auto_write(thread_id: str, limit: int) -> bool:
@@ -2446,6 +2468,10 @@ def run_kubectl(
         if _classify_risk(verb, args) == "high"
         else settings.KUBECTL_TIMEOUT_SECONDS
     )
+    if guard_fp:
+        # Counted before it runs: a write that times out may still have reached the cluster (third review pass).
+        with _guard_lock:
+            _guard_session(thread_id)["executed"] += 1
     try:
         # Decode free-form content lossily to survive non-ASCII log lines;
         # decode identifiers and structured output strictly to avoid plausible wrong answers.
@@ -2470,9 +2496,6 @@ def run_kubectl(
         )
 
     stdout, stderr = proc.stdout or "", proc.stderr or ""
-    if guard_fp:
-        with _guard_lock:
-            _guard_session(thread_id)["executed"] += 1
     # Whether *kubectl* printed anything, decided before the emulator runs: `_apply_pipes` turns
     # an empty string into "(no matching lines)", and reporting that as output kubectl produced
     # would be a claim about the cluster made by our own grep.

@@ -492,9 +492,11 @@ two pilot commands are among them, and on the pre-fix code the tool logged
 A write marked `--dry-run=server` skips the approval prompt, because it changes nothing. Until 2026-11-14 the flag
 counted wherever it appeared, so `kubectl delete pod web -- --dry-run=server` (after `--` kubectl reads it as a
 positional argument and deletes `web`) or `kubectl annotate … --field-manager --dry-run=server` (there it is the
-field manager's value) ran with no prompt in every session. It now counts only before any `--` and right after a
-token that cannot be a value-taking flag (a value, a `--flag=value`, or a known boolean flag); anything else is
-treated as a real write and goes to the prompt. Found by an independent review; tests in
+field manager's value) ran with no prompt in every session. kubectl's `--dry-run` is a string flag and the **last**
+value wins, so `--dry-run=server --dry-run=none` is a real write too. A command is now a dry run only if its verb has
+the flag (not a kubectl plugin), no dry-run token follows `--`, **every** dry-run token is a real one (`--dry-run`,
+`=client`, `=server`), and none sits right after a flag that may take a value; anything else is treated as a real
+write and goes to the prompt. The unattended preflight strips the model's own dry-run tokens before adding its own. Found by an independent review; tests in
 `tests/test_the_independent_review_findings_stay_fixed.py` (N1).
 
 ### What else bounds an unattended session {#unattended-session-bounds}

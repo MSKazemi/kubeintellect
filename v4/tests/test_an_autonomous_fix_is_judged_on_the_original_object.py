@@ -119,7 +119,7 @@ class TestTheOutcome:
         def dep(ready: int) -> dict:
             return {
                 "metadata": {"uid": "d", "generation": 2},
-                "spec": {"replicas": 2},
+                "spec": {"replicas": 2, "selector": {"matchLabels": {"app": "web"}}},
                 "status": {
                     "observedGeneration": 2,
                     "replicas": 2,
@@ -131,7 +131,9 @@ class TestTheOutcome:
             }
 
         states = itertools.chain([dep(1)], itertools.repeat(dep(2)))
-        with _cluster({("deployment", "web"): lambda: next(states)}):
+        with _cluster(
+            {("deployment", "web"): lambda: next(states), ("pods", "-n"): {"items": []}}
+        ):
             assert (
                 await verify.verify(
                     verify.Target("deployment", "web", "b3", "d"), 30, 0

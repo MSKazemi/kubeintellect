@@ -17,8 +17,9 @@ Found by an independent review (2026-11-14), present before this release: a writ
 `--dry-run=server` appeared anywhere in it, so `kubectl delete pod web -- --dry-run=server` (after `--` the flag is a
 positional argument) or `kubectl annotate … --field-manager --dry-run=server` (there it is `--field-manager`'s value)
 ran with **no approval prompt, in every session, chat included**, and kubectl performed the real write. A dry run now
-counts only when it comes before any `--` and right after a token that cannot be a value-taking flag; when in doubt it
-is treated as a real write.
+counts only when the verb has the flag, every `--dry-run` token is a real one (kubectl's last value wins, so
+`--dry-run=server --dry-run=none` is a write), none follows `--`, and none sits right after a value-taking flag; when
+in doubt it is treated as a real write.
 
 ### Fixed — an unattended session is corrected first, stopped second, and never reports a fix that did not happen
 

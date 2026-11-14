@@ -134,7 +134,7 @@ async def test_f3_one_healthy_sample_of_a_restarting_pod_is_not_enough():
 async def test_f3_two_consecutive_healthy_samples_are_fixed():
     ok = {
         "metadata": {"uid": "d", "generation": 2},
-        "spec": {"replicas": 2},
+        "spec": {"replicas": 2, "selector": {"matchLabels": {"app": "web"}}},
         "status": {
             "observedGeneration": 2,
             "replicas": 2,
@@ -143,7 +143,13 @@ async def test_f3_two_consecutive_healthy_samples_are_fixed():
             "availableReplicas": 2,
         },
     }
-    with mock.patch.object(verify, "_kubectl_json", lambda args: ok):
+    pods = {
+        "items": [{"status": {"containerStatuses": [{"restartCount": 1}]}}] * 2
+    }  # restarts do not change
+
+    with mock.patch.object(
+        verify, "_kubectl_json", lambda args: pods if args[1] == "pods" else ok
+    ):
         assert (
             await verify.verify(verify.Target("deployment", "web", "ns", "d"), 30, 0)
             == "fixed"
@@ -551,3 +557,66 @@ async def test_f3_restarts_behind_a_deployment_are_seen():
             await verify.verify(verify.Target("deployment", "w", "ns", "d"), 0.05, 0)
             == "not_fixed"
         )
+
+
+# ── Third review pass: kubectl's --dry-run is a string flag and the LAST value wins ──
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "kubectl delete pod web -n default --dry-run=server --dry-run=none",
+        "kubectl delete pod web -n default --dry-run --dry-run=none",
+        "kubectl delete pod web -n default --dry-run=client --dry-run=false",
+        "kubectl delete pod web -n default --dry-run=",
+        "kubectl foo web -n default --dry-run=server",  # a plugin on PATH receives the flag and may ignore it
+    ],
+)
+def test_n1b_any_dry_run_flag_that_is_not_a_real_dry_run_makes_it_a_real_write(command):
+    calls, prompts, out = _run(command, bound=None, bypass=False)
+    assert prompts, "a chat write must stop at the approval prompt"
+    assert not calls and out == "Action cancelled by user."
+
+
+def test_n2b_the_patch_preflight_strips_the_models_dry_run_flags():
+    calls, _, _ = _run(
+        'kubectl patch deploy x -n b3-c1 -p \'{"spec":{"replicas":2}}\' --dry-run=none'
+    )
+    dry = [c for c in calls if "--dry-run=server" in c]
+    assert dry and all(
+        t in ("--dry-run=server",) for t in dry[0] if t.startswith("--dry-run")
+    ), dry[0]
+
+
+@pytest.mark.asyncio
+async def test_f3c_a_healthy_sample_whose_restarts_cannot_be_read_does_not_count():
+    dep = {
+        "metadata": {"uid": "d", "generation": 1},
+        "spec": {"replicas": 1, "selector": {"matchLabels": {"app": "w"}}},
+        "status": {
+            "observedGeneration": 1,
+            "replicas": 1,
+            "updatedReplicas": 1,
+            "readyReplicas": 1,
+            "availableReplicas": 1,
+        },
+    }
+
+    def read(args):
+        return None if args[1] == "pods" else dep  # the pods read keeps failing
+
+    with mock.patch.object(verify, "_kubectl_json", read):
+        assert (
+            await verify.verify(verify.Target("deployment", "w", "ns", "d"), 0.05, 0)
+            == "unknown"
+        )
+
+
+def test_n3b_only_the_objects_own_notfound_means_gone(monkeypatch):
+    def fake(argv, *a, **k):
+        return SimpleNamespace(
+            returncode=1, stdout="", stderr='error: context "prod" not found'
+        )
+
+    monkeypatch.setattr(verify.subprocess, "run", fake)
+    assert verify._kubectl_json(["get", "deployment", "web", "-n", "ns"]) is None

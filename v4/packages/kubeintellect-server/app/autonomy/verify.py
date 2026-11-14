@@ -66,7 +66,8 @@ def _kubectl_json(args: list[str]) -> dict | None:
         )
         if proc.returncode != 0:
             err = proc.stderr or ""
-            return NOT_FOUND if ("(NotFound)" in err or " not found" in err) else None
+            # Only the API server's NotFound about the object; a kubeconfig error ('context "x" not found') is not it.
+            return NOT_FOUND if "(NotFound)" in err else None
         obj = json.loads(proc.stdout)
         return obj if isinstance(obj, dict) else None
     except Exception:  # noqa: BLE001 - an unreadable object is "unknown", never "fixed"
@@ -229,7 +230,13 @@ async def verify(
     if target is None or timeout_seconds <= 0 or target.kind not in _JUDGED_KINDS:
         return "unknown"
     deadline = time.monotonic() + timeout_seconds
-    healthy_in_a_row, last_restarts, definitive, grace = 0, None, False, True
+    healthy_in_a_row, last_restarts, definitive, grace, last_unverified = (
+        0,
+        None,
+        False,
+        True,
+        False,
+    )
     while True:
         obj = await asyncio.to_thread(_get, target.kind, target.name, target.namespace)
         if obj is NOT_FOUND:
@@ -241,20 +248,26 @@ async def verify(
             health = _healthy(target, obj)
             if health is False:
                 return "not_fixed"
-            restarts = (
-                _restarts(obj)
-                if target.kind == "pod"
-                else await asyncio.to_thread(_workload_restarts, target, obj)
-                if health is True
-                else None
-            )
-            steady = (
-                last_restarts is None or restarts is None or restarts == last_restarts
+            # Restarts matter for long-running workloads; a Job is judged by its terminal Complete condition.
+            if target.kind == "pod":
+                restarts: int | None = _restarts(obj)
+            elif target.kind == "job":
+                restarts = 0
+            elif health is True:
+                restarts = await asyncio.to_thread(_workload_restarts, target, obj)
+            else:
+                restarts = None
+            # A healthy sample whose restarts cannot be read (the pods read failed, or the selector has no
+            # matchLabels) proves nothing about a crashloop behind it: it does not count (third review pass).
+            unverified = health is True and restarts is None
+            steady = not unverified and (
+                last_restarts is None or restarts == last_restarts
             )
             healthy_in_a_row = (
                 healthy_in_a_row + 1 if (health is True and steady) else 0
             )
             last_restarts = restarts if restarts is not None else last_restarts
+            last_unverified = unverified
             if healthy_in_a_row >= 2:
                 return "fixed"
         # A failed read (obj is None) is no information: it neither confirms nor refutes (second review, N3).
@@ -262,5 +275,6 @@ async def verify(
             if healthy_in_a_row == 1 and grace:
                 grace = False  # the first healthy sample landed at the deadline: take its confirming sample (N5)
             else:
-                return "not_fixed" if definitive else "unknown"
+                # Healthy but unverifiable, or nothing definitive read: we do not know. Never `fixed` on that.
+                return "not_fixed" if definitive and not last_unverified else "unknown"
         await asyncio.sleep(interval)
