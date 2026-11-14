@@ -1417,6 +1417,13 @@ def _stays_within_namespace(verb: str, args: list[str], stdin: str | None, bound
     return bool(names) and names == {bound.lower()}
 
 
+# `kubectl get --raw` paths that are read-only and cannot return Secret or ServiceAccount data. Everything else under
+# `--raw` is refused: it is an arbitrary API request the namespace and resource checks cannot inspect.
+_RAW_READ_ALLOWED = re.compile(
+    r"^/(?:healthz|readyz|livez|version)(?:/[A-Za-z0-9_.-]*)?$"
+    r"|^/api/v1/nodes/[A-Za-z0-9.-]+/proxy/(?:configz|stats/summary|metrics(?:/cadvisor|/resource)?)$"
+)
+
 # Verbs whose `--` introduces a command for a container; for every other verb a bare `--` is refused.
 _COMMAND_PASSING_VERBS = frozenset({"exec", "run", "debug", "create", "attach"})
 
@@ -1494,7 +1501,7 @@ _KNOWN_BOOLEAN_FLAGS = frozenset({
 _SHORT_VALUE_LETTERS = frozenset("nolfcpskL")
 
 
-def _flag_occurrences(args: list[str], short: str, long: str, end: int) -> int:
+def _flag_occurrences(args: list[str], short: str, long: str, end: int, verb: str | None = None) -> int:
     """How many times a value flag appears in args[1:end], in every spelling kubectl accepts: `-n x`, `-n=x`, `-nx`,
     `--namespace x`, `--namespace=x`, and inside a shorthand group (`-Rn x`, `-Rnx`).
 
@@ -1502,6 +1509,10 @@ def _flag_occurrences(args: list[str], short: str, long: str, end: int) -> int:
     that START with `-n` missed `-n default -Rn kube-system`, where kubectl reads the last (seventh review pass).
     """
     letter = short[1]
+    # A letter that is a boolean for THIS verb does not end the group (`logs -fn x`: -f is --follow, -p is
+    # --previous; eighth review pass). Only a known value-taking letter ends it; an unknown letter does not, so the
+    # walk errs towards counting — over-counting refuses, under-counting would let a namespace through.
+    value_letters = _SHORT_VALUE_LETTERS - _VERB_BOOLEAN_SHORTHANDS.get(verb or "", frozenset())
     count = 0
     for tok in args[1:end]:
         if tok == long or tok.startswith(long + "="):
@@ -1511,7 +1522,7 @@ def _flag_occurrences(args: list[str], short: str, long: str, end: int) -> int:
                 if ch == letter:
                     count += 1
                     break
-                if ch in _SHORT_VALUE_LETTERS or ch == "=":
+                if ch in value_letters or ch == "=":
                     break  # the rest of the token is that flag's value
     return count
 
@@ -2297,6 +2308,20 @@ def run_kubectl(
             "read it as the value of the flag before it, which changes how everything after it is parsed. Remove it."
         )
 
+    # ── 3b2b. `--raw` is an arbitrary API request no check here can inspect ──
+    # `kubectl get --raw /api/v1/namespaces/kube-system/secrets` returned Secret objects with the deployment's own
+    # credentials, past the protected-namespace and protected-resource checks, for any role — a read, so readonly too
+    # (eighth review pass; present before this series). Refused outright.
+    raw = _flag_value(args, "--raw", "--raw", verb) if any(a == "--raw" or a.startswith("--raw=") for a in args[1:]) else None
+    if raw is not None and not (verb == "get" and ".." not in raw and _RAW_READ_ALLOWED.match(raw)):
+        # Allowed: `get --raw` on a few read-only paths that cannot return Secrets (the Evicted playbook reads the
+        # kubelet's configz this way). Refused: any other path, and `create|replace|delete --raw`, which are writes.
+        logger.warning(f"run_kubectl: refused --raw: {cmd!r}")
+        return (
+            "[Protected] `--raw` sends an arbitrary API request that the protected-namespace and protected-resource "
+            "checks cannot inspect. Use the resource form instead (`kubectl get <kind> -n <namespace>`)."
+        )
+
     # ── 3b3. Where the flags end, and flags kubectl reads by their LAST value ─
     # For the verbs that keep a `--`, it must really end the flags: right after a flag that may take a value it IS that
     # value, and kubectl goes on reading flags after it (sixth review pass: `create … -n b --field-manager -- -n other`
@@ -2315,14 +2340,14 @@ def run_kubectl(
     # kube-system` listed a protected namespace, and an unattended `-n b -n other` wrote outside its binding (sixth
     # review pass; present before this series). A namespace or output format given twice is refused.
     for short, long in (("-n", "--namespace"), ("-o", "--output")):
-        if _flag_occurrences(args, short, long, flags_end) > 1:
+        if _flag_occurrences(args, short, long, flags_end, verb) > 1:
             return (
                 f"[Unsupported] `{long}` is given more than once. kubectl would use only the last one; give it once."
             )
     # A patch payload given twice: the image/command gate reads the first, kubectl applies the last (seventh review
     # pass: `-p '{replicas}' -p '{image: evil}'` auto-ran an image change with no approval).
     if verb == "patch":
-        payloads = _flag_occurrences(args, "-p", "--patch", flags_end) + sum(
+        payloads = _flag_occurrences(args, "-p", "--patch", flags_end, verb) + sum(
             1 for a in args[1:flags_end] if a == "--patch-file" or a.startswith("--patch-file=")
         )
         if payloads > 1:

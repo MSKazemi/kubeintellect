@@ -487,6 +487,16 @@ two pilot commands are among them, and on the pre-fix code the tool logged
 `HITL bypassed (auto-approve)` for both), plus the `bound_namespace` plumbing assertions in
 `tests/test_autonomy.py`.
 
+### `--raw` is refused except for a few read-only paths {#raw-requests}
+
+`kubectl get --raw <path>` sends an arbitrary API request that the protected-namespace and protected-resource checks
+cannot inspect. Until 2026-11-14 it was not checked at all, so `kubectl get --raw /api/v1/namespaces/kube-system/secrets`
+returned Secret objects with the deployment's own credentials, for any role (it is a read, so a readonly key too).
+Found by an independent review. Now only `get --raw` on read-only paths that cannot return Secret or ServiceAccount data
+is allowed — `/healthz`, `/readyz`, `/livez`, `/version`, and a node's kubelet `proxy/configz`, `proxy/stats/summary`
+and `proxy/metrics` (the Evicted playbook reads `configz`). Any other path, any `..`, and `create|replace|delete --raw`
+(raw writes) are refused.
+
 ### A dry run must be one kubectl actually reads {#dry-run-detection}
 
 A write marked `--dry-run=server` skips the approval prompt, because it changes nothing. Until 2026-11-14 the flag

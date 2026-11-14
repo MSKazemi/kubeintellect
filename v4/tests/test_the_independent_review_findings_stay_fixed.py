@@ -811,3 +811,58 @@ def test_n8_n9_ordinary_commands_are_untouched():
     )
     calls, _, _ = _run('kubectl patch configmap c -n b3-c1 -p \'{"data":{"k":"v"}}\'')
     assert calls
+
+
+# ── Eighth review pass: verb-specific booleans in a group, and `get --raw` (pre-existing) ──
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "kubectl logs web -n default -fn kube-system",
+        "kubectl logs web -n default -pn kube-system",
+    ],
+)
+def test_n10_logs_follow_and_previous_do_not_hide_a_second_namespace(command):
+    calls, _, out = _run(command, bound=None, bypass=False)
+    assert not calls and out.startswith("[Unsupported]")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "kubectl get --raw /api/v1/namespaces/kube-system/secrets",
+        "kubectl get --raw=/api/v1/namespaces/default/secrets",
+    ],
+)
+def test_n11_get_raw_is_refused_because_no_check_can_inspect_it(command):
+    calls, _, out = _run(command, bound=None, bypass=False)
+    assert not calls and out.startswith("[Protected]")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "kubectl get --raw /api/v1/nodes/kind-control-plane/proxy/configz",  # the Evicted playbook's step
+        "kubectl get --raw=/readyz",
+    ],
+)
+def test_n11_a_read_only_raw_path_still_works(command):
+    calls, _, out = _run(command, bound=None, bypass=False)
+    assert calls and not out.startswith("[Protected]")
+
+
+def test_n11_a_raw_write_is_refused():
+    calls, _, out = _run(
+        "kubectl delete --raw /api/v1/namespaces/default/pods/web",
+        bound=None,
+        bypass=False,
+    )
+    assert not calls and out.startswith("[Protected]")
+
+
+def test_n10_an_ordinary_logs_command_still_runs():
+    calls, _, _ = _run(
+        "kubectl logs web -n default -f --tail=5", bound=None, bypass=False
+    )
+    assert calls

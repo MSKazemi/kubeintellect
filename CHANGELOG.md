@@ -28,6 +28,13 @@ flag's value, after which kubectl keeps parsing flags).
   an unattended `-n <bound> -n other` wrote outside its binding. Counted inside shorthand groups too (`-Rn x`); a
   second patch payload (`-p … -p …`) is refused, since the image/command gate read the first and kubectl applies the last.
 
+### Fixed — security: `kubectl get --raw` no longer bypasses the protected-namespace and Secret checks
+
+Found by an independent review (2026-11-14), present before this release: `--raw` was not inspected, so
+`kubectl get --raw /api/v1/namespaces/kube-system/secrets` returned Secrets for any role, readonly included. Only `get
+--raw` on a short allowlist of read-only paths (health, version, a node's kubelet `configz`/stats/metrics) is now
+accepted; raw writes and every other path are refused.
+
 ### Fixed — an unattended session is corrected first, stopped second, and never reports a fix that did not happen
 
 Measured 2026-11-14 on Kind with a real model: one auto-approved session alternated a read that named no namespace
