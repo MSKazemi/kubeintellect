@@ -37,6 +37,21 @@ Job printing SUCCESS and reported the failing Job fixed. Each change below stops
   before the fix turn; still unhealthy, deleted or replaced is `not_fixed`, whatever the model reported.
 - **A fault the cluster cannot fix is not auto-fixed**: playbooks may declare `auto_fixable: false`;
   `JobBackoffLimitExceeded` does, and its fix template no longer says "recreate the job".
+- **A session that repeats itself is stopped**: the same call with the same reply 4 times, or an A-B cycle 3 times,
+  marks an auto-approved session stuck; every further command returns `[Stopped]`.
+- **An unattended manifest write is dry-run first** (`PREFLIGHT_DIFF_ENABLED`, default on): `kubectl diff` showing no
+  difference is refused as `[No change]`; an API-server rejection is refused with the field it names; anything else
+  fails open.
+- **An unattended session is shown what it already tried**: the last 12 writes and their outcomes, recorded by the tool,
+  are appended to the system message of every model call (no change to the step budget).
+- **Every autonomous investigation ends in a recorded outcome** — `fixed`, `not_fixed`, `unknown`, `budget_exhausted`,
+  `stuck`, `needs_approval` (with the waiting command; verified first, so a session that repaired its own fault and was
+  then stopped at a sibling-namespace write is `fixed`) or `error` (the model call failed) — written to the flight
+  recorder as `autonomy_outcome`.
+- **A circuit breaker**: `not_fixed`, `stuck` or `budget_exhausted` demotes that (namespace, playbook) from A3 to A2 for
+  `AUTOFIX_BREAKER_SECONDS` (default 24 h); `error` does not.
+- **A verified bad outcome becomes a lesson**: it seeds a `failure_patterns` row built only from the playbook and the
+  outcome, loaded into later sessions as a failure hint once seen twice.
 
 ### Changed
 
