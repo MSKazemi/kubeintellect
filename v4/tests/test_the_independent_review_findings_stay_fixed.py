@@ -56,16 +56,12 @@ def _run(
 
 
 # F1 — the patch dry run appended --dry-run=server after `--`, where kubectl reads it as a positional argument and
-# performs the real patch.
+# performs the real patch. Since the fifth review pass a bare `--` is refused for `patch` before any dry run.
 def test_f1_the_patch_dry_run_flag_goes_before_a_double_dash():
-    calls, _, _ = _run(
+    calls, _, out = _run(
         'kubectl patch deploy x -n b3-c1 -p \'{"spec":{"replicas":2}}\' --'
     )
-    dry = [c for c in calls if "--dry-run=server" in c]
-    assert dry, "the dry run must have happened"
-    for c in dry:
-        if "--" in c:
-            assert c.index("--dry-run=server") < c.index("--"), c
+    assert not calls and out.startswith("[Unsupported]")
 
 
 # F2 — the apply preflight found the verb by searching for the token "apply", so a namespace named "apply" built
@@ -426,8 +422,6 @@ def test_f13_a_configmap_key_named_like_command_is_not_gated():
 # ── Second review pass (N1-N5, F3 part 2) ────────────────────────────────────
 
 
-# N1 — "--dry-run=server" anywhere counted as a dry run, so a REAL write skipped the approval prompt in every session,
-# chat included, when the flag sat after `--` (a positional) or after a flag that takes a value (its value).
 @pytest.mark.parametrize(
     "command",
     [
@@ -439,8 +433,8 @@ def test_n1_a_dry_run_flag_kubectl_would_not_read_as_one_does_not_skip_the_promp
     command,
 ):
     calls, prompts, out = _run(command, bound=None, bypass=False)
-    assert prompts, "a chat write must stop at the approval prompt"
-    assert not calls and out == "Action cancelled by user."
+    assert not calls, "it must not run without a human"
+    assert prompts or out.startswith("[Unsupported]")
 
 
 def test_n1_a_real_dry_run_still_runs_without_a_prompt():
@@ -452,15 +446,18 @@ def test_n1_a_real_dry_run_still_runs_without_a_prompt():
     assert calls and not prompts
 
 
-# N2 — `--field-manager --` made the inserted dry-run flag the field manager's value: the dry run applied for real.
+# N2 — `--field-manager --` made the inserted dry-run flag the field manager's value. Refused since the fifth pass;
+# the placement rule (directly after the verb) is pinned on its own.
 def test_n2_the_patch_dry_run_flag_cannot_be_taken_as_another_flags_value():
-    calls, _, _ = _run(
+    calls, _, out = _run(
         'kubectl patch deploy x -n b3-c1 -p \'{"spec":{"replicas":2}}\' --field-manager --'
     )
-    dry = [c for c in calls if "--dry-run=server" in c]
-    assert dry
-    i = dry[0].index("--dry-run=server")
-    assert dry[0][i - 1] == "patch", dry[0]
+    assert not calls and out.startswith("[Unsupported]")
+    placed = kt._with_flag_after_verb(
+        ["kubectl", "-n", "b", "patch", "deploy", "x", "--dry-run=none"],
+        "--dry-run=server",
+    )
+    assert placed == ["kubectl", "-n", "b", "patch", "--dry-run=server", "deploy", "x"]
 
 
 # N3 — a read that merely failed (timeout, apiserver restarting) was read as "gone", i.e. not_fixed.
@@ -673,3 +670,47 @@ def test_n6_flag_names_are_normalised_once_and_only_before_double_dash():
     assert kt._is_all_namespaces(
         kt._normalise_flag_names(["kubectl", "get", "pods", "--all_namespaces"])
     )
+
+
+# ── Fifth review pass: a `--` can be a flag's VALUE (`--field-manager --`), and kubectl keeps parsing flags after it ──
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "kubectl annotate pod web -n default a=b --dry-run=server --field-manager -- --dry_run=none",
+        "kubectl delete pod web -n default --dry-run=server --field-manager -- --dry-run=none",
+    ],
+)
+def test_n1d_a_double_dash_outside_a_command_passing_verb_is_refused(command):
+    calls, prompts, out = _run(command, bound=None, bypass=False)
+    assert not calls, "it must not run"
+    assert out.startswith("[Unsupported]") and "--" in out
+
+
+def test_n2d_the_patch_preflight_never_sees_a_double_dash():
+    calls, _, out = _run(
+        'kubectl patch deploy x -n b3-c1 -p \'{"spec":{"replicas":2}}\' --field-manager -- --dry-run=none'
+    )
+    assert not calls and out.startswith("[Unsupported]")
+
+
+def test_n1d_a_command_passing_verb_keeps_its_double_dash_but_is_never_a_dry_run():
+    assert not kt._is_dry_run(
+        ["kubectl", "run", "x", "--image=busybox", "--dry-run=server", "--", "sh"]
+    )
+    calls, prompts, _ = _run(
+        "kubectl run x -n default --image=busybox --dry-run=server -- sh",
+        bound=None,
+        bypass=False,
+    )
+    assert prompts and not calls  # costs an approval prompt, never skips one
+
+
+def test_n6b_the_connection_guard_reads_every_token_in_normalised_form():
+    calls, _, out = _run(
+        "kubectl exec web -n default -c app --container -- --insecure_skip_tls_verify",
+        bound=None,
+        bypass=False,
+    )
+    assert out.startswith("[Protected]") and not calls

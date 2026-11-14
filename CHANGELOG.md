@@ -20,7 +20,9 @@ ran with **no approval prompt, in every session, chat included**, and kubectl pe
 counts only when the verb has the flag, every `--dry-run` token is a real one (kubectl's last value wins, so
 `--dry-run=server --dry-run=none` is a write), none follows `--`, and none sits right after a value-taking flag; when
 in doubt it is treated as a real write. Flag names are normalised once at parse time (`--dry_run` is `--dry-run` to
-kubectl), which also closes underscore spellings of connection/identity and all-namespaces flags.
+kubectl), which also closes underscore spellings of connection/identity and all-namespaces flags. A bare `--` is refused except
+for `exec`, `run`, `debug`, `create` and `attach`, and a command containing `--` is never a dry run (a `--` can be a
+flag's value, after which kubectl keeps parsing flags).
 
 ### Fixed — an unattended session is corrected first, stopped second, and never reports a fix that did not happen
 

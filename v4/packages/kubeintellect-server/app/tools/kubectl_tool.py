@@ -594,8 +594,11 @@ def _connection_flag_in(tokens: list[str]) -> str | None:
     for tok in tokens:
         if not tok.startswith("-"):
             continue
+        # Normalised for the comparison only (kubectl reads `--a_b` as `--a-b`), at every position: a `--` can be a
+        # flag's value, so tokens after it may still be kubectl flags (fifth review pass).
         name = tok.split("=", 1)[0]
-        if name in _CONNECTION_FLAGS or name.startswith("--as"):
+        canonical = name.replace("_", "-") if name.startswith("--") else name
+        if canonical in _CONNECTION_FLAGS or canonical.startswith("--as"):
             return name
     return None
 
@@ -1414,6 +1417,9 @@ def _stays_within_namespace(verb: str, args: list[str], stdin: str | None, bound
     return bool(names) and names == {bound.lower()}
 
 
+# Verbs whose `--` introduces a command for a container; for every other verb a bare `--` is refused.
+_COMMAND_PASSING_VERBS = frozenset({"exec", "run", "debug", "create", "attach"})
+
 # Reads that a bound session points at its own namespace when the command names none. Writes are deliberately
 # absent: a write that names no namespace (or targets a cluster-scoped object) must keep failing the binding check
 # in `_stays_within_namespace`, and an injected `-n` would make it look as if it stayed inside.
@@ -1504,9 +1510,11 @@ def _is_dry_run(args: list[str]) -> bool:
     """
     if _extract_verb(args) not in _DRY_RUN_VERBS:
         return False
-    end = args.index("--") if "--" in args else len(args)
-    if any(a.startswith("--dry-run") for a in args[end:]):
+    # Any `--` and it is not a dry run: a `--` can itself be a flag's VALUE (`--field-manager --`), after which kubectl
+    # keeps parsing flags, so no position tells where the flags end (fifth review pass). Costs a prompt, never skips one.
+    if "--" in args:
         return False
+    end = len(args)
     tokens = [(i, a) for i, a in enumerate(args[:end]) if a.startswith("--dry-run")]
     if not tokens:
         return False
@@ -2249,6 +2257,17 @@ def run_kubectl(
         )
 
     verb = _extract_verb(args)
+
+    # ── 3b2. A bare `--` only where a container command follows it ───────────
+    # Anywhere else it is never needed, and kubectl may read it as the value of the flag before it
+    # (`--field-manager --`) and go on parsing flags after it, which defeats every check that treats `--` as the end
+    # of the flags. Measured by an independent review: `annotate … --dry-run=server --field-manager -- --dry_run=none`
+    # ran with no approval prompt and kubectl applied it (fifth review pass).
+    if "--" in args and verb not in _COMMAND_PASSING_VERBS:
+        return (
+            f"[Unsupported] A bare `--` is not accepted for `kubectl {verb}`: it is never needed there, and kubectl may "
+            "read it as the value of the flag before it, which changes how everything after it is parsed. Remove it."
+        )
 
     # ── 3c. A bound session's read looks in the session's namespace ──────────
     injected_ns = _bound_read_namespace(verb, args, config)
