@@ -73,6 +73,15 @@ data:
   # Edit config.blockedNamespaces / config.blockedResources in values.yaml to adjust.
   KUBECTL_BLOCKED_NAMESPACES: {{ .Values.config.blockedNamespaces | join "," | quote }}
   KUBECTL_BLOCKED_RESOURCES: {{ .Values.config.blockedResources | join "," | quote }}
+  # ADR-007 Phase 6 — namespace-bound investigations act as their own namespace-scoped identity (session-identity.yaml).
+  SESSION_IDENTITY_ENABLED: {{ .Values.sessionIdentity.enabled | toString | quote }}
+  SESSION_IDENTITY_SERVICE_ACCOUNT: {{ .Values.sessionIdentity.serviceAccount | quote }}
+  SESSION_IDENTITY_CLUSTER_ROLE: {{ .Values.sessionIdentity.clusterRole | quote }}
+  SESSION_IDENTITY_PROVISION: {{ .Values.sessionIdentity.provision | toString | quote }}
+  SESSION_IDENTITY_TOKEN_SECONDS: {{ .Values.sessionIdentity.tokenSeconds | int | toString | quote }}
+  READONLY_IDENTITY_ENABLED: {{ .Values.readonlyIdentity.enabled | toString | quote }}
+  READONLY_IDENTITY_SERVICE_ACCOUNT: {{ .Values.readonlyIdentity.serviceAccount | quote }}
+  READONLY_IDENTITY_NAMESPACE: {{ .Values.namespace | default .Release.Namespace | quote }}
   {{- /* Escape hatch for flags with no dedicated value (see values.yaml config.extraEnv).
          Rendered last so an explicit override wins on duplicate keys in the emitted map.
 

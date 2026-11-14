@@ -59,6 +59,11 @@ the finding's own workload, not on the model's report, and a bad outcome (`not_f
 opens a circuit breaker that demotes that (namespace, playbook) to A2 for `AUTOFIX_BREAKER_SECONDS` (see
 [security: what else bounds an unattended session](security.md#unattended-session-bounds)).
 
+**Since this release the namespace is also enforced by Kubernetes** (chart default): an investigation's kubectl runs
+as a token for a ServiceAccount in the finding's namespace, so a write — or a read — elsewhere is `Forbidden` at the
+API server, however the command is spelled; an investigation that cannot get that identity does not start
+([security: session identity](security.md#session-identity)).
+
 **The authority is granted for the finding's namespace and nowhere else.** The watchtower carries
 `finding.namespace` into the session's run config as `bound_namespace`, and the tool layer
 withholds auto-approve from any write it cannot show stays inside it. Writes into a sibling

@@ -702,6 +702,24 @@ class Settings(BaseSettings):
     # An autonomous investigation that ends not_fixed, stuck or budget_exhausted demotes its (namespace, playbook)
     # from A3 to A2 (propose, a human approves) for this long; a server restart also resets it. 0 = no breaker.
     AUTOFIX_BREAKER_SECONDS: int = Field(default=86400, ge=0)
+    # ADR-007 Phase 6 — a namespace-bound investigation runs kubectl as its own Kubernetes identity: a short-lived
+    # token for SESSION_IDENTITY_SERVICE_ACCOUNT in the investigation's namespace, bound there to
+    # SESSION_IDENTITY_CLUSTER_ROLE (Helm `sessionIdentity.enabled` installs it). RBAC then holds the namespace and
+    # Secret bounds whatever command string the model wrote. Fails closed: no identity, no kubectl. Off by default
+    # outside Helm because the ClusterRole has to exist first.
+    SESSION_IDENTITY_ENABLED: bool = False
+    SESSION_IDENTITY_SERVICE_ACCOUNT: str = "kubeintellect-session"
+    SESSION_IDENTITY_CLUSTER_ROLE: str = "kubeintellect-session"
+    # Create the ServiceAccount + RoleBinding in a namespace on its first investigation. Off: they must already exist.
+    SESSION_IDENTITY_PROVISION: bool = True
+    # TokenRequest lifetime; the API server's minimum is 600 s. A token is re-minted when under 120 s remain.
+    SESSION_IDENTITY_TOKEN_SECONDS: int = Field(default=900, ge=600, le=86400)
+    # The same for the `readonly` role: its kubectl runs as READONLY_IDENTITY_SERVICE_ACCOUNT (in
+    # READONLY_IDENTITY_NAMESPACE, empty = the server pod's own), bound cluster-wide to the chart's read-only role, so
+    # the API server refuses its writes and Secret reads. Fails closed. Helm `readonlyIdentity.enabled` creates it.
+    READONLY_IDENTITY_ENABLED: bool = False
+    READONLY_IDENTITY_SERVICE_ACCOUNT: str = "kubeintellect-readonly"
+    READONLY_IDENTITY_NAMESPACE: str = ""
 
     # ── Auth / RBAC ───────────────────────────────────────────────────────────
     # Four-tier role model (all comma-separated; empty = auth disabled):

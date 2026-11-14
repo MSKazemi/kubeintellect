@@ -204,6 +204,18 @@ upgrade; everything new is default-off.
      `AUTOFIX_BREAKER_SECONDS` (24 h). Log lines to alert on: `watchtower_outcome … outcome=not_fixed|stuck|budget_exhausted`,
      `watchtower: A3 breaker open`.
    See [what else bounds an unattended session](security.md#unattended-session-bounds).
+5. **Helm: investigations and the `readonly` role act as their own Kubernetes identities** (`sessionIdentity.enabled`,
+   `readonlyIdentity.enabled`, both on). The chart adds the `kubeintellect-session`, `kubeintellect-session-issuer`
+   ClusterRoles, the `kubeintellect-readonly` ServiceAccount and their bindings; on a namespace's first investigation
+   the server creates a `kubeintellect-session` ServiceAccount and RoleBinding there. What changes:
+   * a watchtower investigation can no longer read or write outside its namespace, read a Secret, read anything
+     cluster-scoped (`get nodes` is now `Forbidden` inside an investigation), create or delete a workload, or exec —
+     whatever the command; its writes are only those listed in [security](security.md#session-identity), and only if
+     the server itself holds writes (`rbac.createClusterOps` or `rbac.clusterAdmin`);
+   * a `readonly` API key can no longer write or read a Secret even where the server is cluster-admin;
+   * if the identity cannot be issued, nothing runs (`[Session identity unavailable] …`; watchtower log
+     `watchtower: not investigating … session identity unavailable`). Alert on it.
+   To keep the previous behaviour: `--set sessionIdentity.enabled=false --set readonlyIdentity.enabled=false`.
 
 ### New default-off flags
 

@@ -317,6 +317,20 @@ async def _investigate(finding: Finding, level: str) -> None:
             f" level={level} auto_fix={auto_fix} session={session_id}"
         )
         try:
+            if settings.SESSION_IDENTITY_ENABLED:
+                # ADR-007 Phase 6: the session must be able to act as its namespace-scoped identity, or it does not
+                # start — every kubectl call would be refused anyway. A deployment fault, so `error`: no breaker.
+                from app.tools import session_identity
+
+                try:
+                    await asyncio.to_thread(session_identity.kubeconfig_for, finding.namespace,
+                                            session_identity.base_kubeconfig())
+                except session_identity.IdentityUnavailable as exc:
+                    logger.warning(f"watchtower: not investigating session={session_id}: session identity "
+                                   f"unavailable for {finding.namespace!r}: {exc}")
+                    if auto_fix:
+                        _conclude(finding, session_id, "error", {"error": f"session identity unavailable: {exc}"})
+                    return
             # Pin the finding to its workload BEFORE the fix turn, so the outcome is judged on the same object (uid)
             # and a deletion or a substitute under the same name cannot pass as a repair.
             target: Target | None = None

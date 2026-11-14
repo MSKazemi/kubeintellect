@@ -29,7 +29,7 @@ from langchain_core.tools import InjectedToolArg, tool
 from langgraph.types import interrupt
 
 from app.core.config import settings
-from app.tools import kubectl_errors
+from app.tools import kubectl_errors, session_identity
 from app.tools.output_policy import mark_unavailable, unavailable_notice
 from app.tools.namespace_guard import (
     annotate_withheld,
@@ -1697,7 +1697,29 @@ def _remember(thread_id: str, call_fp: str, output: str) -> str:
     return output
 
 
-def _preflight_manifest_write(args: list[str], stdin: str) -> str | None:
+def _bound_namespace_of(config) -> str | None:
+    bound = (config.get("configurable") or {}).get("bound_namespace") if config else None
+    return str(bound) if bound else None
+
+
+def _kubectl_env(config) -> dict[str, str]:
+    """The environment every kubectl call made for this request runs with — above all, whose KUBECONFIG.
+
+    A namespace-bound session with SESSION_IDENTITY_ENABLED gets a kubeconfig holding only its namespace-scoped token,
+    and the `readonly` role with READONLY_IDENTITY_ENABLED one holding only the read-only token (`session_identity`);
+    `IdentityUnavailable` propagates, so the caller refuses rather than falling back. Every other request uses the
+    server's configured kubeconfig, as before.
+    """
+    bound = _bound_namespace_of(config)
+    if bound and settings.SESSION_IDENTITY_ENABLED:
+        return {**os.environ, "KUBECONFIG": session_identity.kubeconfig_for(bound, session_identity.base_kubeconfig())}
+    role = (config.get("configurable") or {}).get("user_role", "admin") if config else "admin"
+    if role == "readonly" and settings.READONLY_IDENTITY_ENABLED:
+        return {**os.environ, "KUBECONFIG": session_identity.readonly_kubeconfig(session_identity.base_kubeconfig())}
+    return {**os.environ, "KUBECONFIG": os.path.expanduser(settings.KUBECONFIG_PATH)}
+
+
+def _preflight_manifest_write(args: list[str], stdin: str, env: dict | None = None) -> str | None:
     """Dry-run an unattended manifest write with `kubectl diff`; a refusal message, or None to let it proceed.
 
     Probed on Kind v1.37 (2026-11-14): plain `kubectl diff -f -` exits 0 when the cluster already matches the manifest
@@ -1705,7 +1727,7 @@ def _preflight_manifest_write(args: list[str], stdin: str) -> str | None:
     error names the field. Anything that is not a plain 0/1 or an API-server rejection fails open: the write proceeds
     and the API server still validates it.
     """
-    env = {**os.environ, "KUBECONFIG": os.path.expanduser(settings.KUBECONFIG_PATH)}
+    env = env or {**os.environ, "KUBECONFIG": os.path.expanduser(settings.KUBECONFIG_PATH)}
     # The verb at its real position, the one `_extract_verb` reads: searching for the token "apply" found a namespace
     # named "apply" first and built `kubectl -n diff apply -f -`, a real write (independent review F2). `replace` is
     # not judged here: `kubectl diff` uses apply's merge rules, not replace's overwrite (F7).
@@ -1793,7 +1815,7 @@ def _is_server_rejection(reason: str) -> bool:
     return any(m in reason for m in _SERVER_REJECTION) and not any(m in reason for m in _SERVER_TRANSIENT)
 
 
-def _preflight_patch(args: list[str]) -> str | None:
+def _preflight_patch(args: list[str], env: dict | None = None) -> str | None:
     """Dry-run an unattended `kubectl patch` on the server; a refusal message, or None to let it proceed.
 
     Probed on Kind v1.37 (2026-11-14): `--dry-run=server` prints "<obj> patched (no change)" when the patch changes
@@ -1801,7 +1823,7 @@ def _preflight_patch(args: list[str]) -> str | None:
     to no useful effect is a real change and is NOT caught here; outcome verification reports it as not fixed.
     Anything that is neither a clear no-op nor a server rejection fails open.
     """
-    env = {**os.environ, "KUBECONFIG": os.path.expanduser(settings.KUBECONFIG_PATH)}
+    env = env or {**os.environ, "KUBECONFIG": os.path.expanduser(settings.KUBECONFIG_PATH)}
     try:
         proc = subprocess.run(_with_flag_after_verb(args, "--dry-run=server"), capture_output=True, text=True, encoding="utf-8",
                               errors="replace", timeout=settings.KUBECTL_TIMEOUT_SECONDS, env=env, shell=False)
@@ -2540,6 +2562,20 @@ def run_kubectl(
                 _note_write(thread_id, args, "refused before sending: the manifest failed the schema check")
             return refusal
 
+    # ── 4b3. Whose identity ──────────────────────────────────────────────────
+    # ADR-007 Phase 6: a namespace-bound session (every watchtower investigation, approved or not) talks to the
+    # cluster as a token confined by RBAC to its namespace, so the API server holds the bound even where the string
+    # gates above misread a command. No identity, no kubectl: never the server's own, broader one.
+    try:
+        env = _kubectl_env(config)
+    except session_identity.IdentityUnavailable as exc:
+        logger.warning(f"run_kubectl: session identity unavailable, nothing run: {exc}")
+        return (
+            f"[Session identity unavailable] {exc}. This session may only use kubectl as its own restricted "
+            "Kubernetes identity, so nothing was run. Stop and report this; it is a deployment problem, "
+            "not something a different command can fix."
+        )
+
     # ── 4c. Risk classification → HITL interrupt ─────────────────────────────
     # ADR-008 exactly-once + single-use approvals for irreversible calls. Inert (PASS) unless
     # SELF_GOVERN_ENABLED. Imported here, not at the top: app.tools.aci imports this module.
@@ -2573,7 +2609,7 @@ def run_kubectl(
             (verb == "apply" and stdin) or verb == "patch"
         ):
             preflight_refusal = (
-                _preflight_patch(args) if verb == "patch" else _preflight_manifest_write(args, stdin or "")
+                _preflight_patch(args, env) if verb == "patch" else _preflight_manifest_write(args, stdin or "", env)
             )
             if preflight_refusal is not None:
                 _record_permanent_failure(thread_id, guard_fp, _first_line(preflight_refusal))
@@ -2616,8 +2652,7 @@ def run_kubectl(
             logger.info(f"run_kubectl: HITL bypassed (auto-approve) for: {cmd!r}")
 
     # ── 5. Execute ───────────────────────────────────────────────────────────
-    kubeconfig = os.path.expanduser(settings.KUBECONFIG_PATH)
-    env = {**os.environ, "KUBECONFIG": kubeconfig}
+    # `env` is the one resolved at 4b3: the session identity for a bound session, the server's otherwise.
 
     # Safety Sandwich (V4 ADR-003): arm a rollback point before any mutation —
     # the pre-state YAML of the targets lands in the flight recorder, so every
@@ -2666,6 +2701,12 @@ def run_kubectl(
         )
 
     stdout, stderr = proc.stdout or "", proc.stderr or ""
+    if proc.returncode != 0 and "(Unauthorized)" in stderr and settings.SESSION_IDENTITY_ENABLED:
+        bound = _bound_namespace_of(config)
+        if bound:
+            session_identity.forget(bound)  # revoked or expired early: the next call mints a fresh token
+    if proc.returncode != 0 and "(Unauthorized)" in stderr and settings.READONLY_IDENTITY_ENABLED:
+        session_identity.forget(session_identity.READONLY_KEY)
     # Whether *kubectl* printed anything, decided before the emulator runs: `_apply_pipes` turns
     # an empty string into "(no matching lines)", and reporting that as output kubectl produced
     # would be a claim about the cluster made by our own grep.

@@ -151,6 +151,20 @@ rbac:
   allowExec: false
 ```
 
+### Session identities (`sessionIdentity`, `readonlyIdentity` — on by default in the chart)
+
+Two narrower identities the server hands to callers it does not fully trust, so Kubernetes, not the tool's command
+parser, enforces their limits ([details](#session-identity)):
+
+* **`kubeintellect-session`** (ClusterRole, used through a RoleBinding in one namespace): what a namespace-bound
+  investigation acts as. Reads of the namespaced part of cluster-ro; with `createClusterOps` or `clusterAdmin` also
+  patch/update of Deployments, StatefulSets and DaemonSets (and their `/scale`), delete of pods, create/patch of
+  ConfigMaps, patch of HPAs. Never Secrets, never creation or deletion of a workload, never exec/attach/port-forward,
+  never RBAC, never anything cluster-scoped — and never more than the server holds itself.
+* **`kubeintellect-readonly`** (ServiceAccount, bound cluster-wide to cluster-ro): what the `readonly` role acts as.
+* **`kubeintellect-session-issuer`**: lets the server mint tokens for exactly those two ServiceAccounts (by
+  `resourceNames`) and create the per-namespace ServiceAccount + RoleBinding, with `bind` on the session role only.
+
 ### namespace-manager (enabled via `rbac.enableNamespaceManagement: true`)
 
 Namespace + quota + RoleBinding CRUD. Off by default. Enable only for eval/test clusters.
@@ -557,6 +571,42 @@ recorded as finished. Each of the following now stops that sequence on its own:
 
 These per-session controls (repeat guard, write budget, stuck detector, ledger, dry-run preflight) apply to **autonomous investigations** — auto-approved *and* bound to a namespace. A stuck, budget-exhausted or approval-blocked session is still judged on its workload before its outcome is recorded. Chat sessions, including a chat with auto-approve on, are unchanged by them: a human approves every write there and may
 retry after fixing something outside the session.
+
+### Sessions act as their own Kubernetes identity {#session-identity}
+
+Every check above reads a command string and predicts how kubectl will parse it. Ten independent review passes
+(2026-11-14) kept finding strings kubectl reads differently — a repeated `-n` reaching another namespace,
+`get pods,secrets`, `get --raw …/secrets` — and each fix was followed by another find. A parser that guesses another
+program's parser cannot be shown complete, so the two bounds that matter most are also enforced by the API server:
+
+| Who | Acts as | So the API server refuses |
+|---|---|---|
+| A namespace-bound investigation (every watchtower investigation, auto-approved or waiting for a human) | a token for ServiceAccount `kubeintellect-session` **in that namespace**, bound there to the `kubeintellect-session` ClusterRole | any other namespace, anything cluster-scoped, Secrets, creating or deleting a workload (a substitute Job), exec, RBAC, `--as` |
+| The `readonly` role | a token for `kubeintellect-readonly`, bound cluster-wide to cluster-ro | every write and every Secret read |
+| Everyone else (`operator`, `admin`, `superadmin` in chat) | the server's own identity, as before | — (the approval prompt is their gate) |
+
+How it works: the server mints a short-lived token with the TokenRequest API (`kubectl create token`,
+`SESSION_IDENTITY_TOKEN_SECONDS`, default 900 s, re-minted with 2 minutes left), writes a kubeconfig holding only that
+token and the API server's address and CA (never the server's own credentials) to a 0600 file in a private 0700
+directory removed at exit, and runs that session's kubectl — including the dry-run preflights — with it. The first
+investigation in a namespace creates the ServiceAccount and RoleBinding there (`SESSION_IDENTITY_PROVISION`); the
+read-only identity is created by the chart, never by the server, because its binding is cluster-wide.
+
+**Fails closed.** If the identity cannot be had — the ClusterRole is not installed (named in the error), the
+ServiceAccount is missing and may not be provisioned, the token request is refused — kubectl does not run:
+`[Session identity unavailable] …`, and the watchtower does not start the investigation (outcome `error`, which does
+not open the breaker). It never falls back to the server's identity. A protected namespace never gets one.
+
+Checked on a real API server (Kind v1.37, `tests/test_a_session_identity_is_confined_by_a_real_api_server.py`, opt-in):
+with the session token, kubectl run directly — past every string gate — gets `Forbidden` for each bypass shape the
+review passes found and for the faked fix, while the repairs the pilots used (`set image`, `rollout restart`, `patch`,
+`create configmap`, `delete pod`) succeed; the server, holding only the chart's own roles, provisions and mints, and
+cannot mint a token for any other ServiceAccount.
+
+**Not covered:** `run_helm` keeps the server's identity — Helm stores releases in Secrets, so a Helm read needs Secret
+access; it is read-only and its output is redacted. Outside Helm both identities are off (`SESSION_IDENTITY_ENABLED`,
+`READONLY_IDENTITY_ENABLED`) because the ClusterRoles must exist first; render them with
+`helm template … --show-only templates/session-identity.yaml --show-only templates/rbac.yaml`.
 
 ### Exactly-once irreversible calls and single-use approvals (ADR-008) {#exactly-once-irreversible-calls-and-single-use-approvals-adr-008}
 

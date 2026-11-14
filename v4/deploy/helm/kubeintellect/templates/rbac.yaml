@@ -69,8 +69,9 @@ roleRef:
   name: {{ include "kubeintellect.fullname" . }}-role
 {{- end }}
 
-{{/* Cluster-scope read-only ClusterRole + Binding (nodes, PVs, all namespaces) */}}
-{{- if .Values.rbac.createClusterReadOnly }}
+{{/* Cluster-scope read-only ClusterRole + Binding (nodes, PVs, all namespaces). The role is also the read-only
+     identity's (session-identity.yaml), so it renders for that alone; the server is bound to it only when asked. */}}
+{{- if or .Values.rbac.createClusterReadOnly .Values.readonlyIdentity.enabled }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -132,6 +133,8 @@ rules:
 - apiGroups: ["authorization.k8s.io"]
   resources: ["subjectaccessreviews"]
   verbs: ["create"]
+{{- end }}
+{{- if .Values.rbac.createClusterReadOnly }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

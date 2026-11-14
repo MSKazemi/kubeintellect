@@ -11,6 +11,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Security — investigations and read-only keys act as their own Kubernetes identity
+
+Ten independent review passes (2026-11-14) each found a new command string that the kubectl tool's checks read
+differently from kubectl itself; every one was fixed (entries below), but a check that predicts another program's
+parser cannot be shown complete. So the two bounds that matter most now also hold at the API server:
+
+- **A namespace-bound investigation runs as a short-lived token for a ServiceAccount in its own namespace**
+  (`SESSION_IDENTITY_ENABLED`; Helm `sessionIdentity.enabled`, default on), bound there to the new
+  `kubeintellect-session` ClusterRole: no Secrets, no other namespace, nothing cluster-scoped, no workload creation or
+  deletion, no exec, no RBAC — and never more than the server's own `rbac.*` grants. The server creates the
+  ServiceAccount and RoleBinding on a namespace's first investigation.
+- **The `readonly` role runs as `kubeintellect-readonly`**, bound to the read-only role (`READONLY_IDENTITY_ENABLED`;
+  Helm `readonlyIdentity.enabled`, default on), so a read-only key cannot write or read a Secret even where the server
+  is cluster-admin.
+- **Fails closed**: no identity, no kubectl (`[Session identity unavailable] …`), and the watchtower does not start an
+  investigation it cannot confine. Tokens come from the TokenRequest API (900 s default), live in a 0600 file, and are
+  never logged. Checked against a real API server (Kind v1.37). `run_helm` keeps the server's identity (Helm stores
+  releases in Secrets). Off outside Helm until the ClusterRoles exist. See `docs/upgrade.md` item 5.
+
 ### Fixed — security: a dry-run flag kubectl does not read as one no longer skips the approval prompt
 
 Found by an independent review (2026-11-14), present before this release: a write counted as a dry run if

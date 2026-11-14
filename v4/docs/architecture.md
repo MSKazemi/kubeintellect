@@ -522,6 +522,7 @@ packages/
 ├── tools/
 │   ├── kubectl_tool.py           — run_kubectl with RBAC + HITL; per-session repeat guard, write budget, stuck detector
 │   ├── manifest_lint.py          — manifest vs the cluster's OpenAPI v3 schema before sending (fails open)
+│   ├── session_identity.py       — short-lived namespace-scoped / read-only kubeconfigs (TokenRequest; fails closed)
 │   ├── kubectl_errors.py         — error-pattern → one-line hint + permanent/transient class (19 patterns)
 │   ├── prometheus_tool.py        — query_prometheus + query_prometheus_series (trend feed:
 │   │                                (series, error) — never decide health from the series alone)

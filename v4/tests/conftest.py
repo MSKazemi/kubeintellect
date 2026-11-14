@@ -59,6 +59,9 @@ os.environ["MANIFEST_LINT_ENABLED"] = "false"
 os.environ["AUTOFIX_VERIFY_TIMEOUT_SECONDS"] = "0"
 # Same reason: the preflight runs `kubectl diff` with the real kubeconfig. Its own tests turn it on with kubectl faked.
 os.environ["PREFLIGHT_DIFF_ENABLED"] = "false"
+# Same reason: a session identity is minted with `kubectl create token` against the real kubeconfig. Its own tests fake
+# kubectl (test_a_bound_investigation_runs_as_its_own_namespace_identity.py) or use a disposable Kind cluster.
+os.environ["SESSION_IDENTITY_ENABLED"] = "false"
 
 # ── Stub langgraph postgres checkpointer ─────────────────────────────────────
 # AsyncPostgresSaver.from_conn_string is called inside init_graph() at startup.
@@ -104,8 +107,12 @@ def _fresh_kubectl_session_guard():
     from app.autonomy import watchtower
     from app.tools import kubectl_tool
 
+    from app.tools import session_identity
+
     kubectl_tool.reset_session_guard()
     watchtower.reset_breaker()  # same reason: the A3 circuit breaker is process memory
+    session_identity.clear_cache()  # and the minted session tokens
     yield
     kubectl_tool.reset_session_guard()
     watchtower.reset_breaker()
+    session_identity.clear_cache()

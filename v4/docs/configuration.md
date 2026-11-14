@@ -649,6 +649,14 @@ grounding rate of 0.70 and 0.61, which is why the default floor is 0.9.
 | `AUTO_APPROVE_MAX_WRITES` | `10` | At most this many writes (accepted or rejected) per auto-approved session run without a human; each further write goes to the approval prompt, so an unattended session stops there. An identical write that already failed permanently in the session is refused regardless. See [security](security.md#unattended-session-bounds). |
 | `AUTOFIX_VERIFY_TIMEOUT_SECONDS` | `120` | After an autonomous fix turn, how long the watchtower polls the finding's own workload (pinned by uid before the turn) for `fixed` / `not_fixed` / `unknown`. `not_fixed` covers still unhealthy, deleted, or replaced by a same-named object. `0` = do not verify (outcome `unknown`, never reported as fixed). |
 | `AUTOFIX_BREAKER_SECONDS` | `86400` | After an autonomous investigation ends `not_fixed`, `stuck` or `budget_exhausted`, its (namespace, playbook) is demoted from A3 to A2 for this long (a restart also resets it). `0` = no breaker. |
+| `SESSION_IDENTITY_ENABLED` | `false` (chart: `true`) | A namespace-bound investigation runs kubectl as a short-lived token for `SESSION_IDENTITY_SERVICE_ACCOUNT` in its namespace, bound there to `SESSION_IDENTITY_CLUSTER_ROLE`, so RBAC holds the namespace and Secret bounds. Fails closed: no identity, no kubectl. The ClusterRole must exist (Helm `sessionIdentity.enabled`). See [security](security.md#session-identity). |
+| `SESSION_IDENTITY_SERVICE_ACCOUNT` | `kubeintellect-session` | The per-namespace ServiceAccount a bound investigation acts as. |
+| `SESSION_IDENTITY_CLUSTER_ROLE` | `kubeintellect-session` | The ClusterRole it is bound to, by a RoleBinding in that namespace. |
+| `SESSION_IDENTITY_PROVISION` | `true` | Create the ServiceAccount + RoleBinding in a namespace on its first investigation. `false`: they must already exist (the server then needs only `serviceaccounts/token` on that name). |
+| `SESSION_IDENTITY_TOKEN_SECONDS` | `900` | TokenRequest lifetime, 600–86400 (the API server's minimum is 600); re-minted when under 120 s remain. Also used for the read-only identity. |
+| `READONLY_IDENTITY_ENABLED` | `false` (chart: `true`) | The `readonly` role runs kubectl as `READONLY_IDENTITY_SERVICE_ACCOUNT`, bound cluster-wide to the chart's read-only role, so the API server refuses its writes and Secret reads. Fails closed. Never provisioned by the server. |
+| `READONLY_IDENTITY_SERVICE_ACCOUNT` | `kubeintellect-readonly` | The read-only ServiceAccount. |
+| `READONLY_IDENTITY_NAMESPACE` | `""` | Where it lives; empty = the server pod's own namespace (the chart sets it). |
 | `AUTONOMY_A3_ALLOWLIST` | `""` | Patterns eligible for `A3` auto-fix, as `<playbook>/<namespace-glob>` entries, e.g. `CrashLoopBackOff/dev-*`. |
 
 ### Anthropic provider
