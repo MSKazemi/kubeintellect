@@ -1378,6 +1378,37 @@ def _stays_within_namespace(verb: str, args: list[str], stdin: str | None, bound
     return bool(names) and names == {bound.lower()}
 
 
+# Reads that a bound session points at its own namespace when the command names none. Writes are deliberately
+# absent: a write that names no namespace (or targets a cluster-scoped object) must keep failing the binding check
+# in `_stays_within_namespace`, and an injected `-n` would make it look as if it stayed inside.
+_BOUND_READ_VERBS = frozenset({"get", "describe", "logs", "top", "events", "wait"})
+
+
+def _bound_read_namespace(verb: str, args: list[str], config: RunnableConfig | None) -> str | None:
+    """The namespace to give a read that names none, in a session bound to one; None to leave it alone.
+
+    Measured 2026-11-14: a session bound to `h3-2` read `kubectl get job report -o yaml`, kubectl looked in its
+    default namespace, answered NotFound for a Job that existed in `h3-2`, and the model spent 73 cycles
+    "recreating" it. The investigation is about one namespace; a read that does not say otherwise belongs there.
+    """
+    bound = (config.get("configurable") or {}).get("bound_namespace") if config else None
+    if not bound or verb not in _BOUND_READ_VERBS:
+        return None
+    if verb in DESTRUCTIVE_VERBS or _destructive_verbs_in(args) or _is_write_verb(verb, args):
+        return None
+    if _is_all_namespaces(args) or _extract_namespace(args, verb):
+        return None
+    return str(bound)
+
+
+def _with_namespace(args: list[str], namespace: str) -> list[str]:
+    """`args` with `-n namespace` added before any `--` (what follows `--` belongs to the container command)."""
+    if "--" in args:
+        i = args.index("--")
+        return [*args[:i], "-n", namespace, *args[i:]]
+    return [*args, "-n", namespace]
+
+
 def _is_all_namespaces(args: list[str]) -> bool:
     """True if the command targets every namespace at once.
 
@@ -1859,6 +1890,12 @@ def run_kubectl(
 
     verb = _extract_verb(args)
 
+    # ── 3c. A bound session's read looks in the session's namespace ──────────
+    injected_ns = _bound_read_namespace(verb, args, config)
+    if injected_ns:
+        args = _with_namespace(args, injected_ns)
+        cmd = cmd.replace(" -- ", f" -n {injected_ns} -- ", 1) if " -- " in cmd else f"{cmd} -n {injected_ns}"
+
     # ── 4. Rejected verbs (non-interactive, always fail in container) ─────────
     if verb in _REJECTED_VERBS:
         return (
@@ -2110,5 +2147,11 @@ def run_kubectl(
             "--tail, -n <namespace>, or -l <label> flags.]"
         )
         logger.debug(f"run_kubectl: output truncated ({omitted} chars omitted)")
+
+    if injected_ns:
+        output += (
+            f"\n[namespace: this ran in '{injected_ns}', the namespace this investigation is bound to, "
+            "because the command named none]"
+        )
 
     return effect_guard.settle(admission, output)
