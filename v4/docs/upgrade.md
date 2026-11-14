@@ -186,6 +186,24 @@ upgrade; everything new is default-off.
    ([details](security.md#namespace-bound-auto-approve)). A fix that touched a sibling namespace,
    used no `-n`, or piped a manifest without `metadata.namespace` now stops at the approval prompt.
    `kubectl delete <kind> --all` is now always-confirm.
+4. **An auto-approved session is bounded and its outcome is judged by the system.** Each of these changes what an
+   unattended (A3, or `auto_approve`) session may do; a chat session with a human approving is unchanged except for
+   the first two items:
+   * a manifest whose field has the wrong type or a misspelt name is refused before it is sent
+     (`MANIFEST_LINT_ENABLED`, on; it fetches the cluster's OpenAPI schema with `kubectl get --raw`, so the
+     deployment's identity needs `get` on `/openapi/v3/*`, which every authenticated user has by default);
+   * kubectl errors end with `[permanent error: …]` or `[transient error: …]`;
+   * a bound session's read that names no namespace runs in the bound namespace;
+   * an identical write that already failed permanently is refused; at most `AUTO_APPROVE_MAX_WRITES` (10) writes run
+     without a human; a session that repeats itself is stopped;
+   * `run`, `create` of a workload, and a change to a container's `command`/`args` are always-confirm;
+   * `JobBackoffLimitExceeded` is never auto-fixed (`auto_fixable: false`);
+   * the watchtower polls the finding's own workload after a fix for up to `AUTOFIX_VERIFY_TIMEOUT_SECONDS` (120 s,
+     holding that investigation's slot), records a typed outcome (`autonomy_outcome` in the flight recorder), and a
+     `not_fixed`, `stuck` or `budget_exhausted` outcome demotes that (namespace, playbook) to A2 for
+     `AUTOFIX_BREAKER_SECONDS` (24 h). Log lines to alert on: `watchtower_outcome … outcome=not_fixed|stuck|budget_exhausted`,
+     `watchtower: A3 breaker open`.
+   See [what else bounds an unattended session](security.md#unattended-session-bounds).
 
 ### New default-off flags
 
