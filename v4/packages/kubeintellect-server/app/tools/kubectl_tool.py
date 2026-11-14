@@ -1457,7 +1457,7 @@ def reset_session_guard() -> None:
 def _guard_session(thread_id: str) -> dict:
     record = _guard.get(thread_id)
     if record is None:
-        record = {"failed": {}, "writes": 0, "history": deque(maxlen=8), "stuck": False}
+        record = {"failed": {}, "writes": 0, "history": deque(maxlen=8), "stuck": False, "ledger": deque(maxlen=12)}
         _guard[thread_id] = record
         while len(_guard) > _GUARD_MAX_SESSIONS:
             _guard.popitem(last=False)
@@ -1575,6 +1575,35 @@ def _preflight_manifest_write(args: list[str], stdin: str) -> str | None:
         )
     logger.info(f"run_kubectl: preflight diff could not judge the write (exit {plain.returncode}); proceeding")
     return None
+
+
+def _note_write(thread_id: str, cmd: str, reply: str) -> None:
+    """Add one write and how it ended to the session's ledger (built from kubectl's reply, never from the model)."""
+    lines = [ln.strip() for ln in reply.splitlines() if ln.strip()]
+    outcome = " ".join(lines[:2])[:220] if lines else "(no reply)"
+    with _guard_lock:
+        _guard_session(thread_id)["ledger"].append((cmd[:160], outcome))
+
+
+def session_ledger(thread_id: str) -> str:
+    """The block the coordinator appends to every model call of an unattended session; "" when there is nothing yet.
+
+    Measured 2026-11-14: in E3 the facts that would have ended the loop were in the context (2.04 M input tokens of
+    near-identical replies) but nothing kept them in front of the model. This keeps the last 12 writes and outcomes
+    there, written by code.
+    """
+    with _guard_lock:
+        record = _guard.get(thread_id)
+        if not record or not record["ledger"]:
+            return ""
+        entries, stuck = list(record["ledger"]), record["stuck"]
+    rows = "\n".join(f"{i}. `{cmd}` → {outcome}" for i, (cmd, outcome) in enumerate(entries, 1))
+    note = "\nThis session has been stopped for repeating itself: write your report now." if stuck else ""
+    return (
+        "## Writes this session already attempted (recorded by the tool, not by you)\n"
+        f"{rows}{note}\n"
+        "Do not resend a write that failed permanently; if a write changed nothing, the cause is somewhere else."
+    )
 
 
 def _first_line(text: str) -> str:
@@ -2175,6 +2204,7 @@ def run_kubectl(
                 "[permanent error: resending it unchanged cannot succeed — change the approach, or stop and report "
                 "what you found]"
             )
+            _note_write(thread_id, cmd, refused)
             return _remember(thread_id, guard_fp, refused)
 
     # ── 4b2. Check a manifest against the cluster's schema before sending it ─
@@ -2186,13 +2216,15 @@ def run_kubectl(
         findings = manifest_lint.lint(stdin, os.path.expanduser(settings.KUBECONFIG_PATH))
         if findings:
             logger.warning(f"run_kubectl: manifest refused before sending ({len(findings)} finding(s)): {cmd!r}")
-            if guard_fp:
-                _record_permanent_failure(thread_id, guard_fp, f"invalid manifest: {findings[0]}")
-            return (
+            refusal = (
                 "[Invalid manifest: not sent to the cluster] Checked against the cluster's own schema:\n"
                 + "\n".join(f"- {f}" for f in findings)
                 + "\n[permanent error: resending this manifest unchanged cannot succeed — fix the fields named above]"
             )
+            if guard_fp:
+                _record_permanent_failure(thread_id, guard_fp, f"invalid manifest: {findings[0]}")
+                _note_write(thread_id, cmd, refusal)
+            return refusal
 
     # ── 4c. Risk classification → HITL interrupt ─────────────────────────────
     # ADR-008 exactly-once + single-use approvals for irreversible calls. Inert (PASS) unless
@@ -2231,6 +2263,7 @@ def run_kubectl(
             refusal = _preflight_manifest_write(args, stdin)
             if refusal is not None:
                 _record_permanent_failure(thread_id, guard_fp, _first_line(refusal))
+                _note_write(thread_id, cmd, refusal)
                 logger.warning(f"run_kubectl: preflight refused an unattended write session={thread_id}: {cmd!r}")
                 return _remember(thread_id, call_fp, refusal) if call_fp else refusal
         admission = effect_guard.admit(
@@ -2403,6 +2436,8 @@ def run_kubectl(
             "because the command named none]"
         )
 
+    if guard_fp:
+        _note_write(thread_id, cmd, output)
     if call_fp:
         output = _remember(thread_id, call_fp, output)
 

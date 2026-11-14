@@ -919,7 +919,28 @@ async def _direct_answer(state: AgentState, config: Optional[RunnableConfig] = N
         system_parts.append(_PROACTIVE_FIX_BLOCK)
 
     llm = get_coordinator_llm()
-    agent = create_react_agent(llm, tools=fault_isolated_tool_node(ALL_TOOLS))
+    if hitl_bypass:
+        # An unattended session sees, on every model call, the writes it already attempted and how each ended — kept
+        # by the tool from kubectl's replies (L10, ADR-007). Passed as `prompt`, which runs inside the model step, so
+        # the step budget is unchanged (a pre_model_hook node would cost one recursion unit per call).
+        from langchain_core.runnables import RunnableLambda
+
+        from app.tools.kubectl_tool import session_ledger
+
+        thread_id = str((config or {}).get("configurable", {}).get("thread_id") or session_id)
+
+        def _with_ledger(agent_state: dict) -> list[BaseMessage]:
+            messages = list(agent_state["messages"])
+            ledger = session_ledger(thread_id)
+            if ledger and messages and isinstance(messages[0], SystemMessage):
+                messages[0] = SystemMessage(content=f"{messages[0].content}\n\n{ledger}")
+            return messages
+
+        agent = create_react_agent(
+            llm, tools=fault_isolated_tool_node(ALL_TOOLS), prompt=RunnableLambda(_with_ledger),
+        )
+    else:
+        agent = create_react_agent(llm, tools=fault_isolated_tool_node(ALL_TOOLS))
 
     history, history_summary = _trim_session_messages(list(state["messages"]))
     if history_summary:

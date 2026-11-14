@@ -83,7 +83,7 @@ class TestBudgetReachesTheRunnable:
                 seen["config"] = config
                 return {"messages": list(payload["messages"]) + [AIMessage(content="done")]}
 
-        monkeypatch.setattr(prebuilt, "create_react_agent", lambda llm, tools: _Agent())
+        monkeypatch.setattr(prebuilt, "create_react_agent", lambda llm, tools, **kw: _Agent())
         monkeypatch.setattr(coord_mod, "get_coordinator_llm", lambda: object())
 
         state = {
@@ -110,7 +110,7 @@ class TestBudgetReachesTheRunnable:
                 seen["config"] = config
                 return {"messages": [AIMessage(content="done")]}
 
-        monkeypatch.setattr(prebuilt, "create_react_agent", lambda llm, tools: _Agent())
+        monkeypatch.setattr(prebuilt, "create_react_agent", lambda llm, tools, **kw: _Agent())
         monkeypatch.setattr(coord_mod, "get_coordinator_llm", lambda: object())
 
         state = {
@@ -140,7 +140,7 @@ class TestExhaustionEscalates:
             async def ainvoke(self, payload, config=None):
                 raise GraphRecursionError("limit reached")
 
-        monkeypatch.setattr(prebuilt, "create_react_agent", lambda llm, tools: _Agent())
+        monkeypatch.setattr(prebuilt, "create_react_agent", lambda llm, tools, **kw: _Agent())
         monkeypatch.setattr(coord_mod, "get_coordinator_llm", lambda: object())
 
         state = {
