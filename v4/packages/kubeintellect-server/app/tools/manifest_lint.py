@@ -30,13 +30,18 @@ import os
 import subprocess
 import threading
 import time
+from collections import OrderedDict
 
 import yaml
 
 _MAX_FINDINGS = 8
 _FAILED_FETCH_TTL_SECONDS = 300.0
+# A fetched schema is re-read after this long, so a CRD or cluster upgrade is picked up without a restart; the cache is
+# an LRU of this many group-versions, since the key comes from the apiVersion the model writes (independent review F10).
+_SCHEMA_TTL_SECONDS = 600.0
+_MAX_CACHE_ENTRIES = 64
 
-_cache: dict[tuple[str, str], tuple[float, dict | None]] = {}
+_cache: OrderedDict[tuple[str, str], tuple[float, dict | None]] = OrderedDict()
 _lock = threading.Lock()
 
 
@@ -75,13 +80,19 @@ def _schema_doc(api_version: str, kubeconfig: str) -> dict | None:
     now = time.monotonic()
     with _lock:
         hit = _cache.get(key)
-        if hit is not None and (
-            hit[1] is not None or now - hit[0] < _FAILED_FETCH_TTL_SECONDS
-        ):
-            return hit[1]
+        if hit is not None:
+            ttl = (
+                _SCHEMA_TTL_SECONDS if hit[1] is not None else _FAILED_FETCH_TTL_SECONDS
+            )
+            if now - hit[0] < ttl:
+                _cache.move_to_end(key)
+                return hit[1]
     doc = _fetch_openapi(key[1], kubeconfig)
     with _lock:
         _cache[key] = (now, doc)
+        _cache.move_to_end(key)
+        while len(_cache) > _MAX_CACHE_ENTRIES:
+            _cache.popitem(last=False)
     return doc
 
 
@@ -238,7 +249,14 @@ def lint(stdin: str, kubeconfig: str) -> list[str]:
         if kind_schema is None:
             continue
         found: list[str] = []
-        _walk(doc, kind_schema, schema_doc["components"]["schemas"], "", found)
+        # `.get`, not `[]`: a document without `schemas` must mean "could not check", never an exception (review F10).
+        _walk(
+            doc,
+            kind_schema,
+            (schema_doc.get("components") or {}).get("schemas") or {},
+            "",
+            found,
+        )
         prefix = f"document {i + 1} ({kind}): " if len(docs) > 1 else ""
         findings.extend(prefix + f for f in found)
         if len(findings) >= _MAX_FINDINGS:

@@ -57,12 +57,13 @@ def test_the_ledger_records_each_write_and_its_outcome():
     _write("b", rc=0)
     ledger = kt.session_ledger("auto-led")
     assert "recorded by the tool" in ledger
-    assert ledger.count("kubectl apply -f - -n h3-2") == 3
-    assert (
-        "unrecognized type" in ledger
-        and "Repeat refused" in ledger
-        and "configured" in ledger
-    )
+    assert ledger.count("kubectl apply -n h3-2") == 3
+    # Code-built labels only: kubectl's reply text is cluster-influenced and stays out of the system message
+    # (independent review F11).
+    assert "permanent: manifest_type_error" in ledger
+    assert "refused: identical to a write that already failed permanently" in ledger
+    assert "executed (exit 0)" in ledger
+    assert "unrecognized type" not in ledger and "The request is invalid" not in ledger
 
 
 class _Recording(GenericFakeChatModel):
@@ -99,7 +100,7 @@ async def test_the_coordinator_puts_it_in_front_of_every_model_call(
     if bypass:
         assert (
             "Writes this session already attempted" in system
-            and "unrecognized type" in system
+            and "manifest_type_error" in system
         )
     else:
         assert "Writes this session already attempted" not in system

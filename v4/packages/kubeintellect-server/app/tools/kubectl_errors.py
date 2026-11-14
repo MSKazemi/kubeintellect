@@ -161,8 +161,9 @@ TERMINAL_PATTERNS: frozenset[str] = frozenset({
 PERMANENT_PATTERNS: frozenset[str] = frozenset({
     "manifest_type_error", "already_exists", "unknown_flag", "invalid_request", "immutable_field",
     "yaml_parse_error", "forbidden", "method_not_allowed", "crd_not_recognized", "missing_resource_type",
-    "namespace_not_found", "pod_not_found", "not_found_generic", "container_not_found",
 })
+# Not-found is deliberately NOT permanent: polling for an object about to be created gets NotFound until it exists,
+# and "resending this exact command cannot succeed" would be false there (independent review F12). It keeps its hint.
 TRANSIENT_PATTERNS: frozenset[str] = frozenset({"concurrent_modification", "etcd_recovering"})
 
 

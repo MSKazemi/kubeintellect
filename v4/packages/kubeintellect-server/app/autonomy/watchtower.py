@@ -137,6 +137,20 @@ def _schedule_lesson(finding: Finding, outcome: str) -> None:
         pass  # no running loop (a synchronous caller): nothing to schedule on
 
 
+async def _conclude_after_verify(
+    finding: Finding, target: Target | None, session_id: str, ended: str, detail: dict,
+) -> str:
+    """A session that stopped (stuck, budget, approval prompt) is judged on its workload first: `fixed` if the pinned
+    workload is healthy (with how the session ended), otherwise the stop reason — which opens the breaker."""
+    from app.autonomy import verify
+
+    if await verify.verify(target, settings.AUTOFIX_VERIFY_TIMEOUT_SECONDS) == "fixed":
+        _conclude(finding, session_id, "fixed", {"ended": ended, **detail})
+        return "fixed"
+    _conclude(finding, session_id, ended, detail)
+    return ended
+
+
 async def _conclude_pending(finding: Finding, target: Target | None, session_id: str, pending: dict) -> str:
     """An unattended turn stopped at an approval prompt: check the session's own workload before calling it stuck.
 
@@ -147,7 +161,7 @@ async def _conclude_pending(finding: Finding, target: Target | None, session_id:
     from app.autonomy import verify
 
     if await verify.verify(target, settings.AUTOFIX_VERIFY_TIMEOUT_SECONDS) == "fixed":
-        _conclude(finding, session_id, "fixed", {"pending_command": pending.get("command"),
+        _conclude(finding, session_id, "fixed", {"ended": "needs_approval", "pending_command": pending.get("command"),
                                                  "pending_risk": pending.get("risk_level")})
         return "fixed"
     _conclude(finding, session_id, "needs_approval", pending)
@@ -289,6 +303,14 @@ async def _investigate(finding: Finding, level: str) -> None:
             ask += " Propose the exact fix commands but do not execute destructive actions."
 
     async with _semaphore:
+        # The breaker may have opened while this finding waited for a slot: another finding of the same kind in the
+        # same namespace just ended badly (independent review F6: it was only checked before waiting).
+        if auto_fix and _breaker_open(finding.namespace, finding.playbook):
+            logger.info("watchtower: A3 auto-fix withdrawn after the wait: breaker open for %s in %s",
+                        finding.playbook, finding.namespace)
+            auto_fix, grounding_gated = False, False
+            ask = ask.replace(" Then apply the appropriate fix and verify it worked.",
+                              " Propose the exact fix commands but do not execute destructive actions.")
         logger.info(
             f"watchtower_investigating playbook={finding.playbook}"
             f" ns={finding.namespace} object={finding.object_name}"
@@ -324,34 +346,36 @@ async def _investigate(finding: Finding, level: str) -> None:
                 await _run_turn(ask, session_id, auto_approve=auto_fix, bound_namespace=finding.namespace)
             from app.agent.workflow import pop_turn_error
 
+            from app.tools.kubectl_tool import _auto_writes, session_is_stuck
+
             turn_error = pop_turn_error(session_id)
-            if turn_error is not None:
-                # The model (or the graph) failed: nothing was tried, so this says nothing about the fix. Recorded as
-                # `error`, which does not open the breaker.
+            if turn_error is not None and not (auto_fix and _auto_writes(session_id) > 0):
+                # The model (or the graph) failed before anything was written: this says nothing about the fix.
+                # Recorded as `error`, which does not open the breaker.
                 logger.warning(f"watchtower_escalated session={session_id} outcome=error: {turn_error}")
                 if auto_fix:
                     _conclude(finding, session_id, "error", {"error": turn_error})
                 return
+            # A failure AFTER writes ran (e.g. a context overflow at the end of a long loop) is judged on the workload
+            # like any other ending (independent review F5): the writes may have fixed it, or broken it.
             outcome = await _turn_outcome(session_id)
-            detail: dict = {}
+            detail: dict = {"turn_error": turn_error} if turn_error else {}
+            if outcome is None and auto_fix and session_is_stuck(session_id):
+                outcome = "stuck"
             if outcome is None and auto_fix:
-                from app.tools.kubectl_tool import session_is_stuck
-
-                if session_is_stuck(session_id):
-                    outcome = "stuck"
-                else:
-                    pending = await _pending_approval(session_id)
-                    if pending is not None:
-                        # An unattended turn stopped at a prompt nobody can answer: say which command, so the
-                        # operator gets more than an empty report — after checking the session's own workload.
-                        logger.warning(f"watchtower_escalated session={session_id} outcome=needs_approval")
-                        await _conclude_pending(finding, target, session_id, pending)
-                        return
+                pending = await _pending_approval(session_id)
+                if pending is not None:
+                    # An unattended turn stopped at a prompt nobody can answer: say which command, so the operator
+                    # gets more than an empty report — after checking the session's own workload.
+                    logger.warning(f"watchtower_escalated session={session_id} outcome=needs_approval")
+                    await _conclude_pending(finding, target, session_id, pending)
+                    return
             if outcome is not None:
-                # Not done: the session stopped without a conclusion. Nothing to re-check as "held".
+                # The session stopped without a conclusion (stuck, budget). It may still have fixed the fault before
+                # it stopped, so the workload decides (independent review F5): fixed, or the stop reason.
                 logger.warning(f"watchtower_escalated session={session_id} outcome={outcome}")
                 if auto_fix:
-                    _conclude(finding, session_id, outcome, detail)
+                    await _conclude_after_verify(finding, target, session_id, outcome, detail)
                 return
             logger.info(f"watchtower_done session={session_id}")
             if auto_fix:

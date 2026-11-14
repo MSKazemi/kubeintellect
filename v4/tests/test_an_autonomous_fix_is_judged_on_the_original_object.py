@@ -9,6 +9,7 @@ The cluster is a dict here: `_kubectl_json` is the one function that reads it.
 
 from __future__ import annotations
 
+import itertools
 from unittest import mock
 
 import pytest
@@ -111,28 +112,23 @@ class TestTheOutcome:
 
     @pytest.mark.asyncio
     async def test_a_deployment_is_polled_until_ready(self):
-        states = iter(
-            [
-                {
-                    "metadata": {"uid": "d", "generation": 2},
-                    "spec": {"replicas": 2},
-                    "status": {
-                        "observedGeneration": 2,
-                        "readyReplicas": 1,
-                        "updatedReplicas": 2,
-                    },
+        # A rollout in progress, then complete (the `kubectl rollout status` conditions), and it stays complete: the
+        # verdict needs two consecutive healthy samples (independent review F3), so the stream does not run out.
+        def dep(ready: int) -> dict:
+            return {
+                "metadata": {"uid": "d", "generation": 2},
+                "spec": {"replicas": 2},
+                "status": {
+                    "observedGeneration": 2,
+                    "replicas": 2,
+                    "updatedReplicas": 2,
+                    "readyReplicas": ready,
+                    "availableReplicas": ready,
+                    "unavailableReplicas": 2 - ready,
                 },
-                {
-                    "metadata": {"uid": "d", "generation": 2},
-                    "spec": {"replicas": 2},
-                    "status": {
-                        "observedGeneration": 2,
-                        "readyReplicas": 2,
-                        "updatedReplicas": 2,
-                    },
-                },
-            ]
-        )
+            }
+
+        states = itertools.chain([dep(1)], itertools.repeat(dep(2)))
         with _cluster({("deployment", "web"): lambda: next(states)}):
             assert (
                 await verify.verify(

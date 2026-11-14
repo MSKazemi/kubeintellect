@@ -107,13 +107,30 @@ def resolve_target(playbook: str, namespace: str, object_name: str) -> Target | 
     return Target(kind, name, namespace, uid)
 
 
+_JUDGED_KINDS = frozenset({"job", "deployment", "statefulset", "daemonset", "pod"})
+
+
+def _n(status: dict, key: str) -> int:
+    return int(status.get(key, 0) or 0)
+
+
+def _want(spec: dict) -> int:
+    return int(spec["replicas"]) if spec.get("replicas") is not None else 1
+
+
 def _healthy(target: Target, obj: dict) -> bool | None:
-    """True healthy, False terminally failed, None not yet (keep polling)."""
+    """True healthy, False terminally failed, None not yet (keep polling).
+
+    A rollout is healthy only when it is COMPLETE — the conditions `kubectl rollout status` waits for. Counting ready
+    replicas alone passed a stalled rollout whose old pod was still Ready while the new one crashlooped (independent
+    review F3).
+    """
     spec, status, meta = (
         obj.get("spec") or {},
         obj.get("status") or {},
         obj.get("metadata") or {},
     )
+    settled = _n(status, "observedGeneration") >= int(meta.get("generation", 0) or 0)
     if target.kind == "job":
         conditions = {
             c.get("type"): c.get("status") for c in status.get("conditions") or []
@@ -123,25 +140,38 @@ def _healthy(target: Target, obj: dict) -> bool | None:
         if conditions.get("Failed") == "True":
             return False
         return None
-    if target.kind in ("deployment", "statefulset"):
-        want = int(spec.get("replicas", 1))
-        settled = int(status.get("observedGeneration", 0)) >= int(
-            meta.get("generation", 0)
+    if target.kind == "deployment":
+        want = _want(spec)
+        complete = (
+            want > 0
+            and settled
+            and _n(status, "updatedReplicas") >= want
+            and _n(status, "replicas") == _n(status, "updatedReplicas")
+            and _n(status, "readyReplicas") >= want
+            and _n(status, "availableReplicas") >= want
+            and _n(status, "unavailableReplicas") == 0
         )
-        ready = int(status.get("readyReplicas", 0) or 0)
-        updated = int(status.get("updatedReplicas", 0) or 0)
-        return (
-            True
-            if (want > 0 and settled and ready >= want and updated >= want)
-            else None
+        return True if complete else None
+    if target.kind == "statefulset":
+        want = _want(spec)
+        complete = (
+            want > 0
+            and settled
+            and _n(status, "readyReplicas") >= want
+            and _n(status, "updatedReplicas") >= want
+            and status.get("currentRevision") == status.get("updateRevision")
         )
+        return True if complete else None
     if target.kind == "daemonset":
-        want = int(status.get("desiredNumberScheduled", 0) or 0)
-        return (
-            True
-            if (want > 0 and int(status.get("numberReady", 0) or 0) >= want)
-            else None
+        want = _n(status, "desiredNumberScheduled")
+        complete = (
+            want > 0
+            and settled
+            and _n(status, "updatedNumberScheduled") >= want
+            and _n(status, "numberAvailable") >= want
+            and _n(status, "numberUnavailable") == 0
         )
+        return True if complete else None
     if target.kind == "pod":
         ready = any(
             c.get("type") == "Ready" and c.get("status") == "True"
@@ -151,15 +181,28 @@ def _healthy(target: Target, obj: dict) -> bool | None:
     return None
 
 
+def _restarts(obj: dict) -> int:
+    return sum(
+        int(c.get("restartCount", 0) or 0)
+        for c in (obj.get("status") or {}).get("containerStatuses") or []
+    )
+
+
 async def verify(
     target: Target | None,
     timeout_seconds: float,
     interval: float = _POLL_INTERVAL_SECONDS,
 ) -> str:
-    """``fixed`` | ``not_fixed`` | ``unknown`` for the pinned object, polling until healthy or the deadline."""
-    if target is None or timeout_seconds <= 0:
+    """``fixed`` | ``not_fixed`` | ``unknown`` for the pinned object, polling until healthy or the deadline.
+
+    `fixed` needs two consecutive healthy samples of the SAME object (same uid) and, for a pod, no restart between
+    them: a crashlooping container without a readiness probe is briefly Ready between crashes (review F3). A kind
+    this module does not judge is `unknown`, never `not_fixed` (review F5).
+    """
+    if target is None or timeout_seconds <= 0 or target.kind not in _JUDGED_KINDS:
         return "unknown"
     deadline = time.monotonic() + timeout_seconds
+    healthy_in_a_row, last_restarts = 0, None
     while True:
         obj = await asyncio.to_thread(_get, target.kind, target.name, target.namespace)
         if obj is None:
@@ -167,7 +210,13 @@ async def verify(
         if (obj.get("metadata") or {}).get("uid") != target.uid:
             return "not_fixed"  # replaced by another object of the same name: a substitute, not a repair
         health = _healthy(target, obj)
-        if health is True:
+        restarts = _restarts(obj)
+        steady = (
+            target.kind != "pod" or last_restarts is None or restarts == last_restarts
+        )
+        healthy_in_a_row = healthy_in_a_row + 1 if (health is True and steady) else 0
+        last_restarts = restarts
+        if healthy_in_a_row >= 2:
             return "fixed"
         if health is False or time.monotonic() >= deadline:
             return "not_fixed"

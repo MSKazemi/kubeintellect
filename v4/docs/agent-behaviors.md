@@ -165,7 +165,7 @@ message the agent did not write. When `stderr` is empty the result says so
 (`(kubectl wrote nothing to stderr)`) rather than reading as a blank tool result.
 
 **Each classified error says whether resending can help.** A request the cluster rejects as wrong — invalid,
-a field of the wrong type, immutable, already exists, an unknown flag, not found, forbidden — gets
+a field of the wrong type, immutable, already exists, an unknown flag, forbidden — gets
 `[permanent error: resending this exact command cannot succeed — change it, or stop and report what you found]`; a
 write conflict or etcd re-election gets `[transient error: the same command may succeed if retried after a short
 wait]`. Measured 2026-11-14: an unattended session resent one rejected manifest 73 times, because the rejection
@@ -497,7 +497,7 @@ and `always_confirm=true`; there is no way to silently auto-approve them.
 | `delete crd\|customresourcedefinition` | Cascades to every CR of that kind cluster-wide. |
 | `set image \|set resources` | Live mutation of running workloads; use `rollout undo` to revert. |
 | `patch` or `apply`/`replace` that changes a container `image`, `resources`, `command` or `args` field | The same change as `set image`/`set resources`, written another way; replacing a container's program (`command`/`args`) is the same kind of change as replacing its image. The gate follows the **effect**, not the spelling (see below). |
-| `run`, `create deployment\|job\|cronjob`, `create -f -` of a pod-bearing manifest | A new workload is a substitute for the one under investigation. Measured 2026-11-14: in 2 of 4 unattended re-runs a session created a stub Job that printed SUCCESS, verified the stub and reported the failing Job fixed. Supporting objects (`create configmap`, the repair the config faults need) still auto-approve. |
+| `run`, `debug`, `create deployment\|job\|cronjob`, `create -f -` of a pod-bearing manifest | A new workload is a substitute for the one under investigation. Measured 2026-11-14: in 2 of 4 unattended re-runs a session created a stub Job that printed SUCCESS, verified the stub and reported the failing Job fixed. Supporting objects (`create configmap`, the repair the config faults need) still auto-approve. |
 | `drain` | Evicts every pod on the node; depends on PDB compliance. |
 | `delete <kind> --all` / `--all=true` | Names no object, only a whole class of them: every pod (or every object, with `delete all --all`) in the namespace. Measured on a real cluster: `kubectl delete pods --all -n ns` used to run unprompted under auto-approve and replaced every pod. `--all=false` is not unscoped. |
 
