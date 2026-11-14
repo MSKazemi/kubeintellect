@@ -624,6 +624,23 @@ def _llm_error_hint(exc: Exception) -> str:
     return f"LLM error: {exc}"
 
 
+# The error a session's last turn ended with, for the watchtower: an autonomous investigation whose model call failed
+# is an `error`, not a fix that did not work (measured 2026-11-14: a DNS outage turned every session into `not_fixed`
+# and opened the A3 breaker everywhere). Read once; bounded.
+_turn_errors: dict[str, str] = {}
+
+
+def _record_turn_error(session_id: str, message: str) -> None:
+    _turn_errors[session_id] = message[:300]
+    while len(_turn_errors) > 512:
+        _turn_errors.pop(next(iter(_turn_errors)))
+
+
+def pop_turn_error(session_id: str) -> str | None:
+    """The error the session's last turn ended with (removed on read), or None."""
+    return _turn_errors.pop(session_id, None)
+
+
 async def run_session(
     user_message: str,
     session_id: str,
@@ -684,6 +701,7 @@ async def run_session(
     except Exception as exc:
         logger.error(f"run_session error session={session_id}: {exc}", exc_info=False)
         user_msg = _llm_error_hint(exc)
+        _record_turn_error(session_id, user_msg)
         await emit(session_id, ErrorEvent(session_id=session_id, error=user_msg))
     finally:
         try:

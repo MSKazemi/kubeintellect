@@ -104,7 +104,7 @@ def _conclude(finding: Finding, session_id: str, outcome: str, detail: dict) -> 
         flight_recorder.record(session_id, "autonomy_outcome", payload)
     except Exception as exc:  # recording must never break the investigation
         logger.warning(f"watchtower: could not record the outcome session={session_id}: {exc}")
-    level = logger.info if outcome in ("fixed", "unknown") else logger.warning
+    level = logger.info if outcome in ("fixed", "unknown") else logger.warning  # "error" is a warning, not a trip
     level(
         f"watchtower_outcome session={session_id} outcome={outcome} playbook={finding.playbook} "
         f"ns={finding.namespace} object={finding.object_name}"
@@ -303,6 +303,16 @@ async def _investigate(finding: Finding, level: str) -> None:
                 )
             else:
                 await _run_turn(ask, session_id, auto_approve=auto_fix, bound_namespace=finding.namespace)
+            from app.agent.workflow import pop_turn_error
+
+            turn_error = pop_turn_error(session_id)
+            if turn_error is not None:
+                # The model (or the graph) failed: nothing was tried, so this says nothing about the fix. Recorded as
+                # `error`, which does not open the breaker.
+                logger.warning(f"watchtower_escalated session={session_id} outcome=error: {turn_error}")
+                if auto_fix:
+                    _conclude(finding, session_id, "error", {"error": turn_error})
+                return
             outcome = await _turn_outcome(session_id)
             detail: dict = {}
             if outcome is None and auto_fix:
