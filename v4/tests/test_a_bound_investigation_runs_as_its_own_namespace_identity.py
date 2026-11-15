@@ -161,7 +161,9 @@ def test_the_session_kubeconfig_holds_only_a_token_for_the_namespace_service_acc
 
 def test_the_token_file_is_private():
     path = _issue(FakeKubectl())
-    assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+    assert (
+        stat.S_IMODE(os.stat(path).st_mode) == 0o400
+    )  # read-only to its owner too (identity review, 2026-11-15)
     assert stat.S_IMODE(os.stat(os.path.dirname(path)).st_mode) == 0o700
 
 
@@ -230,7 +232,9 @@ def test_a_missing_service_account_is_provisioned_bound_to_the_session_role():
             "namespace": "b3-c1",
         }
     ]
-    assert fake.minted() == 2
+    assert fake.minted() == 1, (
+        "provisioned before the first token request (once per process), not after a NotFound"
+    )
 
 
 def test_provisioning_off_and_no_service_account_is_unavailable(monkeypatch):

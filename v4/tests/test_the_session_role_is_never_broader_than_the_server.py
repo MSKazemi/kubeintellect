@@ -6,9 +6,12 @@ only helps if the role itself is right, so the rendered chart is checked here:
 
 * no Secret verb, no workload creation, no exec / attach / port-forward, no wildcard — the faked fix of 2026-11-14 was
   a substitute Job, and the review passes found Secret reads by string tricks;
-* every (group, resource, verb) it grants is also granted to the server by its own `rbac.*` roles, so turning session
-  identities on can never widen what a deployment could already do (with `rbac.createClusterOps=false` the session
-  gets no writes at all);
+* every (group, resource, verb) it grants is also granted to the server by its own `rbac.*` roles **with at least the
+  same scope** — a session can be bound in any namespace, so only a cluster-wide grant of the server's covers it, and
+  the read-only identity's grants are compared by the scope of its own binding. Turning identities on can never widen
+  what a deployment could already do. The first version compared (group, resource, verb) only and never rendered
+  `rbac.createClusterReadOnly=false`, where the server reads its own namespace only and the session role still granted
+  reads in every namespace an investigation opened (independent review, 2026-11-15, finding 3);
 * with writes enabled, the writes the pilots' real repairs used are there (otherwise A3 silently cannot fix anything);
 * the issuer role can mint tokens for the session ServiceAccount only, and bind the session ClusterRole only.
 """
@@ -72,6 +75,54 @@ def _grants(rules: list[dict]) -> set[tuple[str, str, str]]:
     }
 
 
+def _scoped_grants(docs: list[dict], sa: str) -> set[tuple[str, str, str, str]] | None:
+    """(scope, group, resource, verb) that ServiceAccount `sa` holds through the chart's bindings; scope is "*" for a
+    ClusterRoleBinding, else the RoleBinding's namespace. None = cluster-admin. The issuer role is left out: it is
+    what hands identities out, compared separately."""
+    out: set[tuple[str, str, str, str]] = set()
+    for b in docs:
+        if b["kind"] not in ("ClusterRoleBinding", "RoleBinding") or b["metadata"][
+            "name"
+        ].endswith("-session-issuer"):
+            continue
+        if not any(x.get("name") == sa for x in b.get("subjects") or []):
+            continue
+        if b["roleRef"]["name"] == "cluster-admin":
+            return None
+        scope = "*" if b["kind"] == "ClusterRoleBinding" else b["metadata"]["namespace"]
+        role = next(
+            (
+                d
+                for d in docs
+                if d["kind"] == b["roleRef"]["kind"]
+                and d["metadata"]["name"] == b["roleRef"]["name"]
+            ),
+            None,
+        )
+        out |= {(scope, *g) for g in _grants((role or {}).get("rules") or [])}
+    return out
+
+
+def _not_covered(
+    grants: set[tuple[str, str, str, str]], server: set[tuple[str, str, str, str]]
+) -> list:
+    return sorted(
+        g
+        for g in grants
+        if ("*", *g[1:]) not in server and not (g[0] != "*" and g in server)
+    )
+
+
+_CONFIGS = [
+    (),
+    ("rbac.createClusterOps=true",),
+    ("rbac.createClusterReadOnly=false",),
+    ("rbac.createClusterReadOnly=false", "rbac.createClusterOps=true"),
+    ("rbac.createNamespaced=false",),
+    ("rbac.createClusterReadOnly=false", "rbac.createNamespaced=false"),
+]
+
+
 def _server_grants(docs: list[dict]) -> set[tuple[str, str, str]] | None:
     """What the server's own ServiceAccount holds through the chart's rbac.* roles (None = cluster-admin)."""
     bindings = [
@@ -122,15 +173,50 @@ def test_the_session_role_grants_no_secret_no_workload_creation_no_exec(sets):
     )
 
 
-@pytest.mark.parametrize("sets", [(), ("rbac.createClusterOps=true",)])
-def test_the_session_role_is_a_subset_of_what_the_server_holds(sets):
+@pytest.mark.parametrize("sets", _CONFIGS)
+def test_the_session_role_is_a_subset_of_what_the_server_holds_in_every_namespace(sets):
     docs = _render(*sets)
-    session = _grants(_role(docs, "kubeintellect-session")["rules"])
-    server = _server_grants(docs)
+    server = _scoped_grants(docs, "kubeintellect-sa")
     assert server is not None
-    assert session - server == set(), (
-        f"session identity would widen the deployment: {sorted(session - server)}"
+    role = _role(docs, "kubeintellect-session")
+    session = {
+        ("*", *g) for g in _grants((role or {}).get("rules") or [])
+    }  # bound in any namespace it investigates
+    assert _not_covered(session, server) == [], (
+        "the session identity would widen the deployment"
     )
+
+
+@pytest.mark.parametrize("sets", _CONFIGS)
+def test_the_readonly_identity_is_a_subset_of_what_the_server_holds(sets):
+    docs = _render(*sets)
+    server = _scoped_grants(docs, "kubeintellect-sa")
+    readonly = _scoped_grants(docs, "kubeintellect-readonly")
+    assert server is not None and readonly is not None
+    assert _not_covered(readonly, server) == [], (
+        "the read-only identity would widen the deployment"
+    )
+
+
+def test_without_cluster_reads_the_session_role_is_not_installed_so_investigations_fail_closed():
+    docs = _render("rbac.createClusterReadOnly=false")
+    assert _role(docs, "kubeintellect-session") is None
+    cm = next(
+        d
+        for d in docs
+        if d["kind"] == "ConfigMap"
+        and "SESSION_IDENTITY_ENABLED" in (d.get("data") or {})
+    )
+    assert cm["data"]["SESSION_IDENTITY_ENABLED"] == "true", (
+        "still on: the server reports the missing ClusterRole instead of running as itself"
+    )
+
+
+def test_without_cluster_reads_the_readonly_identity_reads_the_server_namespace_only():
+    docs = _render("rbac.createClusterReadOnly=false")
+    readonly = _scoped_grants(docs, "kubeintellect-readonly")
+    assert readonly and {scope for scope, *_ in readonly} == {"kubeintellect"}
+    assert not [g for g in readonly if g[2].startswith("secrets")]
 
 
 def test_without_server_writes_the_session_has_none():

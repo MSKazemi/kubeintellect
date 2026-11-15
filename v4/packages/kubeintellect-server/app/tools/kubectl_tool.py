@@ -21,7 +21,7 @@ import shlex
 import subprocess
 import threading
 from collections import OrderedDict, deque
-from typing import Annotated
+from typing import Annotated, Any
 
 import yaml
 from langchain_core.runnables import RunnableConfig
@@ -540,12 +540,66 @@ _CONNECTION_FLAGS = frozenset({
     # identity / impersonation
     "--as", "--as-group", "--as-uid",
     "--user", "--username", "--password", "--token",
-    # which cluster
-    "--server", "-s", "--kubeconfig", "--context", "--cluster",
+    # which cluster, and which network path to it (a proxy sees the bearer token of a plain-HTTP hop)
+    "--server", "-s", "--kubeconfig", "--context", "--cluster", "--proxy-url",
     # transport trust
     "--insecure-skip-tls-verify", "--certificate-authority",
     "--client-certificate", "--client-key", "--tls-server-name",
 })
+
+
+# ── Commands that act on the KubeIntellect server, not on the cluster ─────────
+# Owner decision 2026-11-15: whatever a sysadmin could do to the CLUSTER may be approved; these do something to the
+# machine KubeIntellect runs on — its kubeconfig (which in a bound session IS the session identity, so rewriting it
+# swapped the session's token for the server's own: independent review of ADR-007 Phase 6, finding 1), its files
+# (`--from-file` copied a server credential into a ConfigMap: finding 2), or its processes. An approval prompt would
+# show a namespaced-looking command doing something elsewhere, so they are refused for every role, before any prompt.
+_HOST_LOCAL_VERBS = {
+    "cp": "copies files between the KubeIntellect server's disk and a pod",
+    "proxy": "opens a listener on the KubeIntellect server that forwards with its credentials",
+    "kustomize": "renders a local or remote overlay on the KubeIntellect server, which can read its files or run "
+                 "a helper program there",
+    "kuberc": "changes the kubectl preferences every later call on the KubeIntellect server uses",
+}
+_HOST_LOCAL_FLAGS = {
+    "--from-file": "reads a file on the KubeIntellect server",
+    "--from-env-file": "reads a file on the KubeIntellect server",
+    "--patch-file": "reads a file on the KubeIntellect server",
+    "--kuberc": "loads kubectl preferences from a file on the KubeIntellect server",
+    "--profile-output": "writes a file on the KubeIntellect server",
+    "--cache-dir": "writes files on the KubeIntellect server",
+    "--log-file": "writes a file on the KubeIntellect server",
+    "--log-dir": "writes files on the KubeIntellect server",
+}
+_HOST_LOCAL_FLAG_PREFIXES = ("--exec-", "--auth-provider")  # credential plugins: a program run on the server
+_FILE_OUTPUT_FORMATS = frozenset({"jsonpath-file", "go-template-file", "templatefile", "custom-columns-file"})
+
+
+def _host_local_reason(verb: str, args: list[str], flags_end: int) -> str | None:
+    """What this command would do on the KubeIntellect server itself, or None if it only talks to the cluster."""
+    if verb in _HOST_LOCAL_VERBS:
+        return f"`kubectl {verb}` {_HOST_LOCAL_VERBS[verb]}"
+    if verb == "config" and _operand_after_verb(args) not in _READ_ONLY_SUBCOMMANDS["config"]:
+        sub = _operand_after_verb(args) or "(no subcommand)"
+        return f"`kubectl config {sub}` changes the kubeconfig the KubeIntellect server runs kubectl with"
+    for tok in args[1:flags_end]:
+        if not tok.startswith("--"):
+            continue
+        name = tok.split("=", 1)[0]
+        if name in _HOST_LOCAL_FLAGS:
+            return f"`{name}` {_HOST_LOCAL_FLAGS[name]}"
+        if name.startswith(_HOST_LOCAL_FLAG_PREFIXES):
+            return f"`{name}` configures a credential plugin, a program the KubeIntellect server would run"
+        # `--profile` is kubectl's CPU/heap profiler (it writes profile.pprof) everywhere except `debug`, where it
+        # names a debugging profile; `debug --custom` reads a container spec from a file.
+        if name == "--profile" and verb != "debug":
+            return "`--profile` writes a profiling file on the KubeIntellect server"
+        if name == "--custom" and verb == "debug":
+            return "`--custom` reads a file on the KubeIntellect server"
+    out_format = (_flag_value(args[:flags_end], "-o", "--output", verb) or "").split("=", 1)[0]
+    if out_format in _FILE_OUTPUT_FORMATS:
+        return f"`-o {out_format}` reads its template from a file on the KubeIntellect server"
+    return None
 
 
 def _authorised_identity(config: RunnableConfig | None) -> str | None:
@@ -2492,6 +2546,19 @@ def run_kubectl(
             f"The '{denied}' operation requires an admin API key."
         )
 
+    # ── 4a1. Nothing that acts on the KubeIntellect server itself ────────────
+    # After the role check, so a read-only key still gets its usual answer for a write; before every prompt, because
+    # no role and no approval may run these (see `_HOST_LOCAL_VERBS`).
+    host_local = _host_local_reason(verb, args, flags_end)
+    if host_local:
+        logger.warning(f"run_kubectl: refused a command that acts on the KubeIntellect host: {cmd!r}")
+        return (
+            f"[Protected] {host_local}. That acts on the KubeIntellect server itself (its files, its programs or "
+            "the credentials it runs with), not on the cluster, so it is not permitted for any role or with "
+            "approval. A sysadmin who needs it runs it in a shell on that host. For cluster data, use an inline "
+            "form instead (`--from-literal`, `-p '<json>'`, `-o jsonpath=…`, `-f -` with the YAML as stdin)."
+        )
+
     # ── 4a2. Manifest sources KubeIntellect cannot read ───────────────────────
     # `kubectl apply -f https://…/m.yaml` and `-f /path/x.yaml` put the manifest somewhere the
     # gates cannot reach. Measured 2026-08-20: both ran, the protected-resource and
@@ -2543,13 +2610,28 @@ def run_kubectl(
             _note_write(thread_id, args, "refused: identical to a write that already failed permanently")
             return _remember(thread_id, guard_fp, refused)
 
+    # ── 4b2a. Whose identity ──────────────────────────────────────────────────
+    # ADR-007 Phase 6: a namespace-bound session (every watchtower investigation, approved or not) talks to the
+    # cluster as a token confined by RBAC to its namespace, so the API server holds the bound even where the string
+    # gates above misread a command. No identity, no kubectl: never the server's own, broader one. Resolved before the
+    # schema check below, which reads from the cluster too (identity review, finding 5).
+    try:
+        env = _kubectl_env(config)
+    except session_identity.IdentityUnavailable as exc:
+        logger.warning(f"run_kubectl: session identity unavailable, nothing run: {exc}")
+        return (
+            f"[Session identity unavailable] {exc}. This session may only use kubectl as its own restricted "
+            "Kubernetes identity, so nothing was run. Stop and report this; it is a deployment problem, "
+            "not something a different command can fix."
+        )
+
     # ── 4b2. Check a manifest against the cluster's schema before sending it ─
     # Before the approval prompt too: a human should never be asked to approve a manifest the cluster would reject.
     # Measured 2026-11-14: a re-typed Job whose unquoted `ERROR: …` made `command[2]` a mapping was rejected 73
     # times with an error naming no field. Fails open: no schema, no finding (the server still validates).
     if stdin and verb in ("apply", "create", "replace") and settings.MANIFEST_LINT_ENABLED:
         from app.tools import manifest_lint
-        findings = manifest_lint.lint(stdin, os.path.expanduser(settings.KUBECONFIG_PATH))
+        findings = manifest_lint.lint(stdin, env.get("KUBECONFIG", ""))
         if findings:
             logger.warning(f"run_kubectl: manifest refused before sending ({len(findings)} finding(s)): {cmd!r}")
             refusal = (
@@ -2561,20 +2643,6 @@ def run_kubectl(
                 _record_permanent_failure(thread_id, guard_fp, f"invalid manifest: {findings[0]}")
                 _note_write(thread_id, args, "refused before sending: the manifest failed the schema check")
             return refusal
-
-    # ── 4b3. Whose identity ──────────────────────────────────────────────────
-    # ADR-007 Phase 6: a namespace-bound session (every watchtower investigation, approved or not) talks to the
-    # cluster as a token confined by RBAC to its namespace, so the API server holds the bound even where the string
-    # gates above misread a command. No identity, no kubectl: never the server's own, broader one.
-    try:
-        env = _kubectl_env(config)
-    except session_identity.IdentityUnavailable as exc:
-        logger.warning(f"run_kubectl: session identity unavailable, nothing run: {exc}")
-        return (
-            f"[Session identity unavailable] {exc}. This session may only use kubectl as its own restricted "
-            "Kubernetes identity, so nothing was run. Stop and report this; it is a deployment problem, "
-            "not something a different command can fix."
-        )
 
     # ── 4c. Risk classification → HITL interrupt ─────────────────────────────
     # ADR-008 exactly-once + single-use approvals for irreversible calls. Inert (PASS) unless
@@ -2638,14 +2706,24 @@ def run_kubectl(
                 f"run_kubectl: hitl_classification verb={verb} risk={risk}",
                 extra={"session_id": session_id, "hitl_verb": verb, "hitl_risk_level": risk, "hitl_cmd": cmd[:200]},
             )
-            approved = interrupt({
+            prompt: dict[str, Any] = {
                 "type": "hitl",
                 "command": cmd,
                 "stdin": stdin,          # include YAML so the user sees what will be applied
                 "risk_level": risk,
                 "always_confirm": always_confirm,
                 "human_summary": f"About to run: `{cmd}`",
-            })
+            }
+            if bound_ns and settings.SESSION_IDENTITY_ENABLED:
+                # "Approval elevates" (owner, 2026-11-15). Nobody answers this prompt inside the investigation; a
+                # person answers it from chat, where the command runs with the approver's role and KubeIntellect's
+                # own Kubernetes permissions — not the identity confined to the namespace. The prompt says so.
+                prompt["elevation"] = "server_identity"
+                prompt["human_summary"] += (
+                    f" — requested by an investigation confined to namespace '{bound_ns}'. Approving it runs it under "
+                    "your own role, with KubeIntellect's own Kubernetes permissions, outside that confinement."
+                )
+            approved = interrupt(prompt)
             if not approved:
                 return "Action cancelled by user."
         elif not has_dry_run and hitl_bypass:
@@ -2767,6 +2845,16 @@ def run_kubectl(
             )
         elif err_class == "transient":
             output += "\n[transient error: the same command may succeed if retried after a short wait]"
+        bound_for_hint = _bound_namespace_of(config)
+        if bound_for_hint and settings.SESSION_IDENTITY_ENABLED and "(Forbidden)" in stderr:
+            # The API server, not a string gate, said no: the session reached the edge of its identity. Rephrasing
+            # cannot help; a person can do it from chat ("approval elevates").
+            output += (
+                f"\n[This investigation runs as a Kubernetes identity restricted to namespace '{bound_for_hint}', and "
+                "the API server refused this as outside it. Do not try another form of the same request: report what "
+                "you found and what a person would need to do — a person can run it from chat with their own "
+                "permissions.]"
+            )
         if pattern_name in kubectl_errors.TERMINAL_PATTERNS:
             # The apiserver is not answering — a second call to the same tool cannot get past
             # that, and the prompt's "do not retry" rule needs a string to key on.

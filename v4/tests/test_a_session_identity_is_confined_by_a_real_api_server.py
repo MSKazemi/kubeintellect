@@ -349,3 +349,13 @@ def test_the_readonly_identity_cannot_write_or_read_a_secret(world, readonly, ar
 def test_the_readonly_identity_reads_the_cluster(world, readonly):
     assert "web" in _ok(kc(readonly, "get", "deployments", "-A")).stdout
     _ok(kc(readonly, "get", "nodes"))
+
+
+def test_kubectl_itself_cannot_rewrite_the_session_kubeconfig(world, session):
+    """Defence in depth behind the `kubectl config` refusal (identity review, finding 1): the file kubectl is pointed at
+    is read-only, so even a command that reached kubectl could not change the identity the next call uses."""
+    before = Path(session).read_bytes()
+    p = kc(session, "config", "set-context", "--current", f"--namespace={world['b']}")
+    assert p.returncode != 0, p.stdout
+    assert Path(session).read_bytes() == before
+    assert "kubeintellect-session" in _ok(kc(session, "auth", "whoami")).stdout

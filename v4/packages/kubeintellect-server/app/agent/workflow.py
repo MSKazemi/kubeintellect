@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import AbstractAsyncContextManager
-from typing import Any, cast
+from typing import Any, Optional, cast
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -77,8 +77,15 @@ async def subagent_executor(payload: SubagentInput) -> dict:
 # ── Targeted investigator node ────────────────────────────────────────────────
 
 
-async def targeted_investigator(state: AgentState) -> dict:
-    """Run 3 parallel targeted reads for a single-resource issue, then return to coordinator."""
+# `Optional[RunnableConfig]`, not `RunnableConfig | None`: with `from __future__ import annotations` LangGraph sees a
+# string and injects the run config only for the spellings it lists (tests/test_workflow_config_injection.py).
+async def targeted_investigator(state: AgentState, config: Optional[RunnableConfig] = None) -> dict:  # noqa: UP045
+    """Run 3 parallel targeted reads for a single-resource issue, then return to coordinator.
+
+    The reads use the turn's identity (`config`), so a namespace-bound session reads as its own namespace identity; and
+    a bound session reads only its own namespace — `ns` is a value the model wrote (independent review of ADR-007
+    Phase 6, finding 4).
+    """
     from app.agent.nodes.context_fetcher import _run_kubectl_snapshot
     from app.tools.namespace_guard import protected_message
 
@@ -87,6 +94,21 @@ async def targeted_investigator(state: AgentState) -> dict:
     pod = info.get("pod", "")
     issue = info.get("issue", "")
     session_id = state.get("session_id", "-")
+    bound = ((config or {}).get("configurable") or {}).get("bound_namespace")
+
+    if bound and ns != bound:
+        logger.warning(f"targeted_investigator: {ns!r} is outside the bound namespace {bound!r} session={session_id}")
+        existing_snapshot = state.get("cluster_snapshot", "")
+        refusal = (
+            f"## Targeted Investigation: {pod} in {ns}\n"
+            f"This investigation is bound to namespace '{bound}'; '{ns}' is outside it.\n\n"
+            "No pod description, events or deployments were read. Investigate within the bound namespace, or "
+            "report that the cause lies elsewhere."
+        )
+        return {
+            "cluster_snapshot": f"{existing_snapshot}\n\n{refusal}" if existing_snapshot else refusal,
+            "targeted_investigation": None,
+        }
 
     # `ns` and `pod` are `(\S+?)` captures out of a line the model wrote, and they are spliced
     # straight into an argv. `_kubectl_snapshot` refuses a blocked namespace itself, but a
@@ -113,9 +135,9 @@ async def targeted_investigator(state: AgentState) -> dict:
     ))
 
     describe_out, events_out, deploy_out = await asyncio.gather(
-        asyncio.to_thread(_run_kubectl_snapshot, ["describe", "pod", pod, "-n", ns]),
-        asyncio.to_thread(_run_kubectl_snapshot, ["get", "events", "-n", ns, "--sort-by=.lastTimestamp"]),
-        asyncio.to_thread(_run_kubectl_snapshot, ["get", "deployments", "-n", ns]),
+        asyncio.to_thread(_run_kubectl_snapshot, ["describe", "pod", pod, "-n", ns], config),
+        asyncio.to_thread(_run_kubectl_snapshot, ["get", "events", "-n", ns, "--sort-by=.lastTimestamp"], config),
+        asyncio.to_thread(_run_kubectl_snapshot, ["get", "deployments", "-n", ns], config),
     )
 
     detail = (

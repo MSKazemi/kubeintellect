@@ -5,11 +5,14 @@ a RoleBinding to the ClusterRole below. The API server's RBAC then confines the 
 away from Secrets, workload creation and exec, whatever command string the model wrote. The server creates the
 ServiceAccount and RoleBinding on a namespace's first investigation (`sessionIdentity.provision`).
 
-Never broader than the server itself: the read rules are the namespaced part of `cluster-ro`, and the write rules are
-rendered only when the server already holds writes (`rbac.createClusterOps` or `rbac.clusterAdmin`), and then only a
-subset of `cluster-ops`. `tests/test_the_session_role_is_never_broader_than_the_server.py` checks both.
+Never broader than the server itself, in every namespace a session can be bound in: the role is rendered only when the
+server reads cluster-wide (`rbac.createClusterReadOnly` or `rbac.clusterAdmin`) — its read rules are the namespaced
+part of `cluster-ro` — and its write rules only when the server already holds cluster-wide writes
+(`rbac.createClusterOps` or `rbac.clusterAdmin`), and then only a subset of `cluster-ops`. Without cluster-wide reads
+the server could not investigate another namespace either; the role is absent, and an investigation fails closed
+naming it. `tests/test_the_session_role_is_never_broader_than_the_server.py` checks this per scope.
 */ -}}
-{{- if .Values.sessionIdentity.enabled }}
+{{- if and .Values.sessionIdentity.enabled (or .Values.rbac.createClusterReadOnly .Values.rbac.clusterAdmin) }}
 {{- $ns := (.Values.namespace | default .Release.Namespace) -}}
 {{- $role := .Values.sessionIdentity.clusterRole -}}
 {{- $sa := .Values.sessionIdentity.serviceAccount -}}
@@ -75,8 +78,9 @@ rules:
 {{- if .Values.readonlyIdentity.enabled }}
 {{- $ns := (.Values.namespace | default .Release.Namespace) }}
 ---
-# The `readonly` role's identity (READONLY_IDENTITY_*): reads only, no Secrets, cluster-wide — exactly the chart's
-# cluster-ro role. Created here, never by the server, so the cluster-wide grant is visible in the chart.
+# The `readonly` role's identity (READONLY_IDENTITY_*): reads only, no Secrets, and never further than the server reads —
+# cluster-wide through the chart's cluster-ro role when the server reads cluster-wide, otherwise the server's own
+# namespaced read Role in its namespace. Created here, never by the server, so the grant is visible in the chart.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -85,6 +89,7 @@ metadata:
   labels:
     {{- include "kubeintellect.labels" . | nindent 4 }}
 automountServiceAccountToken: false
+{{- if or .Values.rbac.createClusterReadOnly .Values.rbac.clusterAdmin }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -100,6 +105,24 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: {{ include "kubeintellect.fullname" . }}-cluster-ro
+{{- else if .Values.rbac.createNamespaced }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}-readonly-identity
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kubeintellect.labels" . | nindent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.readonlyIdentity.serviceAccount }}
+  namespace: {{ $ns }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "kubeintellect.fullname" . }}-role
+{{- end }}
 {{- end }}
 {{- if or .Values.sessionIdentity.enabled .Values.readonlyIdentity.enabled }}
 {{- $ns := (.Values.namespace | default .Release.Namespace) }}

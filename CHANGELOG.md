@@ -29,6 +29,18 @@ parser cannot be shown complete. So the two bounds that matter most now also hol
   investigation it cannot confine. Tokens come from the TokenRequest API (900 s default), live in a 0600 file, and are
   never logged. Checked against a real API server (Kind v1.37). `run_helm` keeps the server's identity (Helm stores
   releases in Secrets). Off outside Helm until the ClusterRoles exist. See `docs/upgrade.md` item 5.
+- **An independent review of the identities (2026-11-15) found six problems, all fixed and checked on Kind:**
+  a bound session could rewrite its own kubeconfig with `kubectl config set|unset|set-credentials` and so run as the
+  server, or as a credential plugin the server would execute; `create configmap --from-file` copied a file from the
+  server into the cluster; with `rbac.createClusterReadOnly=false` the session and read-only identities could read
+  more than the server; the pre-fetch reads of a turn and the manifest schema check ran as the server; a filesystem
+  error escaped as a crash. Now: **commands that act on the KubeIntellect server itself** — `kubectl config` writes,
+  `cp`, `proxy`, `kustomize`, `kuberc`, and the flags that read or write a server file — **are refused for every role
+  and with any approval** (`docs/upgrade.md` item 6); the session kubeconfig is read-only and checked before each
+  reuse; the chart never renders an identity broader than the server, compared by scope; the pre-fetch reads and the
+  schema check use the turn's identity; every OS error is `[Session identity unavailable]`.
+- **Approval elevates:** what an investigation's identity forbids stops at the approval prompt, and the prompt now says
+  that approving runs it under the approver's role with KubeIntellect's own permissions, outside the namespace.
 
 ### Fixed — security: a dry-run flag kubectl does not read as one no longer skips the approval prompt
 

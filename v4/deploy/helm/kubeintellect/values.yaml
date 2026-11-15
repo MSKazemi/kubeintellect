@@ -147,9 +147,10 @@ sessionIdentity:
   # TokenRequest lifetime in seconds (API server minimum 600); also used for the read-only identity.
   tokenSeconds: 900
 
-# The `readonly` role's kubectl runs as this ServiceAccount, bound cluster-wide to the chart's cluster-ro role (reads,
-# no Secrets; rendered for it even when the server itself is cluster-admin), so a read-only API key cannot write or
-# read a Secret whatever command it sends. Fails closed. docs/security.md#session-identity
+# The `readonly` role's kubectl runs as this ServiceAccount, bound to read-only rules with the server's own read scope:
+# cluster-wide to the chart's cluster-ro role (reads, no Secrets; rendered for it even when the server itself is
+# cluster-admin) when the server reads cluster-wide, else the server's namespaced read Role in its own namespace. So a
+# read-only API key cannot write or read a Secret whatever command it sends. Fails closed. docs/security.md#session-identity
 readonlyIdentity:
   enabled: true
   serviceAccount: kubeintellect-readonly

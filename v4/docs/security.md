@@ -343,7 +343,7 @@ see [every path to the cluster](#4a-every-path-to-the-cluster) for the others.
        through `kubectl get secret`)
 
 4. Risk classification + interrupt()
-   ├─ high-risk (delete, drain, replace, taint, cp, debug):
+   ├─ high-risk (delete, drain, replace, taint, debug):
    │    interrupt() called → graph pauses → user sees approval prompt
    ├─ medium-risk (patch, apply, scale, exec, create, run, set, cordon, uncordon,
    │    label, annotate, expose, autoscale, port-forward, attach, evict, certificate):
@@ -582,20 +582,52 @@ program's parser cannot be shown complete, so the two bounds that matter most ar
 | Who | Acts as | So the API server refuses |
 |---|---|---|
 | A namespace-bound investigation (every watchtower investigation, auto-approved or waiting for a human) | a token for ServiceAccount `kubeintellect-session` **in that namespace**, bound there to the `kubeintellect-session` ClusterRole | any other namespace, anything cluster-scoped, Secrets, creating or deleting a workload (a substitute Job), exec, RBAC, `--as` |
-| The `readonly` role | a token for `kubeintellect-readonly`, bound cluster-wide to cluster-ro | every write and every Secret read |
+| The `readonly` role | a token for `kubeintellect-readonly`, bound to the read-only role with the server's own read scope (cluster-wide to cluster-ro when the server reads cluster-wide, else its namespaced read Role in its own namespace) | every write and every Secret read |
 | Everyone else (`operator`, `admin`, `superadmin` in chat) | the server's own identity, as before | — (the approval prompt is their gate) |
 
 How it works: the server mints a short-lived token with the TokenRequest API (`kubectl create token`,
 `SESSION_IDENTITY_TOKEN_SECONDS`, default 900 s, re-minted with 2 minutes left), writes a kubeconfig holding only that
-token and the API server's address and CA (never the server's own credentials) to a 0600 file in a private 0700
-directory removed at exit, and runs that session's kubectl — including the dry-run preflights — with it. The first
-investigation in a namespace creates the ServiceAccount and RoleBinding there (`SESSION_IDENTITY_PROVISION`); the
-read-only identity is created by the chart, never by the server, because its binding is cluster-wide.
+token and the API server's address and CA (never the server's own credentials) to a **read-only (0400)** file in a
+private 0700 directory removed at exit, and runs that session's kubectl — including the dry-run preflights, the
+manifest schema check and the pre-fetch reads a turn makes before the model runs (the context snapshot, which for a
+bound session covers its own namespace only, and the targeted reads) — with it. Before every reuse the file is
+compared with what was written; a file that changed is never used, the identity is re-issued. With
+`SESSION_IDENTITY_PROVISION` the server applies the ServiceAccount and RoleBinding in a namespace once per process,
+even when they already exist, so a RoleBinding of that name to another role is reported (the API server refuses to
+change a roleRef), never used. The read-only identity is created by the chart, never by the server.
+
+**Never broader than the server.** The session ClusterRole is rendered only when the server itself reads cluster-wide
+(`rbac.createClusterReadOnly` or `rbac.clusterAdmin`) — a session can be bound in any namespace — and its writes only
+when the server holds cluster-wide writes. With `rbac.createClusterReadOnly=false` there is no session role, and an
+investigation fails closed naming it: the server could not investigate another namespace either. The chart test
+compares every grant by scope, not only by (group, resource, verb).
 
 **Fails closed.** If the identity cannot be had — the ClusterRole is not installed (named in the error), the
 ServiceAccount is missing and may not be provisioned, the token request is refused — kubectl does not run:
 `[Session identity unavailable] …`, and the watchtower does not start the investigation (outcome `error`, which does
 not open the breaker). It never falls back to the server's identity. A protected namespace never gets one.
+
+**Commands that act on the KubeIntellect server itself are refused for every role and with any approval.** Some
+kubectl commands do not act on the cluster: `kubectl config set|unset|set-credentials|use-context|…` (they rewrite the
+kubeconfig kubectl is pointed at — in a bound session, the session identity's own), `--from-file`, `--from-env-file`,
+`--patch-file`, `-o jsonpath-file=`/`go-template-file=`/`templatefile`/`custom-columns-file=` and `debug --custom`
+(they read a file on the server), `--profile`, `--profile-output`, `--cache-dir` (they write one), `--kuberc` and
+`kubectl kuberc` (kubectl preferences for every later call), credential-plugin flags (`--exec-*`, `--auth-provider*`),
+`kubectl kustomize`, `kubectl cp` and `kubectl proxy`. `--proxy-url` joins the connection flags. An approval prompt for
+one of these would show a namespaced-looking command doing something on another machine, so they are refused before
+any prompt: `[Protected] … acts on the KubeIntellect server itself …`. A sysadmin who needs one runs it in a shell on
+that host. The inline forms stay: `--from-literal`, `-p '<json>'`, `-o jsonpath=…`, `-f -` with stdin, and the read-only
+`config view` / `current-context` / `get-contexts`. The independent review of this phase (2026-11-15) swapped a
+session's token for the server's credentials with `kubectl config set`, and copied a server credential into a
+ConfigMap with `--from-file`, both auto-approved; both are closed, and the session kubeconfig's read-only mode is
+checked on Kind (kubectl's own write to it fails).
+
+**Approval elevates.** The session identity is the limit of what runs **unattended**. Anything beyond it stops at the
+approval prompt instead of running (outcome `needs_approval`), and the prompt says so: *"requested by an investigation
+confined to namespace '…'. Approving it runs it under your own role, with KubeIntellect's own Kubernetes permissions,
+outside that confinement"* (`elevation: server_identity` in the prompt). A person answers it from chat, where it runs
+with the approver's role — a `readonly` key cannot approve a write. A read the session identity is refused gets a note
+that the investigation reached its bound, so the model reports it instead of rephrasing.
 
 Checked on a real API server (Kind v1.37, `tests/test_a_session_identity_is_confined_by_a_real_api_server.py`, opt-in):
 with the session token, kubectl run directly — past every string gate — gets `Forbidden` for each bypass shape the

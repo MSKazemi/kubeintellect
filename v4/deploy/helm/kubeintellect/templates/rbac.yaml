@@ -70,8 +70,9 @@ roleRef:
 {{- end }}
 
 {{/* Cluster-scope read-only ClusterRole + Binding (nodes, PVs, all namespaces). The role is also the read-only
-     identity's (session-identity.yaml), so it renders for that alone; the server is bound to it only when asked. */}}
-{{- if or .Values.rbac.createClusterReadOnly .Values.readonlyIdentity.enabled }}
+     identity's (session-identity.yaml), so it also renders for that when the server is cluster-admin; the server is
+     bound to it only when asked. */}}
+{{- if or .Values.rbac.createClusterReadOnly (and .Values.readonlyIdentity.enabled .Values.rbac.clusterAdmin) }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

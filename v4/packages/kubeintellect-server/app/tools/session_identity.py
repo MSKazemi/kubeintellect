@@ -18,14 +18,20 @@ Fail closed. If the identity cannot be had — the ServiceAccount is missing and
 is not installed, the token request is refused — `IdentityUnavailable` is raised and the caller refuses to run kubectl.
 It never falls back to the server's own, broader identity.
 
-The token is never logged. It lives in a 0600 file in a 0700 directory created for this process and removed at exit,
-and `kubectl config view` (the only verb that could print it) redacts tokens and refuses `--raw`.
+The token is never logged. It lives in a read-only (0400) file in a 0700 directory created for this process and removed
+at exit, and `kubectl config view` (the only verb that could print it) redacts tokens and refuses `--raw`.
+
+That file is the one kubectl is pointed at, so kubectl could write to it: the independent review of this phase
+(2026-11-15) rewrote it with `kubectl config set …` and the session's next call ran with the server's own credentials.
+`kubectl_tool` refuses every command that changes a kubeconfig; behind that, the file is read-only and its content is
+compared with what was written before every reuse, and a file that changed is never used — the identity is re-issued.
 """
 
 from __future__ import annotations
 
 import atexit
 import base64
+import hashlib
 import json
 import logging
 import os
@@ -70,8 +76,11 @@ class IdentityUnavailable(Exception):
 
 _lock = threading.Lock()
 _cache: dict[
-    tuple[str, str], tuple[str, float]
-] = {}  # (base kubeconfig, namespace) -> (kubeconfig path, expiry)
+    tuple[str, str], tuple[str, float, str]
+] = {}  # (base kubeconfig, namespace) -> (kubeconfig path, expiry, sha256 of the content written)
+# (base kubeconfig, namespace) whose ServiceAccount + RoleBinding this process has applied. With provisioning on, the
+# binding is applied once per process even when the ServiceAccount already exists, so a RoleBinding of that name to
+# another role is reported (the API server refuses to change a roleRef), never used.
 _provisioned: set[tuple[str, str]] = set()
 _dir: str | None = None
 
@@ -95,6 +104,25 @@ def forget(namespace: str) -> None:
     with _lock:
         for key in [k for k in _cache if k[1] == namespace]:
             del _cache[key]
+
+
+def _digest(path: str) -> str | None:
+    try:
+        with open(path, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()
+    except OSError:
+        return None
+
+
+def _pod_namespace() -> str:
+    """The namespace of the pod this server runs in ('' outside a pod)."""
+    try:
+        with open(
+            "/var/run/secrets/kubernetes.io/serviceaccount/namespace", encoding="utf-8"
+        ) as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
 
 
 def _private_dir() -> str:
@@ -160,10 +188,11 @@ def _base_view(base_kubeconfig: str) -> tuple[dict, str | None]:
         # are the documented in-cluster ones.
         port = os.environ.get("KUBERNETES_SERVICE_PORT", "443")
         host = f"[{in_cluster}]" if ":" in in_cluster else in_cluster
+        # An unscoped read means what it meant with the pod's own config: the pod's namespace, not `default`.
         return {
             "server": f"https://{host}:{port}",
             "certificate-authority": _IN_CLUSTER_CA,
-        }, None
+        }, (_pod_namespace() or None)
     raise IdentityUnavailable(
         "the server's kubeconfig names no cluster to issue a session identity for"
     )
@@ -238,6 +267,13 @@ def _mint(
 ) -> tuple[str, float]:
     seconds = settings.SESSION_IDENTITY_TOKEN_SECONDS
     cmd = ["kubectl", "create", "token", sa, "-n", namespace, f"--duration={seconds}s"]
+    if provision:
+        with _lock:
+            done = (base_kubeconfig, namespace) in _provisioned
+        if not done:
+            _provision(namespace, base_kubeconfig)
+            with _lock:
+                _provisioned.add((base_kubeconfig, namespace))
     proc = _run(cmd, base_kubeconfig)
     if proc.returncode != 0 and "notfound" in (proc.stderr or "").lower().replace(
         " ", ""
@@ -280,21 +316,54 @@ def _issue(
     base_kubeconfig = key[0]
     with _lock:
         hit = _cache.get(key)
-        if (
-            hit
-            and hit[1] - time.time() > _REFRESH_MARGIN_SECONDS
-            and os.path.exists(hit[0])
-        ):
+    if hit and hit[1] - time.time() > _REFRESH_MARGIN_SECONDS:
+        current = _digest(hit[0])
+        if current == hit[2]:
             return hit[0]
+        if current is not None:
+            logger.warning(
+                "session_identity: the kubeconfig of %s changed after it was written; not used, re-issued",
+                name,
+            )
+        with _lock:
+            _cache.pop(key, None)
     try:
         cluster, default_ns = _base_view(base_kubeconfig)
         token, expires = _mint(sa, sa_namespace, base_kubeconfig, provision=provision)
+        path, digest = _write_kubeconfig(
+            name, cluster, token, context_namespace, default_ns
+        )
     except subprocess.TimeoutExpired as exc:
         raise IdentityUnavailable(
             f"the API server did not answer in time ({exc.timeout}s)"
         ) from None
     except FileNotFoundError:
         raise IdentityUnavailable("kubectl is not installed") from None
+    except OSError as exc:
+        # PermissionError, a full disk, an unexecutable kubectl: still no identity, so still no kubectl — but reported
+        # as such, not as a crash of the investigation (review finding 6).
+        raise IdentityUnavailable(
+            f"could not issue the session identity: {exc.__class__.__name__}: {exc}"
+        ) from None
+    with _lock:
+        _cache[key] = (path, expires, digest)
+    logger.info(
+        "session_identity: issued a %ss token for %s in %s",
+        settings.SESSION_IDENTITY_TOKEN_SECONDS,
+        sa,
+        sa_namespace,
+    )
+    return path
+
+
+def _write_kubeconfig(
+    name: str,
+    cluster: dict,
+    token: str,
+    context_namespace: str | None,
+    default_ns: str | None,
+) -> tuple[str, str]:
+    """Write the kubeconfig holding only `token` read-only (0400) and return its path and content digest."""
     context: dict = {"cluster": "cluster", "user": "session"}
     ns = context_namespace if context_namespace is not None else default_ns
     if ns:
@@ -309,25 +378,22 @@ def _issue(
     }
     folder = _private_dir()
     path = os.path.join(folder, f"{name}.kubeconfig")
+    content = yaml.safe_dump(doc, sort_keys=False).encode("utf-8")
     fd, tmp = tempfile.mkstemp(dir=folder, prefix=f".{name}.")
     try:
-        os.fchmod(fd, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            yaml.safe_dump(doc, fh, sort_keys=False)
-        os.replace(tmp, path)
+        os.fchmod(
+            fd, 0o400
+        )  # read-only to its owner too: kubectl cannot rewrite it in place
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(content)
+        os.replace(
+            tmp, path
+        )  # a rename, so a read-only file of the same name is replaced, not written
     except BaseException:
         if os.path.exists(tmp):
             os.unlink(tmp)
         raise
-    with _lock:
-        _cache[key] = (path, expires)
-    logger.info(
-        "session_identity: issued a %ss token for %s in %s",
-        settings.SESSION_IDENTITY_TOKEN_SECONDS,
-        sa,
-        sa_namespace,
-    )
-    return path
+    return path, hashlib.sha256(content).hexdigest()
 
 
 def kubeconfig_for(namespace: str, base_kubeconfig: str) -> str:
@@ -354,13 +420,7 @@ def _home_namespace() -> str:
     """The namespace the read-only ServiceAccount lives in: configured, else the server pod's own."""
     if settings.READONLY_IDENTITY_NAMESPACE:
         return settings.READONLY_IDENTITY_NAMESPACE
-    try:
-        with open(
-            "/var/run/secrets/kubernetes.io/serviceaccount/namespace", encoding="utf-8"
-        ) as fh:
-            return fh.read().strip()
-    except OSError:
-        return ""
+    return _pod_namespace()
 
 
 def readonly_kubeconfig(base_kubeconfig: str) -> str:

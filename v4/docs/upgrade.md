@@ -215,7 +215,17 @@ upgrade; everything new is default-off.
    * a `readonly` API key can no longer write or read a Secret even where the server is cluster-admin;
    * if the identity cannot be issued, nothing runs (`[Session identity unavailable] …`; watchtower log
      `watchtower: not investigating … session identity unavailable`). Alert on it.
+   * with `rbac.createClusterReadOnly=false` the chart renders no session ClusterRole (the server could not read
+     another namespace either), so investigations fail closed naming it; the `readonly` identity then reads only the
+     server's own namespace, through the server's namespaced read Role.
    To keep the previous behaviour: `--set sessionIdentity.enabled=false --set readonlyIdentity.enabled=false`.
+6. **Every role: kubectl commands that act on the KubeIntellect server itself are refused, with or without approval.**
+   `kubectl cp`, `proxy`, `kustomize`, `kuberc`, every `kubectl config` subcommand except `view`, `current-context`,
+   `get-contexts`, `get-clusters` and `get-users`, and the flags that read or write a file on the server (`--from-file`,
+   `--from-env-file`, `--patch-file`, `-o *-file` formats, `debug --custom`, `--profile`, `--profile-output`,
+   `--cache-dir`, `--kuberc`, `--exec-*`, `--auth-provider*`), plus `--proxy-url`. `kubectl cp` used to reach the
+   approval prompt for `admin`; it is now refused. Use the inline forms (`--from-literal`, `-p '<json>'`,
+   `-o jsonpath=…`, `-f -` with stdin). [Why](security.md#session-identity).
 
 ### New default-off flags
 
