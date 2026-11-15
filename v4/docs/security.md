@@ -622,6 +622,11 @@ session's token for the server's credentials with `kubectl config set`, and copi
 ConfigMap with `--from-file`, both auto-approved; both are closed, and the session kubeconfig's read-only mode is
 checked on Kind (kubectl's own write to it fails).
 
+**Other clusters only by list.** A command reaches another cluster only if the deployment lists it
+(`KUBECTL_ALLOWED_CONTEXTS`, [multi-cluster](configuration.md#multi-cluster)); then one `--context=<listed name>` is
+accepted, kubectl runs with a kubeconfig holding only that context, a write there always asks and names the cluster,
+and investigations stay on the home cluster. Unlisted, nothing changes: `--context` is refused.
+
 **Approval elevates.** The session identity is the limit of what runs **unattended**. Anything beyond it stops at the
 approval prompt instead of running (outcome `needs_approval`), and the prompt says so: *"requested by an investigation
 confined to namespace '…'. Approving it runs it under your own role, with KubeIntellect's own Kubernetes permissions,

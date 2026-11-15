@@ -231,6 +231,7 @@ upgrade; everything new is default-off.
 
 | Flag | What it adds | Before you enable it |
 |---|---|---|
+| `KUBECTL_ALLOWED_CONTEXTS` (Helm `multiCluster.*`) | Lets a command select another listed cluster with `--context` | A kubeconfig holding those contexts (Helm: a Secret, `multiCluster.kubeconfigSecret`); least-privilege credentials per context; `kubeintellect-readonly` on each cluster if `readonly` keys should read there. [Multi-cluster](configuration.md#multi-cluster) |
 | `LLM_PROVIDER=local` | Ollama / vLLM / LM Studio / llama.cpp as a first-class provider | [Local LLM guide](local-llm.md). Startup makes one real tool call per model; a cold CPU load can exceed a short liveness probe |
 | `SELF_GOVERN_ENABLED` | Exactly-once irreversible calls with single-use approvals (ADR-008), and a grounding check on the Cortex graph (ADR-009) | Needs the flight recorder on Postgres and **`kubeintellect db-init`** (schema version 3 adds the `effect_log` table). Without the ledger every irreversible call falls back to a human approval |
 | `PROMQL_DETECTION_ENABLED` | Evaluates the `promql:` queries in `detect:` blocks | Needs `PROMETHEUS_URL`. The 20 shipped queries have never run before, so expect new findings; an unreachable Prometheus shows as `promql: blind` on `GET /v1/findings`, never as "all clear" |

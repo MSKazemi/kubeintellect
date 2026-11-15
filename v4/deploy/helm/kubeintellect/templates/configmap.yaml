@@ -69,6 +69,9 @@ data:
   # kubectl_tool.py sets KUBECONFIG env var from this value; an empty path causes kubectl
   # to skip kubeconfig file loading and fall back to in-cluster auth automatically.
   KUBECONFIG_PATH: ""
+  # Multi-cluster (plan Phase 6b): the contexts a command may select with --context, and the kubeconfig that holds them.
+  KUBECTL_ALLOWED_CONTEXTS: {{ .Values.multiCluster.allowedContexts | default list | join "," | quote }}
+  KUBECTL_CONTEXTS_KUBECONFIG: {{ ternary "/etc/kubeintellect/clusters/config" "" (not (empty .Values.multiCluster.kubeconfigSecret)) | quote }}
   # Agent kubectl guardrails — namespaces and resource types the agent cannot touch.
   # Edit config.blockedNamespaces / config.blockedResources in values.yaml to adjust.
   KUBECTL_BLOCKED_NAMESPACES: {{ .Values.config.blockedNamespaces | join "," | quote }}

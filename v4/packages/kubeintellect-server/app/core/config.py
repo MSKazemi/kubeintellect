@@ -111,6 +111,12 @@ class Settings(BaseSettings):
     CLUSTER_ID: str = ""
     KUBECTL_TIMEOUT_SECONDS: int = 30
     KUBECTL_DESTRUCTIVE_TIMEOUT_SECONDS: int = 300
+    # Multi-cluster (plan Phase 6b, owner 2026-11-15). Empty = single cluster: `--context` is refused, as always. Set =
+    # the comma-separated context names a command may select with `--context=<name>`, exact match; each must be a
+    # context of KUBECTL_CONTEXTS_KUBECONFIG (empty = KUBECONFIG_PATH). Never by editing the kubeconfig: `kubectl
+    # config` writes stay refused, so no command can add a cluster or credential the deployment did not list.
+    KUBECTL_ALLOWED_CONTEXTS: str = ""
+    KUBECTL_CONTEXTS_KUBECONFIG: str = ""
 
     # Namespaces the kubectl tool will never touch, regardless of user role.
     # In Helm deployments this is set via config.blockedNamespaces in values.yaml
@@ -145,6 +151,13 @@ class Settings(BaseSettings):
         is reported by :mod:`app.core.config_audit` rather than guessed at here.
         """
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
+
+    @property
+    def kubectl_allowed_contexts(self) -> tuple[str, ...]:
+        """The context names a command may select, whitespace-stripped, in the order listed; () = single cluster.
+
+        Matched exactly (context names are case-sensitive and may hold `:`/`/`, e.g. an EKS ARN)."""
+        return tuple(c.strip() for c in self.KUBECTL_ALLOWED_CONTEXTS.split(",") if c.strip())
 
     @property
     def kubectl_blocked_namespaces(self) -> frozenset[str]:

@@ -376,9 +376,13 @@ def _write_kubeconfig(
         "contexts": [{"name": "session", "context": context}],
         "current-context": "session",
     }
+    return _write_private(name, yaml.safe_dump(doc, sort_keys=False).encode("utf-8"))
+
+
+def _write_private(name: str, content: bytes) -> tuple[str, str]:
+    """Write `content` as `<name>.kubeconfig`, read-only (0400), in the private directory; return path and digest."""
     folder = _private_dir()
     path = os.path.join(folder, f"{name}.kubeconfig")
-    content = yaml.safe_dump(doc, sort_keys=False).encode("utf-8")
     fd, tmp = tempfile.mkstemp(dir=folder, prefix=f".{name}.")
     try:
         os.fchmod(
@@ -445,3 +449,69 @@ def readonly_kubeconfig(base_kubeconfig: str) -> str:
         provision=False,
         context_namespace=None,
     )
+
+
+# A context kubeconfig is rebuilt after this long, so credentials rotated in the source file are picked up.
+_CONTEXT_REFRESH_SECONDS = 3600.0
+
+
+def context_kubeconfig(context: str) -> str:
+    """Path of a kubeconfig holding only `context`, one of KUBECTL_ALLOWED_CONTEXTS (plan Phase 6b).
+
+    Built with `kubectl config view --minify --flatten --context <name>` from KUBECTL_CONTEXTS_KUBECONFIG (empty = the
+    server's KUBECONFIG_PATH) and written read-only to the private directory, like a session token: kubectl is pointed
+    at a file that names one cluster, so nothing in the command can reach another, and every read made for the same
+    call (rollback capture, preflight, schema check) goes to the same cluster. Checked against what was written
+    before every reuse. Raises `IdentityUnavailable` for a name that is not listed or not in the source.
+    """
+    if context not in settings.kubectl_allowed_contexts:
+        raise IdentityUnavailable(
+            f"context {context!r} is not listed in KUBECTL_ALLOWED_CONTEXTS"
+        )
+    source = os.path.expanduser(
+        settings.KUBECTL_CONTEXTS_KUBECONFIG or settings.KUBECONFIG_PATH or ""
+    )
+    if not source:
+        raise IdentityUnavailable(
+            "no kubeconfig holds the listed contexts (set KUBECTL_CONTEXTS_KUBECONFIG)"
+        )
+    key = (
+        source,
+        f"<context:{context}>",
+    )  # not a legal namespace name, so it cannot collide with a session key
+    with _lock:
+        hit = _cache.get(key)
+    if hit and hit[1] > time.time() and _digest(hit[0]) == hit[2]:
+        return hit[0]
+    try:
+        proc = _run(
+            [
+                "kubectl",
+                "config",
+                "view",
+                "--minify",
+                "--flatten",
+                "--context",
+                context,
+                "-o",
+                "yaml",
+            ],
+            source,
+        )
+        if proc.returncode != 0 or not (proc.stdout or "").strip():
+            raise IdentityUnavailable(
+                f"context {context!r} could not be read from {source}: {_reason(proc)}"
+            )
+        name = "ctx-" + hashlib.sha256(context.encode("utf-8")).hexdigest()[:16]
+        path, digest = _write_private(name, proc.stdout.encode("utf-8"))
+    except subprocess.TimeoutExpired as exc:
+        raise IdentityUnavailable(
+            f"kubectl did not answer in time ({exc.timeout}s)"
+        ) from None
+    except OSError as exc:
+        raise IdentityUnavailable(
+            f"could not prepare context {context!r}: {exc.__class__.__name__}: {exc}"
+        ) from None
+    with _lock:
+        _cache[key] = (path, time.time() + _CONTEXT_REFRESH_SECONDS, digest)
+    return path

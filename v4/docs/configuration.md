@@ -264,6 +264,8 @@ KubeIntellect uses `kubectl` to interact with your cluster. `kubectl` must be in
 | `KUBECTL_DESTRUCTIVE_TIMEOUT_SECONDS` | `300` | Timeout for write operations |
 | `KUBECTL_BLOCKED_NAMESPACES` | see below | Namespaces the agent will never touch |
 | `KUBECTL_BLOCKED_RESOURCES` | `secret,secrets,...` | Resource types always blocked |
+| `KUBECTL_ALLOWED_CONTEXTS` | *(empty)* | Other clusters a command may select with `--context=<name>` — see [multi-cluster](#multi-cluster) |
+| `KUBECTL_CONTEXTS_KUBECONFIG` | *(empty = `KUBECONFIG_PATH`)* | The kubeconfig holding those contexts |
 
 > **A namespace entry that cannot match protects nothing, and used to do so in silence.**
 > Case is folded — `Kube-System` and `kube-system` are the same entry — because Kubernetes
@@ -349,6 +351,43 @@ Default blocked namespaces (safety fence):
 ```
 kubeintellect, monitoring, kube-system, kube-public, kube-node-lease, ingress-nginx, cert-manager
 ```
+
+### Multi-cluster {#multi-cluster}
+
+**Default: one cluster.** A command cannot name another — `--context`, `--kubeconfig`, `--server` and the other
+connection flags are refused, because which cluster KubeIntellect reaches is the deployment's decision, not the query's.
+
+To let it reach other clusters, list them. Each name must be a context of `KUBECTL_CONTEXTS_KUBECONFIG` (empty = the
+server's own `KUBECONFIG_PATH`):
+
+```bash
+KUBECTL_ALLOWED_CONTEXTS=prod-eu,staging
+KUBECTL_CONTEXTS_KUBECONFIG=/etc/kubeintellect/clusters/config
+```
+
+With Helm, put that kubeconfig in a Secret (key `config`) and name it; the chart mounts it read-only and the home
+cluster keeps the pod's own ServiceAccount:
+
+```bash
+kubectl -n kubeintellect create secret generic ki-clusters --from-file=config=./clusters.kubeconfig
+helm upgrade … --set 'multiCluster.allowedContexts={prod-eu,staging}' --set multiCluster.kubeconfigSecret=ki-clusters
+```
+
+What a listed cluster allows:
+
+- a command may carry **one** `--context=<listed name>` (exact, case-sensitive) and no other connection or identity
+  flag; anything else is `[Protected]`. The answer starts with `[cluster: <name>]`;
+- kubectl runs with a kubeconfig holding only that context (a read-only copy in a private directory, checked before
+  each reuse), so the rollback capture, the dry-run preflight and the schema check read the same cluster;
+- **a write on another cluster always asks**, even with auto-approve, and the prompt names the cluster;
+- an autonomous investigation stays on the home cluster it was opened for;
+- a `readonly` key reads another cluster as the read-only identity minted there (`kubeintellect-readonly` must exist
+  on that cluster — install the chart's RBAC there — or the read fails closed);
+- the cluster is never switched by editing a kubeconfig: `kubectl config use-context` (one shared file, every
+  session) and `config set-credentials` (it could add a cluster nobody listed) stay refused.
+
+The credentials of a listed context are whatever its kubeconfig entry holds; give each the least privilege it needs,
+as for the home cluster.
 
 ---
 
