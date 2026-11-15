@@ -20,7 +20,7 @@ import json
 import shlex
 import subprocess
 import threading
-from collections import OrderedDict, deque
+from collections import Counter, OrderedDict, deque
 from typing import Annotated, Any
 
 import yaml
@@ -1560,7 +1560,8 @@ def reset_session_guard() -> None:
 def _guard_session(thread_id: str) -> dict:
     record = _guard.get(thread_id)
     if record is None:
-        record = {"failed": {}, "writes": 0, "executed": 0, "history": deque(maxlen=8), "stuck": False,
+        record = {"failed": {}, "writes": 0, "executed": 0, "history": deque(maxlen=_NO_PROGRESS_WINDOW), "seen": Counter(),
+                  "stuck": False,
                   "ledger": deque(maxlen=12)}
         _guard[thread_id] = record
         while len(_guard) > _GUARD_MAX_SESSIONS:
@@ -1728,23 +1729,45 @@ def session_is_stuck(thread_id: str) -> bool:
         return bool(record and record["stuck"])
 
 
+# "Learning nothing new": the last _NO_PROGRESS_WINDOW calls are at most _NO_PROGRESS_DISTINCT distinct call/reply pairs,
+# each seen at least _NO_PROGRESS_SEEN times in the session and at least once before the window. Pilot run 4 (Nova,
+# b3-c1, 2026-11-15) cycled four reads in a changing order for 155 calls; replayed over every session of runs 3 and 4
+# this stops that one at call 41 and no other.
+_NO_PROGRESS_WINDOW = 12
+_NO_PROGRESS_DISTINCT = 6
+_NO_PROGRESS_SEEN = 4
+
+
+def _learning_nothing_new(history: list, seen: Counter) -> bool:
+    window = history[-_NO_PROGRESS_WINDOW:]
+    if len(window) < _NO_PROGRESS_WINDOW:
+        return False
+    steps = set(window)
+    return len(steps) <= _NO_PROGRESS_DISTINCT and all(
+        seen[x] >= _NO_PROGRESS_SEEN and seen[x] > window.count(x) for x in steps
+    )
+
+
 def _remember(thread_id: str, call_fp: str, output: str) -> str:
     """Record one call and its reply; mark the session stuck on a repeat or A-B cycle with unchanged replies.
 
     The shapes are OpenHands StuckDetector's: the same call with the same reply 4 times in a row, or two call/reply
     pairs alternating 3 times (A B A B A B). Measured 2026-11-14: the 73-attempt loop was such an A-B cycle. A reply
     that changes between rounds (new information) is not a repeat, so a long but progressing session is not stopped.
+    Plus a third shape that does not depend on order: a session cycling through a few calls, all with replies it has
+    already had several times (`_learning_nothing_new`; pilot run 4, a permuted 4-read cycle of 155 calls).
     """
     step = (call_fp, hashlib.sha256(output.encode("utf-8", "replace")).hexdigest())
     with _guard_lock:
         record = _guard_session(thread_id)
         history = record["history"]
         history.append(step)
+        record["seen"][step] += 1
         last = list(history)
         same = len(last) >= 4 and len(set(last[-4:])) == 1
         six = last[-6:]
         cycle = len(six) == 6 and six[0] == six[2] == six[4] and six[1] == six[3] == six[5] and six[0] != six[1]
-        if (same or cycle) and not record["stuck"]:
+        if (same or cycle or _learning_nothing_new(last, record["seen"])) and not record["stuck"]:
             record["stuck"] = True
             logger.warning(f"run_kubectl: session {thread_id!r} is repeating itself; tool use stopped")
             return output + _STUCK_NOTE

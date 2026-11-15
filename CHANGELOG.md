@@ -99,7 +99,9 @@ Job printing SUCCESS and reported the failing Job fixed. Each change below stops
   before the fix turn; still unhealthy, deleted or replaced is `not_fixed`, whatever the model reported.
 - **A fault the cluster cannot fix is not auto-fixed**: playbooks may declare `auto_fixable: false`;
   `JobBackoffLimitExceeded` does, and its fix template no longer says "recreate the job".
-- **A session that repeats itself is stopped**: the same call with the same reply 4 times, or an A-B cycle 3 times,
+- **A session that repeats itself is stopped**: the same call with the same reply 4 times, an A-B cycle 3 times, or —
+  in any order — 12 calls that are at most 6 call/reply pairs already seen 4 times each (a pilot cycled four reads for
+  155 calls; now stopped at call 41),
   marks an auto-approved session stuck; every further command returns `[Stopped]`.
 - **An unattended manifest write is dry-run first** (`PREFLIGHT_DIFF_ENABLED`, default on): `kubectl diff` showing no
   difference is refused as `[No change]`; an API-server rejection is refused with the field it names; anything else
