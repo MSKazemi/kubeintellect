@@ -116,6 +116,21 @@ def get_cluster_id() -> str:
     return UNRESOLVED_CLUSTER_ID
 
 
+def resolve_at_startup() -> str:
+    """Resolve (and cache) the cluster id now, as the server, before any session can be the first caller.
+
+    `get_cluster_id` runs kubectl with the server's own kubeconfig, and in-cluster without CLUSTER_ID it asks the API
+    server (`get namespace kube-system`). Left lazy, the first caller was a session's context snapshot, so those calls
+    ran inside an investigation as the server (pilot run 3, pre-registered check P13, 2026-11-15). Never raises: the id
+    labels memory, it does not gate anything.
+    """
+    try:
+        return get_cluster_id()
+    except Exception as exc:  # noqa: BLE001 - a label, never a reason to stop
+        logger.warning(f"cluster_id: could not resolve at startup: {exc}")
+        return UNRESOLVED_CLUSTER_ID
+
+
 def reset_cluster_id_cache() -> None:
     """Clear the cluster_id cache. Used by tests; rarely needed at runtime."""
     get_cluster_id.cache_clear()

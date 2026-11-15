@@ -317,6 +317,10 @@ async def _investigate(finding: Finding, level: str) -> None:
             f" level={level} auto_fix={auto_fix} session={session_id}"
         )
         try:
+            # The cluster's name, before the first turn: inside a session it must only be read from the cache, never
+            # computed with the server's kubeconfig (pilot run 3, P13). Usually already done at server startup.
+            from app.cluster_id import resolve_at_startup
+            await asyncio.to_thread(resolve_at_startup)
             if settings.SESSION_IDENTITY_ENABLED:
                 # ADR-007 Phase 6: the session must be able to act as its namespace-scoped identity, or it does not
                 # start — every kubectl call would be refused anyway. A deployment fault, so `error`: no breaker.
