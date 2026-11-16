@@ -11,6 +11,157 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Security — investigations and read-only keys act as their own Kubernetes identity
+
+Ten independent review passes (2026-11-14) each found a new command string that the kubectl tool's checks read
+differently from kubectl itself; every one was fixed (entries below), but a check that predicts another program's
+parser cannot be shown complete. So the two bounds that matter most now also hold at the API server:
+
+- **A namespace-bound investigation runs as a short-lived token for a ServiceAccount in its own namespace**
+  (`SESSION_IDENTITY_ENABLED`; Helm `sessionIdentity.enabled`, default on), bound there to the new
+  `kubeintellect-session` ClusterRole: no Secrets, no other namespace, nothing cluster-scoped, no workload creation or
+  deletion, no exec, no RBAC — and never more than the server's own `rbac.*` grants. The server creates the
+  ServiceAccount and RoleBinding on a namespace's first investigation.
+- **The `readonly` role runs as `kubeintellect-readonly`**, bound to the read-only role (`READONLY_IDENTITY_ENABLED`;
+  Helm `readonlyIdentity.enabled`, default on), so a read-only key cannot write or read a Secret even where the server
+  is cluster-admin.
+- **Fails closed**: no identity, no kubectl (`[Session identity unavailable] …`), and the watchtower does not start an
+  investigation it cannot confine. Tokens come from the TokenRequest API (900 s default), live in a 0600 file, and are
+  never logged. Checked against a real API server (Kind v1.37). `run_helm` keeps the server's identity (Helm stores
+  releases in Secrets). Off outside Helm until the ClusterRoles exist. See `docs/upgrade.md` item 5.
+- **An independent review of the identities (2026-11-15) found six problems, all fixed and checked on Kind:**
+  a bound session could rewrite its own kubeconfig with `kubectl config set|unset|set-credentials` and so run as the
+  server, or as a credential plugin the server would execute; `create configmap --from-file` copied a file from the
+  server into the cluster; with `rbac.createClusterReadOnly=false` the session and read-only identities could read
+  more than the server; the pre-fetch reads of a turn and the manifest schema check ran as the server; a filesystem
+  error escaped as a crash. Now: **commands that act on the KubeIntellect server itself** — `kubectl config` writes,
+  `cp`, `proxy`, `kustomize`, `kuberc`, and the flags that read or write a server file — **are refused for every role
+  and with any approval** (`docs/upgrade.md` item 6); the session kubeconfig is read-only and checked before each
+  reuse; the chart never renders an identity broader than the server, compared by scope; the pre-fetch reads and the
+  schema check use the turn's identity; every OS error is `[Session identity unavailable]`.
+- **Approval elevates:** what an investigation's identity forbids stops at the approval prompt, and the prompt now says
+  that approving runs it under the approver's role with KubeIntellect's own permissions, outside the namespace.
+
+### Added — multi-cluster, by list (default off)
+
+- `KUBECTL_ALLOWED_CONTEXTS` (Helm `multiCluster.allowedContexts` + `multiCluster.kubeconfigSecret`): the clusters a
+  command may select with `--context=<name>`. Empty (default) keeps one cluster and refuses `--context` as before.
+  Listed: one exact name per command, no other connection flag; kubectl runs with a read-only kubeconfig holding only
+  that context; a write on another cluster always asks and names it; investigations stay on the home cluster; a
+  `readonly` key reads there as the read-only identity minted on that cluster. Never by editing a kubeconfig
+  (`config use-context`/`set-credentials` stay refused). The chart refuses a list without its kubeconfig Secret.
+  An independent review before merge found six places that dropped the cluster, all fixed: the exactly-once guard
+  keyed two clusters' identical writes as one (the second was "replayed", never run), the read-only identity of every
+  cluster shared one file, reflexion verified another cluster's fix on the home cluster, `config view --context`
+  printed exec-plugin arguments, rollback points and the approval request on the wire named no cluster.
+
+### Fixed — security: a dry-run flag kubectl does not read as one no longer skips the approval prompt
+
+Found by an independent review (2026-11-14), present before this release: a write counted as a dry run if
+`--dry-run=server` appeared anywhere in it, so `kubectl delete pod web -- --dry-run=server` (after `--` the flag is a
+positional argument) or `kubectl annotate … --field-manager --dry-run=server` (there it is `--field-manager`'s value)
+ran with **no approval prompt, in every session, chat included**, and kubectl performed the real write. A dry run now
+counts only when the verb has the flag, every `--dry-run` token is a real one (kubectl's last value wins, so
+`--dry-run=server --dry-run=none` is a write), none follows `--`, and none sits right after a value-taking flag; when
+in doubt it is treated as a real write. Flag names are normalised once at parse time (`--dry_run` is `--dry-run` to
+kubectl), which also closes underscore spellings of connection/identity and all-namespaces flags. A bare `--` is refused except
+for `exec`, `run`, `debug`, `create` and `attach`, and a command containing `--` is never a dry run (a `--` can be a
+flag's value, after which kubectl keeps parsing flags).
+- **A repeated `-n`/`--namespace` or `-o`/`--output` is refused** (present before this release): kubectl uses the last
+  value and the gates read the first, so `kubectl get pods -n default -n kube-system` listed a protected namespace and
+  an unattended `-n <bound> -n other` wrote outside its binding. Counted inside shorthand groups too (`-Rn x`); a
+  second patch payload (`-p … -p …`) is refused, since the image/command gate read the first and kubectl applies the last.
+
+### Fixed — security: a Secret named anywhere in a command is refused
+
+Found by an independent review (2026-11-14), present before this release: only the first resource operand was checked,
+so `get pods,secrets`, `get pod/x secret/db`, `describe pod/x sa/default`, `wait … secret/db -o yaml` and a type behind
+an unknown value flag (`get --sort-by .metadata.name secrets`) returned Secret data to any role. Every non-flag word is
+now checked; `--resolve` and `config view --raw|--flatten` are refused, and `config view` output is redacted.
+
+### Fixed — security: `kubectl get --raw` no longer bypasses the protected-namespace and Secret checks
+
+Found by an independent review (2026-11-14), present before this release: `--raw` was not inspected, so
+`kubectl get --raw /api/v1/namespaces/kube-system/secrets` returned Secrets for any role, readonly included. Only `get
+--raw` on a short allowlist of read-only paths (health, version, a node's kubelet `configz`/stats/metrics) is now
+accepted; raw writes and every other path are refused.
+
+### Fixed — an unattended session is corrected first, stopped second, and never reports a fix that did not happen
+
+Measured 2026-11-14 on Kind with a real model: one auto-approved session alternated a read that named no namespace
+(NotFound from `default` for a Job that existed) with a re-typed manifest the cluster rejected, **73 times**, until
+LangGraph's step limit ended it — and was then recorded as finished; in 2 of 4 re-runs another session created a stub
+Job printing SUCCESS and reported the failing Job fixed. Each change below stops one of those on its own.
+
+- **A bound session's read looks in its own namespace** when the command names none (`-n <bound>` added for `get`,
+  `describe`, `logs`, `top`, `events`, `wait`; the reply says so). Writes are unchanged and keep failing closed.
+- **A manifest is checked against the cluster's own schema before it is sent** (`MANIFEST_LINT_ENABLED`, default on):
+  a wrong-typed or misspelt field is refused with the path, the YAML cause and the fix, before any approval prompt.
+  Fails open — no schema, no check.
+- **kubectl errors say whether resending can help** (`[permanent error: …]` / `[transient error: …]`), with new hints
+  for a wrong-typed manifest field, `already exists` and unknown flags; `field is immutable` no longer recommends
+  recreating the resource.
+- **An auto-approved session does not resend a write that already failed permanently**, and runs at most
+  `AUTO_APPROVE_MAX_WRITES` (default 10) writes without a human.
+- **Running out of steps is an escalation, not an answer**: LangGraph's "Sorry, need more steps…" ending (which it
+  returns instead of raising at the default limits) becomes the budget escalation, and the watchtower logs
+  `watchtower_escalated`. `AGENT_COORDINATOR_RECURSION_LIMIT=150` allows 74 tool calls (the docs said ~50).
+- **No substitute workloads under auto-approve**: `run`, `create` of a workload, and a change to a container's
+  `command`/`args` (any spelling) are always-confirm.
+- **An autonomous fix is judged on the original object** (`AUTOFIX_VERIFY_TIMEOUT_SECONDS`, default 120): pinned by uid
+  before the fix turn; still unhealthy, deleted or replaced is `not_fixed`, whatever the model reported.
+- **A fault the cluster cannot fix is not auto-fixed**: playbooks may declare `auto_fixable: false`;
+  `JobBackoffLimitExceeded` does, and its fix template no longer says "recreate the job".
+- **A session that repeats itself is stopped**: the same call with the same reply 4 times, an A-B cycle 3 times, or —
+  in any order — 12 calls that are at most 6 call/reply pairs already seen 4 times each (a pilot cycled four reads for
+  155 calls; now stopped at call 41),
+  marks an auto-approved session stuck; every further command returns `[Stopped]`.
+- **An unattended manifest write is dry-run first** (`PREFLIGHT_DIFF_ENABLED`, default on): `kubectl diff` showing no
+  difference is refused as `[No change]`; an API-server rejection is refused with the field it names; anything else
+  fails open.
+- **An unattended session is shown what it already tried**: the last 12 writes and their outcomes, recorded by the tool,
+  are appended to the system message of every model call (no change to the step budget).
+- **Every autonomous investigation ends in a recorded outcome** — `fixed`, `not_fixed`, `unknown`, `budget_exhausted`,
+  `stuck`, `needs_approval` (with the waiting command; verified first, so a session that repaired its own fault and was
+  then stopped at a sibling-namespace write is `fixed`) or `error` (the model call failed) — written to the flight
+  recorder as `autonomy_outcome`.
+- **A circuit breaker**: `not_fixed`, `stuck` or `budget_exhausted` demotes that (namespace, playbook) from A3 to A2 for
+  `AUTOFIX_BREAKER_SECONDS` (default 24 h); `error` does not.
+- **A verified bad outcome becomes a lesson**: it seeds a `failure_patterns` row built only from the playbook and the
+  outcome, loaded into later sessions as a failure hint once seen twice.
+
+### Changed
+
+- **Auto-approve is now a demonstration and evaluation mode, off by default** (`AUTO_APPROVE_ENABLED`, default
+  `false`). Off: the `auto_approve` request flag (`kq --auto-approve`) and the "approve all" phrase are ignored, every
+  mutation goes through the approval prompt, and the watchtower investigates an A3-allowlisted finding like A2 (it
+  proposes the fix instead of applying it, so an unattended turn no longer stalls on a prompt nobody can answer). On:
+  behaviour as before. **Breaking for automation that relied on `auto_approve`** (including the evaluation harness):
+  set `AUTO_APPROVE_ENABLED=true` on that server. Brings the default back in line with `AGENTS.md` safety invariant 2.
+
+### Fixed
+
+- **An image or resources change is always-confirm however it is spelled.** `set image` / `set resources` always prompted, but the same change as `kubectl patch` (JSON, merge or strategic) or `apply`/`replace` of a workload manifest ran unprompted under auto-approve. The gate now follows the effect: a `patch`, `apply` or `replace` that sets a container `image` or `resources` field is always-confirm, and a patch that cannot be read fails closed. Found in model-driven A3 pilots, where the image-pull repair rate of each model tracked which command it wrote. Consequence: an unattended A3 session no longer repairs an image fault; it needs a human. Not covered: `rollout undo`, `create`.
+- **Auto-approve granted to an autonomous investigation is bound to its namespace.** The watchtower passes the
+  finding's namespace into the run config; `run_kubectl` drops the bypass for any write that does not provably stay in
+  it (fail-closed), so the command goes to the approval prompt instead. Found in model-driven A3 pilots, where a session
+  wrote into sibling namespaces and, with one model, an instruction injected into a Job's logs scaled a deployment in
+  another namespace to zero.
+- **`kubectl delete --all` is always-confirm**, like deleting a namespace. It previously ran unprompted under
+  auto-approve.
+- **Rollback points for live objects are restorable.** Server-managed metadata (`uid`, `resourceVersion`,
+  `managedFields`, `ownerReferences`, `status`, ...) is stripped before secret redaction, which had been turning every
+  object's `metadata.uid` into a redacted token and marking the capture non-restorable. Redaction itself is unchanged.
+- **The namespace binding is now tested end to end through the graph's run config.** Before, no test failed if
+  `stream_events` stopped writing `bound_namespace` into `config["configurable"]` or `run_session` stopped forwarding it,
+  which would have silently switched the binding off. Both mutations are now caught.
+- Documentation: the binding rule, its fail-closed cases and the incidents that led to it
+  ([security](v4/docs/security.md#namespace-bound-auto-approve)); `delete --all` in the always-confirm table; the run-config
+  keys `user_role` / `hitl_bypass` / `bound_namespace` ([architecture](v4/docs/architecture.md)); restorable rollback points
+  ([flight recorder](v4/docs/flight-recorder.md)); the breaking change ([upgrade](v4/docs/upgrade.md)).
+- **Known, not changed:** `kubectl set image` is always-confirm, but a JSON `patch` of the same image field is not, so
+  whether an image fix needs a human depends on how the command is spelled.
+
 ### Documentation
 
 - **Alibaba Cloud ACK verified for the local install path** (`docs/install/existing-cluster.md`; #237, #253).

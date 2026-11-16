@@ -264,6 +264,8 @@ KubeIntellect uses `kubectl` to interact with your cluster. `kubectl` must be in
 | `KUBECTL_DESTRUCTIVE_TIMEOUT_SECONDS` | `300` | Timeout for write operations |
 | `KUBECTL_BLOCKED_NAMESPACES` | see below | Namespaces the agent will never touch |
 | `KUBECTL_BLOCKED_RESOURCES` | `secret,secrets,...` | Resource types always blocked |
+| `KUBECTL_ALLOWED_CONTEXTS` | *(empty)* | Other clusters a command may select with `--context=<name>` — see [multi-cluster](#multi-cluster) |
+| `KUBECTL_CONTEXTS_KUBECONFIG` | *(empty = `KUBECONFIG_PATH`)* | The kubeconfig holding those contexts |
 
 > **A namespace entry that cannot match protects nothing, and used to do so in silence.**
 > Case is folded — `Kube-System` and `kube-system` are the same entry — because Kubernetes
@@ -349,6 +351,46 @@ Default blocked namespaces (safety fence):
 ```
 kubeintellect, monitoring, kube-system, kube-public, kube-node-lease, ingress-nginx, cert-manager
 ```
+
+### Multi-cluster {#multi-cluster}
+
+**Default: one cluster.** A command cannot name another — `--context`, `--kubeconfig`, `--server` and the other
+connection flags are refused, because which cluster KubeIntellect reaches is the deployment's decision, not the query's.
+
+To let it reach other clusters, list them. Each name must be a context of `KUBECTL_CONTEXTS_KUBECONFIG` (empty = the
+server's own `KUBECONFIG_PATH`):
+
+```bash
+KUBECTL_ALLOWED_CONTEXTS=prod-eu,staging
+KUBECTL_CONTEXTS_KUBECONFIG=/etc/kubeintellect/clusters/config
+```
+
+With Helm, put that kubeconfig in a Secret (key `config`) and name it; the chart mounts it read-only and the home
+cluster keeps the pod's own ServiceAccount:
+
+```bash
+kubectl -n kubeintellect create secret generic ki-clusters --from-file=config=./clusters.kubeconfig
+helm upgrade … --set 'multiCluster.allowedContexts={prod-eu,staging}' --set multiCluster.kubeconfigSecret=ki-clusters
+```
+
+What a listed cluster allows:
+
+- a command may carry **one** `--context=<listed name>` (exact, case-sensitive) and no other connection or identity
+  flag; anything else is `[Protected]`. The answer starts with `[cluster: <name>]`;
+- kubectl runs with a kubeconfig holding only that context (a read-only copy in a private directory, checked before
+  each reuse), so the rollback capture, the dry-run preflight and the schema check read the same cluster;
+- **a write on another cluster always asks**, even with auto-approve, and the prompt names the cluster;
+- an autonomous investigation stays on the home cluster it was opened for;
+- a `readonly` key reads another cluster as the read-only identity minted there (`kubeintellect-readonly` must exist
+  on that cluster — install the chart's RBAC there — or the read fails closed);
+- everything recorded for the call names its cluster: the exactly-once ledger (`SELF_GOVERN_ENABLED`), the rollback
+  point (`context` field), the approval request (`cluster`); a fix on another cluster is not verified or learned by
+  reflexion, whose memory is the home cluster's; and `kubectl config` is never run against another cluster;
+- the cluster is never switched by editing a kubeconfig: `kubectl config use-context` (one shared file, every
+  session) and `config set-credentials` (it could add a cluster nobody listed) stay refused.
+
+The credentials of a listed context are whatever its kubeconfig entry holds; give each the least privilege it needs,
+as for the home cluster.
 
 ---
 
@@ -471,6 +513,8 @@ investigates. Each is feature-flagged so you can disable without redeploying.
 | Variable | Default | Values | Description |
 |---|---|---|---|
 | `KUBECTL_ERROR_HINTS_ENABLED` | `true` | `true` \| `false` | Append a one-line diagnostic hint to non-zero kubectl errors (e.g. NotFound → "verify namespace and name"). Original error preserved verbatim. |
+| `MANIFEST_LINT_ENABLED` | `true` | `true` \| `false` | Before `apply`/`create`/`replace` with a stdin manifest, check every field's type and name against the cluster's own OpenAPI v3 schema and refuse the manifest with the wrong field named (e.g. `containers[0].command[2] is a mapping … quote the whole value`). Fails open: no schema for the kind, or the schema endpoint unreachable, means no check — never a false "valid". |
+| `PREFLIGHT_DIFF_ENABLED` | `true` | `true` \| `false` | Before an **unattended** (auto-approved) `patch` (server dry run: `(no change)`) or `apply`/`replace` with a stdin manifest (`kubectl diff`): no difference → refused as a no-op; an API-server rejection → refused with the field path (server-side dry run). Fails open on anything else (e.g. no `diff` binary on the host). Chat sessions are not dry-run. |
 | `SNAPSHOT_SUFFICIENCY_MODE` | `lenient` | `off` \| `lenient` \| `strict` | Bias the coordinator toward answering list-shaped questions from the pre-fetched snapshot when the cluster is healthy. `off` disables the bias entirely. `strict` = aggressive bias (opt-in). Always falls back to fresh data for logs, metrics, history, named resources, post-mutation, or freshness keywords. |
 | `SNAPSHOT_FRESHNESS_SECONDS` | `30` | integer | Snapshot age beyond which the coordinator must re-fetch regardless of mode. |
 | `INVESTIGATION_PLAN_ENABLED` | `true` | `true` \| `false` | Coordinator emits an `INVESTIGATION_PLAN:` block for queries needing 3+ tool calls; surfaced via SSE `PlanEvent`. |
@@ -493,10 +537,15 @@ truncates silently and never fails the request with a bare error.
 | Variable | Default | Values | Description |
 |---|---|---|---|
 | `AGENT_GRAPH_RECURSION_LIMIT` | `120` | integer > 0 | Whole-turn budget for the outer graph. A turn costs 3 steps plus 2 per coordinator↔investigation cycle, so `120` allows ~58 cycles. Exhaustion returns the partial turn plus an explanation. |
-| `AGENT_COORDINATOR_RECURSION_LIMIT` | `150` | integer > 0 | Tool-call budget for the coordinator's inner ReAct loop. ~3 recursion units per step (LLM call + tool call + tool response), so `150` allows ~50 tool calls in one coordinator turn. Exhaustion ends the turn with an explanation. |
+| `AGENT_COORDINATOR_RECURSION_LIMIT` | `150` | integer > 0 | Tool-call budget for the coordinator's inner ReAct loop. Each step costs 2 recursion units (model call + tool call); measured 2026-11-14, `150` allowed **74** tool calls in one coordinator turn. Exhaustion ends the turn with an explanation marked as an escalation, which an autonomous investigation records as `watchtower_escalated`, not done. |
 
 The read-only RCA subagents carry their own fixed limit of `50` (~16 tool calls), set in
 `app/agent/nodes/subagent.py`.
+
+At the default limits LangGraph does not raise `GraphRecursionError` when the coordinator's loop runs out: its
+`remaining_steps` check ends the loop with the plain message *"Sorry, need more steps to process this request."*
+Both endings now produce the same escalation (measured 2026-11-14: before this, an unattended session that resent
+one rejected command 73 times ended with that message and was recorded as done).
 
 Lower either value to see the escalation path in a test environment. Raise
 `AGENT_COORDINATOR_RECURSION_LIMIT` if you have investigations that legitimately need more
@@ -638,6 +687,18 @@ grounding rate of 0.70 and 0.61, which is why the default floor is 0.9.
 | `AUTONOMY_LEVEL` | `A1` | Default autonomy level: `A0` observe, `A1` investigate + report, `A2` propose, `A3` auto-fix (allowlist only). |
 | `AUTONOMY_NAMESPACE_LEVELS` | `""` | Per-namespace overrides, e.g. `prod=A0,dev=A2`. **Exact match, no globs** — unlike the row below; an unmatchable entry is reported, not silently ignored. Protected namespaces are always pinned to `A0` for autonomous action. |
 | `SELF_GOVERN_ENABLED` | `false` | Self-governance master switch (ADR-007/008/009). On: **(1) exactly-once irreversible calls** (ADR-008) — every `kubectl` call in the IRREVERSIBLE rollback class is checked against the `effect_log` ledger before it runs: an equivalent retry in the same turn returns the recorded result instead of executing, a retry that drifted onto a different target is blocked until a human approves an explicit fork, and approvals become **single-use tokens** consumed server-side. Needs the flight recorder on Postgres (`db-init` for the `effect_log` table); without it every irreversible call falls back to a fresh human approval, even on auto-approve. See [security](security.md#exactly-once-irreversible-calls-and-single-use-approvals-adr-008). **(2) grounding check** (ADR-009, Cortex graph only) — a `ground_check` node between `synthesize` and `remember` labels each claim of the answer `supported` / `partial` / `none` against the evidence already gathered (one cheap-tier call; skipped when the answer makes no actionable claim). Unsupported claims are hedged and withdrawn, and demote the turn to advisory (A1); partly supported claims cap it at propose (A2). An A3 fix runs only after a diagnosis in which every claim is supported. A checker error never raises autonomy. See [Autonomy](autonomy.md#grounded-auto-fix-adr-009). Off: behaviour, graph and watchtower are exactly as before. |
+| `AUTO_APPROVE_ENABLED` | `false` | **Demonstration and evaluation mode.** Off: no request flag (`kq --auto-approve`), no "approve all" message and no watchtower turn skips the approval gate, and A3 behaves like A2 (proposes the fix). On: auto-approve works as before; an autonomous investigation's bypass still applies only inside its own namespace. The evaluation harness needs it on. |
+| `AUTO_APPROVE_MAX_WRITES` | `10` | At most this many writes (accepted or rejected) per auto-approved session run without a human; each further write goes to the approval prompt, so an unattended session stops there. An identical write that already failed permanently in the session is refused regardless. See [security](security.md#unattended-session-bounds). |
+| `AUTOFIX_VERIFY_TIMEOUT_SECONDS` | `120` | After an autonomous fix turn, how long the watchtower polls the finding's own workload (pinned by uid before the turn) for `fixed` / `not_fixed` / `unknown`. `not_fixed` covers still unhealthy, deleted, or replaced by a same-named object. `0` = do not verify (outcome `unknown`, never reported as fixed). |
+| `AUTOFIX_BREAKER_SECONDS` | `86400` | After an autonomous investigation ends `not_fixed`, `stuck` or `budget_exhausted`, its (namespace, playbook) is demoted from A3 to A2 for this long (a restart also resets it). `0` = no breaker. |
+| `SESSION_IDENTITY_ENABLED` | `false` (chart: `true`) | A namespace-bound investigation runs kubectl as a short-lived token for `SESSION_IDENTITY_SERVICE_ACCOUNT` in its namespace, bound there to `SESSION_IDENTITY_CLUSTER_ROLE`, so RBAC holds the namespace and Secret bounds. Fails closed: no identity, no kubectl. The ClusterRole must exist (Helm `sessionIdentity.enabled`). See [security](security.md#session-identity). |
+| `SESSION_IDENTITY_SERVICE_ACCOUNT` | `kubeintellect-session` | The per-namespace ServiceAccount a bound investigation acts as. |
+| `SESSION_IDENTITY_CLUSTER_ROLE` | `kubeintellect-session` | The ClusterRole it is bound to, by a RoleBinding in that namespace. |
+| `SESSION_IDENTITY_PROVISION` | `true` | Create the ServiceAccount + RoleBinding in a namespace on its first investigation. `false`: they must already exist (the server then needs only `serviceaccounts/token` on that name). |
+| `SESSION_IDENTITY_TOKEN_SECONDS` | `900` | TokenRequest lifetime, 600–86400 (the API server's minimum is 600); re-minted when under 120 s remain. Also used for the read-only identity. |
+| `READONLY_IDENTITY_ENABLED` | `false` (chart: `true`) | The `readonly` role runs kubectl as `READONLY_IDENTITY_SERVICE_ACCOUNT`, bound cluster-wide to the chart's read-only role, so the API server refuses its writes and Secret reads. Fails closed. Never provisioned by the server. |
+| `READONLY_IDENTITY_SERVICE_ACCOUNT` | `kubeintellect-readonly` | The read-only ServiceAccount. |
+| `READONLY_IDENTITY_NAMESPACE` | `""` | Where it lives; empty = the server pod's own namespace (the chart sets it). |
 | `AUTONOMY_A3_ALLOWLIST` | `""` | Patterns eligible for `A3` auto-fix, as `<playbook>/<namespace-glob>` entries, e.g. `CrashLoopBackOff/dev-*`. |
 
 ### Anthropic provider

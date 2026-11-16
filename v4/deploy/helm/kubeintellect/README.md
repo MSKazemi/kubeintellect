@@ -91,6 +91,14 @@ All off (or at the server's default) unless set; each value maps 1:1 to the sett
 
 The chart ships closed by default, and the two controls are independent:
 
+- **Session identities** (`sessionIdentity.*`, `readonlyIdentity.*`, both on): a
+  watchtower investigation acts as a token for a ServiceAccount in its own
+  namespace, and the `readonly` role as a read-only ServiceAccount, so the API
+  server holds their namespace, Secret and write bounds whatever command they
+  send. Neither identity is ever broader than the server's own `rbac.*` grants,
+  compared by scope: without `createClusterReadOnly` (or `clusterAdmin`) no
+  session role is rendered and investigations fail closed. Fails closed. See
+  `docs/security.md#session-identity`.
 - **RBAC** (`rbac.*`) decides what the agent's ServiceAccount *can* do.
   `createClusterReadOnly` is on; `createClusterOps` (delete/patch/scale),
   `allowExec` (pods/exec) and `clusterAdmin` are all **off**. The read-only

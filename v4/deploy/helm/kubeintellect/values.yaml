@@ -133,6 +133,37 @@ rbac:
   allowExec: false             # pods/exec — separate flag; off by default to protect secrets from exec+env
   enableNamespaceManagement: false
 
+# ADR-007 Phase 6 — every namespace-bound (watchtower) investigation runs kubectl as its own short-lived identity, a
+# ServiceAccount token confined by RBAC to that namespace, with no Secret access, no workload creation and no exec.
+# The session role is never broader than the server's own rbac.* grants (templates/session-identity.yaml). Fails
+# closed: an investigation that cannot get its identity does not run. docs/security.md#session-identity
+sessionIdentity:
+  enabled: true
+  serviceAccount: kubeintellect-session
+  clusterRole: kubeintellect-session
+  # Create the ServiceAccount + RoleBinding in a namespace on its first investigation. false: pre-create them
+  # (then the server only needs serviceaccounts/token on that name).
+  provision: true
+  # TokenRequest lifetime in seconds (API server minimum 600); also used for the read-only identity.
+  tokenSeconds: 900
+
+# Multi-cluster (plan Phase 6b). Empty = one cluster, this one: a command cannot name another (`--context` is refused).
+# To let KubeIntellect reach other clusters, put a kubeconfig holding their contexts in a Secret (key `config`) and list
+# the context names a command may select with `--context=<name>`. The home cluster keeps the pod's own identity; a
+# write on another cluster always asks, naming it; investigations stay on the home cluster; kubeconfig editing stays
+# refused, so nothing outside this list is reachable. docs/configuration.md#multi-cluster
+multiCluster:
+  allowedContexts: []
+  kubeconfigSecret: ""
+
+# The `readonly` role's kubectl runs as this ServiceAccount, bound to read-only rules with the server's own read scope:
+# cluster-wide to the chart's cluster-ro role (reads, no Secrets; rendered for it even when the server itself is
+# cluster-admin) when the server reads cluster-wide, else the server's namespaced read Role in its own namespace. So a
+# read-only API key cannot write or read a Secret whatever command it sends. Fails closed. docs/security.md#session-identity
+readonlyIdentity:
+  enabled: true
+  serviceAccount: kubeintellect-readonly
+
 # Startup window — rendered ONLY when config.llmProvider is `local`; every other provider keeps
 # exactly the liveness/readiness behaviour it always had (no startupProbe is emitted).
 #

@@ -193,6 +193,16 @@ Two modes, same node:
 | `user_id` | `str` | API key-derived user identifier. |
 | `user_role` | `str` | `superadmin \| admin \| operator \| readonly` |
 
+Three values that decide what a tool may do travel in the **run config**
+(`config["configurable"]`), not in the graph state. The graph sets them and no model can write
+them. Tools receive them through the injected `RunnableConfig` (safety invariant #6):
+
+| `configurable` key | Set by | Read by | Meaning |
+|---|---|---|---|
+| `user_role` | `stream_events` from the API key | `run_kubectl` and other tools | the RBAC role |
+| `hitl_bypass` | `stream_events` (request flag / "approve all", only if `AUTO_APPROVE_ENABLED`) | `run_kubectl` | skip the approval prompt for this turn |
+| `bound_namespace` | `stream_events`, from the watchtower's `finding.namespace` | `run_kubectl` | the only namespace where `hitl_bypass` applies; absent for chat sessions ([security](security.md#namespace-bound-auto-approve)) |
+
 ---
 
 ## Tool Architecture
@@ -510,8 +520,10 @@ packages/
 ├── streaming/
 │   └── emitter.py                — per-session queue, typed events, SSE serialization
 ├── tools/
-│   ├── kubectl_tool.py           — run_kubectl with RBAC + HITL
-│   ├── kubectl_errors.py         — error-pattern → one-line hint mapper (15 patterns)
+│   ├── kubectl_tool.py           — run_kubectl with RBAC + HITL; per-session repeat guard, write budget, stuck detector
+│   ├── manifest_lint.py          — manifest vs the cluster's OpenAPI v3 schema before sending (fails open)
+│   ├── session_identity.py       — short-lived namespace-scoped / read-only kubeconfigs (TokenRequest; fails closed)
+│   ├── kubectl_errors.py         — error-pattern → one-line hint + permanent/transient class (19 patterns)
 │   ├── prometheus_tool.py        — query_prometheus + query_prometheus_series (trend feed:
 │   │                                (series, error) — never decide health from the series alone)
 │   ├── loki_tool.py              — query_loki

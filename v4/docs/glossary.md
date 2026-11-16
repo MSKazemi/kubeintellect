@@ -24,7 +24,7 @@ page where the concept is explained in depth.
 | **RCAResult** | The structured output of an RCA: root cause, confidence, supporting evidence, conflicting evidence, reasoning, and a recommended fix. See [What you can ask](capabilities.md#what-a-root-cause-answer-looks-like). |
 | **AgentFinding** | A single subagent's structured contribution to an RCA (signals, hypothesis, confidence, evidence). |
 | **HITL** | **Human-in-the-Loop** — the approval gate that pauses before any write operation runs, showing you the exact command. See [HITL gate](agent-behaviors.md#always-confirm-gate-overrides-auto_approve). |
-| **Always-confirm gate** | A set of cascading-blast actions (`delete namespace`, `delete pv/crd`, `set image/resources`, `drain`) that always require explicit approval, even in auto-approve mode. |
+| **Always-confirm gate** | A set of cascading-blast actions (`delete namespace`, `delete pv/crd`, `set image/resources` however spelled, `drain`) that always require explicit approval, even in auto-approve mode. |
 | **`auto_approve`** | A per-request flag that skips routine approval gates for trusted automation. The always-confirm gate still fires. |
 | **Reflexion** | The cross-session learning loop: KubeIntellect records verified root-cause outcomes and promotes recurring, confirmed patterns back into future prompts. PostgreSQL only. See [Reflexion Subsystem](reflexion.md). |
 | **Failure pattern** | A recurring, verified problem signature that reflexion has promoted; it is recalled (cluster-scoped) to speed up future diagnoses. |

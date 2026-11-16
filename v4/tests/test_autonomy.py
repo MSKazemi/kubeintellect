@@ -136,12 +136,15 @@ class TestWatchtower:
 
     async def test_investigation_prompt_levels(self, mocker):
         """A2 asks for proposals; A3-allowlisted asks for the fix + bypasses HITL."""
+        # A3 auto-fix exists only in the demonstration/evaluation mode (AUTO_APPROVE_ENABLED, default off).
+        mocker.patch.object(watchtower.settings, "AUTO_APPROVE_ENABLED", True)
         captured = {}
 
         async def fake_run_session(
-            ask, session_id, user_id, user_role, auto_approve, trigger_source
+            ask, session_id, user_id, user_role, auto_approve, trigger_source, bound_namespace=None
         ):
-            captured.update(ask=ask, auto=auto_approve, provenance=trigger_source)
+            captured.update(ask=ask, auto=auto_approve, provenance=trigger_source,
+                            bound=bound_namespace)
 
         mocker.patch("app.agent.workflow.run_session", side_effect=fake_run_session)
         mocker.patch("app.streaming.emitter.prepare_session")
@@ -154,6 +157,8 @@ class TestWatchtower:
         mocker.patch("app.autonomy.watchtower.a3_allowed", return_value=True)
         await watchtower._investigate(_finding(), "A3")
         assert captured["auto"] is True
+        # The authority to mutate was decided for this finding's namespace; the session is told which.
+        assert captured["bound"] == "dev"
         # The watchtower is the one caller entitled to sensor-grade memory provenance; it
         # must ask for it explicitly, because a chat client's `user_id` no longer grants it.
         assert captured["provenance"] == "detector"
@@ -166,6 +171,8 @@ class TestWatchtower:
 
     async def test_autofix_schedules_post_fix_recheck(self, mocker):
         """Memory V5 P6 (ADR-017): an autonomous fix records a prospective re-check."""
+        # A3 auto-fix exists only in the demonstration/evaluation mode (AUTO_APPROVE_ENABLED, default off).
+        mocker.patch.object(watchtower.settings, "AUTO_APPROVE_ENABLED", True)
         async def fake_run_session(*a, **k):
             return
 
@@ -225,7 +232,7 @@ class TestWatchtower:
         captured = {}
 
         async def fake_run_session(
-            ask, session_id, user_id, user_role, auto_approve, trigger_source
+            ask, session_id, user_id, user_role, auto_approve, trigger_source, bound_namespace=None
         ):
             captured.update(ask=ask, auto=auto_approve, provenance=trigger_source)
 

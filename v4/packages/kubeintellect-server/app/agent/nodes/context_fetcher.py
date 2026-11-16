@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import asyncio
-import os
+from typing import Optional
 import subprocess
 import time
+
+from langchain_core.runnables import RunnableConfig
 
 from app.agent.state import AgentState
 from app.core.config import settings
@@ -198,8 +200,13 @@ def _snapshot_refusal(args: list[str]) -> str | None:
     return None
 
 
-def _kubectl_snapshot(args: list[str]) -> tuple[bool, str, bool]:
+def _kubectl_snapshot(args: list[str], config: RunnableConfig | None = None) -> tuple[bool, str, bool]:
     """Run a read-only kubectl command. Returns ``(ok, text, complete)``.
+
+    ``config`` is the run config of the turn the read is for. It decides whose identity the read uses, exactly as for
+    `run_kubectl` (`kubectl_tool._kubectl_env`): a namespace-bound session's own, the read-only identity for a `readonly`
+    key, the server's otherwise. Without it a bound session's pre-fetch reads ran as the server, in a namespace the
+    model named (independent review of ADR-007 Phase 6, finding 4). No identity, no read: ``ok`` is False.
 
     ``ok`` is False when kubectl exited non-zero, could not be started, or timed
     out. The text is still returned — it is the operator-facing explanation — but
@@ -223,8 +230,14 @@ def _kubectl_snapshot(args: list[str]) -> tuple[bool, str, bool]:
         logger.warning("context_fetcher: refused snapshot read %r: %s", args, refusal)
         return False, refusal, True
 
-    kubeconfig = os.path.expanduser(settings.KUBECONFIG_PATH)
-    env = {**os.environ, "KUBECONFIG": kubeconfig}
+    from app.tools import session_identity
+    from app.tools.kubectl_tool import _kubectl_env
+
+    try:
+        env = _kubectl_env(config)
+    except session_identity.IdentityUnavailable as exc:
+        logger.warning("context_fetcher: session identity unavailable, %r not read: %s", args[:2], exc)
+        return False, f"[Session identity unavailable] {exc}", False
     try:
         proc = subprocess.run(
             ["kubectl"] + args,
@@ -279,7 +292,7 @@ def _cap_with_notices(text: str, dropped: int) -> str:
     return body + "\n" + "\n".join(notices) + "\n"
 
 
-def _run_kubectl_snapshot(args: list[str]) -> str:
+def _run_kubectl_snapshot(args: list[str], config: RunnableConfig | None = None) -> str:
     """Text-only wrapper, for callers that render the output for a human.
 
     A failed read comes back as an explicit unavailable line rather than raw stderr.
@@ -288,7 +301,7 @@ def _run_kubectl_snapshot(args: list[str]) -> str:
     `### Pod Description` heading, carrying none of the markers the prompt tells the
     model to treat as incomplete.
     """
-    ok, text, _complete = _kubectl_snapshot(args)
+    ok, text, _complete = _kubectl_snapshot(args, config)
     if ok:
         return text
     return f"{UNAVAILABLE_MARKER} {_unavailable_reason(text)}"
@@ -300,9 +313,17 @@ def _unavailable_reason(text: str) -> str:
     return lines[-1].strip()[:300] if lines else "kubectl reported no reason"
 
 
-async def context_fetcher(state: AgentState) -> dict:
-    """Pre-fetch pod list and warning events in parallel before coordinator runs."""
+# `Optional[RunnableConfig]`, not `RunnableConfig | None`: with `from __future__ import annotations` LangGraph sees a
+# string and injects the run config only for the spellings it lists (tests/test_workflow_config_injection.py).
+async def context_fetcher(state: AgentState, config: Optional[RunnableConfig] = None) -> dict:  # noqa: UP045
+    """Pre-fetch pod list and warning events in parallel before coordinator runs.
+
+    A namespace-bound session (an autonomous investigation) reads its own namespace, as its own identity: the
+    cluster-wide listing is outside what that identity may read, and outside what the session is for.
+    """
     session_id = state.get("session_id", "-")
+    bound = ((config or {}).get("configurable") or {}).get("bound_namespace")
+    scope = ["-n", str(bound)] if bound else ["--all-namespaces"]
     await emit(session_id, StatusEvent(
         phase="snapshot",
         message="Fetching cluster snapshot…",
@@ -311,12 +332,12 @@ async def context_fetcher(state: AgentState) -> dict:
 
     (pods_ok, pods_out, pods_complete), (events_ok, events_out, events_complete) = \
         await asyncio.gather(
-            asyncio.to_thread(_kubectl_snapshot, ["get", "pods", "--all-namespaces"]),
+            asyncio.to_thread(_kubectl_snapshot, ["get", "pods", *scope], config),
             asyncio.to_thread(_kubectl_snapshot, [
-                "get", "events", "--all-namespaces",
+                "get", "events", *scope,
                 "--sort-by=.lastTimestamp",
                 "--field-selector=type=Warning",
-            ]),
+            ], config),
         )
     read_failed = not (pods_ok and events_ok)
     snapshot_complete = pods_complete and events_complete

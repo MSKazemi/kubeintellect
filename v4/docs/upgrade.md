@@ -178,11 +178,60 @@ upgrade; everything new is default-off.
    as an ordinary failed request; any other client must handle all six. Authoring compiles at a
    temperature of zero, so a model that rejects that setting cannot author rules. See the
    [API reference](api-reference.md).
+3. **Auto-approve is off unless `AUTO_APPROVE_ENABLED=true`.** The `auto_approve` request flag,
+   `kq --auto-approve` and the "approve all" phrase are ignored, and A3 namespaces propose their
+   fix instead of applying it. If you run the evaluation harness, a demo, or automation that relied
+   on auto-approve, set `AUTO_APPROVE_ENABLED=true` on **that** server only. Even then, an
+   autonomous investigation's bypass now applies only inside the namespace it was opened for
+   ([details](security.md#namespace-bound-auto-approve)). A fix that touched a sibling namespace,
+   used no `-n`, or piped a manifest without `metadata.namespace` now stops at the approval prompt.
+   `kubectl delete <kind> --all` is now always-confirm.
+4. **An auto-approved session is bounded and its outcome is judged by the system.** Each of these changes what an
+   unattended (A3, or `auto_approve`) session may do; a chat session with a human approving is unchanged except for
+   the first two items:
+   * a manifest whose field has the wrong type or a misspelt name is refused before it is sent
+     (`MANIFEST_LINT_ENABLED`, on; it fetches the cluster's OpenAPI schema with `kubectl get --raw`, so the
+     deployment's identity needs `get` on `/openapi/v3/*`, which every authenticated user has by default);
+   * kubectl errors end with `[permanent error: …]` or `[transient error: …]`;
+   * a bound session's read that names no namespace runs in the bound namespace;
+   * an identical write that already failed permanently is refused; at most `AUTO_APPROVE_MAX_WRITES` (10) writes run
+     without a human; a session that repeats itself is stopped;
+   * `run`, `create` of a workload, and a change to a container's `command`/`args` are always-confirm;
+   * `JobBackoffLimitExceeded` is never auto-fixed (`auto_fixable: false`);
+   * the watchtower polls the finding's own workload after a fix for up to `AUTOFIX_VERIFY_TIMEOUT_SECONDS` (120 s,
+     holding that investigation's slot), records a typed outcome (`autonomy_outcome` in the flight recorder), and a
+     `not_fixed`, `stuck` or `budget_exhausted` outcome demotes that (namespace, playbook) to A2 for
+     `AUTOFIX_BREAKER_SECONDS` (24 h). Log lines to alert on: `watchtower_outcome … outcome=not_fixed|stuck|budget_exhausted`,
+     `watchtower: A3 breaker open`.
+   See [what else bounds an unattended session](security.md#unattended-session-bounds).
+5. **Helm: investigations and the `readonly` role act as their own Kubernetes identities** (`sessionIdentity.enabled`,
+   `readonlyIdentity.enabled`, both on). The chart adds the `kubeintellect-session`, `kubeintellect-session-issuer`
+   ClusterRoles, the `kubeintellect-readonly` ServiceAccount and their bindings; on a namespace's first investigation
+   the server creates a `kubeintellect-session` ServiceAccount and RoleBinding there. What changes:
+   * a watchtower investigation can no longer read or write outside its namespace, read a Secret, read anything
+     cluster-scoped (`get nodes` is now `Forbidden` inside an investigation), create or delete a workload, or exec —
+     whatever the command; its writes are only those listed in [security](security.md#session-identity), and only if
+     the server itself holds writes (`rbac.createClusterOps` or `rbac.clusterAdmin`);
+   * a `readonly` API key can no longer write or read a Secret even where the server is cluster-admin;
+   * if the identity cannot be issued, nothing runs (`[Session identity unavailable] …`; watchtower log
+     `watchtower: not investigating … session identity unavailable`). Alert on it.
+   * with `rbac.createClusterReadOnly=false` the chart renders no session ClusterRole (the server could not read
+     another namespace either), so investigations fail closed naming it; the `readonly` identity then reads only the
+     server's own namespace, through the server's namespaced read Role.
+   To keep the previous behaviour: `--set sessionIdentity.enabled=false --set readonlyIdentity.enabled=false`.
+6. **Every role: kubectl commands that act on the KubeIntellect server itself are refused, with or without approval.**
+   `kubectl cp`, `proxy`, `kustomize`, `kuberc`, every `kubectl config` subcommand except `view`, `current-context`,
+   `get-contexts`, `get-clusters` and `get-users`, and the flags that read or write a file on the server (`--from-file`,
+   `--from-env-file`, `--patch-file`, `-o *-file` formats, `debug --custom`, `--profile`, `--profile-output`,
+   `--cache-dir`, `--kuberc`, `--exec-*`, `--auth-provider*`), plus `--proxy-url`. `kubectl cp` used to reach the
+   approval prompt for `admin`; it is now refused. Use the inline forms (`--from-literal`, `-p '<json>'`,
+   `-o jsonpath=…`, `-f -` with stdin). [Why](security.md#session-identity).
 
 ### New default-off flags
 
 | Flag | What it adds | Before you enable it |
 |---|---|---|
+| `KUBECTL_ALLOWED_CONTEXTS` (Helm `multiCluster.*`) | Lets a command select another listed cluster with `--context` | A kubeconfig holding those contexts (Helm: a Secret, `multiCluster.kubeconfigSecret`); least-privilege credentials per context; `kubeintellect-readonly` on each cluster if `readonly` keys should read there. [Multi-cluster](configuration.md#multi-cluster) |
 | `LLM_PROVIDER=local` | Ollama / vLLM / LM Studio / llama.cpp as a first-class provider | [Local LLM guide](local-llm.md). Startup makes one real tool call per model; a cold CPU load can exceed a short liveness probe |
 | `SELF_GOVERN_ENABLED` | Exactly-once irreversible calls with single-use approvals (ADR-008), and a grounding check on the Cortex graph (ADR-009) | Needs the flight recorder on Postgres and **`kubeintellect db-init`** (schema version 3 adds the `effect_log` table). Without the ledger every irreversible call falls back to a human approval |
 | `PROMQL_DETECTION_ENABLED` | Evaluates the `promql:` queries in `detect:` blocks | Needs `PROMETHEUS_URL`. The 20 shipped queries have never run before, so expect new findings; an unreachable Prometheus shows as `promql: blind` on `GET /v1/findings`, never as "all clear" |

@@ -13,12 +13,15 @@ Safety layers (in order):
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import json
 import shlex
 import subprocess
-from typing import Annotated
+import threading
+from collections import Counter, OrderedDict, deque
+from typing import Annotated, Any
 
 import yaml
 from langchain_core.runnables import RunnableConfig
@@ -26,7 +29,7 @@ from langchain_core.tools import InjectedToolArg, tool
 from langgraph.types import interrupt
 
 from app.core.config import settings
-from app.tools import kubectl_errors
+from app.tools import kubectl_errors, session_identity
 from app.tools.output_policy import mark_unavailable, unavailable_notice
 from app.tools.namespace_guard import (
     annotate_withheld,
@@ -322,7 +325,124 @@ def _classify_risk(verb: str, args: list[str] | None = None) -> str:
     return "low"
 
 
-def _requires_always_confirm(verb: str, args: list[str]) -> bool:
+#: The container fields that `set image` / `set resources` change. Matched as whole field names (or whole
+#: JSON-patch path segments), never as substrings: `imagePullPolicy` and `imagePullSecrets` are other fields.
+# `command` and `args` added 2026-11-14: replacing a container's program is the same kind of change as replacing its
+# image. Measured: an unattended session tried to patch a failing Job's command to print success (r4), and another
+# made a stub Job that did (r1, r3) and reported the job fixed.
+_GATED_CONTAINER_FIELDS = frozenset({"image", "resources", "command", "args"})
+
+_GATED_FIELD_WORD = re.compile(
+    r"(?<![A-Za-z0-9_])(?:image|resources)(?![A-Za-z0-9_])"
+    # `command`/`args` only as a key (quoted or YAML), so a ConfigMap key `startup-command` is not mistaken for a
+    # container's program (independent review F13); JSON-patch paths are checked by the parsed walk.
+    r"|(?<![A-Za-z0-9_-])[\"']?(?:command|args)[\"']?\s*:"
+)
+
+#: Kinds whose manifest carries a pod template or pod spec, i.e. the ones where `image` / `resources` are workload fields.
+_POD_BEARING_KINDS = frozenset({
+    "pod", "deployment", "statefulset", "daemonset", "replicaset", "replicationcontroller", "job", "cronjob",
+})
+
+
+def _touches_gated_field(node: object) -> bool:
+    """True if a parsed patch/manifest names an `image` or `resources` field anywhere.
+
+    Handles all three payload shapes through one walk: a merge/strategic patch (nested mappings), a manifest, and an
+    RFC 6902 JSON patch (a list of `{op, path, value}`), where the field is a *path segment* rather than a key.
+    """
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key in _GATED_CONTAINER_FIELDS:
+                return True
+            if key in ("path", "from") and isinstance(value, str) and _GATED_CONTAINER_FIELDS & set(value.split("/")):
+                return True
+            if _touches_gated_field(value):
+                return True
+    elif isinstance(node, list):
+        return any(_touches_gated_field(item) for item in node)
+    return False
+
+
+def _patch_payload(args: list[str]) -> tuple[bool, str | None]:
+    """(readable, payload) for a `kubectl patch`. Unreadable means the patch comes from a file or names no payload.
+
+    The tool cannot open a file on the server and a patch with no payload is malformed, so both are reported as
+    unreadable and the caller fails closed.
+    """
+    for i, tok in enumerate(args):
+        if tok in ("-p", "--patch"):
+            return (True, args[i + 1]) if i + 1 < len(args) else (False, None)
+        if tok.startswith("--patch="):
+            return True, tok.split("=", 1)[1]
+        if tok.startswith("-p=") or (tok.startswith("-p") and len(tok) > 2 and tok[2] in "{[\"'"):
+            return True, tok[3:] if tok.startswith("-p=") else tok[2:]
+        if tok == "--patch-file" or tok.startswith("--patch-file="):
+            return False, None
+    return False, None
+
+
+def _changes_container_image_or_resources(verb: str, args: list[str], stdin: str | None) -> bool:
+    """True when a `patch` / `apply` / `replace` changes a workload's container `image` or `resources`.
+
+    `set image` and `set resources` are always-confirm, but the same change spelled as `patch` or `apply` was not:
+    measured 2026-11-12 with a real model, a JSON patch replacing `/spec/template/spec/containers/0/image` ran under
+    auto-approve with no prompt while `kubectl set image` for the same field stopped and asked. The gate keyed on the
+    spelling, not the effect. Fail-closed where the payload cannot be read.
+
+    NOT covered here, deliberately: `rollout undo` (restores an earlier revision, which can change the image); `edit`
+    needs an editor and cannot run through this tool. `create` and `run` of a workload are always-confirm through
+    `_creates_a_workload` instead: a new workload is a substitute for the one under investigation, whatever it runs.
+    """
+    if verb == "patch":
+        readable, payload = _patch_payload(args)
+        if not readable or payload is None:
+            return True
+        # Text backstop, independent of any parser: PyYAML and kubectl's own YAML reader can disagree about a
+        # malformed flow mapping (`{image:b:1}` is ONE key to PyYAML), and a gate that trusts one parser's view is
+        # only as strong as the two parsers' agreement. Whole-word match, so `imagePullPolicy` does not trip it.
+        if _GATED_FIELD_WORD.search(payload):
+            return True
+        # The parse below catches what the text cannot: JSON escapes such as "image" decode to `image`.
+        try:
+            parsed = json.loads(payload)
+        except ValueError:
+            try:
+                parsed = yaml.safe_load(payload)
+            except yaml.YAMLError:
+                return True
+        return not isinstance(parsed, (dict, list)) or _touches_gated_field(parsed)
+    if verb in ("apply", "replace"):
+        return any(
+            str(doc.get("kind", "")).lower() in _POD_BEARING_KINDS and _touches_gated_field(doc)
+            for doc in _manifest_docs(stdin)
+        )
+    return False
+
+
+# `kubectl create <subcommand>` forms that make a workload.
+_WORKLOAD_CREATE_SUBCOMMANDS = frozenset({"deployment", "deploy", "job", "cronjob", "cj"})
+
+
+def _creates_a_workload(verb: str, args: list[str], stdin: str | None) -> bool:
+    """True for `run`, `create <workload>` and `create -f -` of a pod-bearing manifest.
+
+    Measured 2026-11-14: in 2 of 4 unattended re-runs a session created `report-new`, a Job whose command printed
+    SUCCESS, verified the stub instead of the failing Job, and reported the job fixed. A repair changes the object
+    under investigation; a new workload is a substitute for it and needs a human. Supporting objects (a ConfigMap,
+    the repair the config faults need) are not workloads and still run unattended.
+    """
+    if verb in ("run", "debug"):
+        # `debug` adds an ephemeral container, or with --copy-to makes a new pod: a substitute either way (review F13).
+        return True
+    if verb != "create":
+        return False
+    if _operand_after_verb(args) in _WORKLOAD_CREATE_SUBCOMMANDS:
+        return True
+    return any(str(doc.get("kind", "")).lower() in _POD_BEARING_KINDS for doc in _manifest_docs(stdin))
+
+
+def _requires_always_confirm(verb: str, args: list[str], stdin: str | None = None) -> bool:
     """True for actions whose blast radius is too large to auto-approve.
 
     Always-confirm actions trigger an HITL interrupt even when
@@ -330,6 +450,10 @@ def _requires_always_confirm(verb: str, args: list[str]) -> bool:
     confirm; there is no way to silently auto-approve them.
     """
     if verb == "drain":
+        return True
+    if _changes_container_image_or_resources(verb, args, stdin):
+        return True
+    if _creates_a_workload(verb, args, stdin):
         return True
     # `args[2]` is the operand only when the command is written verb-first with nothing in
     # between. `kubectl delete -n prod namespace shop` — the *natural* way to write it — put
@@ -345,7 +469,22 @@ def _requires_always_confirm(verb: str, args: list[str]) -> bool:
         return True
     if verb == "delete" and operand.split("/")[0] in _ALWAYS_CONFIRM_DELETE_TARGETS:
         return True
+    # A delete that names no object but a whole class of them (`--all`, `-A`) has a blast radius the
+    # namespace-level rules above only cover when the TARGET is a namespace. Measured 2026-11-12 on a real
+    # cluster through this tool: `kubectl delete pods --all -n ns` ran under auto-approve with no prompt and
+    # replaced every pod. A named delete, or one scoped by a label selector, is still a deliberate, narrower
+    # request and still honours auto-approve; only the unscoped forms are always-confirm.
+    if verb == "delete" and _is_unscoped_delete(args):
+        return True
     return False
+
+
+def _is_unscoped_delete(args: list[str]) -> bool:
+    """True for `delete --all` / `delete -A`: no object is named and no selector narrows the set."""
+    for arg in args:
+        if arg == "--all" or arg.lower() == "--all=true":
+            return True
+    return _is_all_namespaces(args)
 
 
 def _normalise(command: str) -> str:
@@ -401,12 +540,108 @@ _CONNECTION_FLAGS = frozenset({
     # identity / impersonation
     "--as", "--as-group", "--as-uid",
     "--user", "--username", "--password", "--token",
-    # which cluster
-    "--server", "-s", "--kubeconfig", "--context", "--cluster",
+    # which cluster, and which network path to it (a proxy sees the bearer token of a plain-HTTP hop)
+    "--server", "-s", "--kubeconfig", "--context", "--cluster", "--proxy-url",
     # transport trust
     "--insecure-skip-tls-verify", "--certificate-authority",
     "--client-certificate", "--client-key", "--tls-server-name",
 })
+
+
+# ── Commands that act on the KubeIntellect server, not on the cluster ─────────
+# Owner decision 2026-11-15: whatever a sysadmin could do to the CLUSTER may be approved; these do something to the
+# machine KubeIntellect runs on — its kubeconfig (which in a bound session IS the session identity, so rewriting it
+# swapped the session's token for the server's own: independent review of ADR-007 Phase 6, finding 1), its files
+# (`--from-file` copied a server credential into a ConfigMap: finding 2), or its processes. An approval prompt would
+# show a namespaced-looking command doing something elsewhere, so they are refused for every role, before any prompt.
+_HOST_LOCAL_VERBS = {
+    "cp": "copies files between the KubeIntellect server's disk and a pod",
+    "proxy": "opens a listener on the KubeIntellect server that forwards with its credentials",
+    "kustomize": "renders a local or remote overlay on the KubeIntellect server, which can read its files or run "
+                 "a helper program there",
+    "kuberc": "changes the kubectl preferences every later call on the KubeIntellect server uses",
+}
+_HOST_LOCAL_FLAGS = {
+    "--from-file": "reads a file on the KubeIntellect server",
+    "--from-env-file": "reads a file on the KubeIntellect server",
+    "--patch-file": "reads a file on the KubeIntellect server",
+    "--kuberc": "loads kubectl preferences from a file on the KubeIntellect server",
+    "--profile-output": "writes a file on the KubeIntellect server",
+    "--cache-dir": "writes files on the KubeIntellect server",
+    "--log-file": "writes a file on the KubeIntellect server",
+    "--log-dir": "writes files on the KubeIntellect server",
+}
+_HOST_LOCAL_FLAG_PREFIXES = ("--exec-", "--auth-provider")  # credential plugins: a program run on the server
+_FILE_OUTPUT_FORMATS = frozenset({"jsonpath-file", "go-template-file", "templatefile", "custom-columns-file"})
+
+
+def _host_local_reason(verb: str, args: list[str], flags_end: int) -> str | None:
+    """What this command would do on the KubeIntellect server itself, or None if it only talks to the cluster."""
+    if verb in _HOST_LOCAL_VERBS:
+        return f"`kubectl {verb}` {_HOST_LOCAL_VERBS[verb]}"
+    if verb == "config" and _operand_after_verb(args) not in _READ_ONLY_SUBCOMMANDS["config"]:
+        sub = _operand_after_verb(args) or "(no subcommand)"
+        return f"`kubectl config {sub}` changes the kubeconfig the KubeIntellect server runs kubectl with"
+    for tok in args[1:flags_end]:
+        if not tok.startswith("--"):
+            continue
+        name = tok.split("=", 1)[0]
+        if name in _HOST_LOCAL_FLAGS:
+            return f"`{name}` {_HOST_LOCAL_FLAGS[name]}"
+        if name.startswith(_HOST_LOCAL_FLAG_PREFIXES):
+            return f"`{name}` configures a credential plugin, a program the KubeIntellect server would run"
+        # `--profile` is kubectl's CPU/heap profiler (it writes profile.pprof) everywhere except `debug`, where it
+        # names a debugging profile; `debug --custom` reads a container spec from a file.
+        if name == "--profile" and verb != "debug":
+            return "`--profile` writes a profiling file on the KubeIntellect server"
+        if name == "--custom" and verb == "debug":
+            return "`--custom` reads a file on the KubeIntellect server"
+    out_format = (_flag_value(args[:flags_end], "-o", "--output", verb) or "").split("=", 1)[0]
+    if out_format in _FILE_OUTPUT_FORMATS:
+        return f"`-o {out_format}` reads its template from a file on the KubeIntellect server"
+    return None
+
+
+def _with_context(args: list[str], context: str | None) -> list[str]:
+    """argv with `--context=<name>` put back after `kubectl`, for what must key on the cluster (never to run it)."""
+    if not context:
+        return args
+    return [args[0], f"--context={context}", *args[1:]] if args and args[0] == "kubectl" else [f"--context={context}", *args]
+
+
+def _requested_context(args: list[str], config) -> tuple[str | None, str | None, list[str]]:
+    """The listed cluster a command selects with `--context`, a refusal, and the argv without the flag.
+
+    Single cluster (KUBECTL_ALLOWED_CONTEXTS empty): `(None, None, args)`, so the connection-flag check refuses
+    `--context` exactly as before. Otherwise one `--context=<listed name>` (or `--context <name>`) is accepted and taken
+    out of argv: the call then runs with a kubeconfig holding only that context (`session_identity.context_kubeconfig`),
+    so the cluster is fixed by the file kubectl reads, not by a flag (plan Phase 6b, owner 2026-11-15).
+    """
+    allowed = settings.kubectl_allowed_contexts
+    end = args.index("--") if "--" in args else len(args)
+    hits = [i for i, a in enumerate(args[:end]) if a == "--context" or a.startswith("--context=")]
+    if not allowed or not hits:
+        return None, None, args
+    if len(hits) > 1:
+        return None, "[Protected] `--context` is given more than once. kubectl would use only the last one; give it once.", args
+    i = hits[0]
+    if args[i] == "--context":
+        value, drop = (args[i + 1] if i + 1 < end else ""), {i, i + 1}
+    else:
+        value, drop = args[i].split("=", 1)[1], {i}
+    if not value or value.startswith("-"):
+        return None, "[Protected] `--context` names no cluster. Give one of the listed clusters: " + ", ".join(allowed), args
+    if value not in allowed:
+        return None, (
+            f"[Protected] Context {value!r} is not one of the clusters this deployment lists ({', '.join(allowed)}). "
+            "Which clusters KubeIntellect may reach is fixed by the deployment, not by a query."
+        ), args
+    if _bound_namespace_of(config):
+        return None, (
+            f"[Protected] This investigation is bound to its namespace on the cluster it was opened for; it cannot "
+            f"switch to cluster {value!r}. Report what you found; a person can look there from chat."
+        ), args
+    return value, None, [a for j, a in enumerate(args) if j not in drop]
 
 
 def _authorised_identity(config: RunnableConfig | None) -> str | None:
@@ -455,8 +690,11 @@ def _connection_flag_in(tokens: list[str]) -> str | None:
     for tok in tokens:
         if not tok.startswith("-"):
             continue
+        # Normalised for the comparison only (kubectl reads `--a_b` as `--a-b`), at every position: a `--` can be a
+        # flag's value, so tokens after it may still be kubectl flags (fifth review pass).
         name = tok.split("=", 1)[0]
-        if name in _CONNECTION_FLAGS or name.startswith("--as"):
+        canonical = name.replace("_", "-") if name.startswith("--") else name
+        if canonical in _CONNECTION_FLAGS or canonical.startswith("--as"):
             return name
     return None
 
@@ -1123,6 +1361,46 @@ _SUBCOMMAND_VERBS = frozenset({"rollout"})
 
 # Size cap for one captured pre-state. Anything larger is truncated, and a truncated object is
 # not a restore point — the capture records that rather than letting it pass as one.
+# Fields the API server owns. Every live object carries them, a restore cannot use them (`kubectl apply`
+# ignores or rejects them), and the secret redactor treats a UUID as a token: left in, `metadata.uid`
+# became `<redacted-token>` and cleared `restorable` for essentially every capture. Measured 2026-11-12 on a
+# stock Deployment. The existing fixtures omitted these fields, which is why nothing caught it.
+_SERVER_MANAGED_METADATA = ("uid", "resourceVersion", "creationTimestamp", "generation", "selfLink",
+                            "managedFields", "ownerReferences")
+
+
+def _strip_server_managed(text: str) -> str:
+    """Drop API-server-owned fields from `kubectl get -o yaml` output.
+
+    Returns the text unchanged when it cannot be parsed as plain mappings, so the worst case is the
+    previous behaviour, never a silently altered capture.
+    """
+    try:
+        docs = list(yaml.safe_load_all(text))
+    except yaml.YAMLError:
+        return text
+    if not docs or any(not isinstance(d, dict) for d in docs):
+        return text
+
+    def scrub(node):
+        if isinstance(node, dict):
+            meta = node.get("metadata")
+            if isinstance(meta, dict):
+                for key in _SERVER_MANAGED_METADATA:
+                    meta.pop(key, None)
+            if "apiVersion" in node and "kind" in node:
+                node.pop("status", None)  # observed state: not part of what a restore applies
+            for value in node.values():
+                scrub(value)
+        elif isinstance(node, list):
+            for value in node:
+                scrub(value)
+
+    for doc in docs:
+        scrub(doc)
+    return yaml.safe_dump_all(docs, sort_keys=False, default_flow_style=False)
+
+
 _ROLLBACK_MAX_CHARS = 4000
 # How many objects one rollback point will fetch. The cap bounds latency on a large
 # `apply -f -`; it was previously an unnamed `[:5]` slice, so objects past it were
@@ -1206,16 +1484,516 @@ def _manifest_namespaces(stdin: str | None) -> set[str]:
     return out
 
 
+# Verbs whose operands name no resource to read (a schema, a permission question, discovery).
+_NO_RESOURCE_READ_VERBS = frozenset({"explain", "auth", "api-resources", "api-versions", "version"})
+
+
+def _resource_types_named(verb: str, args: list[str]) -> list[str]:
+    """Every word on the command line that could be a resource TYPE, for every verb that reads or acts on objects.
+
+    Fails closed. Reading operands the way kubectl does needs every verb's value-taking flags, which this module does
+    not have: an unknown one (`--sort-by .metadata.name`, `-L app`) made its value look like the type and hid
+    `secrets` behind it, and `wait … secret/db -o yaml` was not checked at all (independent review, ninth and tenth
+    passes; present before this series). So every non-flag token before `--` is split on `,` and `/` and its type part
+    is checked. Over-matching only refuses (a pod literally named `secrets`); missing a type leaks Secret data.
+    """
+    if verb in _NO_RESOURCE_READ_VERBS:
+        return []
+    end = args.index("--") if "--" in args else len(args)
+    verb_at = _skip_flags(args, 1)
+    types: list[str] = []
+    for tok in args[verb_at + 1:end]:
+        if tok.startswith("-"):
+            continue
+        for part in tok.split(","):
+            if part:
+                types.append(part.split("/")[0])
+    return types
+
+
 def _blocked_resource_hit(verb: str, args: list[str], stdin: str | None = None) -> str | None:
-    """The protected resource this command touches, named on the command line or in a manifest."""
+    """The protected resource this command touches, named anywhere on the command line or in a manifest."""
     blocked = _blocked_resources()
     resource = _extract_resource_type(verb, args)
     if _resource_spellings(resource) & blocked:
         return resource
+    for named in _resource_types_named(verb, args):
+        if _resource_spellings(named) & blocked:
+            return named
     for kind in sorted(_manifest_kinds(stdin)):
         if _resource_spellings(kind) & blocked:
             return kind
     return None
+
+
+def _stays_within_namespace(verb: str, args: list[str], stdin: str | None, bound: str) -> bool:
+    """True only when every namespace the command touches is `bound`, shown by the command itself.
+
+    Fail-closed on purpose. A command that names no namespace runs in kubectl's *default* namespace, a
+    cluster-scoped object has none, and `-A` is every namespace: none of those can be shown to be inside
+    `bound`, so none of them keeps the bypass. A stdin manifest contributes the namespaces it declares.
+    """
+    if _is_all_namespaces(args):
+        return False
+    names = {n.lower() for n in _targeted_namespaces(verb, args)}
+    flagged = _extract_namespace(args, verb)
+    if flagged:
+        names.add(flagged.lower())
+    names |= _manifest_namespaces(stdin)
+    return bool(names) and names == {bound.lower()}
+
+
+# `kubectl get --raw` paths that are read-only and cannot return Secret or ServiceAccount data. Everything else under
+# `--raw` is refused: it is an arbitrary API request the namespace and resource checks cannot inspect.
+_RAW_READ_ALLOWED = re.compile(
+    r"^/(?:healthz|readyz|livez|version)(?:/[A-Za-z0-9_.-]*)?$"
+    r"|^/api/v1/nodes/[A-Za-z0-9.-]+/proxy/(?:configz|stats/summary|metrics(?:/cadvisor|/resource)?)$"
+)
+
+# Verbs whose `--` introduces a command for a container; for every other verb a bare `--` is refused.
+_COMMAND_PASSING_VERBS = frozenset({"exec", "run", "debug", "create", "attach"})
+
+# Reads that a bound session points at its own namespace when the command names none. Writes are deliberately
+# absent: a write that names no namespace (or targets a cluster-scoped object) must keep failing the binding check
+# in `_stays_within_namespace`, and an injected `-n` would make it look as if it stayed inside.
+_BOUND_READ_VERBS = frozenset({"get", "describe", "logs", "top", "events", "wait"})
+
+
+def _bound_read_namespace(verb: str, args: list[str], config: RunnableConfig | None) -> str | None:
+    """The namespace to give a read that names none, in a session bound to one; None to leave it alone.
+
+    Measured 2026-11-14: a session bound to `h3-2` read `kubectl get job report -o yaml`, kubectl looked in its
+    default namespace, answered NotFound for a Job that existed in `h3-2`, and the model spent 73 cycles
+    "recreating" it. The investigation is about one namespace; a read that does not say otherwise belongs there.
+    """
+    bound = (config.get("configurable") or {}).get("bound_namespace") if config else None
+    if not bound or verb not in _BOUND_READ_VERBS:
+        return None
+    if verb in DESTRUCTIVE_VERBS or _destructive_verbs_in(args) or _is_write_verb(verb, args):
+        return None
+    if _is_all_namespaces(args) or _extract_namespace(args, verb):
+        return None
+    return str(bound)
+
+
+def _with_namespace(args: list[str], namespace: str) -> list[str]:
+    """`args` with `-n namespace` added before any `--` (what follows `--` belongs to the container command)."""
+    if "--" in args:
+        i = args.index("--")
+        return [*args[:i], "-n", namespace, *args[i:]]
+    return [*args, "-n", namespace]
+
+
+# ── Per-session memory of an auto-approved session's writes ─────────────────
+# Measured 2026-11-14: an unattended session sent the same rejected `kubectl apply` 73 times and nothing noticed. Kept
+# per `thread_id` for auto-approved sessions only (a chat has a human approving every write, who may retry after
+# fixing something outside the session). Bounded so a long-running server cannot grow it without limit.
+_GUARD_MAX_SESSIONS = 512
+_guard_lock = threading.Lock()
+_guard: OrderedDict[str, dict] = OrderedDict()
+
+
+def reset_session_guard() -> None:
+    """Test helper: forget every session's write history."""
+    with _guard_lock:
+        _guard.clear()
+
+
+def _guard_session(thread_id: str) -> dict:
+    record = _guard.get(thread_id)
+    if record is None:
+        record = {"failed": {}, "writes": 0, "executed": 0, "history": deque(maxlen=_NO_PROGRESS_WINDOW), "seen": Counter(),
+                  "stuck": False,
+                  "ledger": deque(maxlen=12)}
+        _guard[thread_id] = record
+        while len(_guard) > _GUARD_MAX_SESSIONS:
+            _guard.popitem(last=False)
+    _guard.move_to_end(thread_id)
+    return record
+
+
+_DRY_RUN_FLAGS = frozenset({"--dry-run", "--dry-run=client", "--dry-run=server"})
+
+
+# Flags known to take no value, so a token after them is read by kubectl as a flag of its own.
+_KNOWN_BOOLEAN_FLAGS = frozenset({
+    "--overwrite", "--all", "--force", "--record", "--server-side", "--force-conflicts", "--local", "--wait",
+    "-A", "--all-namespaces", "--ignore-not-found", "--show-labels", "--now", "--recursive", "-R", "--prune",
+    "-i", "-t", "-it", "-ti", "--stdin", "--tty", "--rm", "-q", "--quiet",
+}) | _BOOLEAN_GLOBAL_FLAGS
+
+
+# Shorthand letters that take a value: in a group such as `-Rn x` or `-Rnkube-system` the first of these ends the
+# group, and the rest of the token (or the next token) is its value. The others in a group are booleans.
+_SHORT_VALUE_LETTERS = frozenset("nolfcpskL")
+
+
+def _flag_occurrences(args: list[str], short: str, long: str, end: int, verb: str | None = None) -> int:
+    """How many times a value flag appears in args[1:end], in every spelling kubectl accepts: `-n x`, `-n=x`, `-nx`,
+    `--namespace x`, `--namespace=x`, and inside a shorthand group (`-Rn x`, `-Rnx`).
+
+    Walked the way pflag reads a group, letter by letter until the first value-taking letter: counting only tokens
+    that START with `-n` missed `-n default -Rn kube-system`, where kubectl reads the last (seventh review pass).
+    """
+    letter = short[1]
+    # A letter that is a boolean for THIS verb does not end the group (`logs -fn x`: -f is --follow, -p is
+    # --previous; eighth review pass). Only a known value-taking letter ends it; an unknown letter does not, so the
+    # walk errs towards counting — over-counting refuses, under-counting would let a namespace through.
+    value_letters = _SHORT_VALUE_LETTERS - _VERB_BOOLEAN_SHORTHANDS.get(verb or "", frozenset())
+    count = 0
+    for tok in args[1:end]:
+        if tok == long or tok.startswith(long + "="):
+            count += 1
+        elif tok.startswith("-") and not tok.startswith("--") and len(tok) > 1:
+            for ch in tok[1:]:
+                if ch == letter:
+                    count += 1
+                    break
+                if ch in value_letters or ch == "=":
+                    break  # the rest of the token is that flag's value
+    return count
+
+
+# Verbs that have a `--dry-run` flag. An unknown verb (a kubectl plugin on PATH) receives the flag and may ignore it,
+# so a "dry run" there is not one (third review pass).
+_DRY_RUN_VERBS = frozenset({
+    "apply", "create", "delete", "patch", "replace", "scale", "annotate", "label", "set", "expose", "run",
+    "autoscale", "drain", "cordon", "uncordon", "taint", "rollout",
+})
+
+
+def _is_dry_run(args: list[str]) -> bool:
+    """True only for a dry run kubectl will actually perform as one. Fails closed: when in doubt it is a real write.
+
+    kubectl's `--dry-run` is a STRING flag and the LAST value given wins, so every dry-run token counts, not the first
+    (third review pass: `--dry-run=server --dry-run=none` is a real write). It is a dry run only if:
+      * the verb has the flag (not a plugin);
+      * no dry-run token appears after `--` (a positional there — review N1);
+      * every dry-run token is a real one (`--dry-run`, `=client`, `=server`; `=none`, `=false`, `=` are writes — F4);
+      * none of them sits right after a flag that may take a value, where kubectl reads it as that value (N1).
+    Misreading a write as a dry run skips the approval prompt in every session; misreading a dry run as a write only
+    costs a prompt. Hence the asymmetry.
+    """
+    if _extract_verb(args) not in _DRY_RUN_VERBS:
+        return False
+    # Any `--` and it is not a dry run: a `--` can itself be a flag's VALUE (`--field-manager --`), after which kubectl
+    # keeps parsing flags, so no position tells where the flags end (fifth review pass). Costs a prompt, never skips one.
+    if "--" in args:
+        return False
+    end = len(args)
+    tokens = [(i, a) for i, a in enumerate(args[:end]) if a.startswith("--dry-run")]
+    if not tokens:
+        return False
+    for i, a in tokens:
+        if a not in _DRY_RUN_FLAGS:
+            return False
+        prev = args[i - 1]
+        if prev.startswith("-") and prev != "-" and "=" not in prev and prev not in _KNOWN_BOOLEAN_FLAGS:
+            return False  # may be the value of `prev`
+    return True
+
+
+def _with_flag_after_verb(args: list[str], flag: str) -> list[str]:
+    """`args` with `flag` placed directly after the verb, where kubectl can only read it as a flag.
+
+    Appending it put it after `--` (a positional: review F1) or after a value-taking flag such as `--field-manager`
+    (its value: second review N2); either way the "dry run" was the real write.
+    """
+    # Drop every dry-run token first: kubectl's last `--dry-run` wins, so a model-written `--dry-run=none` later in
+    # the argv would override the inserted flag and make the "dry run" the real write (third review pass).
+    end = args.index("--") if "--" in args else len(args)
+    kept = [a for a in args[:end] if not a.startswith("--dry-run")] + args[end:]
+    verb_at = _skip_flags(kept, 1)
+    return [*kept[:verb_at + 1], flag, *kept[verb_at + 1:]]
+
+
+def _reserve_auto_write(thread_id: str, limit: int) -> bool:
+    """Take one unattended write from the session's budget, atomically; False when it is used up.
+
+    Check and increment under one lock (independent review F9: they were two steps with a dry-run subprocess between
+    them, so a parallel batch of writes all passed a budget of N-1)."""
+    with _guard_lock:
+        record = _guard_session(thread_id)
+        if record["writes"] >= limit:
+            return False
+        record["writes"] += 1
+        return True
+
+
+def _write_fingerprint(args: list[str], stdin: str | None) -> str:
+    """Identity of one write: the exact argv and the exact stdin."""
+    return hashlib.sha256(("\x00".join(args) + "\x01" + (stdin or "")).encode("utf-8")).hexdigest()
+
+
+def _previous_permanent_failure(thread_id: str, fingerprint: str) -> tuple[int, str] | None:
+    with _guard_lock:
+        return _guard_session(thread_id)["failed"].get(fingerprint)
+
+
+def _record_permanent_failure(thread_id: str, fingerprint: str, reason: str) -> None:
+    with _guard_lock:
+        failed = _guard_session(thread_id)["failed"]
+        count, first = failed.get(fingerprint, (0, reason))
+        failed[fingerprint] = (count + 1, first)
+
+
+def _auto_writes(thread_id: str) -> int:
+    with _guard_lock:
+        return int(_guard_session(thread_id)["writes"])
+
+
+def _executed_writes(thread_id: str) -> int:
+    """Writes of the session that actually reached kubectl (a reserved write the dry run refused does not count)."""
+    with _guard_lock:
+        record = _guard.get(thread_id)
+        return int(record["executed"]) if record else 0
+
+
+def _count_auto_write(thread_id: str) -> None:
+    with _guard_lock:
+        _guard_session(thread_id)["writes"] += 1
+
+
+_STUCK_NOTE = (
+    "\n[stuck: this session has repeated the same step(s) with the same result(s). Nothing is changing. Stop "
+    "calling tools and write your report: what you found, what you tried, and why it did not work]"
+)
+_STOPPED = (
+    "[Stopped] This session repeated the same step(s) with the same result(s) and has been stopped from running "
+    "further commands. Write your report now: what you found, what you tried, and why it did not work."
+)
+
+
+def session_is_stuck(thread_id: str) -> bool:
+    """True once an auto-approved session has been seen repeating itself (read by the watchtower)."""
+    with _guard_lock:
+        record = _guard.get(thread_id)
+        return bool(record and record["stuck"])
+
+
+# "Learning nothing new": the last _NO_PROGRESS_WINDOW calls are at most _NO_PROGRESS_DISTINCT distinct call/reply pairs,
+# each seen at least _NO_PROGRESS_SEEN times in the session and at least once before the window. Pilot run 4 (Nova,
+# b3-c1, 2026-11-15) cycled four reads in a changing order for 155 calls; replayed over every session of runs 3 and 4
+# this stops that one at call 41 and no other.
+_NO_PROGRESS_WINDOW = 12
+_NO_PROGRESS_DISTINCT = 6
+_NO_PROGRESS_SEEN = 4
+
+
+def _learning_nothing_new(history: list, seen: Counter) -> bool:
+    window = history[-_NO_PROGRESS_WINDOW:]
+    if len(window) < _NO_PROGRESS_WINDOW:
+        return False
+    steps = set(window)
+    return len(steps) <= _NO_PROGRESS_DISTINCT and all(
+        seen[x] >= _NO_PROGRESS_SEEN and seen[x] > window.count(x) for x in steps
+    )
+
+
+def _remember(thread_id: str, call_fp: str, output: str) -> str:
+    """Record one call and its reply; mark the session stuck on a repeat or A-B cycle with unchanged replies.
+
+    The shapes are OpenHands StuckDetector's: the same call with the same reply 4 times in a row, or two call/reply
+    pairs alternating 3 times (A B A B A B). Measured 2026-11-14: the 73-attempt loop was such an A-B cycle. A reply
+    that changes between rounds (new information) is not a repeat, so a long but progressing session is not stopped.
+    Plus a third shape that does not depend on order: a session cycling through a few calls, all with replies it has
+    already had several times (`_learning_nothing_new`; pilot run 4, a permuted 4-read cycle of 155 calls).
+    """
+    step = (call_fp, hashlib.sha256(output.encode("utf-8", "replace")).hexdigest())
+    with _guard_lock:
+        record = _guard_session(thread_id)
+        history = record["history"]
+        history.append(step)
+        record["seen"][step] += 1
+        last = list(history)
+        same = len(last) >= 4 and len(set(last[-4:])) == 1
+        six = last[-6:]
+        cycle = len(six) == 6 and six[0] == six[2] == six[4] and six[1] == six[3] == six[5] and six[0] != six[1]
+        if (same or cycle or _learning_nothing_new(last, record["seen"])) and not record["stuck"]:
+            record["stuck"] = True
+            logger.warning(f"run_kubectl: session {thread_id!r} is repeating itself; tool use stopped")
+            return output + _STUCK_NOTE
+    return output
+
+
+def _bound_namespace_of(config) -> str | None:
+    bound = (config.get("configurable") or {}).get("bound_namespace") if config else None
+    return str(bound) if bound else None
+
+
+def _kubectl_env(config, context: str | None = None) -> dict[str, str]:
+    """The environment every kubectl call made for this request runs with — above all, whose KUBECONFIG.
+
+    A namespace-bound session with SESSION_IDENTITY_ENABLED gets a kubeconfig holding only its namespace-scoped token,
+    and the `readonly` role with READONLY_IDENTITY_ENABLED one holding only the read-only token (`session_identity`);
+    `IdentityUnavailable` propagates, so the caller refuses rather than falling back. Every other request uses the
+    server's configured kubeconfig, as before. With `context` (a listed cluster, plan Phase 6b) the kubeconfig holds only
+    that context, and a `readonly` caller gets the read-only identity minted on that cluster.
+    """
+    bound = _bound_namespace_of(config)
+    if context:
+        if bound:
+            raise session_identity.IdentityUnavailable("an investigation stays on the cluster it was opened for")
+        path = session_identity.context_kubeconfig(context)
+        role = (config.get("configurable") or {}).get("user_role", "admin") if config else "admin"
+        if role == "readonly" and settings.READONLY_IDENTITY_ENABLED:
+            path = session_identity.readonly_kubeconfig(path)
+        return {**os.environ, "KUBECONFIG": path}
+    if bound and settings.SESSION_IDENTITY_ENABLED:
+        return {**os.environ, "KUBECONFIG": session_identity.kubeconfig_for(bound, session_identity.base_kubeconfig())}
+    role = (config.get("configurable") or {}).get("user_role", "admin") if config else "admin"
+    if role == "readonly" and settings.READONLY_IDENTITY_ENABLED:
+        return {**os.environ, "KUBECONFIG": session_identity.readonly_kubeconfig(session_identity.base_kubeconfig())}
+    return {**os.environ, "KUBECONFIG": os.path.expanduser(settings.KUBECONFIG_PATH)}
+
+
+def _preflight_manifest_write(args: list[str], stdin: str, env: dict | None = None) -> str | None:
+    """Dry-run an unattended manifest write with `kubectl diff`; a refusal message, or None to let it proceed.
+
+    Probed on Kind v1.37 (2026-11-14): plain `kubectl diff -f -` exits 0 when the cluster already matches the manifest
+    and 1 when it would change; `kubectl diff --server-side` cannot tell a no-op (field ownership differs) but its
+    error names the field. Anything that is not a plain 0/1 or an API-server rejection fails open: the write proceeds
+    and the API server still validates it.
+    """
+    env = env or {**os.environ, "KUBECONFIG": os.path.expanduser(settings.KUBECONFIG_PATH)}
+    # The verb at its real position, the one `_extract_verb` reads: searching for the token "apply" found a namespace
+    # named "apply" first and built `kubectl -n diff apply -f -`, a real write (independent review F2). `replace` is
+    # not judged here: `kubectl diff` uses apply's merge rules, not replace's overwrite (F7).
+    verb_at = _skip_flags(args, 1)
+    if verb_at >= len(args) or args[verb_at] != "apply":
+        return None
+    tail = [a for a in args[verb_at + 1:] if a not in ("--server-side", "--force-conflicts")]
+    diff = [*args[:verb_at], "diff", *tail]
+
+    def run(cmd: list[str]):
+        try:
+            return subprocess.run(cmd, input=stdin, capture_output=True, text=True, encoding="utf-8",
+                                  errors="replace", timeout=settings.KUBECTL_TIMEOUT_SECONDS, env=env, shell=False)
+        except Exception:  # noqa: BLE001 - a dry run that cannot run never blocks the write
+            return None
+
+    plain = run(diff)
+    if plain is None:
+        return None
+    if plain.returncode == 0:
+        return (
+            "[No change] kubectl diff shows the cluster already matches this manifest, so applying it would change "
+            "nothing. It was not sent. If it was meant to fix the fault, the cause is somewhere else.\n"
+            "[permanent error: resending this manifest unchanged cannot succeed — change the approach, or stop and "
+            "report what you found]"
+        )
+    if plain.returncode == 1:
+        return None
+    ssa = run([*diff, "--server-side", "--force-conflicts"])
+    reason = (ssa.stderr if ssa is not None else "") or ""
+    if _is_server_rejection(reason):
+        return (
+            "[Invalid: rejected by the API server's dry run, not applied] " + reason.strip()[:600] + "\n"
+            "[permanent error: resending this manifest unchanged cannot succeed — fix the field named above]"
+        )
+    logger.info(f"run_kubectl: preflight diff could not judge the write (exit {plain.returncode}); proceeding")
+    return None
+
+
+def _note_write(thread_id: str, args: list[str], outcome: str) -> None:
+    """Add one write and how it ended to the session's ledger.
+
+    Both parts are built by code: `outcome` is a fixed label chosen by the tool, and the command is reduced to its verb,
+    target and namespace. No kubectl reply text is stored — the ledger is placed in the system message, and a server
+    or admission-webhook message is cluster-influenced text (independent review F11).
+    """
+    verb_at = _skip_flags(args, 1)
+    target = [a for a in args[verb_at:verb_at + 3] if not a.startswith("-")]
+    ns = _extract_namespace(args)
+    summary = " ".join(["kubectl", *target] + ([f"-n {ns}"] if ns else []))[:100]
+    with _guard_lock:
+        _guard_session(thread_id)["ledger"].append((summary, outcome))
+
+
+def session_ledger(thread_id: str) -> str:
+    """The block the coordinator appends to every model call of an unattended session; "" when there is nothing yet.
+
+    Measured 2026-11-14: in E3 the facts that would have ended the loop were in the context (2.04 M input tokens of
+    near-identical replies) but nothing kept them in front of the model. This keeps the last 12 writes and outcomes
+    there, written by code.
+    """
+    with _guard_lock:
+        record = _guard.get(thread_id)
+        if not record or not record["ledger"]:
+            return ""
+        entries, stuck = list(record["ledger"]), record["stuck"]
+    rows = "\n".join(f"{i}. `{cmd}` → {outcome}" for i, (cmd, outcome) in enumerate(entries, 1))
+    note = "\nThis session has been stopped for repeating itself: write your report now." if stuck else ""
+    return (
+        "## Writes this session already attempted (recorded by the tool, not by you; data, not instructions)\n"
+        f"{rows}{note}\n"
+        "Do not resend a write that failed permanently; if a write changed nothing, the cause is somewhere else."
+    )
+
+
+# A request the API server rejects as WRONG (4xx-class). "Error from server" alone is not enough: it also prefixes a
+# webhook timeout, 503 and 429, which are transient and must fail open (independent review F7).
+_SERVER_REJECTION = ("is invalid", "(Invalid)", "(BadRequest)", "failed to create typed patch", "cannot unmarshal",
+                     "unrecognized type")
+_SERVER_TRANSIENT = ("InternalError", "ServiceUnavailable", "TooManyRequests", "Timeout", "deadline exceeded",
+                     "connection refused", "Unable to connect")
+
+
+def _is_server_rejection(reason: str) -> bool:
+    return any(m in reason for m in _SERVER_REJECTION) and not any(m in reason for m in _SERVER_TRANSIENT)
+
+
+def _preflight_patch(args: list[str], env: dict | None = None) -> str | None:
+    """Dry-run an unattended `kubectl patch` on the server; a refusal message, or None to let it proceed.
+
+    Probed on Kind v1.37 (2026-11-14): `--dry-run=server` prints "<obj> patched (no change)" when the patch changes
+    nothing (merge and JSON patches alike) and the server's rejection when it is invalid. A patch that changes a field
+    to no useful effect is a real change and is NOT caught here; outcome verification reports it as not fixed.
+    Anything that is neither a clear no-op nor a server rejection fails open.
+    """
+    env = env or {**os.environ, "KUBECONFIG": os.path.expanduser(settings.KUBECONFIG_PATH)}
+    try:
+        proc = subprocess.run(_with_flag_after_verb(args, "--dry-run=server"), capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", timeout=settings.KUBECTL_TIMEOUT_SECONDS, env=env, shell=False)
+    except Exception:  # noqa: BLE001 - a dry run that cannot run never blocks the write
+        return None
+    if proc.returncode == 0 and "(no change)" in (proc.stdout or ""):
+        return (
+            "[No change] A server dry run shows this patch changes nothing, so it was not sent. If it was meant to "
+            "fix the fault, the cause is somewhere else.\n"
+            "[permanent error: resending this patch unchanged cannot succeed — change the approach, or stop and "
+            "report what you found]"
+        )
+    reason = (proc.stderr or "").strip()
+    if proc.returncode != 0 and _is_server_rejection(reason):
+        return (
+            "[Invalid: rejected by the API server's dry run, not applied] " + reason[:600] + "\n"
+            "[permanent error: resending this patch unchanged cannot succeed — fix what the error names]"
+        )
+    return None
+
+
+def _first_line(text: str) -> str:
+    return next((line.strip() for line in text.splitlines() if line.strip()), text.strip())[:300]
+
+
+def _normalise_flag_names(args: list[str]) -> list[str]:
+    """`--a_b` → `--a-b` in every long flag's NAME (not its value), before any `--`.
+
+    kubectl normalises flag names with WordSepNormalizeFunc, so `--dry_run=none` IS `--dry-run=none` to it. Every gate
+    in this module matches the hyphen spelling, so an underscore spelling slipped past the dry-run check (a real write
+    without an approval prompt, in every session), the connection/identity guard and the all-namespaces check (fourth
+    review pass). Normalising once, where the argv is built, closes the whole class; kubectl receives an argv that
+    means exactly the same. Tokens after `--` belong to the container's command and are left alone.
+    """
+    end = args.index("--") if "--" in args else len(args)
+    out = []
+    for i, a in enumerate(args):
+        if i < end and a.startswith("--") and len(a) > 2:
+            name, sep, value = a.partition("=")
+            a = name.replace("_", "-") + sep + value
+        out.append(a)
+    return out
 
 
 def _is_all_namespaces(args: list[str]) -> bool:
@@ -1440,7 +2218,9 @@ def _capture_note(before: str, after: str, cap: int) -> str:
     return "redacted: " + ", ".join(parts) if parts else "redacted"
 
 
-def _capture_rollback_point(verb: str, args: list, stdin: str | None, config, env: dict) -> None:
+def _capture_rollback_point(
+    verb: str, args: list, stdin: str | None, config, env: dict, context: str | None = None
+) -> None:
     """Best-effort pre-state capture for the Safety Sandwich (never raises).
 
     Records a `rollback_point` into the flight recorder: the rollback_id, the mutating command,
@@ -1546,13 +2326,14 @@ def _capture_rollback_point(verb: str, args: list, stdin: str | None, config, en
                     target, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5, env=env, shell=False
                 )
                 if pre.returncode == 0 and pre.stdout:
-                    kept = redact_secrets(pre.stdout, max_chars=_ROLLBACK_MAX_CHARS)
+                    source = _strip_server_managed(pre.stdout)
+                    kept = redact_secrets(source, max_chars=_ROLLBACK_MAX_CHARS)
                     # `redact_secrets` drops the final newline; that alone is not a change to
                     # the object, so it must not cost a capture its restorable flag.
-                    if kept.rstrip("\n") != pre.stdout.rstrip("\n"):
+                    if kept.rstrip("\n") != source.rstrip("\n"):
                         restorable = False
                         notes.append(f"{label}: "
-                                     f"{_capture_note(pre.stdout, kept, _ROLLBACK_MAX_CHARS)}")
+                                     f"{_capture_note(source, kept, _ROLLBACK_MAX_CHARS)}")
                     states.append(kept)
                 else:
                     reason = (pre.stderr or "").strip().splitlines()
@@ -1577,7 +2358,9 @@ def _capture_rollback_point(verb: str, args: list, stdin: str | None, config, en
         flight_recorder.record(session_id, "rollback_point", {
             "type": "rollback_point",
             "rollback_id": rollback_id,
-            "command": " ".join(str(a) for a in args)[:300],
+            # The cluster it was taken on (multi-cluster): a restore must target that one, not the home cluster.
+            "command": " ".join(str(a) for a in _with_context(args, context))[:300],
+            "context": context,
             "pre_state": states,
             "restorable": restorable,
             "targets_intended": intended,
@@ -1672,7 +2455,7 @@ def run_kubectl(
 
     # ── 3. Parse into arg list (shell=False) ─────────────────────────────────
     try:
-        args = shlex.split(cmd)
+        args = _normalise_flag_names(shlex.split(cmd))
     except ValueError as exc:
         # "No closing quotation" usually means a jsonpath expression was
         # truncated mid-generation. Provide an actionable error message
@@ -1684,6 +2467,12 @@ def run_kubectl(
                 "instead (-o custom-columns cannot be filtered by namespace)."
             ) from exc
         raise ValueError(f"Could not parse command: {exc}") from exc
+
+    # ── 3a. Which listed cluster (multi-cluster deployments only) ─────────────
+    target_ctx, ctx_refusal, args = _requested_context(args, config)
+    if ctx_refusal:
+        logger.warning(f"run_kubectl: refused a cluster selection: {cmd!r}")
+        return ctx_refusal
 
     # ── 3b. Connection and identity are the deployment's, not the caller's ───
     conn_flag = _connection_flag_in(args)
@@ -1697,6 +2486,95 @@ def run_kubectl(
         )
 
     verb = _extract_verb(args)
+
+    # ── 3b1. No kubeconfig of another listed cluster is shown ────────────────
+    # `config view --context=<listed>` printed exec-plugin arguments the redactor does not recognise as secrets
+    # (review, 2026-11-16). Nothing about another cluster's kubeconfig is needed to query that cluster.
+    if target_ctx and verb == "config":
+        return (
+            f"[Protected] `kubectl config` is not run against cluster {target_ctx!r}: its kubeconfig holds that "
+            "cluster's credentials. Query the cluster's resources instead."
+        )
+
+    # ── 3b2. A bare `--` only where a container command follows it ───────────
+    # Anywhere else it is never needed, and kubectl may read it as the value of the flag before it
+    # (`--field-manager --`) and go on parsing flags after it, which defeats every check that treats `--` as the end
+    # of the flags. Measured by an independent review: `annotate … --dry-run=server --field-manager -- --dry_run=none`
+    # ran with no approval prompt and kubectl applied it (fifth review pass).
+    if "--" in args and verb not in _COMMAND_PASSING_VERBS:
+        return (
+            f"[Unsupported] A bare `--` is not accepted for `kubectl {verb}`: it is never needed there, and kubectl may "
+            "read it as the value of the flag before it, which changes how everything after it is parsed. Remove it."
+        )
+
+    # ── 3b1a. `--resolve` prints the values behind secret references ─────────
+    # `kubectl set env deploy/web --list --resolve` prints the Secret values a workload's env refers to; in an
+    # unattended session it auto-ran (tenth review pass). Refused for every verb.
+    if any(a == "--resolve" or a.startswith("--resolve=") for a in args[1:]):
+        return "[Protected] `--resolve` prints the values of the Secrets a workload refers to. It is not permitted."
+
+    # ── 3b2a. `config view --raw|--flatten` prints the deployment's own credentials ──
+    # `kubectl config view --raw` returned the bearer token and client-key-data verbatim (ninth review pass; present
+    # before this series). Refused; `config view` without them shows the structure with secrets elided by kubectl.
+    if verb == "config" and _operand_after_verb(args) == "view" and any(
+        a in ("--raw", "--flatten") or a.startswith(("--raw=", "--flatten=")) for a in args[1:]
+    ):
+        logger.warning(f"run_kubectl: refused config view with credentials: {cmd!r}")
+        return (
+            "[Protected] `kubectl config view --raw` / `--flatten` would print the credentials this deployment uses. "
+            "Use `kubectl config view --minify` (credentials are elided)."
+        )
+
+    # ── 3b2b. `--raw` is an arbitrary API request no check here can inspect ──
+    # `kubectl get --raw /api/v1/namespaces/kube-system/secrets` returned Secret objects with the deployment's own
+    # credentials, past the protected-namespace and protected-resource checks, for any role — a read, so readonly too
+    # (eighth review pass; present before this series). Refused outright.
+    raw = _flag_value(args, "--raw", "--raw", verb) if any(a == "--raw" or a.startswith("--raw=") for a in args[1:]) else None
+    if raw is not None and not (verb == "get" and ".." not in raw and _RAW_READ_ALLOWED.match(raw)):
+        # Allowed: `get --raw` on a few read-only paths that cannot return Secrets (the Evicted playbook reads the
+        # kubelet's configz this way). Refused: any other path, and `create|replace|delete --raw`, which are writes.
+        logger.warning(f"run_kubectl: refused --raw: {cmd!r}")
+        return (
+            "[Protected] `--raw` sends an arbitrary API request that the protected-namespace and protected-resource "
+            "checks cannot inspect. Use the resource form instead (`kubectl get <kind> -n <namespace>`)."
+        )
+
+    # ── 3b3. Where the flags end, and flags kubectl reads by their LAST value ─
+    # For the verbs that keep a `--`, it must really end the flags: right after a flag that may take a value it IS that
+    # value, and kubectl goes on reading flags after it (sixth review pass: `create … -n b --field-manager -- -n other`
+    # auto-ran and kubectl used namespace `other`).
+    flags_end = len(args)
+    if "--" in args:
+        dd = args.index("--")
+        prev = args[dd - 1]
+        if prev.startswith("-") and prev != "-" and "=" not in prev and prev not in _KNOWN_BOOLEAN_FLAGS:
+            return (
+                f"[Unsupported] `--` right after `{prev}` would be read by kubectl as that flag's value, not as the end "
+                "of the flags. Give the flag its value explicitly (`--flag=value`) before `--`."
+            )
+        flags_end = dd
+    # kubectl uses the LAST value of a repeated flag; every gate here reads the first. `get pods -n default -n
+    # kube-system` listed a protected namespace, and an unattended `-n b -n other` wrote outside its binding (sixth
+    # review pass; present before this series). A namespace or output format given twice is refused.
+    for short, long in (("-n", "--namespace"), ("-o", "--output")):
+        if _flag_occurrences(args, short, long, flags_end, verb) > 1:
+            return (
+                f"[Unsupported] `{long}` is given more than once. kubectl would use only the last one; give it once."
+            )
+    # A patch payload given twice: the image/command gate reads the first, kubectl applies the last (seventh review
+    # pass: `-p '{replicas}' -p '{image: evil}'` auto-ran an image change with no approval).
+    if verb == "patch":
+        payloads = _flag_occurrences(args, "-p", "--patch", flags_end, verb) + sum(
+            1 for a in args[1:flags_end] if a == "--patch-file" or a.startswith("--patch-file=")
+        )
+        if payloads > 1:
+            return "[Unsupported] A patch payload is given more than once. kubectl would use only the last one; give one."
+
+    # ── 3c. A bound session's read looks in the session's namespace ──────────
+    injected_ns = _bound_read_namespace(verb, args, config)
+    if injected_ns:
+        args = _with_namespace(args, injected_ns)
+        cmd = cmd.replace(" -- ", f" -n {injected_ns} -- ", 1) if " -- " in cmd else f"{cmd} -n {injected_ns}"
 
     # ── 4. Rejected verbs (non-interactive, always fail in container) ─────────
     if verb in _REJECTED_VERBS:
@@ -1723,6 +2601,24 @@ def run_kubectl(
     if config:
         user_role = (config.get("configurable") or {}).get("user_role", "admin")
 
+    # Is this an unattended autonomous investigation, and which one? The repeat guard, write budget, stuck detector,
+    # ledger and dry-run preflight apply only there: auto-approved AND bound to a namespace (the watchtower sets
+    # both). A chat session that turned auto-approve on has neither a bound namespace nor one unattended goal; keying
+    # the guard by its thread_id spanned every turn of the chat (independent review F8).
+    _conf = (config.get("configurable") or {}) if config else {}
+    session_auto = bool(_conf.get("hitl_bypass", False)) and bool(_conf.get("bound_namespace"))
+    thread_id = str((config.get("configurable") or {}).get("thread_id") or "") if config else ""
+    is_write = verb in DESTRUCTIVE_VERBS or bool(_destructive_verbs_in(args)) or _is_write_verb(verb, args)
+    guard_fp = (
+        _write_fingerprint(args, stdin)
+        if session_auto and thread_id and is_write and not _is_dry_run(args)
+        else None
+    )
+    # Every call of an auto-approved session (reads too) feeds the stuck detector.
+    call_fp = _write_fingerprint(args, stdin) if session_auto and thread_id else None
+    if call_fp and session_is_stuck(thread_id):
+        return _STOPPED
+
     # Both checks consider any destructive verb present, not only the parsed one. If a command
     # shape ever slips past `_extract_verb` again, it fails closed here instead of executing
     # with the privileges of a verb we did not recognise.
@@ -1741,6 +2637,19 @@ def run_kubectl(
         return (
             f"[Permission Denied] Your API key has operator access. "
             f"The '{denied}' operation requires an admin API key."
+        )
+
+    # ── 4a1. Nothing that acts on the KubeIntellect server itself ────────────
+    # After the role check, so a read-only key still gets its usual answer for a write; before every prompt, because
+    # no role and no approval may run these (see `_HOST_LOCAL_VERBS`).
+    host_local = _host_local_reason(verb, args, flags_end)
+    if host_local:
+        logger.warning(f"run_kubectl: refused a command that acts on the KubeIntellect host: {cmd!r}")
+        return (
+            f"[Protected] {host_local}. That acts on the KubeIntellect server itself (its files, its programs or "
+            "the credentials it runs with), not on the cluster, so it is not permitted for any role or with "
+            "approval. A sysadmin who needs it runs it in a shell on that host. For cluster data, use an inline "
+            "form instead (`--from-literal`, `-p '<json>'`, `-o jsonpath=…`, `-f -` with the YAML as stdin)."
         )
 
     # ── 4a2. Manifest sources KubeIntellect cannot read ───────────────────────
@@ -1777,19 +2686,101 @@ def run_kubectl(
         logger.warning(f"run_kubectl: blocked protected access: {cmd!r}")
         return protected_err
 
+    # ── 4b1. An unattended session does not resend a write that already failed permanently ─
+    if guard_fp:
+        previous = _previous_permanent_failure(thread_id, guard_fp)
+        if previous:
+            count, reason = previous
+            _record_permanent_failure(thread_id, guard_fp, reason)
+            logger.warning(f"run_kubectl: repeat refused (failed {count}x before) session={thread_id}: {cmd!r}")
+            refused = (
+                # No attempt count in the reply: it must stay identical round after round, or the stuck
+                # detector would read every refusal as new information. The count is in the log line above.
+                f"[Repeat refused] This exact command already failed in this session with: {reason}\n"
+                "[permanent error: resending it unchanged cannot succeed — change the approach, or stop and report "
+                "what you found]"
+            )
+            _note_write(thread_id, args, "refused: identical to a write that already failed permanently")
+            return _remember(thread_id, guard_fp, refused)
+
+    # ── 4b2a. Whose identity ──────────────────────────────────────────────────
+    # ADR-007 Phase 6: a namespace-bound session (every watchtower investigation, approved or not) talks to the
+    # cluster as a token confined by RBAC to its namespace, so the API server holds the bound even where the string
+    # gates above misread a command. No identity, no kubectl: never the server's own, broader one. Resolved before the
+    # schema check below, which reads from the cluster too (identity review, finding 5).
+    try:
+        env = _kubectl_env(config, target_ctx)
+    except session_identity.IdentityUnavailable as exc:
+        logger.warning(f"run_kubectl: session identity unavailable, nothing run: {exc}")
+        return (
+            f"[Session identity unavailable] {exc}. This session may only use kubectl as its own restricted "
+            "Kubernetes identity, so nothing was run. Stop and report this; it is a deployment problem, "
+            "not something a different command can fix."
+        )
+
+    # ── 4b2. Check a manifest against the cluster's schema before sending it ─
+    # Before the approval prompt too: a human should never be asked to approve a manifest the cluster would reject.
+    # Measured 2026-11-14: a re-typed Job whose unquoted `ERROR: …` made `command[2]` a mapping was rejected 73
+    # times with an error naming no field. Fails open: no schema, no finding (the server still validates).
+    if stdin and verb in ("apply", "create", "replace") and settings.MANIFEST_LINT_ENABLED:
+        from app.tools import manifest_lint
+        findings = manifest_lint.lint(stdin, env.get("KUBECONFIG", ""))
+        if findings:
+            logger.warning(f"run_kubectl: manifest refused before sending ({len(findings)} finding(s)): {cmd!r}")
+            refusal = (
+                "[Invalid manifest: not sent to the cluster] Checked against the cluster's own schema:\n"
+                + "\n".join(f"- {f}" for f in findings)
+                + "\n[permanent error: resending this manifest unchanged cannot succeed — fix the fields named above]"
+            )
+            if guard_fp:
+                _record_permanent_failure(thread_id, guard_fp, f"invalid manifest: {findings[0]}")
+                _note_write(thread_id, args, "refused before sending: the manifest failed the schema check")
+            return refusal
+
     # ── 4c. Risk classification → HITL interrupt ─────────────────────────────
     # ADR-008 exactly-once + single-use approvals for irreversible calls. Inert (PASS) unless
     # SELF_GOVERN_ENABLED. Imported here, not at the top: app.tools.aci imports this module.
     from app.tools import effect_guard
     admission = effect_guard.PASS
     if verb in DESTRUCTIVE_VERBS or _destructive_verbs_in(args) or _is_write_verb(verb, args):
-        has_dry_run = any(
-            flag in args for flag in ("--dry-run=client", "--dry-run=server", "--dry-run")
-        )
+        has_dry_run = _is_dry_run(args)
         hitl_bypass = bool((config.get("configurable") or {}).get("hitl_bypass", False)) if config else False
-        always_confirm = _requires_always_confirm(verb, args)
+        # An autonomous investigation's authority to mutate without a human was decided for ONE namespace.
+        # Measured 2026-11-12 with a real model: an auto-approved session opened for namespace A searched
+        # the cluster and patched a deployment in namespace B, which the ladder pins to A2 (propose only).
+        # Outside the bound namespace the bypass does not apply: the command goes to the approval prompt,
+        # which an unattended turn cannot answer, so nothing runs. Unbound sessions (chat) are unchanged.
+        bound_ns = (config.get("configurable") or {}).get("bound_namespace") if config else None
+        if hitl_bypass and bound_ns and not _stays_within_namespace(verb, args, stdin, str(bound_ns)):
+            logger.warning(
+                f"run_kubectl: auto-approve withheld, command leaves the investigation's namespace "
+                f"{bound_ns!r}: {cmd!r}"
+            )
+            hitl_bypass = False
+        # A write on another listed cluster always asks: auto-approve was decided for the home cluster.
+        always_confirm = _requires_always_confirm(verb, args, stdin) or bool(target_ctx)
+        if hitl_bypass and guard_fp and not always_confirm and not has_dry_run:
+            if not _reserve_auto_write(thread_id, settings.AUTO_APPROVE_MAX_WRITES):
+                logger.warning(
+                    f"run_kubectl: auto-approve withheld, session {thread_id!r} used its budget of "
+                    f"{settings.AUTO_APPROVE_MAX_WRITES} unattended writes: {cmd!r}"
+                )
+                hitl_bypass = False
+        # Dry-run a write that would run with nobody approving it: refuse a no-op, explain a rejection.
+        if hitl_bypass and not always_confirm and not has_dry_run and guard_fp and settings.PREFLIGHT_DIFF_ENABLED and (
+            (verb == "apply" and stdin) or verb == "patch"
+        ):
+            preflight_refusal = (
+                _preflight_patch(args, env) if verb == "patch" else _preflight_manifest_write(args, stdin or "", env)
+            )
+            if preflight_refusal is not None:
+                _record_permanent_failure(thread_id, guard_fp, _first_line(preflight_refusal))
+                _note_write(thread_id, args, "refused: a server dry run showed it changes nothing"
+                            if preflight_refusal.startswith("[No change]") else "refused: the API server's dry run rejected it")
+                logger.warning(f"run_kubectl: preflight refused an unattended write session={thread_id}: {cmd!r}")
+                return _remember(thread_id, call_fp, preflight_refusal) if call_fp else preflight_refusal
         admission = effect_guard.admit(
-            cmd, args, stdin, config, has_dry_run=has_dry_run,
+            cmd, _with_context(args, target_ctx), stdin, config, has_dry_run=has_dry_run,
             hitl_bypass=hitl_bypass, always_confirm=always_confirm,
         )
         if admission.response is not None:
@@ -1809,22 +2800,34 @@ def run_kubectl(
                 f"run_kubectl: hitl_classification verb={verb} risk={risk}",
                 extra={"session_id": session_id, "hitl_verb": verb, "hitl_risk_level": risk, "hitl_cmd": cmd[:200]},
             )
-            approved = interrupt({
+            prompt: dict[str, Any] = {
                 "type": "hitl",
                 "command": cmd,
                 "stdin": stdin,          # include YAML so the user sees what will be applied
                 "risk_level": risk,
                 "always_confirm": always_confirm,
                 "human_summary": f"About to run: `{cmd}`",
-            })
+            }
+            if target_ctx:
+                prompt["cluster"] = target_ctx
+                prompt["human_summary"] += f" — on cluster '{target_ctx}'"
+            if bound_ns and settings.SESSION_IDENTITY_ENABLED:
+                # "Approval elevates" (owner, 2026-11-15). Nobody answers this prompt inside the investigation; a
+                # person answers it from chat, where the command runs with the approver's role and KubeIntellect's
+                # own Kubernetes permissions — not the identity confined to the namespace. The prompt says so.
+                prompt["elevation"] = "server_identity"
+                prompt["human_summary"] += (
+                    f" — requested by an investigation confined to namespace '{bound_ns}'. Approving it runs it under "
+                    "your own role, with KubeIntellect's own Kubernetes permissions, outside that confinement."
+                )
+            approved = interrupt(prompt)
             if not approved:
                 return "Action cancelled by user."
         elif not has_dry_run and hitl_bypass:
             logger.info(f"run_kubectl: HITL bypassed (auto-approve) for: {cmd!r}")
 
     # ── 5. Execute ───────────────────────────────────────────────────────────
-    kubeconfig = os.path.expanduser(settings.KUBECONFIG_PATH)
-    env = {**os.environ, "KUBECONFIG": kubeconfig}
+    # `env` is the one resolved at 4b3: the session identity for a bound session, the server's otherwise.
 
     # Safety Sandwich (V4 ADR-003): arm a rollback point before any mutation —
     # the pre-state YAML of the targets lands in the flight recorder, so every
@@ -1836,7 +2839,7 @@ def run_kubectl(
     # rollback point at all while the docs said every mutation did.
     if _is_write_verb(verb, args):
         if not has_dry_run:
-            _capture_rollback_point(verb, args, stdin, config, env)
+            _capture_rollback_point(verb, args, stdin, config, env, context=target_ctx)
 
     logger.debug(f"run_kubectl: {cmd}")
 
@@ -1845,6 +2848,10 @@ def run_kubectl(
         if _classify_risk(verb, args) == "high"
         else settings.KUBECTL_TIMEOUT_SECONDS
     )
+    if guard_fp:
+        # Counted before it runs: a write that times out may still have reached the cluster (third review pass).
+        with _guard_lock:
+            _guard_session(thread_id)["executed"] += 1
     try:
         # Decode free-form content lossily to survive non-ASCII log lines;
         # decode identifiers and structured output strictly to avoid plausible wrong answers.
@@ -1869,6 +2876,12 @@ def run_kubectl(
         )
 
     stdout, stderr = proc.stdout or "", proc.stderr or ""
+    if proc.returncode != 0 and "(Unauthorized)" in stderr and settings.SESSION_IDENTITY_ENABLED:
+        bound = _bound_namespace_of(config)
+        if bound:
+            session_identity.forget(bound)  # revoked or expired early: the next call mints a fresh token
+    if proc.returncode != 0 and "(Unauthorized)" in stderr and settings.READONLY_IDENTITY_ENABLED:
+        session_identity.forget(session_identity.READONLY_KEY)
     # Whether *kubectl* printed anything, decided before the emulator runs: `_apply_pipes` turns
     # an empty string into "(no matching lines)", and reporting that as output kubectl produced
     # would be a claim about the cluster made by our own grep.
@@ -1895,6 +2908,8 @@ def run_kubectl(
     stdout = _filter_namespace_output(verb, args, stdout)
     stdout = _filter_all_namespaces_output(verb, args, stdout)
 
+    ledger_class: str | None = None  # the error class for the ledger (a code label, never kubectl's text)
+
     # ── 6c. Compose the answer ───────────────────────────────────────────────
     #
     # A non-zero exit is stated, not implied. `output = stdout or stderr` dropped stderr whenever
@@ -1914,6 +2929,29 @@ def run_kubectl(
                     extra={"pattern": pattern_name, "exit_code": proc.returncode},
                 )
         output = f"[kubectl exited {proc.returncode}] {detail}"
+        # Say whether resending can help. An unattended session resent one rejected manifest 73 times
+        # (2026-11-14) because nothing in the reply said the rejection would not change.
+        err_class = kubectl_errors.error_class(pattern_name)
+        ledger_class = f"{err_class or 'unclassified'}" + (f": {pattern_name}" if pattern_name else "")
+        if err_class == "permanent" and guard_fp:
+            _record_permanent_failure(thread_id, guard_fp, _first_line(stderr) or f"exit {proc.returncode}")
+        if err_class == "permanent":
+            output += (
+                "\n[permanent error: resending this exact command cannot succeed — change it, or stop and report "
+                "what you found]"
+            )
+        elif err_class == "transient":
+            output += "\n[transient error: the same command may succeed if retried after a short wait]"
+        bound_for_hint = _bound_namespace_of(config)
+        if bound_for_hint and settings.SESSION_IDENTITY_ENABLED and "(Forbidden)" in stderr:
+            # The API server, not a string gate, said no: the session reached the edge of its identity. Rephrasing
+            # cannot help; a person can do it from chat ("approval elevates").
+            output += (
+                f"\n[This investigation runs as a Kubernetes identity restricted to namespace '{bound_for_hint}', and "
+                "the API server refused this as outside it. Do not try another form of the same request: report what "
+                "you found and what a person would need to do — a person can run it from chat with their own "
+                "permissions.]"
+            )
         if pattern_name in kubectl_errors.TERMINAL_PATTERNS:
             # The apiserver is not answering — a second call to the same tool cannot get past
             # that, and the prompt's "do not retry" rule needs a string to key on.
@@ -1937,5 +2975,27 @@ def run_kubectl(
             "--tail, -n <namespace>, or -l <label> flags.]"
         )
         logger.debug(f"run_kubectl: output truncated ({omitted} chars omitted)")
+
+    if target_ctx:
+        output = f"[cluster: {target_ctx}]\n{output}"
+
+    if verb == "config" and _operand_after_verb(args) == "view":
+        # kubectl elides client keys and tokens, but not auth-provider config (OIDC id-token, refresh-token,
+        # client-secret) or exec-plugin env values (tenth review pass): the redactor runs over the whole output.
+        from app.utils.redact import redact_secrets
+
+        output = redact_secrets(output, max_chars=None)
+
+    if injected_ns:
+        output += (
+            f"\n[namespace: this ran in '{injected_ns}', the namespace this investigation is bound to, "
+            "because the command named none]"
+        )
+
+    if guard_fp:
+        _note_write(thread_id, args, "executed (exit 0)" if proc.returncode == 0 else
+                    f"failed (exit {proc.returncode}, {ledger_class or 'unclassified'})")
+    if call_fp:
+        output = _remember(thread_id, call_fp, output)
 
     return effect_guard.settle(admission, output)

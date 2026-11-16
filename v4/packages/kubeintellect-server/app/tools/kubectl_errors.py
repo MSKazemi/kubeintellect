@@ -21,6 +21,30 @@ class _Pattern:
 
 
 _PATTERNS: tuple[_Pattern, ...] = (
+    # A field of the wrong type in a manifest. Measured 2026-11-14: an unquoted `- echo 'ERROR: …'` in a container
+    # command is a YAML *mapping*, and the cluster's three ways of saying so (client-side apply, server-side apply,
+    # create) matched no hint here, so an unattended session resent the same manifest 73 times.
+    _Pattern(
+        "manifest_type_error",
+        re.compile(
+            r"unrecognized type|cannot unmarshal|expected (?:string|integer|boolean|map|list|array), got",
+            re.IGNORECASE,
+        ),
+        "→ The manifest has a field of the wrong type (for example a mapping where a string is expected). In YAML a "
+        "value containing ': ' must be quoted. Fix the field this error names; resending the same manifest cannot "
+        "succeed.",
+    ),
+    _Pattern(
+        "already_exists",
+        re.compile(r"\(AlreadyExists\)|already exists", re.IGNORECASE),
+        "→ The object already exists. Read it with `kubectl get <kind> <name> -n <ns>` and change it in place; do not "
+        "create a substitute under another name.",
+    ),
+    _Pattern(
+        "unknown_flag",
+        re.compile(r"unknown (?:shorthand )?flag", re.IGNORECASE),
+        "→ kubectl does not accept that flag — check `kubectl <verb> --help`; resending it cannot succeed.",
+    ),
     _Pattern(
         "namespace_not_found",
         re.compile(r'namespaces?\s+"[^"]+"\s+not\s+found', re.IGNORECASE),
@@ -87,7 +111,10 @@ _PATTERNS: tuple[_Pattern, ...] = (
     _Pattern(
         "immutable_field",
         re.compile(r"cannot patch .* immutable|field is immutable", re.IGNORECASE),
-        "→ Field is immutable — use `kubectl replace` or recreate the resource.",
+        # Was "use `kubectl replace` or recreate the resource". Measured 2026-11-14: that sentence pointed an
+        # unattended session at `replace` and then at a substitute Job under a new name that printed SUCCESS.
+        "→ Field is immutable — it cannot be changed in place. Recreating the object deletes it first: that is a "
+        "decision for a human, not a retry.",
     ),
     _Pattern(
         "etcd_recovering",
@@ -98,6 +125,11 @@ _PATTERNS: tuple[_Pattern, ...] = (
         "yaml_parse_error",
         re.compile(r"error converting YAML to JSON|yaml: unmarshal errors", re.IGNORECASE),
         "→ YAML syntax error — validate with `kubectl apply --dry-run=client`.",
+    ),
+    _Pattern(
+        "invalid_request",
+        re.compile(r"The request is invalid|is invalid:|\(Invalid\)|\(BadRequest\)", re.IGNORECASE),
+        "→ The API server rejected the request as invalid; the error names the field. Fix it before resending.",
     ),
     _Pattern(
         "concurrent_modification",
@@ -119,6 +151,29 @@ TERMINAL_PATTERNS: frozenset[str] = frozenset({
     "unable_to_connect",
     "dns_lookup_failed",
 })
+
+
+# Whether resending the *same* command can help. Permanent: the request itself is wrong (4xx-class: invalid, type,
+# immutable, exists, unknown flag, not found, forbidden), so an identical retry gets the identical answer — the AWS
+# Builders' Library rule that client errors are not worth retrying. Transient: the cluster's state, not the request,
+# is the obstacle (a write conflict, etcd re-electing), so the same command may succeed shortly. Patterns in neither
+# set, and unmatched errors, are not classified: the reply says nothing rather than guessing.
+PERMANENT_PATTERNS: frozenset[str] = frozenset({
+    "manifest_type_error", "already_exists", "unknown_flag", "invalid_request", "immutable_field",
+    "yaml_parse_error", "forbidden", "method_not_allowed", "crd_not_recognized", "missing_resource_type",
+})
+# Not-found is deliberately NOT permanent: polling for an object about to be created gets NotFound until it exists,
+# and "resending this exact command cannot succeed" would be false there (independent review F12). It keeps its hint.
+TRANSIENT_PATTERNS: frozenset[str] = frozenset({"concurrent_modification", "etcd_recovering"})
+
+
+def error_class(pattern_name: str | None) -> str | None:
+    """``"permanent"``, ``"transient"`` or ``None`` (not classified) for a pattern name from `interpret`."""
+    if pattern_name in PERMANENT_PATTERNS:
+        return "permanent"
+    if pattern_name in TRANSIENT_PATTERNS:
+        return "transient"
+    return None
 
 
 def interpret(stderr: str) -> tuple[str | None, str | None]:

@@ -164,12 +164,31 @@ Every non-zero exit is stated outright, hint or no hint: the result begins
 message the agent did not write. When `stderr` is empty the result says so
 (`(kubectl wrote nothing to stderr)`) rather than reading as a blank tool result.
 
+**Each classified error says whether resending can help.** A request the cluster rejects as wrong — invalid,
+a field of the wrong type, immutable, already exists, an unknown flag, forbidden — gets
+`[permanent error: resending this exact command cannot succeed — change it, or stop and report what you found]`; a
+write conflict or etcd re-election gets `[transient error: the same command may succeed if retried after a short
+wait]`. Measured 2026-11-14: an unattended session resent one rejected manifest 73 times, because the rejection
+(`… unrecognized type: string`, a YAML value with an unquoted `: ` parsed as a mapping) matched no hint. That error
+now gets the quoting hint, `already exists` says to change the object in place rather than create a substitute, and
+`field is immutable` no longer recommends recreating the resource as a retry.
+
 **A partial failure shows both halves.** `kubectl get pods -A` with one namespace
 forbidden exits non-zero *and* prints the namespaces it could read. Until 2026-08-24 the
 tool layer kept stdout and discarded stderr whenever stdout had anything, so that
 listing reached the agent looking like a complete census with no sign a namespace had
 been denied. Both are now returned, with the surviving rows explicitly marked as
 possibly partial — absence from them is not evidence.
+
+**A manifest is checked before it is sent.** For `apply`, `create` and `replace` with a stdin manifest, every
+field's type and name is checked against the cluster's own OpenAPI v3 schema (fetched once per group-version and
+cached). A field of the wrong type or a misspelt field name is refused before anything reaches the cluster, with the
+path, the likely YAML cause and the fix, and before any approval prompt, so a human is never asked to approve a
+manifest the cluster would reject. The check only reports what it can prove wrong: no schema for the kind (a CRD it
+cannot find) or an unreachable schema endpoint means no check, and the server's own validation still runs.
+Measured on the manifest that was resent 73 times: client-side `kubectl apply`, even with `--dry-run=server` and
+`--validate=strict`, answered with an error naming no field; this check names
+`spec.template.spec.containers[0].command[2]`. Disable with `MANIFEST_LINT_ENABLED=false`.
 
 **Disable:** `KUBECTL_ERROR_HINTS_ENABLED=false` (the exit-code line and the partial-output
 notice are not gated by it — they are statements of fact, not interpretation).
@@ -286,6 +305,7 @@ expected_evidence:
   - "<what to look for>"
 recommended_fix_template: |
   <multi-line fix template; placeholders welcome>
+auto_fixable: false   # optional, default true: false = never handed to an unattended A3 fix
 ```
 
 A playbook matches if any of its triggers matches. The coordinator still has
@@ -476,12 +496,33 @@ and `always_confirm=true`; there is no way to silently auto-approve them.
 | `delete pv\|persistentvolume` | Releases user data; CSI drivers may delete the underlying disk. |
 | `delete crd\|customresourcedefinition` | Cascades to every CR of that kind cluster-wide. |
 | `set image \|set resources` | Live mutation of running workloads; use `rollout undo` to revert. |
+| `patch` or `apply`/`replace` that changes a container `image`, `resources`, `command` or `args` field | The same change as `set image`/`set resources`, written another way; replacing a container's program (`command`/`args`) is the same kind of change as replacing its image. The gate follows the **effect**, not the spelling (see below). |
+| `run`, `debug`, `create deployment\|job\|cronjob`, `create -f -` of a pod-bearing manifest | A new workload is a substitute for the one under investigation. Measured 2026-11-14: in 2 of 4 unattended re-runs a session created a stub Job that printed SUCCESS, verified the stub and reported the failing Job fixed. Supporting objects (`create configmap`, the repair the config faults need) still auto-approve. |
 | `drain` | Evicts every pod on the node; depends on PDB compliance. |
+| `delete <kind> --all` / `--all=true` | Names no object, only a whole class of them: every pod (or every object, with `delete all --all`) in the namespace. Measured on a real cluster: `kubectl delete pods --all -n ns` used to run unprompted under auto-approve and replaced every pod. `--all=false` is not unscoped. |
 
 Defined in `app/tools/kubectl_tool.py` (`_ALWAYS_CONFIRM_DELETE_TARGETS`,
-`_ALWAYS_CONFIRM_SET_SUBCOMMANDS`, `_requires_always_confirm`). Plain
-`delete pod`, `apply`, `patch`, `scale` continue to auto-approve under
-`auto_approve=true`.
+`_ALWAYS_CONFIRM_SET_SUBCOMMANDS`, `_is_unscoped_delete`, `_changes_container_image_or_resources`, `_creates_a_workload`,
+`_requires_always_confirm`). Plain
+`delete pod`, a selector-scoped `delete pods -l app=web`, a `patch` or `apply` that touches none of
+`image`, `resources`, `command` or `args`, `create configmap`, `scale` continue to auto-approve under `auto_approve=true`. For an autonomous investigation that holds only inside
+its own namespace (see [namespace-bound auto-approve](security.md#namespace-bound-auto-approve)).
+Tests: `tests/test_an_unscoped_delete_is_always_confirm.py`, `tests/test_an_unattended_session_cannot_substitute_a_workload.py`.
+
+!!! note "The image gate follows the effect, not the spelling"
+    `kubectl patch deployment x --type=json -p '[{"op":"replace","path":"/spec/template/spec/containers/0/image",…}]'`
+    changes the same field as `set image` and is therefore also always-confirm. So is a `patch`
+    (JSON, merge or strategic) naming `image` or `resources` anywhere, and an `apply`/`replace`
+    of a Deployment, StatefulSet, DaemonSet, ReplicaSet, ReplicationController, Pod, Job or
+    CronJob manifest that sets either. A patch that cannot be read (`--patch-file`, unparseable)
+    is confirmed too. Matching is by whole field name, so `imagePullPolicy` is not caught.
+    Not covered: `rollout undo` (restores an earlier revision). `create` and `run` of a workload are
+    always-confirm by their own rule (table above); since 2026-11-14 `command` and `args` are gated
+    like `image` and `resources`.
+    Consequence: an **unattended** A3 session can no longer repair an image fault; it proposes
+    the fix and a human approves it. Before this, the repair rate of image-pull faults in the A3
+    pilots tracked which of the two commands the model happened to write.
+    Tests: `tests/test_an_image_change_is_always_confirm_however_it_is_spelled.py`.
 
 The gate reads the target through `_operand_after_verb()`, the same parse
 `_extract_verb` and `_extract_resource_type` use, so **where the flags sit does

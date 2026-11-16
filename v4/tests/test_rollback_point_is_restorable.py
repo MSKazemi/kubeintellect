@@ -156,8 +156,10 @@ class TestARedactedCaptureIsNotARestorePoint:
         rec = capture(REAL_DEPLOYMENT)
         assert rec.payload["restorable"] is True
         assert rec.payload["capture_notes"] == []
-        # byte-identical to what kubectl produced, trailing newline aside
-        assert rec.payload["pre_state"][0].rstrip("\n") == REAL_DEPLOYMENT.rstrip("\n")
+        # what kubectl produced, trailing newline aside, MINUS the observed `status` block, which the
+        # capture deliberately omits (a restore applies desired state, not observed state)
+        assert (rec.payload["pre_state"][0].rstrip("\n")
+                == REAL_DEPLOYMENT.replace("status: {}\n", "").rstrip("\n"))
 
     def test_the_dropped_trailing_newline_alone_never_costs_the_flag(self, capture):
         # `redact_secrets` joins lines and loses the final "\n". If that counted as a change,

@@ -56,6 +56,10 @@ spec:
         runAsNonRoot: true
         runAsUser: 1001
         runAsGroup: 1001
+        {{- if .Values.multiCluster.kubeconfigSecret }}
+        # The cluster-contexts Secret is mounted 0440: readable by this pod's group, not by every UID.
+        fsGroup: 1001
+        {{- end }}
       containers:
         - name: kubeintellect
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
@@ -86,8 +90,13 @@ spec:
                 name: {{ include "kubeintellect.fullname" . }}-config
             - secretRef:
                 name: {{ include "kubeintellect.fullname" . }}-secrets
-          {{- if or .Values.hotReload.enabled .Values.containerSecurityContext.readOnlyRootFilesystem }}
+          {{- if or .Values.hotReload.enabled .Values.containerSecurityContext.readOnlyRootFilesystem .Values.multiCluster.kubeconfigSecret }}
           volumeMounts:
+          {{- end }}
+          {{- if .Values.multiCluster.kubeconfigSecret }}
+            - name: cluster-contexts
+              mountPath: /etc/kubeintellect/clusters
+              readOnly: true
           {{- end }}
           {{- if .Values.hotReload.enabled }}
             - name: hot-code
@@ -162,8 +171,14 @@ spec:
           # kubectl. Dropping ALL is not a guess — it is the actual requirement.
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
-      {{- if or .Values.hotReload.enabled .Values.containerSecurityContext.readOnlyRootFilesystem }}
+      {{- if or .Values.hotReload.enabled .Values.containerSecurityContext.readOnlyRootFilesystem .Values.multiCluster.kubeconfigSecret }}
       volumes:
+      {{- end }}
+      {{- if .Values.multiCluster.kubeconfigSecret }}
+        - name: cluster-contexts
+          secret:
+            secretName: {{ .Values.multiCluster.kubeconfigSecret }}
+            defaultMode: 0440
       {{- end }}
       {{- if .Values.containerSecurityContext.readOnlyRootFilesystem }}
         - name: tmp

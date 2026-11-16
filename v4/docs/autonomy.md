@@ -35,6 +35,8 @@ cluster on its own.
 
 ### Configuration
 
+> **Off by default: auto-approve is a demonstration and evaluation mode.** Unless the server runs with `AUTO_APPROVE_ENABLED=true`, the request flag (`auto_approve`, `kq --auto-approve`) and the "approve all" phrase are ignored and every mutation goes through the approval prompt; the watchtower investigates an A3-allowlisted finding like A2 (it proposes the fix). Even when it is on, the bypass of an autonomous investigation applies only inside the namespace that investigation was opened for.
+
 | Flag | Default | Effect |
 |---|---|---|
 | `WATCHTOWER_ENABLED` | `True` | Master switch for autonomous investigations. Off = detectors still fire (findings/digest keep working), but nothing is investigated automatically. |
@@ -47,6 +49,29 @@ cluster on its own.
 A3 requires **both** conditions: the namespace's effective level must be `A3`
 *and* the firing playbook must match an allowlist entry for that namespace.
 An empty allowlist means A3 behaves like A2 — nothing auto-executes.
+A third condition applies on every release after 2.5.0: the server must run with
+`AUTO_APPROVE_ENABLED=true`. Without it, A3 also behaves like A2.
+A fourth: the playbook must not declare `auto_fixable: false`. `JobBackoffLimitExceeded` does, because a Job that
+fails on its own program's exit code cannot be repaired from the cluster; such a finding is investigated and reported
+even at A3 on the allowlist. Measured 2026-11-14: unattended sessions asked to fix one re-sent the Job 73 times, or
+created a stub Job that printed SUCCESS and reported it fixed. After any A3 fix the watchtower judges the outcome on
+the finding's own workload, not on the model's report, and a bad outcome (`not_fixed`, `stuck`, `budget_exhausted`)
+opens a circuit breaker that demotes that (namespace, playbook) to A2 for `AUTOFIX_BREAKER_SECONDS` (see
+[security: what else bounds an unattended session](security.md#unattended-session-bounds)).
+
+**Since this release the namespace is also enforced by Kubernetes** (chart default): an investigation's kubectl runs
+as a token for a ServiceAccount in the finding's namespace, so a write — or a read — elsewhere is `Forbidden` at the
+API server, however the command is spelled; an investigation that cannot get that identity does not start
+([security: session identity](security.md#session-identity)).
+
+**The authority is granted for the finding's namespace and nowhere else.** The watchtower carries
+`finding.namespace` into the session's run config as `bound_namespace`, and the tool layer
+withholds auto-approve from any write it cannot show stays inside it. Writes into a sibling
+namespace, into the default namespace (no `-n`), into cluster-scoped objects, or into a namespace
+named only by a stdin manifest go to the approval prompt, and an unattended turn cannot answer it.
+Reads are unaffected. The rule, its cases and the incidents that led to it (one session patched a
+namespace pinned to A2, and an injected instruction scaled another namespace's deployment to zero)
+are in [Security → namespace-bound auto-approve](security.md#namespace-bound-auto-approve).
 
 ```bash
 # Example: investigate everywhere, propose in dev, auto-fix only

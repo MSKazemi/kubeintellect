@@ -50,6 +50,19 @@ os.environ["KUBEINTELLECT_READONLY_KEYS"] = ""
 os.environ["KUBEINTELLECT_SUPERADMIN_KEYS"] = ""
 os.environ["DEMO_KEY_HMAC_SECRET"] = ""
 
+# The manifest lint fetches the cluster's OpenAPI schema with `kubectl get --raw`, using the developer's real
+# kubeconfig. No unit test may reach a real cluster that way, so it is off for the suite; its own tests turn it on
+# with the fetch patched out (tests/test_a_manifest_is_checked_against_the_cluster_schema_before_it_is_sent.py).
+os.environ["MANIFEST_LINT_ENABLED"] = "false"
+# Same reason: verifying an autonomous fix reads the workload with kubectl and the real kubeconfig. Its own tests patch
+# the read (tests/test_an_autonomous_fix_is_judged_on_the_original_object.py).
+os.environ["AUTOFIX_VERIFY_TIMEOUT_SECONDS"] = "0"
+# Same reason: the preflight runs `kubectl diff` with the real kubeconfig. Its own tests turn it on with kubectl faked.
+os.environ["PREFLIGHT_DIFF_ENABLED"] = "false"
+# Same reason: a session identity is minted with `kubectl create token` against the real kubeconfig. Its own tests fake
+# kubectl (test_a_bound_investigation_runs_as_its_own_namespace_identity.py) or use a disposable Kind cluster.
+os.environ["SESSION_IDENTITY_ENABLED"] = "false"
+
 # ── Stub langgraph postgres checkpointer ─────────────────────────────────────
 # AsyncPostgresSaver.from_conn_string is called inside init_graph() at startup.
 # Stub the module so no TCP connection is attempted — the real app.agent.workflow
@@ -85,3 +98,21 @@ def _isolate_environment():
     if os.environ != saved:
         os.environ.clear()
         os.environ.update(saved)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_kubectl_session_guard():
+    """`run_kubectl` remembers each auto-approved session's writes (repeat guard, write budget) in process memory.
+    Tests share `thread_id`s, so without this a test would inherit another test's write count."""
+    from app.autonomy import watchtower
+    from app.tools import kubectl_tool
+
+    from app.tools import session_identity
+
+    kubectl_tool.reset_session_guard()
+    watchtower.reset_breaker()  # same reason: the A3 circuit breaker is process memory
+    session_identity.clear_cache()  # and the minted session tokens
+    yield
+    kubectl_tool.reset_session_guard()
+    watchtower.reset_breaker()
+    session_identity.clear_cache()

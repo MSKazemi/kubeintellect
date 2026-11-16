@@ -34,6 +34,14 @@ class _NoInterrupt:
     tasks = ()
 
 
+@pytest.fixture(autouse=True)
+def _demo_mode_on(monkeypatch):
+    # The bypass these tests scope to one turn exists only in the demonstration/evaluation mode
+    # (settings.AUTO_APPROVE_ENABLED, default off; see test_auto_approve_is_a_demo_and_evaluation_mode.py).
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "AUTO_APPROVE_ENABLED", True)
+
+
 async def _bypass_flags_for(messages: list[str], **kwargs) -> list[bool]:
     """Run `stream_events` once per message and report the `hitl_bypass` each turn ran with."""
     seen: list[bool] = []

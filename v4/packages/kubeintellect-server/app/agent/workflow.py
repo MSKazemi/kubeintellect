@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import AbstractAsyncContextManager
-from typing import Any, cast
+from typing import Any, Optional, cast
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -77,8 +77,15 @@ async def subagent_executor(payload: SubagentInput) -> dict:
 # ── Targeted investigator node ────────────────────────────────────────────────
 
 
-async def targeted_investigator(state: AgentState) -> dict:
-    """Run 3 parallel targeted reads for a single-resource issue, then return to coordinator."""
+# `Optional[RunnableConfig]`, not `RunnableConfig | None`: with `from __future__ import annotations` LangGraph sees a
+# string and injects the run config only for the spellings it lists (tests/test_workflow_config_injection.py).
+async def targeted_investigator(state: AgentState, config: Optional[RunnableConfig] = None) -> dict:  # noqa: UP045
+    """Run 3 parallel targeted reads for a single-resource issue, then return to coordinator.
+
+    The reads use the turn's identity (`config`), so a namespace-bound session reads as its own namespace identity; and
+    a bound session reads only its own namespace — `ns` is a value the model wrote (independent review of ADR-007
+    Phase 6, finding 4).
+    """
     from app.agent.nodes.context_fetcher import _run_kubectl_snapshot
     from app.tools.namespace_guard import protected_message
 
@@ -87,6 +94,21 @@ async def targeted_investigator(state: AgentState) -> dict:
     pod = info.get("pod", "")
     issue = info.get("issue", "")
     session_id = state.get("session_id", "-")
+    bound = ((config or {}).get("configurable") or {}).get("bound_namespace")
+
+    if bound and ns != bound:
+        logger.warning(f"targeted_investigator: {ns!r} is outside the bound namespace {bound!r} session={session_id}")
+        existing_snapshot = state.get("cluster_snapshot", "")
+        refusal = (
+            f"## Targeted Investigation: {pod} in {ns}\n"
+            f"This investigation is bound to namespace '{bound}'; '{ns}' is outside it.\n\n"
+            "No pod description, events or deployments were read. Investigate within the bound namespace, or "
+            "report that the cause lies elsewhere."
+        )
+        return {
+            "cluster_snapshot": f"{existing_snapshot}\n\n{refusal}" if existing_snapshot else refusal,
+            "targeted_investigation": None,
+        }
 
     # `ns` and `pod` are `(\S+?)` captures out of a line the model wrote, and they are spliced
     # straight into an argv. `_kubectl_snapshot` refuses a blocked namespace itself, but a
@@ -113,9 +135,9 @@ async def targeted_investigator(state: AgentState) -> dict:
     ))
 
     describe_out, events_out, deploy_out = await asyncio.gather(
-        asyncio.to_thread(_run_kubectl_snapshot, ["describe", "pod", pod, "-n", ns]),
-        asyncio.to_thread(_run_kubectl_snapshot, ["get", "events", "-n", ns, "--sort-by=.lastTimestamp"]),
-        asyncio.to_thread(_run_kubectl_snapshot, ["get", "deployments", "-n", ns]),
+        asyncio.to_thread(_run_kubectl_snapshot, ["describe", "pod", pod, "-n", ns], config),
+        asyncio.to_thread(_run_kubectl_snapshot, ["get", "events", "-n", ns, "--sort-by=.lastTimestamp"], config),
+        asyncio.to_thread(_run_kubectl_snapshot, ["get", "deployments", "-n", ns], config),
     )
 
     detail = (
@@ -424,6 +446,7 @@ async def stream_events(
     user_role: str = "admin",
     auto_approve: bool = False,
     trigger_source: str = "user_query",
+    bound_namespace: str | None = None,
 ):
     """Async generator yielding LangGraph astream_events for SSE.
 
@@ -443,6 +466,12 @@ async def stream_events(
         # Explicit runaway backstop — see settings.AGENT_GRAPH_RECURSION_LIMIT.
         "recursion_limit": settings.AGENT_GRAPH_RECURSION_LIMIT,
     }
+    # Autonomy ladder: an autonomous investigation is opened for ONE namespace, and its authority to
+    # mutate without a human (`hitl_bypass`) was decided for that namespace only. Carrying the namespace
+    # in the run config lets `run_kubectl` refuse to apply that authority anywhere else. Injected by the
+    # graph, never writable by a model, exactly like `user_role` and `hitl_bypass`. None = unbound.
+    if bound_namespace:
+        config["configurable"]["bound_namespace"] = bound_namespace
 
     # "approve all" bypasses HITL for **this turn only**, not for the session.
     #
@@ -458,6 +487,16 @@ async def stream_events(
         auto_approve = True
         config["configurable"]["hitl_bypass"] = True
         logger.info(f"stream_events: HITL bypassed for this turn session={session_id}")
+
+    # Auto-approve is a demonstration and evaluation mode (settings.AUTO_APPROVE_ENABLED, default off). With it off,
+    # nothing above may switch the approval gate off: the request flag and the phrase are both ignored.
+    if config["configurable"]["hitl_bypass"] and not settings.AUTO_APPROVE_ENABLED:
+        logger.warning(
+            f"stream_events: auto-approve requested but AUTO_APPROVE_ENABLED is off "
+            f"(demonstration/evaluation only); the approval gate stays on session={session_id}"
+        )
+        auto_approve = False
+        config["configurable"]["hitl_bypass"] = False
 
     # Check whether this thread is paused at a HITL interrupt
     graph_state = await graph.aget_state(config)
@@ -577,6 +616,7 @@ def _translate_raw_event(session_id: str, raw: dict) -> ToolCallEvent | ToolResu
             risk_level=val.get("risk_level", "medium"),
             command=val.get("command", "destructive action"),
             stdin_yaml=val.get("stdin"),
+            cluster=val.get("cluster"),
             session_id=session_id,
         )
 
@@ -607,6 +647,23 @@ def _llm_error_hint(exc: Exception) -> str:
     return f"LLM error: {exc}"
 
 
+# The error a session's last turn ended with, for the watchtower: an autonomous investigation whose model call failed
+# is an `error`, not a fix that did not work (measured 2026-11-14: a DNS outage turned every session into `not_fixed`
+# and opened the A3 breaker everywhere). Read once; bounded.
+_turn_errors: dict[str, str] = {}
+
+
+def _record_turn_error(session_id: str, message: str) -> None:
+    _turn_errors[session_id] = message[:300]
+    while len(_turn_errors) > 512:
+        _turn_errors.pop(next(iter(_turn_errors)))
+
+
+def pop_turn_error(session_id: str) -> str | None:
+    """The error the session's last turn ended with (removed on read), or None."""
+    return _turn_errors.pop(session_id, None)
+
+
 async def run_session(
     user_message: str,
     session_id: str,
@@ -614,6 +671,7 @@ async def run_session(
     user_role: str = "admin",
     auto_approve: bool = False,
     trigger_source: str = "user_query",
+    bound_namespace: str | None = None,
 ) -> None:
     """
     Run the graph for one turn and emit typed events to the per-session queue.
@@ -638,6 +696,7 @@ async def run_session(
         async for raw in stream_events(
             user_message, session_id, user_id, user_role,
             auto_approve=auto_approve, trigger_source=trigger_source,
+            bound_namespace=bound_namespace,
         ):
             kind = raw.get("event", "")
 
@@ -665,6 +724,7 @@ async def run_session(
     except Exception as exc:
         logger.error(f"run_session error session={session_id}: {exc}", exc_info=False)
         user_msg = _llm_error_hint(exc)
+        _record_turn_error(session_id, user_msg)
         await emit(session_id, ErrorEvent(session_id=session_id, error=user_msg))
     finally:
         try:

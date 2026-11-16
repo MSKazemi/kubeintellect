@@ -183,7 +183,7 @@ class TestTheRealWatchtowerStillGetsSensorTrust:
         seen: dict = {}
 
         async def fake_run_session(ask, session_id, user_id, user_role,
-                                   auto_approve, trigger_source):
+                                   auto_approve, trigger_source, bound_namespace=None):
             seen["trigger_source"] = trigger_source
 
         async def empty_stream(sid, heartbeat_interval=5.0):

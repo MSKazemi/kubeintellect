@@ -111,6 +111,12 @@ class Settings(BaseSettings):
     CLUSTER_ID: str = ""
     KUBECTL_TIMEOUT_SECONDS: int = 30
     KUBECTL_DESTRUCTIVE_TIMEOUT_SECONDS: int = 300
+    # Multi-cluster (plan Phase 6b, owner 2026-11-15). Empty = single cluster: `--context` is refused, as always. Set =
+    # the comma-separated context names a command may select with `--context=<name>`, exact match; each must be a
+    # context of KUBECTL_CONTEXTS_KUBECONFIG (empty = KUBECONFIG_PATH). Never by editing the kubeconfig: `kubectl
+    # config` writes stay refused, so no command can add a cluster or credential the deployment did not list.
+    KUBECTL_ALLOWED_CONTEXTS: str = ""
+    KUBECTL_CONTEXTS_KUBECONFIG: str = ""
 
     # Namespaces the kubectl tool will never touch, regardless of user role.
     # In Helm deployments this is set via config.blockedNamespaces in values.yaml
@@ -145,6 +151,13 @@ class Settings(BaseSettings):
         is reported by :mod:`app.core.config_audit` rather than guessed at here.
         """
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
+
+    @property
+    def kubectl_allowed_contexts(self) -> tuple[str, ...]:
+        """The context names a command may select, whitespace-stripped, in the order listed; () = single cluster.
+
+        Matched exactly (context names are case-sensitive and may hold `:`/`/`, e.g. an EKS ARN)."""
+        return tuple(c.strip() for c in self.KUBECTL_ALLOWED_CONTEXTS.split(",") if c.strip())
 
     @property
     def kubectl_blocked_namespaces(self) -> frozenset[str]:
@@ -237,6 +250,12 @@ class Settings(BaseSettings):
     # ── KubeIntellect behavior flags ───────────────────────────────────────────
     # Each behavior is feature-flagged so it can be toggled without a redeploy.
     KUBECTL_ERROR_HINTS_ENABLED: bool = True
+    # Check a manifest (apply/create/replace with stdin) against the cluster's own OpenAPI v3 schema before sending
+    # it, and refuse it with the wrong field named. Fails open: no schema, no check. See app/tools/manifest_lint.py.
+    MANIFEST_LINT_ENABLED: bool = True
+    # Before an UNATTENDED (auto-approved) apply/replace with a stdin manifest, run `kubectl diff`: no difference =>
+    # refused as a no-op; an API-server rejection => refused with the field it names. Fails open on anything else.
+    PREFLIGHT_DIFF_ENABLED: bool = True
     INVESTIGATION_PLAN_ENABLED: bool = True
     PLAYBOOKS_ENABLED: bool = True
     # off | lenient | strict
@@ -681,6 +700,39 @@ class Settings(BaseSettings):
     AUTONOMY_NAMESPACE_LEVELS: str = ""     # "prod=A0,dev=A2"
     SELF_GOVERN_ENABLED: bool = False   # ADR-007/008/009 self-governance (default off)
     AUTONOMY_A3_ALLOWLIST: str = ""         # "CrashLoopBackOff/dev-*"
+    # Auto-approve (`hitl_bypass`) is a DEMONSTRATION AND EVALUATION mode. Off (the default): no request flag
+    # (`kq --auto-approve`), no "approve all" message and no watchtower turn skips the approval gate, and an
+    # A3-allowlisted finding is investigated like A2 (the fix is proposed, not applied). On: as before, and the
+    # bypass still applies only inside the namespace an autonomous investigation was opened for.
+    AUTO_APPROVE_ENABLED: bool = False
+    # An auto-approved session may run at most this many writes without a human; each further write goes to the
+    # approval prompt (unattended: it stops). Rejected writes count too. Measured 2026-11-14: one unattended session
+    # sent 73 writes (all rejected) before its step budget ended it.
+    AUTO_APPROVE_MAX_WRITES: int = Field(default=10, gt=0)
+    # After an autonomous fix turn the watchtower polls the finding's own workload (pinned by uid before the turn) for
+    # up to this long and records fixed / not_fixed / unknown, whatever the model reported. 0 = do not verify.
+    AUTOFIX_VERIFY_TIMEOUT_SECONDS: int = Field(default=120, ge=0)
+    # An autonomous investigation that ends not_fixed, stuck or budget_exhausted demotes its (namespace, playbook)
+    # from A3 to A2 (propose, a human approves) for this long; a server restart also resets it. 0 = no breaker.
+    AUTOFIX_BREAKER_SECONDS: int = Field(default=86400, ge=0)
+    # ADR-007 Phase 6 — a namespace-bound investigation runs kubectl as its own Kubernetes identity: a short-lived
+    # token for SESSION_IDENTITY_SERVICE_ACCOUNT in the investigation's namespace, bound there to
+    # SESSION_IDENTITY_CLUSTER_ROLE (Helm `sessionIdentity.enabled` installs it). RBAC then holds the namespace and
+    # Secret bounds whatever command string the model wrote. Fails closed: no identity, no kubectl. Off by default
+    # outside Helm because the ClusterRole has to exist first.
+    SESSION_IDENTITY_ENABLED: bool = False
+    SESSION_IDENTITY_SERVICE_ACCOUNT: str = "kubeintellect-session"
+    SESSION_IDENTITY_CLUSTER_ROLE: str = "kubeintellect-session"
+    # Create the ServiceAccount + RoleBinding in a namespace on its first investigation. Off: they must already exist.
+    SESSION_IDENTITY_PROVISION: bool = True
+    # TokenRequest lifetime; the API server's minimum is 600 s. A token is re-minted when under 120 s remain.
+    SESSION_IDENTITY_TOKEN_SECONDS: int = Field(default=900, ge=600, le=86400)
+    # The same for the `readonly` role: its kubectl runs as READONLY_IDENTITY_SERVICE_ACCOUNT (in
+    # READONLY_IDENTITY_NAMESPACE, empty = the server pod's own), bound cluster-wide to the chart's read-only role, so
+    # the API server refuses its writes and Secret reads. Fails closed. Helm `readonlyIdentity.enabled` creates it.
+    READONLY_IDENTITY_ENABLED: bool = False
+    READONLY_IDENTITY_SERVICE_ACCOUNT: str = "kubeintellect-readonly"
+    READONLY_IDENTITY_NAMESPACE: str = ""
 
     # ── Auth / RBAC ───────────────────────────────────────────────────────────
     # Four-tier role model (all comma-separated; empty = auth disabled):

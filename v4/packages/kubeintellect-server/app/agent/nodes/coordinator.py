@@ -625,6 +625,30 @@ _BUDGET_EXHAUSTED_MESSAGE = (
 )
 
 
+# LangGraph's `create_react_agent` ends a loop that runs out of `remaining_steps` with this exact message instead of
+# raising `GraphRecursionError` (documented in its `state_schema` notes). Measured 2026-11-14 at the production limit
+# (150): 74 tool calls, then this sentence, and no exception — so the `except GraphRecursionError` escalation below never
+# ran and an unattended session that had looped 73 times was recorded as done. Both endings are now the same escalation.
+_LANGGRAPH_OUT_OF_STEPS = "Sorry, need more steps to process this request."
+
+
+def _ran_out_of_steps(message: object) -> bool:
+    """True if `message` is LangGraph's out-of-steps ending (the whole final AI message, nothing else)."""
+    return (
+        isinstance(message, AIMessage)
+        and not getattr(message, "tool_calls", None)
+        and str(message.content).strip() == _LANGGRAPH_OUT_OF_STEPS
+    )
+
+
+def _budget_escalation() -> AIMessage:
+    # `ki_outcome` lets the watchtower tell an escalation from an answer without parsing prose.
+    return AIMessage(
+        content=_BUDGET_EXHAUSTED_MESSAGE.format(limit=settings.AGENT_COORDINATOR_RECURSION_LIMIT),
+        additional_kwargs={"ki_outcome": "budget_exhausted"},
+    )
+
+
 # ── Proactive Fix prompt block (injected when hitl_bypass=True) ───────────────
 
 _PROACTIVE_FIX_BLOCK = """\
@@ -642,6 +666,10 @@ mutations. When you have identified the root cause and the fix is clear:
    report the actual post-fix state ("Pod is now Running (verified)").
 4. If the fix cannot be determined with confidence, say so explicitly and stop —
    do not apply a guess.
+5. A fix must keep the workload doing the same work. Never replace a container's
+   command, args or image with a different program, and never create a substitute
+   workload under another name, to make a check pass. If the cause is the
+   application's own code or exit code, it is not a cluster fault: report it and stop.
 """
 
 
@@ -891,7 +919,28 @@ async def _direct_answer(state: AgentState, config: Optional[RunnableConfig] = N
         system_parts.append(_PROACTIVE_FIX_BLOCK)
 
     llm = get_coordinator_llm()
-    agent = create_react_agent(llm, tools=fault_isolated_tool_node(ALL_TOOLS))
+    if hitl_bypass:
+        # An unattended session sees, on every model call, the writes it already attempted and how each ended — kept
+        # by the tool from kubectl's replies (L10, ADR-007). Passed as `prompt`, which runs inside the model step, so
+        # the step budget is unchanged (a pre_model_hook node would cost one recursion unit per call).
+        from langchain_core.runnables import RunnableLambda
+
+        from app.tools.kubectl_tool import session_ledger
+
+        thread_id = str((config or {}).get("configurable", {}).get("thread_id") or session_id)
+
+        def _with_ledger(agent_state: dict) -> list[BaseMessage]:
+            messages = list(agent_state["messages"])
+            ledger = session_ledger(thread_id)
+            if ledger and messages and isinstance(messages[0], SystemMessage):
+                messages[0] = SystemMessage(content=f"{messages[0].content}\n\n{ledger}")
+            return messages
+
+        agent = create_react_agent(
+            llm, tools=fault_isolated_tool_node(ALL_TOOLS), prompt=RunnableLambda(_with_ledger),
+        )
+    else:
+        agent = create_react_agent(llm, tools=fault_isolated_tool_node(ALL_TOOLS))
 
     history, history_summary = _trim_session_messages(list(state["messages"]))
     if history_summary:
@@ -915,11 +964,17 @@ async def _direct_answer(state: AgentState, config: Optional[RunnableConfig] = N
             "halting and escalating to the operator",
             extra={"session_id": session_id},
         )
-        return {
-            "messages": [AIMessage(content=_BUDGET_EXHAUSTED_MESSAGE.format(
-                limit=settings.AGENT_COORDINATOR_RECURSION_LIMIT,
-            ))],
-        }
+        return {"messages": [_budget_escalation()]}
+
+    if result["messages"] and _ran_out_of_steps(result["messages"][-1]):
+        logger.error(
+            "coordinator: tool-call budget exhausted (LangGraph remaining_steps) "
+            f"session={session_id} limit={settings.AGENT_COORDINATOR_RECURSION_LIMIT} — "
+            "halting and escalating to the operator",
+            extra={"session_id": session_id},
+        )
+        # Keep what was done before the limit (it is the evidence for the report); replace only the ending.
+        result["messages"][-1] = _budget_escalation()
 
     new_messages = result["messages"][len(input_messages):]
     new_messages = _trim_tool_messages(new_messages)  # A4: cap tool output before state storage
@@ -1205,6 +1260,11 @@ def _maybe_record_direct_outcome(state: AgentState, messages: list[BaseMessage])
         return
     mutated, commands = _ran_mutation(messages)
     if not mutated:
+        return
+    if any("--context" in c for c in commands):
+        # A fix on another listed cluster (multi-cluster): the post-fix check reads the home cluster and memory is
+        # scoped to the home cluster_id, so it would verify and learn from the wrong cluster (review, 2026-11-16).
+        logger.info("reflexion(direct): skipped — the mutation targeted another cluster (--context)")
         return
 
     pairs = _extract_mutation_pairs(messages)

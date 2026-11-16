@@ -37,6 +37,9 @@ startup. Failing at `helm template` / `helm install` beats a pod that crash-loop
 Included from configmap.yaml, which every install renders. Messages mirror the server's own.
 */}}
 {{- define "kubeintellect.validate" -}}
+{{- if and .Values.multiCluster.allowedContexts (not .Values.multiCluster.kubeconfigSecret) -}}
+{{- fail "multiCluster.allowedContexts lists clusters, but multiCluster.kubeconfigSecret is empty, so the pod would have no credentials for any of them and every --context would fail at run time. Create a Secret whose key `config` is a kubeconfig holding those contexts and set multiCluster.kubeconfigSecret to its name, or empty the list to stay single-cluster." -}}
+{{- end -}}
 {{- $provider := .Values.config.llmProvider | default "openai" -}}
 {{- /* config.extraEnv is rendered last in the ConfigMap, so its CORTEX_V4_ENABLED wins. */ -}}
 {{- $cortex := .Values.config.cortexV4Enabled | default false | toString -}}

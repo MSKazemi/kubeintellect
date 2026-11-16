@@ -94,11 +94,17 @@ class TestReadsAreNotCollateralDamage:
 
 
 class TestWritesStillReachTheApprovalGateForAnAdmin:
-    @pytest.mark.parametrize("command", _WRITES)
+    @pytest.mark.parametrize("command", [c for c in _WRITES if not c.startswith("kubectl cp ")])
     def test_an_admin_is_asked_first(self, command):
         out, ran, hitl = _invoke(command, _ADMIN)
         assert hitl, f"{command!r} executed without an approval prompt: {out[:150]}"
         assert not ran
+
+    def test_cp_is_refused_outright_not_offered_for_approval(self):
+        """`cp` moves files between the KubeIntellect server's own disk and a pod, so since 2026-11-15 no approval
+        makes it runnable (test_commands_that_act_on_the_kubeintellect_host_are_refused.py)."""
+        out, ran, hitl = _invoke("kubectl cp prod/api-1:/etc/creds /tmp/creds", _ADMIN)
+        assert not hitl and not ran and out.startswith("[Protected]")
 
 
 class TestTheDefaultIsWrite:

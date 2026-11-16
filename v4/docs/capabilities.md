@@ -192,7 +192,7 @@ Type `yes` or `/approve` to proceed, or `no` / `/deny` to cancel.
 
 After a change is applied, the agent re-checks the resource and reports the actual
 post-fix state ("Pod is now Running — verified"). A small set of cascading-blast
-actions (`delete namespace`, `delete pv`, `delete crd`, `set image/resources`,
+actions (`delete namespace`, `delete pv`, `delete crd`, `set image/resources` — including the same change written as `patch`/`apply`,
 `drain`) **always** require confirmation, even in auto-approve mode. Full rules:
 [Agent Behaviors → safety rules](agent-behaviors.md#always-on-safety-rules-in-the-coordinator-prompt)
 and [Security](security.md).

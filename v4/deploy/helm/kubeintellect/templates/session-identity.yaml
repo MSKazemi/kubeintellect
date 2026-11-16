@@ -1,0 +1,189 @@
+{{- /*
+ADR-007 Phase 6 — a namespace-bound investigation (every watchtower investigation) runs kubectl as its own identity:
+a short-lived token for ServiceAccount `sessionIdentity.serviceAccount` IN the investigation's namespace, bound there by
+a RoleBinding to the ClusterRole below. The API server's RBAC then confines the session to that namespace and keeps it
+away from Secrets, workload creation and exec, whatever command string the model wrote. The server creates the
+ServiceAccount and RoleBinding on a namespace's first investigation (`sessionIdentity.provision`).
+
+Never broader than the server itself, in every namespace a session can be bound in: the role is rendered only when the
+server reads cluster-wide (`rbac.createClusterReadOnly` or `rbac.clusterAdmin`) — its read rules are the namespaced
+part of `cluster-ro` — and its write rules only when the server already holds cluster-wide writes
+(`rbac.createClusterOps` or `rbac.clusterAdmin`), and then only a subset of `cluster-ops`. Without cluster-wide reads
+the server could not investigate another namespace either; the role is absent, and an investigation fails closed
+naming it. `tests/test_the_session_role_is_never_broader_than_the_server.py` checks this per scope.
+*/ -}}
+{{- if and .Values.sessionIdentity.enabled (or .Values.rbac.createClusterReadOnly .Values.rbac.clusterAdmin) }}
+{{- $ns := (.Values.namespace | default .Release.Namespace) -}}
+{{- $role := .Values.sessionIdentity.clusterRole -}}
+{{- $sa := .Values.sessionIdentity.serviceAccount -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $role }}
+  labels:
+    {{- include "kubeintellect.labels" . | nindent 4 }}
+rules:
+# Reads for the investigation. No secrets, no serviceaccounts/token, nothing cluster-scoped (a RoleBinding cannot
+# grant it anyway).
+- apiGroups: [""]
+  resources:
+    - pods
+    - pods/log
+    - services
+    - configmaps
+    - endpoints
+    - events
+    - persistentvolumeclaims
+    - resourcequotas
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["policy"]
+  resources: ["poddisruptionbudgets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["autoscaling"]
+  resources: ["horizontalpodautoscalers"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses", "networkpolicies"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["batch"]
+  resources: ["jobs", "cronjobs"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+{{- if or .Values.rbac.createClusterOps .Values.rbac.clusterAdmin }}
+# The writes the pilots' repairs used (patch / set image / rollout restart a workload, create the missing ConfigMap,
+# delete a pod so its controller recreates it). Deliberately absent: create or delete of any workload (the faked fix,
+# 2026-11-14, was a substitute Job), pods/exec, pods/attach, pods/portforward, and every Secret verb.
+- apiGroups: ["apps"]
+  resources: ["deployments", "daemonsets", "statefulsets"]
+  verbs: ["patch", "update"]
+- apiGroups: ["apps"]
+  resources: ["deployments/scale", "statefulsets/scale"]
+  verbs: ["patch", "update"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["delete"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["create", "update", "patch"]
+- apiGroups: ["autoscaling"]
+  resources: ["horizontalpodautoscalers"]
+  verbs: ["patch", "update"]
+{{- end }}
+{{- end }}
+{{- if .Values.readonlyIdentity.enabled }}
+{{- $ns := (.Values.namespace | default .Release.Namespace) }}
+---
+# The `readonly` role's identity (READONLY_IDENTITY_*): reads only, no Secrets, and never further than the server reads —
+# cluster-wide through the chart's cluster-ro role when the server reads cluster-wide, otherwise the server's own
+# namespaced read Role in its namespace. Created here, never by the server, so the grant is visible in the chart.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.readonlyIdentity.serviceAccount }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kubeintellect.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+{{- if or .Values.rbac.createClusterReadOnly .Values.rbac.clusterAdmin }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}-readonly-identity
+  labels:
+    {{- include "kubeintellect.labels" . | nindent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.readonlyIdentity.serviceAccount }}
+  namespace: {{ $ns }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kubeintellect.fullname" . }}-cluster-ro
+{{- else if .Values.rbac.createNamespaced }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}-readonly-identity
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kubeintellect.labels" . | nindent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.readonlyIdentity.serviceAccount }}
+  namespace: {{ $ns }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "kubeintellect.fullname" . }}-role
+{{- end }}
+{{- end }}
+{{- if or .Values.sessionIdentity.enabled .Values.readonlyIdentity.enabled }}
+{{- $ns := (.Values.namespace | default .Release.Namespace) }}
+{{- $role := .Values.sessionIdentity.clusterRole }}
+{{- $sa := .Values.sessionIdentity.serviceAccount }}
+---
+# What the server needs to hand those identities out. Token requests are limited by name to the session
+# ServiceAccount, so the server cannot mint a token for any other ServiceAccount; `bind` is limited to the session
+# ClusterRole. `create` cannot be limited by name in RBAC, so it is granted for the two kinds `kubectl apply` creates.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}-session-issuer
+  labels:
+    {{- include "kubeintellect.labels" . | nindent 4 }}
+rules:
+{{- if .Values.sessionIdentity.enabled }}
+- apiGroups: [""]
+  resources: ["serviceaccounts/token"]
+  resourceNames: [{{ $sa | quote }}]
+  verbs: ["create"]
+{{- end }}
+{{- if .Values.readonlyIdentity.enabled }}
+- apiGroups: [""]
+  resources: ["serviceaccounts/token"]
+  resourceNames: [{{ .Values.readonlyIdentity.serviceAccount | quote }}]
+  verbs: ["create"]
+{{- end }}
+{{- if and .Values.sessionIdentity.enabled .Values.sessionIdentity.provision }}
+- apiGroups: [""]
+  resources: ["serviceaccounts"]
+  verbs: ["create"]
+- apiGroups: [""]
+  resources: ["serviceaccounts"]
+  resourceNames: [{{ $sa | quote }}]
+  verbs: ["get", "patch"]
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["rolebindings"]
+  verbs: ["create"]
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["rolebindings"]
+  resourceNames: [{{ $sa | quote }}]
+  verbs: ["get", "patch"]
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["clusterroles"]
+  resourceNames: [{{ $role | quote }}]
+  verbs: ["get", "bind"]
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kubeintellect.fullname" . }}-session-issuer
+  labels:
+    {{- include "kubeintellect.labels" . | nindent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.serviceAccount.name }}
+  namespace: {{ $ns }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kubeintellect.fullname" . }}-session-issuer
+{{- end }}

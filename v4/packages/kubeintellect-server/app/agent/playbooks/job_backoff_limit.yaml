@@ -1,4 +1,8 @@
 name: JobBackoffLimitExceeded
+# A Job that fails because its own program exits non-zero cannot be repaired from the cluster. Measured 2026-11-14:
+# unattended sessions asked to "apply the fix" re-sent the Job 73 times, or created a stub Job that printed SUCCESS and
+# reported it fixed. Investigated and reported, never auto-fixed (watchtower._should_auto_fix).
+auto_fixable: false
 detect:
   watch_predicates:
     - kind: Event
@@ -23,7 +27,7 @@ expected_evidence:
 recommended_fix_template: |
   Job <JOB_NAME> in <NAMESPACE> exceeded its backoff limit (<BACKOFF_LIMIT> retries).
   Root cause from pod logs: <ROOT_CAUSE>.
-  Fix: <FIX_DESCRIPTION>.
-  After fixing, recreate the job:
-    kubectl delete job <JOB_NAME> -n <NAMESPACE>
-    kubectl apply -f <JOB_MANIFEST>
+  If the program itself exits non-zero, this is an application defect: report it to the owner of the Job.
+  Do not change the Job's command, image or args, and do not create a substitute Job to make a check pass.
+  If the cause is in the cluster (a missing ConfigMap/Secret reference, quota, scheduling): <FIX_DESCRIPTION>.
+  A Job's pod template cannot be changed in place; re-running it means deleting it, which is a human's decision.

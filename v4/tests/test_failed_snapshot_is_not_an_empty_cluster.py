@@ -116,7 +116,7 @@ class TestTheScanRefusesToParseAnError:
 
 
 def _run_node(pods=(False, REAL_UNAUTHORIZED), events=(True, "No resources found\n")):
-    def fake(args):
+    def fake(args, config=None):
         # `_kubectl_snapshot` gained a third element (completeness, #140); a case written
         # as a pair is not exercising truncation, so it reads as a complete snapshot.
         result = pods if args[1] == "pods" else events

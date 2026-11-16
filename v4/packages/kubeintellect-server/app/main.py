@@ -1,6 +1,7 @@
 """KubeIntellect V2 — FastAPI application entry point."""
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -89,6 +90,10 @@ async def lifespan(app: FastAPI):
     await init_recorder()
     from app.memory.service import init_memory
     await init_memory()
+    # The cluster's name, resolved now by the server: left lazy, the first session to need it ran kubectl as the
+    # server inside its own turn (pilot run 3, P13). Cached for the process; a failure only leaves the label unknown.
+    from app.cluster_id import resolve_at_startup
+    await asyncio.to_thread(resolve_at_startup)
     # Singleton workers run on exactly ONE replica. Without this gate, scaling the Deployment
     # duplicates perception rather than sharing it — two watch streams, two engines firing the
     # same finding, two watchtowers acting on it against a live cluster. See app/core/leader.py.

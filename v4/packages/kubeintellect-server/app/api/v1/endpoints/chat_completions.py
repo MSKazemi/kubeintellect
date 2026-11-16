@@ -147,12 +147,13 @@ def _serialise_event(completion_id: str, event: dict) -> str | None:
         risk_level = event["risk_level"]
         command = event["command"]
         stdin_yaml = event.get("stdin_yaml")
+        cluster = event.get("cluster")
 
         hitl_payload = {
             "hitl_required": True,
             "action_id": action_id,
             "risk_level": risk_level,
-            "human_summary": command,
+            "human_summary": f"{command} (cluster: {cluster})" if cluster else command,
         }
         risk_emoji = "🔴" if risk_level == "high" else "🟡"
         message = (
@@ -160,6 +161,8 @@ def _serialise_event(completion_id: str, event: dict) -> str | None:
             f"{risk_emoji} **Approval Required** — risk level: `{risk_level.upper()}`\n\n"
             f"**Command:**\n```\n{command}\n```\n"
         )
+        if cluster:
+            message += f"\n**Cluster:** `{cluster}` (not this deployment's own cluster)\n"
         if stdin_yaml:
             preview = stdin_yaml if len(stdin_yaml) <= 3_000 else stdin_yaml[:3_000] + "\n... [truncated]"
             message += f"\n**YAML to apply:**\n```yaml\n{preview}\n```\n"
