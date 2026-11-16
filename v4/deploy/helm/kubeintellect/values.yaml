@@ -147,6 +147,15 @@ sessionIdentity:
   # TokenRequest lifetime in seconds (API server minimum 600); also used for the read-only identity.
   tokenSeconds: 900
 
+# Multi-cluster (plan Phase 6b). Empty = one cluster, this one: a command cannot name another (`--context` is refused).
+# To let KubeIntellect reach other clusters, put a kubeconfig holding their contexts in a Secret (key `config`) and list
+# the context names a command may select with `--context=<name>`. The home cluster keeps the pod's own identity; a
+# write on another cluster always asks, naming it; investigations stay on the home cluster; kubeconfig editing stays
+# refused, so nothing outside this list is reachable. docs/configuration.md#multi-cluster
+multiCluster:
+  allowedContexts: []
+  kubeconfigSecret: ""
+
 # The `readonly` role's kubectl runs as this ServiceAccount, bound to read-only rules with the server's own read scope:
 # cluster-wide to the chart's cluster-ro role (reads, no Secrets; rendered for it even when the server itself is
 # cluster-admin) when the server reads cluster-wide, else the server's namespaced read Role in its own namespace. So a

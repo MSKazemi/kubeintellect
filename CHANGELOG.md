@@ -42,6 +42,19 @@ parser cannot be shown complete. So the two bounds that matter most now also hol
 - **Approval elevates:** what an investigation's identity forbids stops at the approval prompt, and the prompt now says
   that approving runs it under the approver's role with KubeIntellect's own permissions, outside the namespace.
 
+### Added — multi-cluster, by list (default off)
+
+- `KUBECTL_ALLOWED_CONTEXTS` (Helm `multiCluster.allowedContexts` + `multiCluster.kubeconfigSecret`): the clusters a
+  command may select with `--context=<name>`. Empty (default) keeps one cluster and refuses `--context` as before.
+  Listed: one exact name per command, no other connection flag; kubectl runs with a read-only kubeconfig holding only
+  that context; a write on another cluster always asks and names it; investigations stay on the home cluster; a
+  `readonly` key reads there as the read-only identity minted on that cluster. Never by editing a kubeconfig
+  (`config use-context`/`set-credentials` stay refused). The chart refuses a list without its kubeconfig Secret.
+  An independent review before merge found six places that dropped the cluster, all fixed: the exactly-once guard
+  keyed two clusters' identical writes as one (the second was "replayed", never run), the read-only identity of every
+  cluster shared one file, reflexion verified another cluster's fix on the home cluster, `config view --context`
+  printed exec-plugin arguments, rollback points and the approval request on the wire named no cluster.
+
 ### Fixed — security: a dry-run flag kubectl does not read as one no longer skips the approval prompt
 
 Found by an independent review (2026-11-14), present before this release: a write counted as a dry run if

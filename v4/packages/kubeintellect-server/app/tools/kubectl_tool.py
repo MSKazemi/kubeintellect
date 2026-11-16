@@ -602,6 +602,48 @@ def _host_local_reason(verb: str, args: list[str], flags_end: int) -> str | None
     return None
 
 
+def _with_context(args: list[str], context: str | None) -> list[str]:
+    """argv with `--context=<name>` put back after `kubectl`, for what must key on the cluster (never to run it)."""
+    if not context:
+        return args
+    return [args[0], f"--context={context}", *args[1:]] if args and args[0] == "kubectl" else [f"--context={context}", *args]
+
+
+def _requested_context(args: list[str], config) -> tuple[str | None, str | None, list[str]]:
+    """The listed cluster a command selects with `--context`, a refusal, and the argv without the flag.
+
+    Single cluster (KUBECTL_ALLOWED_CONTEXTS empty): `(None, None, args)`, so the connection-flag check refuses
+    `--context` exactly as before. Otherwise one `--context=<listed name>` (or `--context <name>`) is accepted and taken
+    out of argv: the call then runs with a kubeconfig holding only that context (`session_identity.context_kubeconfig`),
+    so the cluster is fixed by the file kubectl reads, not by a flag (plan Phase 6b, owner 2026-11-15).
+    """
+    allowed = settings.kubectl_allowed_contexts
+    end = args.index("--") if "--" in args else len(args)
+    hits = [i for i, a in enumerate(args[:end]) if a == "--context" or a.startswith("--context=")]
+    if not allowed or not hits:
+        return None, None, args
+    if len(hits) > 1:
+        return None, "[Protected] `--context` is given more than once. kubectl would use only the last one; give it once.", args
+    i = hits[0]
+    if args[i] == "--context":
+        value, drop = (args[i + 1] if i + 1 < end else ""), {i, i + 1}
+    else:
+        value, drop = args[i].split("=", 1)[1], {i}
+    if not value or value.startswith("-"):
+        return None, "[Protected] `--context` names no cluster. Give one of the listed clusters: " + ", ".join(allowed), args
+    if value not in allowed:
+        return None, (
+            f"[Protected] Context {value!r} is not one of the clusters this deployment lists ({', '.join(allowed)}). "
+            "Which clusters KubeIntellect may reach is fixed by the deployment, not by a query."
+        ), args
+    if _bound_namespace_of(config):
+        return None, (
+            f"[Protected] This investigation is bound to its namespace on the cluster it was opened for; it cannot "
+            f"switch to cluster {value!r}. Report what you found; a person can look there from chat."
+        ), args
+    return value, None, [a for j, a in enumerate(args) if j not in drop]
+
+
 def _authorised_identity(config: RunnableConfig | None) -> str | None:
     """The one impersonation token the *application* placed on this command, if any.
 
@@ -1779,15 +1821,24 @@ def _bound_namespace_of(config) -> str | None:
     return str(bound) if bound else None
 
 
-def _kubectl_env(config) -> dict[str, str]:
+def _kubectl_env(config, context: str | None = None) -> dict[str, str]:
     """The environment every kubectl call made for this request runs with — above all, whose KUBECONFIG.
 
     A namespace-bound session with SESSION_IDENTITY_ENABLED gets a kubeconfig holding only its namespace-scoped token,
     and the `readonly` role with READONLY_IDENTITY_ENABLED one holding only the read-only token (`session_identity`);
     `IdentityUnavailable` propagates, so the caller refuses rather than falling back. Every other request uses the
-    server's configured kubeconfig, as before.
+    server's configured kubeconfig, as before. With `context` (a listed cluster, plan Phase 6b) the kubeconfig holds only
+    that context, and a `readonly` caller gets the read-only identity minted on that cluster.
     """
     bound = _bound_namespace_of(config)
+    if context:
+        if bound:
+            raise session_identity.IdentityUnavailable("an investigation stays on the cluster it was opened for")
+        path = session_identity.context_kubeconfig(context)
+        role = (config.get("configurable") or {}).get("user_role", "admin") if config else "admin"
+        if role == "readonly" and settings.READONLY_IDENTITY_ENABLED:
+            path = session_identity.readonly_kubeconfig(path)
+        return {**os.environ, "KUBECONFIG": path}
     if bound and settings.SESSION_IDENTITY_ENABLED:
         return {**os.environ, "KUBECONFIG": session_identity.kubeconfig_for(bound, session_identity.base_kubeconfig())}
     role = (config.get("configurable") or {}).get("user_role", "admin") if config else "admin"
@@ -2167,7 +2218,9 @@ def _capture_note(before: str, after: str, cap: int) -> str:
     return "redacted: " + ", ".join(parts) if parts else "redacted"
 
 
-def _capture_rollback_point(verb: str, args: list, stdin: str | None, config, env: dict) -> None:
+def _capture_rollback_point(
+    verb: str, args: list, stdin: str | None, config, env: dict, context: str | None = None
+) -> None:
     """Best-effort pre-state capture for the Safety Sandwich (never raises).
 
     Records a `rollback_point` into the flight recorder: the rollback_id, the mutating command,
@@ -2305,7 +2358,9 @@ def _capture_rollback_point(verb: str, args: list, stdin: str | None, config, en
         flight_recorder.record(session_id, "rollback_point", {
             "type": "rollback_point",
             "rollback_id": rollback_id,
-            "command": " ".join(str(a) for a in args)[:300],
+            # The cluster it was taken on (multi-cluster): a restore must target that one, not the home cluster.
+            "command": " ".join(str(a) for a in _with_context(args, context))[:300],
+            "context": context,
             "pre_state": states,
             "restorable": restorable,
             "targets_intended": intended,
@@ -2413,6 +2468,12 @@ def run_kubectl(
             ) from exc
         raise ValueError(f"Could not parse command: {exc}") from exc
 
+    # ── 3a. Which listed cluster (multi-cluster deployments only) ─────────────
+    target_ctx, ctx_refusal, args = _requested_context(args, config)
+    if ctx_refusal:
+        logger.warning(f"run_kubectl: refused a cluster selection: {cmd!r}")
+        return ctx_refusal
+
     # ── 3b. Connection and identity are the deployment's, not the caller's ───
     conn_flag = _connection_flag_in(args)
     authorised = _authorised_identity(config)
@@ -2425,6 +2486,15 @@ def run_kubectl(
         )
 
     verb = _extract_verb(args)
+
+    # ── 3b1. No kubeconfig of another listed cluster is shown ────────────────
+    # `config view --context=<listed>` printed exec-plugin arguments the redactor does not recognise as secrets
+    # (review, 2026-11-16). Nothing about another cluster's kubeconfig is needed to query that cluster.
+    if target_ctx and verb == "config":
+        return (
+            f"[Protected] `kubectl config` is not run against cluster {target_ctx!r}: its kubeconfig holds that "
+            "cluster's credentials. Query the cluster's resources instead."
+        )
 
     # ── 3b2. A bare `--` only where a container command follows it ───────────
     # Anywhere else it is never needed, and kubectl may read it as the value of the flag before it
@@ -2639,7 +2709,7 @@ def run_kubectl(
     # gates above misread a command. No identity, no kubectl: never the server's own, broader one. Resolved before the
     # schema check below, which reads from the cluster too (identity review, finding 5).
     try:
-        env = _kubectl_env(config)
+        env = _kubectl_env(config, target_ctx)
     except session_identity.IdentityUnavailable as exc:
         logger.warning(f"run_kubectl: session identity unavailable, nothing run: {exc}")
         return (
@@ -2687,7 +2757,8 @@ def run_kubectl(
                 f"{bound_ns!r}: {cmd!r}"
             )
             hitl_bypass = False
-        always_confirm = _requires_always_confirm(verb, args, stdin)
+        # A write on another listed cluster always asks: auto-approve was decided for the home cluster.
+        always_confirm = _requires_always_confirm(verb, args, stdin) or bool(target_ctx)
         if hitl_bypass and guard_fp and not always_confirm and not has_dry_run:
             if not _reserve_auto_write(thread_id, settings.AUTO_APPROVE_MAX_WRITES):
                 logger.warning(
@@ -2709,7 +2780,7 @@ def run_kubectl(
                 logger.warning(f"run_kubectl: preflight refused an unattended write session={thread_id}: {cmd!r}")
                 return _remember(thread_id, call_fp, preflight_refusal) if call_fp else preflight_refusal
         admission = effect_guard.admit(
-            cmd, args, stdin, config, has_dry_run=has_dry_run,
+            cmd, _with_context(args, target_ctx), stdin, config, has_dry_run=has_dry_run,
             hitl_bypass=hitl_bypass, always_confirm=always_confirm,
         )
         if admission.response is not None:
@@ -2737,6 +2808,9 @@ def run_kubectl(
                 "always_confirm": always_confirm,
                 "human_summary": f"About to run: `{cmd}`",
             }
+            if target_ctx:
+                prompt["cluster"] = target_ctx
+                prompt["human_summary"] += f" — on cluster '{target_ctx}'"
             if bound_ns and settings.SESSION_IDENTITY_ENABLED:
                 # "Approval elevates" (owner, 2026-11-15). Nobody answers this prompt inside the investigation; a
                 # person answers it from chat, where the command runs with the approver's role and KubeIntellect's
@@ -2765,7 +2839,7 @@ def run_kubectl(
     # rollback point at all while the docs said every mutation did.
     if _is_write_verb(verb, args):
         if not has_dry_run:
-            _capture_rollback_point(verb, args, stdin, config, env)
+            _capture_rollback_point(verb, args, stdin, config, env, context=target_ctx)
 
     logger.debug(f"run_kubectl: {cmd}")
 
@@ -2901,6 +2975,9 @@ def run_kubectl(
             "--tail, -n <namespace>, or -l <label> flags.]"
         )
         logger.debug(f"run_kubectl: output truncated ({omitted} chars omitted)")
+
+    if target_ctx:
+        output = f"[cluster: {target_ctx}]\n{output}"
 
     if verb == "config" and _operand_after_verb(args) == "view":
         # kubectl elides client keys and tokens, but not auth-provider config (OIDC id-token, refresh-token,
