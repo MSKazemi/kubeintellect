@@ -11,6 +11,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Security — `init` and `status` no longer print secrets
+
+- **`kubeintellect init` / `status` no longer print secrets they claim to mask** (`app/cli.py`).
+  `_mask` kept the first and last four characters of every secret (`sk-d***0000`); it now shows
+  `***`. `status` printed all three role API keys in full on every run and now masks them. `init`
+  printed a generated key twice and re-printed an existing key on every re-run; it now shows a new
+  key once, in the closing banner, and an unchanged key masked.
+- **`init` asks before it installs a tool.** `_ensure_tool` downloaded a binary into
+  `/usr/local/bin` and ran `sudo` before the wizard had asked anything. It now asks first
+  (`[Y/n]`); a declined prompt or a closed stdin installs nothing — an optional tool (kubectl in
+  `init`) is skipped with a warning, a required one exits 1 naming the manual step.
+
 ### Security — investigations and read-only keys act as their own Kubernetes identity
 
 Ten independent review passes (2026-11-14) each found a new command string that the kubectl tool's checks read

@@ -169,7 +169,7 @@ Expected output (with Kind cluster and observability):
   kubectl:   ✓  found
   Kube:      ✓  ~/.kube/config  context: kind-kubeintellect
   Auth:      ✓  enabled
-    admin     ki-admin-xxxxxxxxxxxxxxxxxxxx
+    admin     ***
   Prometheus:✓  http://172.18.0.2:30090  reachable
   Loki:      ✓  http://172.18.0.2:30100  reachable
   Grafana:   ✓  http://172.18.0.2:30080  reachable

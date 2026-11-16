@@ -69,7 +69,9 @@ offers to reuse each one.
 
 What it does, in order:
 
-1. Installs `kubectl` automatically if it is missing.
+1. Offers to install `kubectl` if it is missing. It **asks first**: the install downloads a
+   binary into `/usr/local/bin` and may prompt for your `sudo` password. Answer `n` (or run
+   with no terminal attached) and `init` carries on without it.
 2. Asks for your **LLM provider** (OpenAI or Azure OpenAI) and key.
 3. If no cluster is found (`~/.kube/config` missing), offers to:
     - create a local **Kind** cluster with sample workloads,
@@ -80,7 +82,9 @@ What it does, in order:
     - `operator` (`ki-op-…`) — create/scale/apply, no deletes or drains,
     - `readonly` (`ki-ro-…`) — queries only (recommended for production).
 5. Writes a fully-commented `~/.kubeintellect/.env` and configures `kq`
-   (`~/.kube-q/.env` with `KUBE_Q_URL` + `KUBE_Q_API_KEY`).
+   (`~/.kube-q/.env` with `KUBE_Q_URL` + `KUBE_Q_API_KEY`). A newly generated API key is
+   printed **once**, in the closing banner. A re-run that keeps an existing key shows it
+   masked (`***`) — read it from `~/.kubeintellect/.env` if you need it again.
 6. Resolves the database mode (PostgreSQL if reachable, otherwise SQLite).
 7. Optionally installs a **systemd user service** so the server starts on login,
    then launches `kq`.
@@ -130,7 +134,8 @@ kubeintellect serve --host 127.0.0.1 --reload    # localhost, auto-reload (dev)
 ### `kubeintellect status`
 
 Health dashboard for every component. Prints `✓` / `✗` / `-` per item with a fix
-hint, and **lists your API keys** so you can copy one into `KUBE_Q_API_KEY`.
+hint. API keys are listed per role but **masked** (`***`), because this output ends up in
+Makefiles, healthchecks and bug reports; the keys themselves are in `~/.kubeintellect/.env`.
 
 ```bash
 kubeintellect status

@@ -95,7 +95,7 @@ Expected output (existing cluster):
   kubectl:   ✓  found
   Kube:      ✓  ~/.kube/config  context: my-cluster
   Auth:      ✓  enabled
-    admin     ki-admin-xxxxxxxxxxxxxxxxxxxx
+    admin     ***
   Prometheus:✓  http://prometheus.company.com  reachable
   Loki:      ✓  http://loki.company.com  reachable
   Grafana:   -  not configured
