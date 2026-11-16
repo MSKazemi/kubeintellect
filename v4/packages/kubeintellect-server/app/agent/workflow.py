@@ -616,6 +616,7 @@ def _translate_raw_event(session_id: str, raw: dict) -> ToolCallEvent | ToolResu
             risk_level=val.get("risk_level", "medium"),
             command=val.get("command", "destructive action"),
             stdin_yaml=val.get("stdin"),
+            cluster=val.get("cluster"),
             session_id=session_id,
         )
 

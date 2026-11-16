@@ -1261,6 +1261,11 @@ def _maybe_record_direct_outcome(state: AgentState, messages: list[BaseMessage])
     mutated, commands = _ran_mutation(messages)
     if not mutated:
         return
+    if any("--context" in c for c in commands):
+        # A fix on another listed cluster (multi-cluster): the post-fix check reads the home cluster and memory is
+        # scoped to the home cluster_id, so it would verify and learn from the wrong cluster (review, 2026-11-16).
+        logger.info("reflexion(direct): skipped — the mutation targeted another cluster (--context)")
+        return
 
     pairs = _extract_mutation_pairs(messages)
     # Namespace inference must include stdin YAML — `kubectl apply -f -` has no -n flag.

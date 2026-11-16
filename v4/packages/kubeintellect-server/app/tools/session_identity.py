@@ -85,6 +85,11 @@ _provisioned: set[tuple[str, str]] = set()
 _dir: str | None = None
 
 
+def base_kubeconfig_path() -> str:
+    """Alias of `base_kubeconfig`, for code whose parameter shadows that name."""
+    return base_kubeconfig()
+
+
 def base_kubeconfig() -> str:
     """The server's own kubeconfig (empty in-cluster), which mints the session tokens and never runs a session."""
     return (
@@ -441,9 +446,19 @@ def readonly_kubeconfig(base_kubeconfig: str) -> str:
         raise IdentityUnavailable(
             "READONLY_IDENTITY_NAMESPACE is unset and the server is not running in a pod"
         )
+    # One file per cluster: a shared name let a concurrent read of one cluster run on another's token (review,
+    # 2026-11-16). The home cluster keeps the plain name.
+    name = (
+        "readonly"
+        if base_kubeconfig == base_kubeconfig_path()
+        else (
+            "readonly-"
+            + hashlib.sha256(base_kubeconfig.encode("utf-8")).hexdigest()[:16]
+        )
+    )
     return _issue(
         (base_kubeconfig, READONLY_KEY),
-        "readonly",
+        name,
         settings.READONLY_IDENTITY_SERVICE_ACCOUNT,
         home,
         provision=False,

@@ -93,6 +93,9 @@ _INTENT_FLAGS = {
     "--all": "all", "-A": "all-namespaces", "--all-namespaces": "all-namespaces",
     "--replicas": "replicas", "--cascade": "cascade", "--image": "image",
     "-c": "container", "--container": "container", "--to-revision": "to-revision",
+    # Which listed cluster (multi-cluster, plan Phase 6b): the same delete on two clusters is two actions. Without it a
+    # write on `--context=staging` was "replayed" from the home cluster's result and never ran (review, 2026-11-16).
+    "--context": "context",
 }
 
 #: Value-taking flags this module knows besides run_kubectl's own `_VALUE_FLAGS`.
@@ -589,6 +592,10 @@ def admit(cmd: str, args: list[str], stdin: str | None, config: Any, *, has_dry_
         return _reapprove_without_ledger(cmd, stdin, session, intent, str(exc))
     if plan.admission is not None:
         return plan.admission
+    cluster = (intent.get("flags") or {}).get("context")
+    if cluster and plan.prompt is not None:
+        plan.prompt["cluster"] = cluster
+        plan.prompt["human_summary"] += f" — on cluster '{cluster}'"
     # Outside any transaction: interrupt() raises GraphInterrupt on the first pass.
     approved, presented = _read_resume(interrupt(plan.prompt))
     try:

@@ -50,6 +50,10 @@ parser cannot be shown complete. So the two bounds that matter most now also hol
   that context; a write on another cluster always asks and names it; investigations stay on the home cluster; a
   `readonly` key reads there as the read-only identity minted on that cluster. Never by editing a kubeconfig
   (`config use-context`/`set-credentials` stay refused). The chart refuses a list without its kubeconfig Secret.
+  An independent review before merge found six places that dropped the cluster, all fixed: the exactly-once guard
+  keyed two clusters' identical writes as one (the second was "replayed", never run), the read-only identity of every
+  cluster shared one file, reflexion verified another cluster's fix on the home cluster, `config view --context`
+  printed exec-plugin arguments, rollback points and the approval request on the wire named no cluster.
 
 ### Fixed — security: a dry-run flag kubectl does not read as one no longer skips the approval prompt
 

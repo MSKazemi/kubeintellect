@@ -383,6 +383,9 @@ What a listed cluster allows:
 - an autonomous investigation stays on the home cluster it was opened for;
 - a `readonly` key reads another cluster as the read-only identity minted there (`kubeintellect-readonly` must exist
   on that cluster — install the chart's RBAC there — or the read fails closed);
+- everything recorded for the call names its cluster: the exactly-once ledger (`SELF_GOVERN_ENABLED`), the rollback
+  point (`context` field), the approval request (`cluster`); a fix on another cluster is not verified or learned by
+  reflexion, whose memory is the home cluster's; and `kubectl config` is never run against another cluster;
 - the cluster is never switched by editing a kubeconfig: `kubectl config use-context` (one shared file, every
   session) and `config set-credentials` (it could add a cluster nobody listed) stay refused.
 

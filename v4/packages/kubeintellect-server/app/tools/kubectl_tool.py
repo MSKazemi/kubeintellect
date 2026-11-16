@@ -602,6 +602,13 @@ def _host_local_reason(verb: str, args: list[str], flags_end: int) -> str | None
     return None
 
 
+def _with_context(args: list[str], context: str | None) -> list[str]:
+    """argv with `--context=<name>` put back after `kubectl`, for what must key on the cluster (never to run it)."""
+    if not context:
+        return args
+    return [args[0], f"--context={context}", *args[1:]] if args and args[0] == "kubectl" else [f"--context={context}", *args]
+
+
 def _requested_context(args: list[str], config) -> tuple[str | None, str | None, list[str]]:
     """The listed cluster a command selects with `--context`, a refusal, and the argv without the flag.
 
@@ -2211,7 +2218,9 @@ def _capture_note(before: str, after: str, cap: int) -> str:
     return "redacted: " + ", ".join(parts) if parts else "redacted"
 
 
-def _capture_rollback_point(verb: str, args: list, stdin: str | None, config, env: dict) -> None:
+def _capture_rollback_point(
+    verb: str, args: list, stdin: str | None, config, env: dict, context: str | None = None
+) -> None:
     """Best-effort pre-state capture for the Safety Sandwich (never raises).
 
     Records a `rollback_point` into the flight recorder: the rollback_id, the mutating command,
@@ -2349,7 +2358,9 @@ def _capture_rollback_point(verb: str, args: list, stdin: str | None, config, en
         flight_recorder.record(session_id, "rollback_point", {
             "type": "rollback_point",
             "rollback_id": rollback_id,
-            "command": " ".join(str(a) for a in args)[:300],
+            # The cluster it was taken on (multi-cluster): a restore must target that one, not the home cluster.
+            "command": " ".join(str(a) for a in _with_context(args, context))[:300],
+            "context": context,
             "pre_state": states,
             "restorable": restorable,
             "targets_intended": intended,
@@ -2475,6 +2486,15 @@ def run_kubectl(
         )
 
     verb = _extract_verb(args)
+
+    # ── 3b1. No kubeconfig of another listed cluster is shown ────────────────
+    # `config view --context=<listed>` printed exec-plugin arguments the redactor does not recognise as secrets
+    # (review, 2026-11-16). Nothing about another cluster's kubeconfig is needed to query that cluster.
+    if target_ctx and verb == "config":
+        return (
+            f"[Protected] `kubectl config` is not run against cluster {target_ctx!r}: its kubeconfig holds that "
+            "cluster's credentials. Query the cluster's resources instead."
+        )
 
     # ── 3b2. A bare `--` only where a container command follows it ───────────
     # Anywhere else it is never needed, and kubectl may read it as the value of the flag before it
@@ -2760,7 +2780,7 @@ def run_kubectl(
                 logger.warning(f"run_kubectl: preflight refused an unattended write session={thread_id}: {cmd!r}")
                 return _remember(thread_id, call_fp, preflight_refusal) if call_fp else preflight_refusal
         admission = effect_guard.admit(
-            cmd, args, stdin, config, has_dry_run=has_dry_run,
+            cmd, _with_context(args, target_ctx), stdin, config, has_dry_run=has_dry_run,
             hitl_bypass=hitl_bypass, always_confirm=always_confirm,
         )
         if admission.response is not None:
@@ -2819,7 +2839,7 @@ def run_kubectl(
     # rollback point at all while the docs said every mutation did.
     if _is_write_verb(verb, args):
         if not has_dry_run:
-            _capture_rollback_point(verb, args, stdin, config, env)
+            _capture_rollback_point(verb, args, stdin, config, env, context=target_ctx)
 
     logger.debug(f"run_kubectl: {cmd}")
 

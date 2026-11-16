@@ -65,6 +65,8 @@ class HitlRequestEvent(BaseModel):
     risk_level: str
     command: str
     stdin_yaml: str | None = None
+    # The listed cluster a multi-cluster command targets (plan Phase 6b); None = this deployment's own cluster.
+    cluster: str | None = None
     session_id: str
     ts: float = Field(default_factory=time.time)
 
