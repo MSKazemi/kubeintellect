@@ -1,6 +1,6 @@
 [project]
 name = "kubeintellect"
-version = "2.6.0"
+version = "2.7.0"
 description = "AI-powered Kubernetes management — local server and CLI"
 readme = "README.md"
 license = "MIT"
@@ -46,7 +46,7 @@ dependencies = [
     "prometheus-fastapi-instrumentator>=7.1.0",
     # Workspace members (ADR-004) — published together with the server
     "kube-q>=1.6.0",
-    "ki-protocol>=1.1.0",
+    "ki-protocol>=1.2.0",
     "langfuse>=4.14.3",
 ]
 

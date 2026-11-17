@@ -11,6 +11,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-11-17
+
+kubeintellect 2.7.0, kube-q 1.6.4, ki-protocol 1.2.0. **Breaking for automation that used
+`auto_approve`**: read [the upgrade notes](v4/docs/upgrade.md#upgrading-to-270-from-25x-or-26x) first.
+
 ### Security — `init` and `status` no longer print secrets
 
 - **`kubeintellect init` / `status` no longer print secrets they claim to mask** (`app/cli.py`).

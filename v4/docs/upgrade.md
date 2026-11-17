@@ -158,10 +158,11 @@ kubeintellect set PREDICTIVE_DETECTION_ENABLED=false
 
 ---
 
-## Upgrading to the next release (after 2.5.0)
+## Upgrading to 2.7.0 (from 2.5.x or 2.6.x)
 
-These changes are in `CHANGELOG.md` under **[Unreleased]**. Read the breaking changes before you
-upgrade; everything new is default-off.
+These changes are in `CHANGELOG.md` under **[2.7.0]**. Items 1 and 2 below already apply from 2.6.0;
+items 3 to 6 are new in 2.7.0. Read the breaking changes before you upgrade; everything new is
+default-off.
 
 ### Breaking changes
 
