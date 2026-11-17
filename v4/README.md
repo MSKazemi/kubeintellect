@@ -150,7 +150,7 @@ That's it. No manual server start, no copy-pasting API keys.
   kubectl:   ✓  found
   Kube:      ✓  ~/.kube/config  context: kind-kubeintellect
   Auth:      ✓  enabled
-    admin     ki-admin-xxxxxxxxxxxxxxxxxxxx   ← use this as KUBE_Q_API_KEY
+    admin     ***                             ← keys are masked; they live in ~/.kubeintellect/.env
   Prometheus:✓  http://172.18.0.2:30090  reachable
   Loki:      ✓  http://172.18.0.2:30100  reachable
   Grafana:   ✓  http://172.18.0.2:30080  reachable

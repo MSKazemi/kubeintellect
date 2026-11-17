@@ -110,7 +110,11 @@ class TestTheseTestsWouldNoticeTheDefect:
         """Vacuity guard: if ./.env were ignored entirely, the cases above would prove nothing."""
         out = board(user="USE_SQLITE=true\n", project=_AZURE)
         assert "a-real-key" not in out, "the key must never be echoed"
-        assert "ki-admin-abc" in out, "the Auth row proves ./.env reached the environment"
+        # The admin key exists only in ./.env, so "enabled" (not "open access") proves it was read.
+        # `status` masks keys, so the key itself must not appear either.
+        auth_row = next(line for line in out.splitlines() if "Auth:" in line)
+        assert "enabled" in auth_row, "the Auth row proves ./.env reached the environment"
+        assert "ki-admin-abc" not in out, "status must not print an API key"
 
     def test_the_summary_block_is_reached_at_all(self, board):
         out = board(user="LLM_PROVIDER=nonsense\n")

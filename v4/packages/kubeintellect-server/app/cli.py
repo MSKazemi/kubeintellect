@@ -61,11 +61,12 @@ _MASK_KEYS = frozenset({
 
 
 def _mask(key: str, value: str) -> str:
+    # Shows nothing of the value. The old form kept the first and last four characters, which
+    # put a quarter of a live key into every screen-share, recording and pasted bug report.
+    # An unset secret stays empty so callers can still tell "unset" from "set".
     if key not in _MASK_KEYS or not value:
         return value
-    if len(value) <= 8:
-        return "***"
-    return value[:4] + "***" + value[-4:]
+    return "***"
 
 
 def _validate_config(cfg: dict) -> list[_Issue]:
@@ -913,7 +914,6 @@ def cmd_init(_args: argparse.Namespace) -> None:
 
     # kubectl check — install automatically if missing ────────────────────────
     if subprocess.run(["which", "kubectl"], capture_output=True).returncode != 0:
-        print("  kubectl not found — installing automatically...")
         # Not required: kubectl is how the server talks to a cluster, and `init` only writes
         # configuration. `status` already reports a missing kubectl as a warning, so failing
         # to fetch it must not stop the wizard from saving the settings the user came to set.
@@ -1132,7 +1132,13 @@ def cmd_init(_args: argparse.Namespace) -> None:
     print(f"\n  {_ok('✓')}  kubeintellect  {_CONFIG_FILE}")
     print(f"  {_ok('✓')}  kube-q         {_kube_q_env}")
     print(f"  {_ok('✓')}  Access level:  {_level_label}")
-    print(f"  {_ok('✓')}  API key:       {_bold(user_key)}")
+    # The key itself is printed once, in the closing banner, and only when this run created it.
+    key_is_new = not existing_key
+    shown_key = (
+        _bold(user_key) if key_is_new
+        else f"{_mask(env_var, user_key)}  {_dim('(unchanged — kept from ' + str(_CONFIG_FILE) + ')')}"
+    )
+    print(f"  {_ok('✓')}  API key:       {'generated — shown once, below' if key_is_new else 'kept'}")
 
     # Post-write validation ────────────────────────────────────────────────────
     written: dict[str, str] = {}
@@ -1160,7 +1166,7 @@ def cmd_init(_args: argparse.Namespace) -> None:
   {', '.join(_bold(issue.field) for issue in blocking)}
 
   Your API key and config file were still written, so nothing is lost:
-  API key:     {_bold(user_key)}
+  API key:     {shown_key}
   Config file: {_CONFIG_FILE}
 
   {_dim("Edit the file (or re-run 'kubeintellect init'), then check with:")}
@@ -1174,7 +1180,7 @@ def cmd_init(_args: argparse.Namespace) -> None:
 
     print(f"""
   {_bold('── Setup complete ───────────────────────────────────────────────────────')}
-  API key:     {_bold(user_key)}
+  API key:     {shown_key}
   Config file: {_CONFIG_FILE}
   {_bold('─────────────────────────────────────────────────────────────────────────')}
 """)
@@ -1949,20 +1955,22 @@ def cmd_status(_args: argparse.Namespace) -> None:
         kube_note = f"{ctx_note}  {_dim('not verified — kubectl not found')}"
     print(f"  Kube:      {kube_status}  {kube_path}{kube_note}")
 
-    # Auth — show each key so users can copy it for kq / KUBE_Q_API_KEY
+    # Auth — masked: `status` goes into Makefiles, healthchecks and bug reports, so it must not
+    # carry a credential. `init` shows a new key once; after that it lives in the config file.
     admin_keys = os.environ.get("KUBEINTELLECT_ADMIN_KEYS", "").strip()
     op_keys    = os.environ.get("KUBEINTELLECT_OPERATOR_KEYS", "").strip()
     ro_keys    = os.environ.get("KUBEINTELLECT_READONLY_KEYS", "").strip()
     if any([admin_keys, op_keys, ro_keys]):
         print(f"  Auth:      {ok_}  enabled")
-        for label, keys_str in (("admin   ", admin_keys), ("operator", op_keys), ("readonly", ro_keys)):
-            if not keys_str:
-                continue
+        for label, env_var, keys_str in (
+            ("admin   ", "KUBEINTELLECT_ADMIN_KEYS", admin_keys),
+            ("operator", "KUBEINTELLECT_OPERATOR_KEYS", op_keys),
+            ("readonly", "KUBEINTELLECT_READONLY_KEYS", ro_keys),
+        ):
             for key in keys_str.split(","):
-                key = key.strip()
-                if key:
-                    print(f"    {_dim(label)}  {_bold(key)}")
-        print(f"  {_dim('  → set KUBE_Q_API_KEY=<key> or pass --api-key <key> to kq')}")
+                if key.strip():
+                    print(f"    {_dim(label)}  {_mask(env_var, key.strip())}")
+        print(f"  {_dim('  → keys are in ' + str(_CONFIG_FILE) + '; kq reads its own from ~/.kube-q/.env')}")
     else:
         print(f"  Auth:      {warn_}  {_warn('open access')} {_dim('(no API keys set)')}")
 
@@ -2098,6 +2106,23 @@ def cmd_set(args: argparse.Namespace) -> None:
 
 # ── tool installers ───────────────────────────────────────────────────────────
 
+def _consent_to_install(name: str) -> bool:
+    """Ask before downloading a binary into a system path -- the install may run `sudo`.
+
+    Enter means yes, like every other [Y/n] in the wizard. A closed stdin means no: a container
+    build or CI job that pipes nothing in has not agreed to a privileged write, and used to get
+    one silently.
+    """
+    try:
+        answer = input(
+            f"  Install '{name}' now? It is downloaded and moved into /usr/local/bin, "
+            "which may ask for your sudo password. [Y/n]: "
+        )
+    except EOFError:
+        return False
+    return answer.strip().lower() in ("", "y", "yes")
+
+
 def _ensure_tool(name: str, installer: Callable[[], None], *, required: bool = True) -> None:
     """Install *name* if it is missing.
 
@@ -2110,7 +2135,16 @@ def _ensure_tool(name: str, installer: Callable[[], None], *, required: bool = T
     """
     if subprocess.run(["which", name], capture_output=True).returncode == 0:
         return
-    print(f"  '{name}' not found — installing...")
+    print(f"  '{name}' not found.")
+    if not _consent_to_install(name):
+        if not required:
+            print(_warn(f"  Not installing '{name}'."))
+            print(_dim(f"     Continuing without it — install '{name}' yourself to use "
+                       "cluster features."))
+            return
+        print(_err(f"  '{name}' is required and was not installed — install it yourself "
+                   "and re-run."), file=sys.stderr)
+        sys.exit(1)
     try:
         installer()
         print(f"  {_ok('✓')}  '{name}' installed.")

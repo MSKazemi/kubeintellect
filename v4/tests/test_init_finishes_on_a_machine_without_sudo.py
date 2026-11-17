@@ -17,6 +17,7 @@ exactly the situation it exists to handle.
 """
 from __future__ import annotations
 
+import builtins
 import subprocess
 
 import pytest
@@ -28,6 +29,12 @@ def _boom() -> None:
 
 
 class TestAConvenienceInstallDoesNotEndTheCaller:
+    @pytest.fixture(autouse=True)
+    def _user_agrees_to_the_install(self, monkeypatch):
+        """These tests are about an install that was agreed to and then failed; asking first is
+        covered in test_a_convenience_install_asks_before_it_elevates.py."""
+        monkeypatch.setattr(builtins, "input", lambda prompt="": "y")
+
     def test_an_optional_tool_that_cannot_be_installed_is_a_warning(self, capsys, monkeypatch):
         monkeypatch.setattr(
             cli.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 1)
