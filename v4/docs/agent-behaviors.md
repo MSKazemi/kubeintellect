@@ -877,7 +877,7 @@ governed by the [autonomy ladder](autonomy.md).
 ### Cortex V4 (opt-in)
 
 `CORTEX_V4_ENABLED` (default **`False`**) switches the per-turn graph from the
-V2 coordinator described above to an explicit-node graph:
+default ReAct graph (the V2 coordinator) described above to the explicit-node Cortex graph:
 
 ```
 memory_loader → context_fetcher → triage → (gather_llm ⇄ gather_tools)* → synthesize → remember
@@ -942,4 +942,4 @@ What changes when it is on:
 
 HITL approval gates, role enforcement, the reflexion outcome path, and episode
 writes are identical in both graphs. With the flag off (default), nothing in
-this section changes the documented V2 behavior.
+this section changes the documented ReAct-graph behavior.

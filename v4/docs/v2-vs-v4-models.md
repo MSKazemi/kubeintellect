@@ -1,31 +1,40 @@
 ---
 description: >-
-  How KubeIntellect's two reasoning graphs differ — the default V2 ReAct loop
-  versus the feature-flagged V4 cortex — and how model tiers are assigned when you
+  How KubeIntellect's two reasoning graphs differ — the default ReAct graph
+  versus the opt-in Cortex graph — when to choose each, and how model tiers are assigned when you
   enable CORTEX_V4_ENABLED.
 ---
-# V2 vs V4 — Reasoning Engine & Model Differences
+# ReAct vs Cortex graphs (V2 vs V4) — Reasoning Engines & Models
 
-How KubeIntellect's two reasoning engines differ, what changes when you enable the
-V4 cortex, and how the model tiers are assigned. This is the user-facing companion
+How KubeIntellect's two reasoning engines differ, when to choose each, what changes when
+you enable the Cortex graph, and how the model tiers are assigned. This is the user-facing companion
 to the [Architecture](architecture.md) reference and the
 [V4 platform layers](architecture.md#v4-architecture-feature-flagged-preview) table.
 
 KubeIntellect ships **two reasoning graphs side by side**, selected at server
 startup by a single flag, `CORTEX_V4_ENABLED` (see [Configuration](configuration.md)):
 
-- **off (default)** → the **V2 graph** — a LangGraph `create_react_agent` (ReAct) loop.
-- **on** → the **V4 cortex** — a hand-rolled, explicit-node graph with tiered models.
+- **off (default)** → the **ReAct graph** — a LangGraph `create_react_agent` loop that
+  carries the V2 coordinator forward.
+- **on** → the **Cortex graph** — a hand-rolled, explicit-node graph with tiered models,
+  built for the V4 generation.
 
 Everything else in the V4 platform (sensorium + detectors, memory hierarchy, flight
 recorder, autonomy ladder + watchtower) is **on by default** and is independent of
 this flag. This page is only about the *reasoning engine* and the *models it uses*.
 
+> **Names.** *V1–V4* are product **generations**: what you install is the v4
+> platform, whichever graph it runs. Earlier docs called the two graphs "the V2 graph"
+> and "the V4 cortex"; this page calls them the **ReAct graph** and the **Cortex graph**.
+> Code, log messages and the flag keep the old names — `CORTEX_V4_ENABLED` is unchanged,
+> so existing configuration keeps working, and "the V2 graph" in a server message means
+> the ReAct graph.
+
 ---
 
 ## Side-by-side comparison
 
-| Dimension | V2 graph (default) | V4 cortex (`CORTEX_V4_ENABLED=true`) |
+| Dimension | ReAct graph (default) | Cortex graph (`CORTEX_V4_ENABLED=true`) |
 |---|---|---|
 | Engine | `create_react_agent` prebuilt (ReAct loop) | Explicit nodes: **triage → gather (LLM ⇄ tools) → synthesize → remember** |
 | Models | Single tier — one model for the whole turn | **Tiered** — small/fast model for triage + specialists, large model for synthesis only |
@@ -35,16 +44,16 @@ this flag. This page is only about the *reasoning engine* and the *models it use
 | Provider support | Azure / OpenAI-compatible (`openai`, `qwen`, `local`) | Azure / OpenAI-compatible **and** Anthropic |
 | Gather loop bound | n/a | `CORTEX_MAX_GATHER_ROUNDS` (default 8) |
 
-The three "V2 workarounds" — token buffering, plan-string regex parsing, and
+The three "ReAct workarounds" — token buffering, plan-string regex parsing, and
 orphaned-tool-call patching after HITL interrupts — exist only because of the
-ReAct prebuilt, and are removed on the V4 path.
+ReAct prebuilt, and are removed on the Cortex path.
 
 ---
 
-## The model tiers (V4 only)
+## The model tiers (Cortex only)
 
-The headline difference is **model tiering**. V2 uses one model for an entire turn.
-V4 splits the work by cost/capability:
+The headline difference is **model tiering**. The ReAct graph uses one model for an
+entire turn. The Cortex graph splits the work by cost/capability:
 
 | Stage | Tier | Azure / OpenAI default | Anthropic default |
 |---|---|---|---|
@@ -55,17 +64,17 @@ The premise: classification and evidence-gathering don't need a frontier model;
 only the final synthesis does. Routing the cheap stages to a small model lowers
 cost and latency per turn while reserving the large model for where it matters.
 A model factory abstracts the provider, so the same tiering applies whichever
-`LLM_PROVIDER` you pick. **Anthropic is only wired through the V4 cortex** — setting
+`LLM_PROVIDER` you pick. **Anthropic is only wired through the Cortex graph** — setting
 `LLM_PROVIDER=anthropic` while `CORTEX_V4_ENABLED=false` is refused at startup (the
 server exits with status 1). It used to fall back silently to OpenAI with
 `OPENAI_API_KEY`; see [#192](https://github.com/MSKazemi/kubeintellect/issues/192).
 
 ---
 
-## What happens at runtime when you turn V4 on
+## What happens at runtime when you turn the Cortex graph on
 
 The flag is read once, at graph-build time, so a **server restart is required**.
-Per query, the V4 path then:
+Per query, the Cortex path then:
 
 1. Swaps the reasoning engine — every query flows through the explicit
    triage→gather→synthesize→remember nodes instead of the ReAct loop.
@@ -75,7 +84,7 @@ Per query, the V4 path then:
    [memory hierarchy](memory.md)).
 
 What does **not** change: checkpointing, HITL approval, the Postgres saver, and all
-other V4 layers behave identically. To confirm the V4 path is live, look for this
+other V4 platform layers behave identically. To confirm the Cortex graph is live, look for this
 server log line on startup:
 
 ```
@@ -84,13 +93,13 @@ CORTEX_V4_ENABLED — building the V4 explicit-node graph
 
 It also **compounds with autonomy**: with the watchtower on (default,
 `AUTONOMY_LEVEL=A1`), detector firings open autonomous investigations — and those
-now run through the V4 cortex too, not just interactive chat.
+now run through the Cortex graph too, not just interactive chat.
 
 ---
 
 ## Why it ships off-by-default — the LOFA-L4 A/B
 
-The V4 cortex is **kept side-by-side with the V2 graph on purpose**: the flag lets
+The Cortex graph is **kept side-by-side with the ReAct graph on purpose**: the flag lets
 the same query run through either engine so they can be compared head-to-head. That
 comparison is the **LOFA-L4 A/B**.
 
@@ -104,21 +113,36 @@ with heroics). **LOFA L4** is the bet behind the cortex rebuild:
 The **A/B path** tests it by running identical scenarios through both engines and
 scoring them on a multi-dimension judge.
 
-- **Kill criterion:** if the V4 judge score drops more than 10% below V2, fall back
+- **Kill criterion:** if the Cortex judge score drops more than 10% below the ReAct
+  graph, fall back
   to a single tier (plus caching) — i.e. abandon tiering.
-- **Result:** the gate **passed and exceeded the V2 baseline** on identical live
+- **Result:** the gate **passed and exceeded the ReAct baseline** on identical live
   scenarios — tiering did not hurt quality, it helped.
 
 So if LOFA-L4 passed, why is the flag still off? Because the **judge gate is not the
 same as the ship gate**. The remaining flip criterion is **`cluster_resolved`
-parity with V2** on the fault subset — V2's trusted "did the cluster actually get
-healthy" trend metric. Until V4 matches V2 on that operational measure, the V2 graph
-stays the default and V4 remains an opt-in preview.
+parity with the ReAct graph** on the fault subset — the trusted "did the cluster actually get
+healthy" trend metric. Until the Cortex graph matches the ReAct graph on that operational
+measure, the ReAct graph stays the default and Cortex remains an opt-in preview.
 
 > **Correction to earlier guidance:** the LOFA-L4 *evaluation* gate has already
-> passed (and beat the V2 baseline). The flag is off-by-default because of the
+> passed (and beat the ReAct baseline). The flag is off-by-default because of the
 > *separate* `cluster_resolved`-parity ship criterion, not because the evaluation is
 > unfinished. Detailed eval numbers live in the private `design/` tier.
+
+---
+
+## Which graph to choose
+
+| Your use | Graph | Why |
+|---|---|---|
+| The default, and anything that should end in a fix | ReAct graph | It still leads on `cluster_resolved`, the measure that decides the default (above) |
+| Diagnosis first — root-cause answers you read and act on yourself | Cortex graph | It passed the quality gate above the ReAct baseline, and its tiered models make each turn cheaper |
+| `LLM_PROVIDER=anthropic` | Cortex graph | Required — the ReAct graph refuses to start with Anthropic |
+| A3 fixes gated on a fully supported diagnosis (`SELF_GOVERN_ENABLED=true`) | Cortex graph | The `ground_check` node exists only on the Cortex graph; on the ReAct graph A3 is not grounding-gated ([Autonomy](autonomy.md)) |
+
+HITL approval, RBAC and the kubectl safety guard apply on both graphs — choosing a
+graph never changes what needs a human's approval.
 
 ---
 
@@ -128,16 +152,16 @@ Set the flag in your environment / `.env` (see [Configuration](configuration.md)
 precedence and Helm wiring), then restart the server:
 
 ```bash
-# V4 cortex (tiered models, explicit-node graph)
+# Cortex graph (tiered models, explicit-node graph)
 CORTEX_V4_ENABLED=true
 
-# back to the V2 default
+# back to the default ReAct graph
 CORTEX_V4_ENABLED=false
 ```
 
-Because the V4 cortex is still an opt-in preview, treat enabling it as running the
-evaluation engine: watch answer quality and cluster-resolution outcomes against V2
-before relying on it in production.
+Because the Cortex graph is still an opt-in preview, treat enabling it as running the
+evaluation engine: watch answer quality and cluster-resolution outcomes against the
+ReAct graph before relying on it in production.
 
 ---
 
@@ -161,12 +185,13 @@ there is no "memory L4." Keep the two systems separate and the rest is easy.
 
 ### What is the "Cortex"?
 
-The Cortex is V4's **reasoning engine** — the "brain" that decides how to answer your
+The Cortex is the V4 generation's **reasoning engine** — the "brain" that decides how to answer your
 question. When you ask *"why is my pod crashing?"*, the Cortex runs the steps:
 
 > **triage → gather (look at the cluster) → synthesize (write the answer) → remember**
 
-V2 used a pre-built black-box loop for this. V4's Cortex rebuilds it with explicit,
+The default ReAct graph (carried forward from V2) uses a pre-built black-box loop for
+this. The Cortex rebuilds it with explicit,
 named steps you can control. It is switched on with `CORTEX_V4_ENABLED=true`.
 
 ### What is a "bet" / "LOFA"?
@@ -193,7 +218,7 @@ There were four such bets in V4, numbered L1–L4:
 | **L4** | A *cheap small* model for easy steps + a *big* model only for the final answer won't hurt quality | **models** |
 
 **LOFA L4** is the bet behind the Cortex's tiered models. Its kill criterion was *"if
-the cheap+big mix scores more than 10% worse than V2's single model, give up and go
+the cheap+big mix scores more than 10% worse than the ReAct graph's single model, give up and go
 back to one model."* It passed — the mix actually scored **better**, so it was kept.
 
 ### The memories: what V2 vs V4 remember
@@ -224,7 +249,9 @@ about *what changed and when*, which V2 could not.
 
 ### Jargon recap
 
-- **Cortex** — V4's rebuilt reasoning brain (explicit steps).
+- **ReAct graph** — the default reasoning engine, carried forward from V2 (the "V2 graph"
+  in code and logs).
+- **Cortex graph** — the V4 generation's rebuilt reasoning brain (explicit steps); opt-in.
 - **LOFA / bet** — a risky guess with a pre-written "here's how we'll know it failed".
 - **LOFA L4** — the bet that mixing cheap + expensive models keeps quality high (about
   *models*, **not** memory).
@@ -238,4 +265,4 @@ about *what changed and when*, which V2 could not.
 - [Agent behaviors](agent-behaviors.md) — coordinator behaviors shared by both engines
 - [Configuration](configuration.md) — every flag, default, and Helm value
 - [Memory hierarchy](memory.md) — what the `remember` node feeds
-- [Autonomous operations](autonomy.md) — the watchtower that also runs through the cortex
+- [Autonomous operations](autonomy.md) — the watchtower that also runs through the Cortex graph when it is on

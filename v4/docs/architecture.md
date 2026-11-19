@@ -37,7 +37,8 @@ Plan → Execute, around a central Knowledge base) over the live cluster:
 and writes; blue = the live cluster, observed by Monitor and acted on by Execute.
 The TikZ source is at `docs/figures/mape-k-loop.tex`.*
 
-They ship alongside the V2 graph and activate via feature flags
+They ship alongside the default reasoning graph (the ReAct graph, called the V2 graph
+in code and log messages) and activate via feature flags
 (see [Configuration](configuration.md)):
 
 | Layer | What it does | Docs | Flag (default) |
@@ -51,11 +52,12 @@ They ship alongside the V2 graph and activate via feature flags
 | Incident postmortems | Read-only grounded narrative over the flight recorder: seq-cited timeline + `chain_valid` verdict; optional constrained LLM narrative — ADR-011 | [CLI](cli-reference.md#kq-postmortem-session-id) | `POSTMORTEM_ENABLED` (on) |
 | Autonomy ladder + watchtower | Detector firings open autonomous investigations; morning digest | [Autonomy](autonomy.md) | `WATCHTOWER_ENABLED` (on, level A1) |
 | NL detector authoring | Compile a plain-English failure into a detect block, run it in **shadow** (observes only, never reaches the watchtower) until a human promotes it — ADR-012 | [CLI](cli-reference.md#kq-detector-teach-a-new-failure-in-plain-english) | `NL_DETECTOR_AUTHORING_ENABLED` (off) |
-| Cortex V4 | Explicit-node reasoning graph: structured triage plan, live step transitions, true token streaming, tiered models | [Agent Behaviors](agent-behaviors.md) | `CORTEX_V4_ENABLED` (off) |
+| Cortex graph (V4) | Explicit-node reasoning graph: structured triage plan, live step transitions, true token streaming, tiered models | [Agent Behaviors](agent-behaviors.md) | `CORTEX_V4_ENABLED` (off) |
 | Grounding check | Cortex `ground_check` node between synthesize and remember: each claim of the answer is labelled supported / partial / none against the evidence already gathered; unsupported claims are withdrawn and demote the turn to advisory (A1); partly supported claims cap it at propose (A2); so an A3 fix runs only after a diagnosis in which every claim is supported — ADR-009 | [Agent Behaviors](agent-behaviors.md#cortex-v4-opt-in) | `SELF_GOVERN_ENABLED` (off) |
 
-The V2 graph below remains the default reasoning path until the V4 cortex
-meets resolution parity on the evaluation suite.
+The ReAct graph below remains the default reasoning path until the Cortex graph
+meets resolution parity on the evaluation suite. See
+[ReAct vs Cortex graphs](v2-vs-v4-models.md) for when to choose each.
 
 ## System Components
 

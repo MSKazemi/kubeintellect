@@ -7,7 +7,7 @@ description: >-
 # Upgrade & Feature-Flag Guide
 
 KubeIntellect grows by **flags, not forks**. The current implementation is V4: the
-proven V2 reasoning graph plus feature-gated V4 platform layers, with a set of
+proven ReAct reasoning graph (carried forward from V2) plus feature-gated V4 platform layers, with a set of
 additive V5 experimental slices layered on top. Everything risky ships
 **default-off**, and you turn it on one flag at a time — with a clear way to roll
 back. This page is the runbook for doing that safely.
@@ -19,13 +19,13 @@ back. This page is the runbook for doing that safely.
 KubeIntellect is described in five generations, but they are not five codebases:
 
 - **V1** — the original single-agent tool (legacy; lives on the `v1-legacy` branch).
-- **V2** — the LangGraph coordinator + parallel subagents + playbooks + reflexion. This is the **default reasoning engine** that answers every query today.
-- **V4** — the current branch: **V2 plus** the feature-flagged platform layers (sensorium + detectors, memory hierarchy, flight recorder, autonomy ladder + watchtower, and the opt-in V4 cortex).
+- **V2** — the LangGraph coordinator + parallel subagents + playbooks + reflexion. This is the **default reasoning engine** that answers every query today, called the **ReAct graph** in these docs.
+- **V4** — the current branch: **V2 plus** the feature-flagged platform layers (sensorium + detectors, memory hierarchy, flight recorder, autonomy ladder + watchtower, and the opt-in **Cortex graph**).
 - **V5** — additive, default-off experimental slices layered on the V4 server (not a fork). With every `KI_V5_*` flag unset and `CORTEX_V5_ENABLED=false`, the server is byte-identical to V4.
 
 There is no `v3` in the feature story (`exp/v3` was an abandoned spike). For the
-reasoning-engine differences between V2 and the V4 cortex, see
-[V2 vs V4](v2-vs-v4-models.md).
+reasoning-engine differences between the ReAct graph and the Cortex graph, see
+[ReAct vs Cortex graphs](v2-vs-v4-models.md).
 
 ---
 
@@ -60,12 +60,12 @@ opt-in ones are called out. Defaults below are verified against
 | `POSTMORTEM_ENABLED` | `true` | Read-only grounded postmortem view; `kq postmortem`. | Flight recorder (PostgreSQL) | Low — read-only. |
 | `WATCHTOWER_ENABLED` | `true` | Autonomous follow-up on detector findings, bounded by the autonomy ladder. | Sensorium | Medium — governed entirely by `AUTONOMY_LEVEL`. |
 | `AUTONOMY_LEVEL` | `A1` | Ladder: `A0` observe · `A1` investigate+report · `A2` propose · `A3` auto-fix. | Watchtower | `A1`/`A2` read-only; **`A3` mutates** — allowlist-gated only. |
-| `CORTEX_V4_ENABLED` | `false` | The V4 explicit-node reasoning graph (triage→gather→synthesize→remember) with tiered models. | — | Medium — swaps the reasoning engine; opt-in preview (flips when `cluster_resolved` reaches V2 parity). |
+| `CORTEX_V4_ENABLED` | `false` | The Cortex graph: explicit-node reasoning (triage→gather→synthesize→remember) with tiered models. | — | Medium — swaps the reasoning engine; opt-in preview (flips when `cluster_resolved` reaches parity with the ReAct graph). |
 | `PREDICTIVE_DETECTION_ENABLED` | `false` | Anticipatory (trend) detection that warns before a slow-burn failure; still zero-token, capped at `A1`. | `PROMETHEUS_URL` | Low–Medium — never auto-fixes; fail-open. |
 | `NL_DETECTOR_AUTHORING_ENABLED` | `false` | Compile a plain-English failure into a **shadow** detector; `kq detector`. | Sensorium | Low — shadow detectors never reach the watchtower until a human promotes them. |
 | `POSTMORTEM_LLM_NARRATIVE` | `false` | Adds an LLM narrative on top of the deterministic postmortem timeline. | `POSTMORTEM_ENABLED` | Low — the only token-spending part; falls back to the deterministic timeline on failure, and says in the document that it did. Unsupported claims are removed and, below `POSTMORTEM_MIN_GROUNDING` (`0.9`), the narrative is withheld. |
 
-> **Anthropic note.** `LLM_PROVIDER=anthropic` is only wired through the V4 cortex —
+> **Anthropic note.** `LLM_PROVIDER=anthropic` is only wired through the Cortex graph —
 > it has no effect unless `CORTEX_V4_ENABLED=true`.
 
 ### The Memory V5 slices (experimental, all default-off)
@@ -147,7 +147,7 @@ kq digest --hours 1          # what the watchtower did (autonomy)
 ```
 
 Also check the server logs — e.g. `sensorium: started`, or
-`CORTEX_V4_ENABLED — building the V4 explicit-node graph` when you enable the cortex.
+`CORTEX_V4_ENABLED — building the V4 explicit-node graph` when you enable the Cortex graph.
 
 **5. Roll back if needed.** Flip the flag back and restart — the layers are
 additive, so disabling one returns to the prior behavior with no migration:
@@ -166,7 +166,7 @@ default-off.
 
 ### Breaking changes
 
-1. **`LLM_PROVIDER=anthropic` on the default V2 graph now refuses to start.** Before, the server
+1. **`LLM_PROVIDER=anthropic` on the default ReAct graph now refuses to start.** Before, the server
    logged a warning and sent cluster data to OpenAI/Azure instead. It now exits with code 1 before
    the port opens and says which vendor the data would have gone to. Fix: set
    `CORTEX_V4_ENABLED=true` (the Cortex graph supports Anthropic), or choose `openai`, `azure`,
@@ -272,4 +272,4 @@ autonomous action no matter what you configure. Full detail in
 - [v5 experimental flags](v5-experimental-flags.md) — the full `KI_V5_*` catalog and `kq v5-status`.
 - [Autonomous Operations](autonomy.md) — the autonomy ladder, allowlist, and watchtower guard rails.
 - [Security](security.md) — HITL, RBAC roles, and the protection layers you keep when enabling features.
-- [V2 vs V4](v2-vs-v4-models.md) — what changes when you enable the V4 cortex.
+- [ReAct vs Cortex graphs](v2-vs-v4-models.md) — what changes when you enable the Cortex graph.

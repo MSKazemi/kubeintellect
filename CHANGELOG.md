@@ -11,6 +11,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Documentation — the two reasoning graphs are named for what they are
+
+- The docs now call the default graph the **ReAct graph** and the opt-in one the **Cortex
+  graph**, instead of "the V2 graph" and "the V4 cortex". *V1–V4* now only ever mean product
+  generations: what you install is the v4 platform, whichever graph it runs. Nothing else
+  changes: `CORTEX_V4_ENABLED`, code, log and error messages, and doc URLs keep their names,
+  and the docs say once per page that "the V2 graph" in a server message means the ReAct graph.
+- [ReAct vs Cortex graphs](v4/docs/v2-vs-v4-models.md) gains a **Which graph to choose**
+  table. The ReAct graph stays the default and is the one to use for fixes; the Cortex graph is
+  for diagnosis-first use, is required for `LLM_PROVIDER=anthropic`, and is the only graph
+  with the A3 grounding check. The default does not change.
+
 ## [2.7.0] - 2026-11-17
 
 kubeintellect 2.7.0, kube-q 1.6.4, ki-protocol 1.2.0. **Breaking for automation that used

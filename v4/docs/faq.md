@@ -43,7 +43,7 @@ providers are supported: `openai` (same models, OpenAI-hosted), `qwen` (Alibaba
 DashScope, OpenAI-compatible — `qwen-max` / `qwen-plus`), `local` (a self-hosted
 OpenAI-compatible server such as Ollama, vLLM or LM Studio — no API key; see
 [Local / self-hosted LLM](local-llm.md)), and `anthropic`
-(`claude-sonnet-4-6` / `claude-haiku-4-5`, wired only through the V4 cortex — the
+(`claude-sonnet-4-6` / `claude-haiku-4-5`, wired only through the Cortex graph — the
 server refuses to start with `anthropic` unless `CORTEX_V4_ENABLED=true`). You
 set exactly one. See [Configuration → LLM provider](configuration.md#llm-provider).
 
@@ -132,8 +132,8 @@ pricing, cluster size, and how many investigations run.
 
 ### Is it production-ready?
 
-The V2 reasoning graph (the
-default) plus the default-on V4 layers are the supported surface; the V4 cortex
+The ReAct reasoning graph (the
+default) plus the default-on V4 layers are the supported surface; the Cortex graph
 and all Memory V5 / v5 slices ship default-off as opt-in previews. The Helm chart
 covers AKS / EKS / GKE with RBAC, secrets, ingress, and resource limits — see the
 [cloud deploy guide](deploy/cloud.md).
