@@ -40,7 +40,7 @@ dev = [
     # in CI at all -- the renderer had zero CI coverage -- and the collected suite size
     # differed by exactly those 26 between a maintainer's machine and every clone, which is
     # what made the AGENTS.md count unreproducible.
-    "pillow>=12.3",
+    "pillow>=13.0.0",
     "pyte>=0.8.2",
 ]
 
