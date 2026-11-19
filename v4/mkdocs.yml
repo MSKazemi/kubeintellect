@@ -145,7 +145,7 @@ nav:
 
   - Reference:
     - Architecture: architecture.md
-    - V2 vs V4 (models): v2-vs-v4-models.md
+    - ReAct vs Cortex graphs (V2 vs V4): v2-vs-v4-models.md
     - Configuration: configuration.md
     - V5 experimental flags: v5-experimental-flags.md
     - Agent Behaviors: agent-behaviors.md

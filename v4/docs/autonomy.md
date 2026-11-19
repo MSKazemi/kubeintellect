@@ -104,7 +104,7 @@ auto-fix no longer runs in the same turn as the diagnosis:
 
 The ceiling only lowers what the ladder, the allowlist and the blast-radius
 gate already allow; it never grants A3. With either flag off, A3 is the single
-diagnose-and-fix turn described above. The V2 graph has no `ground_check`
+diagnose-and-fix turn described above. The default ReAct graph has no `ground_check`
 node, so it is not gated.
 
 ### Protected namespaces are always A0

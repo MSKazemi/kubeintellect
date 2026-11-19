@@ -20,7 +20,7 @@ variables. What it adds:
 - **A startup check that refuses rather than pretends** — see
   [What is checked at startup](#what-is-checked-at-startup).
 
-It works on both graphs: the default V2 graph, and the V4 cortex (`CORTEX_V4_ENABLED=true`).
+It works on both graphs: the default ReAct graph, and the Cortex graph (`CORTEX_V4_ENABLED=true`).
 
 ## Quick start with Ollama
 
@@ -171,9 +171,9 @@ output, and small models are more likely to stop calling tools part-way. The sta
 proves a model *can* call a tool; it does not measure how well it diagnoses.
 
 You can use one model for both variables, or a smaller one for `OPENAI_SUBAGENT_MODEL`:
-it serves the parallel subagents on the V2 graph and the triage and specialist tiers on
-the V4 cortex, while `OPENAI_COORDINATOR_MODEL` serves the coordinator (V2) and the final
-synthesis (V4). See [V2 vs V4 (models)](v2-vs-v4-models.md).
+it serves the parallel subagents on the ReAct graph and the triage and specialist tiers on
+the Cortex graph, while `OPENAI_COORDINATOR_MODEL` serves the coordinator (ReAct graph) and
+the final synthesis (Cortex graph). See [ReAct vs Cortex graphs](v2-vs-v4-models.md).
 
 ## What stays local — and what does not
 

@@ -116,9 +116,9 @@ kubeintellect set AZURE_OPENAI_API_KEY=... AZURE_OPENAI_ENDPOINT=https://your-re
 
 ### "LLM_PROVIDER=anthropic requires CORTEX_V4_ENABLED=true"
 
-The server refused to start. Anthropic is served only by the V4 cortex graph, and the
-default V2 graph will not quietly send your prompts to a different vendor instead.
-Either turn the cortex on, or pick a provider the default graph supports:
+The server refused to start. Anthropic is served only by the Cortex graph, and the
+default ReAct graph ("the V2 graph" in the error) will not quietly send your prompts to a
+different vendor instead. Either turn the Cortex graph on, or pick a provider the default graph supports:
 
 ```bash
 kubeintellect set CORTEX_V4_ENABLED=true     # keep Anthropic (needs langchain-anthropic)

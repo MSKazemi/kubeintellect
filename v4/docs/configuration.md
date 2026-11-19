@@ -92,7 +92,7 @@ OPENAI_SUBAGENT_MODEL=gpt-4o-mini
 # OPENAI_COORDINATOR_MODEL=qwen-max     # synthesis / large tier
 # OPENAI_SUBAGENT_MODEL=qwen-plus       # parallel RCA subagents / small tier
 
-# ── Option D: Anthropic / Claude (V4 Cortex only) ────────────────────────────
+# ── Option D: Anthropic / Claude (Cortex graph only) ─────────────────────────
 # Requires CORTEX_V4_ENABLED=true — the server refuses to start without it.
 # LLM_PROVIDER=anthropic
 # CORTEX_V4_ENABLED=true
@@ -169,7 +169,7 @@ LOG_FORMAT=text
 
 Which providers each graph supports:
 
-| Provider | V2 graph (default) | V4 cortex (`CORTEX_V4_ENABLED=true`) |
+| Provider | ReAct graph (default) | Cortex graph (`CORTEX_V4_ENABLED=true`) |
 |---|---|---|
 | `openai` | ✅ | ✅ |
 | `azure` | ✅ | ✅ |
@@ -178,7 +178,8 @@ Which providers each graph supports:
 | `local` | ✅ | ✅ |
 
 `LLM_PROVIDER=anthropic` with `CORTEX_V4_ENABLED=false` is a startup error, not a
-fallback. The V2 graph has no Anthropic backend, and the server will not substitute
+fallback. The default ReAct graph ("the V2 graph" in the startup message) has no
+Anthropic backend, and the server will not substitute
 another vendor: it logs `LLM_PROVIDER=anthropic requires CORTEX_V4_ENABLED=true …` and
 exits with status 1 before the port opens. Before
 [#192](https://github.com/MSKazemi/kubeintellect/issues/192) this combination silently
@@ -638,7 +639,7 @@ and the Anthropic model provider.
 | `PREFERENCE_DECAY_DAYS` | `60` | Inferred preferences not re-seen within this window decay and are purged by the consolidation worker (`preference_purge()`). |
 | `PREFERENCE_MIN_CONFIDENCE` | `0.3` | Inferred preferences below this confidence are not injected. |
 | `PREFERENCE_INFER_MIN_OCCURRENCE` | `3` | How many times a behaviour must recur before it's inferred as a preference. |
-| `CORTEX_V4_ENABLED` | `false` | Enables the V4 reasoning graph (triage → gather loop → synthesize → remember; with `SELF_GOVERN_ENABLED`, synthesize → ground_check → remember). When `false`, the V2 graph is used. |
+| `CORTEX_V4_ENABLED` | `false` | Enables the Cortex reasoning graph (triage → gather loop → synthesize → remember; with `SELF_GOVERN_ENABLED`, synthesize → ground_check → remember). When `false`, the default ReAct graph (the V2 graph in code and logs) is used. |
 | `CORTEX_MAX_GATHER_ROUNDS` | `8` | Bound on gather-loop LLM↔tool iterations per turn. |
 
 ### Predictive detection (ADR-010)
@@ -703,9 +704,9 @@ grounding rate of 0.70 and 0.61, which is why the default floor is 0.9.
 
 ### Anthropic provider
 
-Optional model provider for the V4 reasoning graph (`LLM_PROVIDER=anthropic`).
+Optional model provider for the Cortex reasoning graph (`LLM_PROVIDER=anthropic`).
 Requires the `langchain-anthropic` package **and** `CORTEX_V4_ENABLED=true`; on the
-default V2 graph the server refuses to start (see [LLM provider](#llm-provider)).
+default ReAct graph the server refuses to start (see [LLM provider](#llm-provider)).
 
 | Variable | Default | Description |
 |---|---|---|

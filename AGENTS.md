@@ -50,7 +50,7 @@ are:
 | Process startup and background services | `packages/kubeintellect-server/app/main.py` |
 | Settings, environment validation, feature flags | `packages/kubeintellect-server/app/core/config.py` |
 | Authenticated API surface | `packages/kubeintellect-server/app/api/v1/router.py` and `packages/kubeintellect-server/app/api/v1/endpoints/` |
-| Default V2 LangGraph and session runner | `packages/kubeintellect-server/app/agent/workflow.py` |
+| Default ReAct graph (the V2-style coordinator) and session runner | `packages/kubeintellect-server/app/agent/workflow.py` |
 | Optional explicit-node Cortex graph | `packages/kubeintellect-server/app/cortex/graph.py` |
 | Cluster, Prometheus, Loki, and Helm tools | `packages/kubeintellect-server/app/tools/` |
 | Sensorium, detectors, and autonomous investigations | `packages/kubeintellect-server/app/sensorium/`, `packages/kubeintellect-server/app/detectors/`, `packages/kubeintellect-server/app/autonomy/` |
@@ -60,7 +60,8 @@ are:
 | Browser demo | `packages/kube-q/web/` |
 
 All paths in this table are relative to `v4/`. `CORTEX_V4_ENABLED` selects the Cortex graph at
-graph initialization; the V2 graph remains the default. Do not implement the same behavior
+graph initialization; the ReAct graph (called the V2 graph in code and log messages)
+remains the default. Do not implement the same behavior
 in both graphs unless the issue explicitly requires parity.
 
 The SSE protocol has two deliberately separate views: `ki_protocol/wire.py` defines what the
