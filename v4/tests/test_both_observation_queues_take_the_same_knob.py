@@ -31,14 +31,15 @@ def test_the_memory_queue_size_is_configurable() -> None:
 
 def test_it_defaults_to_its_twin() -> None:
     """Same stream, same default depth: changing one default silently must not split them."""
-    fresh = Settings()
+    # _env_file=None: a developer's own .env must not decide the defaults under test (#300)
+    fresh = Settings(_env_file=None)
     assert fresh.MEMORY_OBS_QUEUE_MAXSIZE == fresh.SENSORIUM_QUEUE_MAXSIZE
 
 
 def test_the_environment_actually_reaches_it(monkeypatch: pytest.MonkeyPatch) -> None:
     """A setting nothing reads is a setting that does not exist."""
     monkeypatch.setenv("MEMORY_OBS_QUEUE_MAXSIZE", "12345")
-    assert Settings().MEMORY_OBS_QUEUE_MAXSIZE == 12345
+    assert Settings(_env_file=None).MEMORY_OBS_QUEUE_MAXSIZE == 12345
 
 
 def test_init_memory_sizes_the_queue_from_the_setting(monkeypatch: pytest.MonkeyPatch) -> None:

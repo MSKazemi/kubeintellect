@@ -24,7 +24,8 @@ from app.core.config import Settings
 
 
 def test_default_temperature_is_zero():
-    assert Settings().LLM_TEMPERATURE == 0.0
+    # _env_file=None: a developer's own .env must not decide the default under test (#300)
+    assert Settings(_env_file=None).LLM_TEMPERATURE == 0.0
 
 
 def test_configured_temperature_reaches_the_azure_client():
