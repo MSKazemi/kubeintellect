@@ -11,8 +11,8 @@ members = ["packages/*"]
 dev = [
     # Pulls every workspace member (editable) into the dev environment.
     "kubeintellect[tracing,metrics]",
-    "pytest>=8",
-    "pytest-asyncio>=1.0",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.5.0",
     "pytest-mock>=3.17.0",
     "pytest-timeout>=2.4",
     "pytest-cov>=7.0",
@@ -25,14 +25,14 @@ dev = [
     # AGENTS.md first: autofixing that family silently disables RBAC and the HITL
     # gate.
     "ruff>=0.15,<0.16",
-    "mypy>=2.4.0",
+    "mypy>=2.4.1",
     "types-PyYAML>=6.0.12",
-    "mkdocs-material>=9.5",
+    "mkdocs-material>=9.8.1",
     "mkdocstrings[python]>=1.0.7",
     "scipy>=1.18.1",
     "matplotlib>=3.11.2",
     "seaborn>=0.13",
-    "numpy>=2.5.4",
+    "numpy>=2.5.5",
     # The demo-recording toolchain. scripts/demo/cast_to_gif.py renders an asciinema cast to
     # a GIF and cast_to_text.py replays one through a terminal emulator; both ship in the
     # public repo and tests/test_demo_gif_renderer.py covers the renderer.
