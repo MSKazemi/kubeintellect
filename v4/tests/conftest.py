@@ -63,6 +63,29 @@ os.environ["PREFLIGHT_DIFF_ENABLED"] = "false"
 # kubectl (test_a_bound_investigation_runs_as_its_own_namespace_identity.py) or use a disposable Kind cluster.
 os.environ["SESSION_IDENTITY_ENABLED"] = "false"
 
+
+# ── No developer config file configures the suite (#300) ─────────────────────
+# `Settings` reads `~/.kubeintellect/.env` (written by `kubeintellect init`) and the
+# working directory's `.env`. The product must — test_the_config_still_reads_the_home_file
+# pins it — but the suite must not: CI has neither file, so whatever they hold makes a
+# local run disagree with CI, in either direction. An outside contributor's
+# `USE_SQLITE=true` and live `PROMETHEUS_URL` turned two correct tests red (#274); the
+# overrides above only ever covered keys someone had already been bitten by.
+#
+# The module-level singleton is built at import, before any fixture can act, so it is
+# rebuilt here from the environment alone — which still carries everything set above.
+# In place rather than rebound, so a module that already did
+# `from app.core.config import settings` sees the same clean values.
+def _settings_from_the_environment_only() -> None:
+    from app.core import config
+
+    clean = config.Settings(_env_file=None)
+    config.settings.__dict__.update(clean.__dict__)
+    object.__setattr__(config.settings, "__pydantic_fields_set__", set(clean.model_fields_set))
+
+
+_settings_from_the_environment_only()
+
 # ── Stub langgraph postgres checkpointer ─────────────────────────────────────
 # AsyncPostgresSaver.from_conn_string is called inside init_graph() at startup.
 # Stub the module so no TCP connection is attempted — the real app.agent.workflow

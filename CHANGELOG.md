@@ -23,6 +23,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   for diagnosis-first use, is required for `LLM_PROVIDER=anthropic`, and is the only graph
   with the A3 grounding check. The default does not change.
 
+### Fixed — the server test suite no longer reads your own config files
+
+- **A machine where KubeIntellect is set up no longer fails tests that pass in CI** (#300).
+  `Settings` reads `~/.kubeintellect/.env` (written by `kubeintellect init`) and the
+  working directory's `.env`, and the suite inherited whatever they held. `USE_SQLITE=true`
+  failed `test_empty_window`, and a reachable `PROMETHEUS_URL` failed
+  `test_unreadable_metrics_are_none_not_zero`. Both tests were correct. `tests/conftest.py`
+  now rebuilds the shared `settings` from the environment alone, and the tests that build
+  their own `Settings()` pass `_env_file=None`. The server itself still reads both files.
+  A new test runs the affected tests under a hostile home `.env` and project `.env`. It fails
+  without the fix. Reported by @Mirek321Tieto in #274.
+
 ## [2.7.0] - 2026-11-17
 
 kubeintellect 2.7.0, kube-q 1.6.4, ki-protocol 1.2.0. **Breaking for automation that used
